@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { SafetyRecord } from '@/pages/compliance/safety-software-catalog.data';
+import { SAFETY_RECORDS, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
+import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
+import { getAccountById } from '@/pages/accounts/accounts.data';
 
 /**
  * Per-carrier / per-subject DATA layer for the "Default Compliances & Documents" page.
@@ -100,6 +103,77 @@ export function currentVersion(entry: RecordDataEntry): DocVersion | null {
 
 export function newInstance(name: string): DocInstance {
     return { id: `i-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, versions: [] };
+}
+
+/** One uploaded document surfaced in the "Add from app" picker. */
+export interface AppDocument {
+    name: string;      // file name (the shareable unit)
+    entity: EntityId;  // Carrier | Asset | Driver — which side of the fleet it belongs to
+    subjectId: string; // subject id (carrier '__carrier__' / asset id / driver id) — for drill-down
+    subject: string;   // carrier name / asset unit / driver name
+    recordId: string;  // catalog record id — for the record drill level
+    record: string;    // human record name, e.g. "CVOR Certificate"
+    url?: string;      // data URL (base64) when present → lets "View" preview it
+}
+
+const RECORD_BY_ID = new Map(SAFETY_RECORDS.map(r => [r.id, r] as const));
+
+/**
+ * Every uploaded document currently stored in the app — feeds the "Add from app" picker in
+ * ShareToChat so a user can attach a document that already lives in the system instead of
+ * re-uploading it. Each key is `${accountId}::${subjectId}::${recordId}`, so we resolve the
+ * real record name (catalog), the entity (Carrier/Asset/Driver), and the subject label
+ * (carrier / asset unit / driver name). Deduped by subject + file name.
+ */
+export function listAppDocuments(): AppDocument[] {
+    const all = loadAll();
+    // Per-account lookups, resolved once and cached across keys.
+    const assetCache = new Map<string, Map<string, string>>();
+    const driverCache = new Map<string, Map<string, string>>();
+    const carrierCache = new Map<string, string>();
+    const subjectsFor = (acct: string) => {
+        if (!assetCache.has(acct)) {
+            try { assetCache.set(acct, new Map(getAssetsForAccount(acct).map(a => [a.id, a.unitNumber]))); }
+            catch { assetCache.set(acct, new Map()); }
+        }
+        if (!driverCache.has(acct)) {
+            try { driverCache.set(acct, new Map(getDriversForAccount(acct).map(d => [d.id, d.name]))); }
+            catch { driverCache.set(acct, new Map()); }
+        }
+        if (!carrierCache.has(acct)) {
+            let label = 'Carrier';
+            try { const a = getAccountById(acct); if (a) label = a.dbaName || a.legalName || 'Carrier'; } catch { /* ignore */ }
+            carrierCache.set(acct, label);
+        }
+        return { assets: assetCache.get(acct)!, drivers: driverCache.get(acct)!, carrier: carrierCache.get(acct)! };
+    };
+
+    const seen = new Set<string>();
+    const out: AppDocument[] = [];
+    for (const [key, entry] of Object.entries(all)) {
+        const [acct, subjectId, recordId] = key.split('::');
+        if (!acct || !subjectId || !recordId) continue;
+        const rec = RECORD_BY_ID.get(recordId);
+        const { assets, drivers, carrier } = subjectsFor(acct);
+        const entity: EntityId = rec?.entity
+            ?? (subjectId === CARRIER_SUBJECT ? 'Carrier' : assets.has(subjectId) ? 'Asset' : drivers.has(subjectId) ? 'Driver' : 'Carrier');
+        const record = rec?.recordName ?? recordId.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const subject = entity === 'Carrier' ? carrier : (assets.get(subjectId) ?? drivers.get(subjectId) ?? subjectId);
+        const versions = [
+            ...(entry.versions ?? []),
+            ...((entry.instances ?? []).flatMap(i => i.versions ?? [])),
+        ];
+        for (const v of versions) {
+            for (const f of (v.files ?? [])) {
+                if (!f?.name) continue;
+                const dk = `${subjectId}::${f.name}`;
+                if (seen.has(dk)) continue;
+                seen.add(dk);
+                out.push({ name: f.name, entity, subjectId, subject, recordId, record, url: f.url });
+            }
+        }
+    }
+    return out;
 }
 
 /** Every concurrent instance of a multi-instance record (empty for single-current records). */

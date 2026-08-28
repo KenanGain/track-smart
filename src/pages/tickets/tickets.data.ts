@@ -72,8 +72,19 @@ export interface TicketIdentifiers {
     receiptNumber?: string;
 }
 
+/** A document attached to a ticket — its type, ticket number, date and file(s). */
+export interface TicketAttachedDoc {
+    docTypeId?: string;
+    docTypeName?: string;
+    docNumber?: string;
+    issueDate?: string;
+    fileName?: string;
+    files?: { id: string; fileName: string; fileSize?: number }[];
+}
+
 export interface TicketRecord {
     id: string;
+    attachedDocuments?: TicketAttachedDoc[];
     offenseNumber: string;
     date: string;
     time: string;
@@ -109,6 +120,9 @@ export interface TicketRecord {
     ticketDetails?: TicketDetails;
     /** Grouped regulatory + administrative identifiers from the citation. */
     identifiers?: TicketIdentifiers;
+    /** Cross-reference to a linked Default Accident (its accident #). Lets a
+     *  ticket point at the accident it was issued for. */
+    accidentNumber?: string;
 }
 
 export const TICKET_STATS: TicketStats = {

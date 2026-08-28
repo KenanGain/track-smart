@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   User, Phone, MapPin, Briefcase,
-  AlertTriangle, Edit, Edit3, Trash2, Mail, History, Award,
-  UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Route, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
-  CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe
+  AlertTriangle, Edit, Edit3, Trash2, Mail, History,
+  UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
+  CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe, Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 // Removed: import { Badge } from '../../components/ui/Badge';
@@ -24,6 +24,8 @@ import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLa
 import { type SubTab } from '@/components/ui/SubTabs';
 import { getSafetyEventsForDriver } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { setMessagesFocus } from '@/pages/messages/messages-store';
 import { computeDriverScorecards, type DriverScorecard } from '@/pages/safety-analysis/fleet-safety-score.data';
 // Embedded Default Compliances & Documents + Default Monitoring, scoped to this driver.
 import { useComplianceData } from '@/pages/compliance/compliance-data-store';
@@ -32,6 +34,97 @@ import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data'
 import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
 import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
 import { getAccountById } from '@/pages/accounts/accounts.data';
+import { useAccidentRecords, ACCIDENT_STATUS_META, type AccidentRecord } from '@/data/accident-records.data';
+import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/accident-types.data';
+
+/** Default Accidents mini-list + KPI cards for one driver — rendered in the profile's Accidents tab. */
+function DriverDefaultAccidents({ accountId, driverId, driverName }: { accountId?: string; driverId: string; driverName: string }) {
+  const { records } = useAccidentRecords(accountId);
+  const mine = useMemo(() => records
+    .filter(r => r.driverId === driverId || (!!driverName && (r.driverName || '').toLowerCase() === driverName.toLowerCase()))
+    .sort((a, b) => (b.dateTime || '').localeCompare(a.dateTime || '')), [records, driverId, driverName]);
+
+  const injuries = mine.filter(r => r.injuries || (Number(r.numInjuries) || 0) > 0).length;
+  const preventable = mine.filter(r => r.preventable === 'Preventable').length;
+  const verified = mine.filter(r => r.status === 'verified').length;
+  const pct = mine.length ? Math.round((verified / mine.length) * 100) : 0;
+  const stats = [
+    { label: 'Total', value: mine.length, dot: 'bg-slate-300' },
+    { label: 'With injuries', value: injuries, dot: 'bg-rose-500' },
+    { label: 'Preventable', value: preventable, dot: 'bg-amber-500' },
+    { label: 'Verified', value: verified, dot: 'bg-emerald-500' },
+  ];
+
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const typeName = (r: AccidentRecord) => (r.accidentTypeIds?.length ? r.accidentTypeIds : (r.accidentTypeId ? [r.accidentTypeId] : []))
+    .map(id => ACCIDENT_TYPES.find(t => t.id === id)?.displayName).filter(Boolean).join(', ');
+  const fmtDate = (dt?: string) => {
+    const [d, t] = (dt || '').split('T');
+    if (!d) return dt || '—';
+    const [y, m, day] = d.split('-');
+    return `${MONTHS[Number(m) - 1] ?? m} ${Number(day)}, ${y}${t ? ` · ${t}` : ''}`;
+  };
+
+  return (
+    <div className="space-y-4 animate-in fade-in">
+      {/* Summary bar — dot + count + label groups, plus a "Verified" progress meter */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {stats.map(s => (
+            <span key={s.label} className="inline-flex items-center gap-1.5 text-[13px]">
+              <span className={cn('h-2 w-2 rounded-full', s.dot)} />
+              <span className="font-bold tabular-nums text-slate-900">{s.value}</span>
+              <span className="text-slate-500">{s.label}</span>
+            </span>
+          ))}
+        </div>
+        <div className="w-full sm:w-56">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-400">Verified</span>
+            <span className="text-[12px] font-bold tabular-nums text-slate-600">{pct}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Mini list of the driver's accidents */}
+      {mine.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 mb-3"><ShieldCheck size={22} /></div>
+            <p className="text-sm font-semibold text-slate-700">No accidents on record</p>
+            <p className="text-[13px] text-slate-400 mt-1">This driver has no reported accidents in Default Accidents.</p>
+          </div>
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {mine.map(r => {
+            const st = ACCIDENT_STATUS_META[r.status];
+            return (
+              <li key={r.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60">
+                <span className="h-8 w-8 shrink-0 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><Car size={15} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {r.accidentNumber && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">{r.accidentNumber}</span>}
+                    <span className="truncate text-[13px] font-semibold text-slate-800">{typeName(r) || 'Unclassified'}</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-slate-400">{fmtDate(r.dateTime)}{r.location ? ` · ${r.location}` : ''}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {r.severity && <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', RISK_TYPE_TONE[r.severity as AccidentRiskType])}>{r.severity}</span>}
+                  {r.injuries && <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700">INJURY</span>}
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{st.label}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // --- Individual Section Edit Modals ---
 
@@ -1009,6 +1102,7 @@ function DriverSafetyAnalysisSection({
 export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, onUpdate, accountId, onNavigate }: any) => {
   const [activeTab, setActiveTab] = useState('Overview'); // Default to Overview
   const [driverData, setDriverData] = useState(initialDriverData);
+  const [shareOpen, setShareOpen] = useState(false);
   const { keyNumbers, documents, tagSections, getDocumentTypeById } = useAppData();
 
   // Sync state if initialData changes
@@ -1670,11 +1764,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Documents',      label: 'Compliances',      icon: FileText,        group: 'records' },
         { id: 'Application',    label: 'Forms',            icon: ClipboardList,   group: 'records' },
         { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
-        { id: 'Certificates',   label: 'Certificates',     icon: Award,           group: 'records' },
         // Operations
-        { id: 'Trips',          label: 'Trips',            icon: Route,           group: 'operations' },
         { id: 'HoursOfService', label: 'Hours of Service', icon: Clock,           group: 'operations' },
-        { id: 'MileageReport',  label: 'Mileage',          icon: Map,             group: 'operations' },
         // Safety
         { id: 'Inspections',    label: 'Inspections',      icon: FileCheck,       group: 'safety' },
         { id: 'Violations',     label: 'Violations',       icon: AlertTriangle,   group: 'safety' },
@@ -1890,6 +1981,14 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             <div className="flex items-center gap-2 flex-shrink-0 pt-1 self-start lg:self-auto flex-wrap">
               <button
                 type="button"
+                onClick={() => setShareOpen(true)}
+                className="h-9 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all inline-flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Share2 className="w-4 h-4 text-slate-500" />
+                <span className="hidden sm:inline">Share</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => window.print()}
                 className="h-9 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all inline-flex items-center justify-center gap-1.5 shadow-sm"
               >
@@ -1906,6 +2005,27 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 <span className="sm:hidden">Edit</span>
               </button>
             </div>
+            {shareOpen && (() => {
+              const driverFullName = `${driverData.firstName ?? ''} ${driverData.lastName ?? ''}`.trim() || driverData.name || 'Driver';
+              const shareItems = [
+                ...((driverData.documents || []) as any[]).map((d: any) => ({ name: d.fileName || d.name || `${d.documentTypeName || d.type || 'document'}.pdf`, group: 'Documents' })),
+                ...((driverData.travelDocuments || []) as any[]).map((d: any) => ({ name: d.fileName || d.name || `${d.type || 'travel-document'}.pdf`, group: 'Travel documents' })),
+              ];
+              return (
+                <ShareToChat
+                  open={shareOpen}
+                  onClose={() => setShareOpen(false)}
+                  title={`Share ${driverFullName}'s file`}
+                  subtitle="Share this driver's documents in a chat — in-app or with an outsider by email."
+                  source={{ type: 'manual', id: String(driverData.id ?? 'driver'), label: `Driver — ${driverFullName}` }}
+                  items={shareItems}
+                  defaultChannel="in-app"
+                  defaultSubject={`Driver file — ${driverFullName}`}
+                  defaultMessage={`Sharing ${driverFullName}'s documents.`}
+                  onOpenInMessages={onNavigate ? (id: string) => { setMessagesFocus(id); onNavigate('/messages'); } : undefined}
+                />
+              );
+            })()}
           </div>
         </div>
 
@@ -2828,11 +2948,10 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             {/* ACCIDENTS TAB */}
             {/* Accidents — unified CVOR/NSC/FMCSA panel scoped to this driver. */}
             {activeTab === 'Accidents' && (
-              <SafetyRecordsPanel
-                events={getSafetyEventsForDriver(driverData.id)}
-                kinds={['collision', 'accident']}
-                title="Accidents"
-                subtitle="Collisions involving this driver across CVOR, NSC, and FMCSA reports."
+              <DriverDefaultAccidents
+                accountId={accountId}
+                driverId={driverData.id}
+                driverName={`${driverData.firstName ?? ''} ${driverData.lastName ?? ''}`.trim() || driverData.name || ''}
               />
             )}
             {activeTab === '__legacy_driver_accidents__' && (() => {
@@ -4138,7 +4257,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               );
             })()}
 
-            {['Training', 'Certificates', 'Trips', 'MileageReport'].includes(activeTab) && (() => {
+            {activeTab === 'Training' && (() => {
                 const tabConfig = tabs.find(t => t.id === activeTab);
                 const TabIcon = tabConfig?.icon || FileText;
                 return (

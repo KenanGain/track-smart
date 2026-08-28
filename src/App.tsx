@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopNavbar } from '@/components/layout/TopNavbar'
+import { MessagesPage } from '@/pages/messages/MessagesPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 import { UsersListPage } from '@/pages/admin/UsersListPage'
@@ -49,6 +50,8 @@ import { ComplianceMonitoringPage } from '@/pages/compliance/ComplianceMonitorin
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
 import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
+import { SafetyEventsSettingsPage } from '@/pages/settings/SafetyEventsSettingsPage'
+import { IntegrationsSettingsPage } from '@/pages/settings/IntegrationsSettingsPage'
 import { DocuFormGeneratorPage } from '@/pages/settings/DocuFormGeneratorPage'
 import { TemplatesPage } from '@/pages/settings/TemplatesPage'
 
@@ -77,6 +80,7 @@ import { OnboardingPage } from '@/pages/hiring-process/OnboardingPage'
 import { OnboardingFileDashboard } from '@/pages/hiring-process/OnboardingFileDashboard'
 import { TestingFormsPage } from '@/pages/hiring-process/TestingFormsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
+import { ChatTagsSettingsPage } from '@/pages/settings/ChatTagsSettingsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
 import { DefaultAccidentsPage } from '@/pages/incidents/DefaultAccidentsPage'
@@ -86,6 +90,7 @@ import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
 import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 import { FuelPage } from '@/pages/fuel/FuelPage'
 import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
+import { HosViolationsPage } from '@/pages/hos/HosViolationsPage'
 import { SafetyAnalysisPage } from '@/pages/safety-analysis/SafetyAnalysisPage'
 import { NewSafetyAnalysisPage } from '@/pages/safety-analysis/NewSafetyAnalysisPage'
 import { BetaSafetyAnalysisPage } from '@/pages/safety-analysis/BetaSafetyAnalysisPage'
@@ -281,6 +286,9 @@ function App() {
                     </div>
                 </div>
             )
+        }
+        if (path === "/messages") {
+            return <MessagesPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
         }
         if (path === "/compliance") {
             const account = selectedAccount
@@ -485,7 +493,7 @@ function App() {
         if (path === "/default-compliance-documents") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <DefaultComplianceDataPage accountId={account?.id} />
+            return <DefaultComplianceDataPage accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/default-compliance-monitoring") {
             const account = selectedAccount
@@ -494,6 +502,9 @@ function App() {
         }
         if (path === "/settings/tags") {
             return <SafetyTagsPage />
+        }
+        if (path === "/settings/chat-tags") {
+            return <ChatTagsSettingsPage />
         }
         if (path === "/settings/document-folders") {
             return <DocumentFoldersPage />
@@ -524,6 +535,7 @@ function App() {
                     key={account?.id ?? 'default'}
                     accountId={account?.id}
                     currentUserName={currentUser?.name}
+                    onNavigate={handleNavigate}
                 />
             )
         }
@@ -581,6 +593,14 @@ function App() {
         }
         if (path === "/settings/safety") {
             return <SafetySettingsPage />
+        }
+        if (path === "/settings/safety-events") {
+            return <SafetyEventsSettingsPage />
+        }
+        if (path === "/settings/integrations") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <IntegrationsSettingsPage accountId={account?.id} />
         }
         if (path === "/assets/directory") {
             return <AssetDirectoryPage />
@@ -690,10 +710,18 @@ function App() {
         if (path === "/tickets") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <TicketsPage accountId={account?.id} />
+            return <TicketsPage accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/safety-events") {
-            return <SafetyEventsPage />
+            return <SafetyEventsPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
+        }
+        if (path === "/safety-event/telematics-video") {
+            return <SafetyEventsPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
+        }
+        if (path === "/safety-event/hours-of-service-violations") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <HosViolationsPage accountId={account?.id} currentUserName={currentUser?.name} />
         }
         if (path === "/safety-analysis") {
             const account = selectedAccount

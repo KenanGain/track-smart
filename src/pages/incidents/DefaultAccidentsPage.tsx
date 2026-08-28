@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle, Search, Plus,
-    MapPin, Truck, Smartphone, Building2, Sparkles, Eye, Pencil, Trash2, MessageSquare,
-    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns, Biohazard, HeartPulse, Skull, Layers, X, type LucideIcon,
+    MapPin, Truck, Smartphone, Building2, Sparkles, Eye, Pencil, Trash2,
+    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns, Biohazard, HeartPulse, Skull, Layers, X, Ticket, Share2, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/pages/ats/ats-ui";
+import { ShareToChat } from "@/components/share/ShareToChat";
+import { consumePendingRecord, setMessagesFocus, type RecordRef } from "@/pages/messages/messages-store";
 import {
     ACCIDENT_TYPES, RISK_TYPE_TONE,
     type AccidentRiskType,
 } from "@/data/accident-types.data";
 import {
-    useAccidentRecords, ACCIDENT_STATUS_META, SOURCE_META, CASE_STATUS_META, addedInfo, newAccidentId, carrierOwnerInfo,
+    useAccidentRecords, ACCIDENT_STATUS_META, SOURCE_META, addedInfo, newAccidentId, nextAccidentNumber, carrierOwnerInfo,
     type AccidentRecord, type AccidentStatus, type AccidentSource, type AccidentOwnerInfo,
 } from "@/data/accident-records.data";
 import { AccidentRecordPage } from "./AccidentRecordPage";
@@ -79,19 +81,6 @@ function PersonCell({ name, at }: { name?: string; at?: string }) {
     );
 }
 
-/** Case-communication status for the list — shows the adjuster case state and flags a reply. */
-function CaseCell({ record: r }: { record: AccidentRecord }) {
-    if (!r.case || r.case.messages.length === 0) return <span className="text-[11px] text-slate-300">—</span>;
-    const cs = CASE_STATUS_META[r.case.status];
-    return (
-        <span className="inline-flex items-center gap-1.5">
-            <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold", cs.tone)}>
-                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", cs.dot)} />{cs.label}
-            </span>
-            {caseHasReply(r) && <span title="The adjuster replied" className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-white"><MessageSquare size={9} /> Reply</span>}
-        </span>
-    );
-}
 
 /** At-a-glance KPI card — the Accidents-page style (label on top, big value + sub at the
  *  bottom, tinted icon square on the right, min height). Clickable as a filter with an
@@ -125,23 +114,23 @@ function AccidentKpiCard({ Icon, label, value, sub, accent, ring, active, onClic
 }
 
 // ── Sortable columns + column-visibility config ──────────────────────────
-type ColId = "when" | "driver" | "type" | "location" | "severity" | "source" | "addedBy" | "case" | "reviewedBy" | "claimedBy" | "status";
+type ColId = "accidentNo" | "when" | "driver" | "type" | "location" | "severity" | "source" | "addedBy" | "claimNo" | "ticketNo" | "reviewedBy" | "claimedBy" | "status";
 const COLUMN_DEFS: { id: ColId; label: string; locked?: boolean; defaultOn: boolean }[] = [
-    { id: "when", label: "When", locked: true, defaultOn: true },
+    { id: "accidentNo", label: "Accident #", defaultOn: true },
+    { id: "when", label: "Date of Loss", locked: true, defaultOn: true },
     { id: "driver", label: "Driver", locked: true, defaultOn: true },
     { id: "type", label: "Type", defaultOn: true },
     { id: "location", label: "Location", defaultOn: true },
     { id: "severity", label: "Severity", defaultOn: true },
     { id: "source", label: "Source", defaultOn: true },
     { id: "addedBy", label: "Added by", defaultOn: true },
-    { id: "case", label: "Case", defaultOn: true },
+    { id: "claimNo", label: "Claim #", defaultOn: true },
+    { id: "ticketNo", label: "Ticket #", defaultOn: true },
     { id: "reviewedBy", label: "Reviewed by", defaultOn: true },
     { id: "claimedBy", label: "Claimed by", defaultOn: false },
     { id: "status", label: "Status", defaultOn: true },
 ];
 const SEV_RANK: Record<string, number> = { Critical: 5, High: 4, Medium: 3, Low: 2, Info: 1 };
-/** Does this accident's case have an adjuster reply we should flag in the list? */
-const caseHasReply = (r: AccidentRecord) => (r.case?.messages ?? []).some(m => m.from === "adjuster");
 
 // ── Severity-category predicates (Hazmat / Tow-away / Injuries / Fatalities / Others) ──
 type SeverityFlag = "hazmat" | "towaway" | "injuries" | "fatalities" | "others";
@@ -199,6 +188,9 @@ const STATUS_RANK: Record<AccidentStatus, number> = { reported: 1, review: 2, ve
 type SortState = { col: ColId; dir: "asc" | "desc" };
 function sortVal(r: AccidentRecord, col: ColId): string | number {
     switch (col) {
+        case "accidentNo": return (r.accidentNumber || "").toLowerCase();
+        case "claimNo": return (r.claimNumber || "").toLowerCase();
+        case "ticketNo": return (r.ticketNumber || "").toLowerCase();
         case "when": return r.dateTime || "";
         case "driver": return (r.driverName || "").toLowerCase();
         case "type": return typesOf(r).toLowerCase();
@@ -206,7 +198,6 @@ function sortVal(r: AccidentRecord, col: ColId): string | number {
         case "severity": return r.severity ? (SEV_RANK[r.severity] ?? 0) : 0;
         case "source": return r.source;
         case "addedBy": return addedInfo(r).at || "";
-        case "case": return (r.case?.messages.length ?? 0) + (caseHasReply(r) ? 100 : 0);
         case "reviewedBy": return (r.verifiedBy || "").toLowerCase();
         case "claimedBy": return (r.claimedBy || "").toLowerCase();
         case "status": return STATUS_RANK[r.status];
@@ -264,10 +255,11 @@ function nowLocal(): { dt: string; today: string } {
     const dt = `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`;
     return { dt, today: dt.slice(0, 10) };
 }
-function blankOfficeAccident(owner: AccidentOwnerInfo): AccidentRecord {
+function blankOfficeAccident(owner: AccidentOwnerInfo, existing: AccidentRecord[]): AccidentRecord {
     const { dt, today } = nowLocal();
     return {
-        id: newAccidentId(), driverId: "", driverName: "", dateTime: dt, location: "", accidentTypeId: "",
+        id: newAccidentId(), accidentNumber: nextAccidentNumber(existing, dt),
+        driverId: "", driverName: "", dateTime: dt, location: "", accidentTypeId: "",
         unitId: "", description: "", injuries: false, injuryNotes: "", photoCount: 0,
         status: "review", source: "office", reportedBy: "Office", reportedAt: today,
         severity: "", points: "", preventable: "", claimNumber: "", policeReport: "", insurer: "", thirdParty: "", managerNotes: "",
@@ -330,9 +322,16 @@ function TypeFilterDropdown({ selected, onToggle, onClear }: {
     );
 }
 
-export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }: { accountId?: string; currentUserName?: string } = {}) {
+export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", onNavigate }: { accountId?: string; currentUserName?: string; onNavigate?: (path: string) => void } = {}) {
     const { records, add, update, remove, loadSample } = useAccidentRecords(accountId);
     const owner = useMemo(() => carrierOwnerInfo(accountId), [accountId]);
+    const [shareRecord, setShareRecord] = useState<RecordRef | null>(null);
+    useEffect(() => { const id = consumePendingRecord('/default-accidents'); if (id) setViewingId(id); }, []);
+    const accRef = (r: AccidentRecord): RecordRef => ({
+        type: 'accident', id: r.id,
+        label: `Accident ${(r as unknown as { accidentNumber?: string }).accidentNumber || r.id}`,
+        sublabel: [r.driverName, r.dateTime?.split('T')[0]].filter(Boolean).join(' · ') || undefined, path: '/default-accidents',
+    });
 
     // ── Records view state ─────────────────────────────────────────
     const [recSearch, setRecSearch] = useState("");
@@ -472,7 +471,7 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                             className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100">
                             <Sparkles size={15} /> Load sample data
                         </button>
-                        <button type="button" onClick={() => setEditing({ rec: blankOfficeAccident(owner), isNew: true })}
+                        <button type="button" onClick={() => setEditing({ rec: blankOfficeAccident(owner, records), isNew: true })}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
                             <Plus size={15} /> Add accident
                         </button>
@@ -648,14 +647,16 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                                     <table className="w-full min-w-max text-left">
                                         <thead className="border-b border-slate-200 bg-slate-50/60">
                                             <tr>
-                                                {showCol("when") && <SortTh id="when" label="When" minW="min-w-[120px] pl-5" sort={sort} onSort={toggleSort} />}
+                                                {showCol("accidentNo") && <SortTh id="accidentNo" label="Accident #" minW="min-w-[130px] pl-5" sort={sort} onSort={toggleSort} />}
+                                                {showCol("when") && <SortTh id="when" label="Date of Loss" minW="min-w-[120px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("driver") && <SortTh id="driver" label="Driver" minW="min-w-[150px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("type") && <SortTh id="type" label="Type" minW="min-w-[150px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("location") && <SortTh id="location" label="Location" minW="min-w-[160px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("severity") && <SortTh id="severity" label="Severity" minW="min-w-[100px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("source") && <SortTh id="source" label="Source" minW="min-w-[110px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("addedBy") && <SortTh id="addedBy" label="Added by" minW="min-w-[180px]" sort={sort} onSort={toggleSort} />}
-                                                {showCol("case") && <SortTh id="case" label="Case" minW="min-w-[130px]" sort={sort} onSort={toggleSort} />}
+                                                {showCol("claimNo") && <SortTh id="claimNo" label="Claim #" minW="min-w-[140px]" sort={sort} onSort={toggleSort} />}
+                                                {showCol("ticketNo") && <SortTh id="ticketNo" label="Ticket #" minW="min-w-[140px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("reviewedBy") && <SortTh id="reviewedBy" label="Reviewed by" minW="min-w-[170px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("claimedBy") && <SortTh id="claimedBy" label="Claimed by" minW="min-w-[170px]" sort={sort} onSort={toggleSort} />}
                                                 {showCol("status") && <SortTh id="status" label="Status" minW="min-w-[120px]" sort={sort} onSort={toggleSort} />}
@@ -671,8 +672,13 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                                                 const added = addedInfo(r);
                                                 return (
                                                     <tr key={r.id} onClick={() => setViewingId(r.id)} className="group cursor-pointer border-b border-slate-100 align-middle hover:bg-slate-50/60">
-                                                        {showCol("when") && (
+                                                        {showCol("accidentNo") && (
                                                             <td className="px-3 py-3 pl-5">
+                                                                <span className="whitespace-nowrap rounded-md bg-slate-100 px-2 py-1 text-[12px] font-semibold tabular-nums text-slate-700" title={r.accidentNumber}>{r.accidentNumber || "—"}</span>
+                                                            </td>
+                                                        )}
+                                                        {showCol("when") && (
+                                                            <td className="px-3 py-3">
                                                                 <div className="whitespace-nowrap text-[13px] font-semibold text-slate-800">{when.date}</div>
                                                                 <div className="text-[11px] tabular-nums text-slate-400">{when.time}</div>
                                                             </td>
@@ -704,7 +710,16 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                                                             <td className="px-3 py-3"><span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", src.tone)}>{r.source === "driver-app" ? <Smartphone size={9} className="shrink-0" /> : <Building2 size={9} className="shrink-0" />}<span>{src.label}</span></span></td>
                                                         )}
                                                         {showCol("addedBy") && <td className="px-3 py-3"><PersonCell name={added.by} at={added.at} /></td>}
-                                                        {showCol("case") && <td className="px-3 py-3"><CaseCell record={r} /></td>}
+                                                        {showCol("claimNo") && (
+                                                            <td className="px-3 py-3">
+                                                                {r.claimNumber ? <span className="whitespace-nowrap text-[12px] font-semibold tabular-nums text-slate-700">{r.claimNumber}</span> : <span className="text-[11px] text-slate-300">—</span>}
+                                                            </td>
+                                                        )}
+                                                        {showCol("ticketNo") && (
+                                                            <td className="px-3 py-3">
+                                                                {r.ticketNumber ? <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-amber-50 px-2 py-1 text-[12px] font-semibold tabular-nums text-amber-700 ring-1 ring-amber-200"><Ticket size={11} className="shrink-0" /> {r.ticketNumber}</span> : <span className="text-[11px] text-slate-300">—</span>}
+                                                            </td>
+                                                        )}
                                                         {showCol("reviewedBy") && <td className="px-3 py-3"><PersonCell name={r.verifiedBy} at={r.verifiedAt} /></td>}
                                                         {showCol("claimedBy") && <td className="px-3 py-3"><PersonCell name={r.claimedBy} at={r.claimedAt} /></td>}
                                                         {showCol("status") && (
@@ -717,6 +732,7 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                                                                     <Eye size={14} />
                                                                 </button>
                                                                 <RowActionsMenu items={[
+                                                                    { label: "Share to chat", icon: Share2, onClick: () => setShareRecord(accRef(r)) },
                                                                     { label: "Edit details", icon: Pencil, onClick: () => setEditing({ rec: r, isNew: false }) },
                                                                     { label: "Delete", icon: Trash2, onClick: () => askDelete(r), danger: true },
                                                                 ]} />
@@ -751,13 +767,13 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                                                     {r.severity && <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold", RISK_TYPE_TONE[r.severity as AccidentRiskType])}>{r.severity}</span>}
                                                     <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold", src.tone)}>{src.label}</span>
                                                     {r.injuries && <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">Injury</span>}
-                                                    {r.case && r.case.messages.length > 0 && <CaseCell record={r} />}
                                                 </div>
                                                 <div className="flex items-center justify-between gap-2 pt-1">
                                                     <PersonCell name={added.by} at={added.at} />
                                                     <div className="flex shrink-0 items-center gap-1.5" onClick={e => e.stopPropagation()}>
                                                         <button type="button" title="View" onClick={() => setViewingId(r.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Eye size={14} /></button>
                                                         <RowActionsMenu items={[
+                                                            { label: "Share to chat", icon: Share2, onClick: () => setShareRecord(accRef(r)) },
                                                             { label: "Edit details", icon: Pencil, onClick: () => setEditing({ rec: r, isNew: false }) },
                                                             { label: "Delete", icon: Trash2, onClick: () => askDelete(r), danger: true },
                                                         ]} />
@@ -807,6 +823,21 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                         </div>
                     </div>
                 </div>
+            )}
+            {shareRecord && (
+                <ShareToChat
+                    open
+                    onClose={() => setShareRecord(null)}
+                    title={`Share ${shareRecord.label}`}
+                    subtitle="Send the record + documents in a chat, or to an outsider by email"
+                    source={{ type: 'accident', id: shareRecord.id, label: shareRecord.label }}
+                    items={[]}
+                    record={shareRecord}
+                    defaultChannel="in-app"
+                    defaultSubject={shareRecord.label}
+                    currentUserName={currentUserName}
+                    onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate?.('/messages'); }}
+                />
             )}
         </div>
     );

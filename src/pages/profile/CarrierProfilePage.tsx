@@ -62,6 +62,7 @@ import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
+import { addCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
 import { AddDriverApplication } from './AddDriverApplication';
 import { useDriverDqHealth, ComplianceChecklist, CompletionBar } from '@/pages/ats/DqFilesPage';
 import { DriverImportModal } from './DriverImportModal';
@@ -1033,6 +1034,7 @@ export function CarrierProfilePage({
             complianceStatus: 'Compliant',
             lastActive: now,
         }));
+        created.forEach(d => addCarrierDriver(accountId, d as any));   // link into the shared roster (accident picker, etc.)
         setDrivers(prev => [...created, ...prev]);
         showToast(`${created.length} driver${created.length === 1 ? '' : 's'} imported successfully`);
     };
@@ -1093,6 +1095,7 @@ export function CarrierProfilePage({
                     complianceStatus: 'Compliant',
                     lastActive: new Date().toLocaleDateString()
                 };
+                addCarrierDriver(accountId, newDriver as any);   // link into the shared roster (accident picker, etc.)
                 setDrivers(prev => [...prev, newDriver]);
                 showToast("Driver added successfully");
             }

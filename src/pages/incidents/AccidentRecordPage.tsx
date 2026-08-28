@@ -3,7 +3,7 @@ import {
     Save, ShieldCheck, AlertTriangle, MapPin, Truck, CalendarClock,
     FileText, Camera, Trash2, BadgeCheck, Building2, User, Shield, Cloud, Check,
     Car, Users, Plus, X, Video, Paperclip, Wrench, Boxes, ClipboardList, Eye,
-    Search, ChevronDown, type LucideIcon,
+    Search, ChevronDown, Hash, FlaskConical, Gauge, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccidentDisclosure } from './AccidentDisclosure';
@@ -12,6 +12,7 @@ import { FileDropZone } from '@/components/compliance/FileDropZone';
 import { TagField } from '@/components/ui/TagField';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
+import { useCarrierTickets } from '@/pages/tickets/tickets.store';
 import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/accident-types.data';
 import {
     ACCIDENT_STATUS_META, SOURCE_META, PREVENTABILITY_OPTIONS,
@@ -44,13 +45,13 @@ function today(): string {
 }
 
 /** Compact labelled text/date input. */
-function TextField({ label, value, onChange, placeholder, type = 'text', full, hint }: {
-    label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; full?: boolean; hint?: string;
+function TextField({ label, value, onChange, placeholder, type = 'text', full, hint, list }: {
+    label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; full?: boolean; hint?: string; list?: string;
 }) {
     return (
         <div className={full ? 'sm:col-span-2' : ''}>
             <label className={labelCls}>{label}</label>
-            <input type={type} className={inputCls} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+            <input type={type} className={inputCls} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} list={list} />
             {hint && <p className="mt-1 text-[11px] text-slate-400">{hint}</p>}
         </div>
     );
@@ -526,6 +527,12 @@ export function AccidentRecordPage({
     const powerUnits = useMemo(() => fleet.filter(a => a.assetType === 'Truck' || a.assetType === 'Van'), [fleet]);
     const trailers = useMemo(() => fleet.filter(a => a.assetType === 'Trailer'), [fleet]);
     const roster = useMemo(() => getDriversForAccount(accountId ?? '') as FleetDriver[], [accountId]);
+    // Existing tickets for this carrier — feed the "Linked ticket #" autocomplete.
+    const carrierTickets = useCarrierTickets(accountId);
+    const ticketNumberOptions = useMemo(
+        () => Array.from(new Set(carrierTickets.map(t => t.offenseNumber).filter(Boolean))),
+        [carrierTickets],
+    );
     const set = <K extends keyof AccidentRecord>(k: K, v: AccidentRecord[K]) => setForm(f => ({ ...f, [k]: v }));
     const toggleIn = (key: 'roadCondsList' | 'trafficControlsList' | 'trafficCondsList' | 'weatherList' | 'visibilityList', val: string) =>
         setForm(f => {
@@ -646,7 +653,7 @@ export function AccidentRecordPage({
             case 'uploads': return (form.driverStatementFiles?.length ? 1 : 0) + filled(form.description, form.driverStatementText)
                 + (form.vehicleDamageFiles?.length ? 1 : 0) + (form.photoFiles?.length ? 1 : 0)
                 + (form.videoFiles?.length ? 1 : 0) + (form.dashcamFiles?.length ? 1 : 0)
-                + (form.medicalReportFiles?.length ? 1 : 0) + (form.elogFiles?.length ? 1 : 0);
+                + (form.medicalReportFiles?.length ? 1 : 0) + (form.drugTestFiles?.length ? 1 : 0) + (form.elogFiles?.length ? 1 : 0);
             case 'repair': return filled(form.repairVendor, form.repairStatus, form.estimatedRepair, form.totalRepairAmount) + (form.repairFiles?.length ? 1 : 0);
             case 'othervehicles': return form.otherVehicles?.length ?? 0;
             case 'witnesses': return (form.witnesses?.length ?? 0) + filled(form.witnessNotes);
@@ -668,6 +675,11 @@ export function AccidentRecordPage({
                     <>
                         Report and verify this carrier's accident — owner and driver details auto-filled, then classify and verify.
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {form.accidentNumber && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600" title="Auto-generated accident reference number">
+                                    <Hash size={10} /> {form.accidentNumber}
+                                </span>
+                            )}
                             <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', statusMeta.tone)}>
                                 <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.dot)} /> {statusMeta.label}
                             </span>
@@ -1088,7 +1100,10 @@ export function AccidentRecordPage({
                                     <DocUpload label="Medical report" icon={FileText} accept="application/pdf,.doc,.docx" hint="Injury / medical report documents (PDF / DOC) — up to 10 files." files={form.medicalReportFiles ?? []} onChange={files => set('medicalReportFiles', files)} />
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="E-log" icon={FileText} accept="application/pdf,.doc,.docx" hint="Electronic logging device records (PDF / DOC) — up to 10 files." files={form.elogFiles ?? []} onChange={files => set('elogFiles', files)} />
+                                    <DocUpload label="Post-accident drug &amp; alcohol test result" icon={FlaskConical} accept="application/pdf,.doc,.docx" hint="Post-accident drug / alcohol test result documents (PDF / DOC) — up to 10 files." files={form.drugTestFiles ?? []} onChange={files => set('drugTestFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="ELD document (E-log)" icon={Gauge} accept="application/pdf,.doc,.docx" hint="Electronic logging device (ELD) / hours-of-service records (PDF / DOC) — up to 10 files." files={form.elogFiles ?? []} onChange={files => set('elogFiles', files)} />
                                 </div>
                             </div>
                         </WizardSection>
@@ -1187,6 +1202,12 @@ export function AccidentRecordPage({
                                     <div>
                                         <label className={labelCls}>Third party involved</label>
                                         <input className={inputCls} value={form.thirdParty ?? ''} onChange={e => set('thirdParty', e.target.value)} placeholder="Other vehicle / party details" />
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Linked ticket #</label>
+                                        <input className={inputCls} value={form.ticketNumber ?? ''} onChange={e => set('ticketNumber', e.target.value)} placeholder="Link a ticket (offense #)" list="acc-ticket-numbers" />
+                                        <datalist id="acc-ticket-numbers">{ticketNumberOptions.map(n => <option key={n} value={n} />)}</datalist>
+                                        <p className="mt-1 text-[11px] text-slate-400">Reference the ticket issued for this accident, so the two records link.</p>
                                     </div>
                                     <div className="sm:col-span-2">
                                         <label className={labelCls}>Internal notes</label>

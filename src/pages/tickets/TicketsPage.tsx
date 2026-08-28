@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     Search,
     FileText,
@@ -23,7 +23,11 @@ import {
     RefreshCw,
     Trash2,
     AlertOctagon,
+    Share2,
 } from 'lucide-react';
+import { KebabMenu } from '@/components/ui/KebabMenu';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { consumePendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
 
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
@@ -31,6 +35,7 @@ import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { type TicketStatus, type ViolationType, type TicketRecord } from './tickets.data';
 import { useCarrierTickets, addTicket, updateTicket, removeTicket, buildTicketFromViolation, type ViolationLike } from './tickets.store';
 import { TicketEditForm, type TicketFormDraft } from './TicketEditForm';
+import { TicketDetailPage } from './TicketDetailPage';
 import { CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 import {
     getMissingTicketsForCarrier,
@@ -131,191 +136,8 @@ const BASIC_TABS: Array<{
       tone: 'teal' },
 ];
 
-// ── Detail panel — full read-only view of a single ticket. Rendered
-// inline in the table as an expanded row so the user can see every
-// identifier, document, and assignment fact at a glance without
-// switching to the edit form.
-const TicketDetailPanel = ({
-    ticket, onEdit, onClose,
-}: {
-    ticket: TicketRecord;
-    onEdit: () => void;
-    onClose: () => void;
-}) => {
-    const ids = ticket.identifiers ?? {};
-    const details = ticket.ticketDetails ?? {};
-    const isElectronic = ticket.ticketKind === 'Electronic';
 
-    const Field = ({ label, value, mono }: { label: string; value?: React.ReactNode; mono?: boolean }) => (
-        <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</span>
-            <span className={cn('text-xs text-slate-800 truncate', mono && 'font-mono')}>
-                {value || <span className="text-slate-300 italic">—</span>}
-            </span>
-        </div>
-    );
-
-    const SectionHeader = ({ children }: { children: React.ReactNode }) => (
-        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 pb-1 border-b border-slate-200">
-            {children}
-        </h4>
-    );
-
-    return (
-        <div className="p-5 border-t border-slate-200 bg-gradient-to-b from-blue-50/30 to-white">
-            {/* Header strip */}
-            <div className="flex items-start justify-between gap-3 mb-4">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Ticket detail</span>
-                    <span className="text-[11px] font-mono text-slate-500">{ticket.id}</span>
-                    <span className={cn(
-                        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border',
-                        isElectronic
-                            ? 'bg-violet-50 text-violet-700 border-violet-200'
-                            : 'bg-blue-50 text-blue-700 border-blue-200',
-                    )}>
-                        {isElectronic ? 'eTicket' : 'Paper Ticket'}
-                    </span>
-                    {ticket.isOos && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
-                            OOS-qualifying
-                        </span>
-                    )}
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={onEdit}
-                        className="inline-flex items-center gap-1.5 px-3 h-7 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
-                    >
-                        <Edit2 className="w-3 h-3" /> Edit
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="inline-flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    >
-                        <X className="w-3 h-3" /> Close
-                    </button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* Left column: Who / Where / Violation */}
-                <div className="space-y-5">
-                    <div>
-                        <SectionHeader>Driver &amp; Asset</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Driver" value={ticket.driverName} />
-                            <Field label="Driver ID" value={ticket.driverId} mono />
-                            <Field label="Asset" value={ticket.assetId} mono />
-                            <Field label="Driver Licence" value={ids.driverLicenceNumber} mono />
-                            <Field label="Plate" value={ids.plateNumber} mono />
-                            <Field label="VIN" value={ids.vinNumber} mono />
-                        </div>
-                    </div>
-
-                    <div>
-                        <SectionHeader>Where &amp; When</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Date" value={ticket.date} />
-                            <Field label="Time" value={ticket.time} />
-                            <div className="col-span-2">
-                                <Field label="Location" value={ticket.location} />
-                            </div>
-                            <div className="col-span-2">
-                                <Field label="Description" value={ticket.description} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <SectionHeader>Violation</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Type" value={ticket.violationType} />
-                            <Field label="Code" value={ids.violationCode} mono />
-                            <div className="col-span-2">
-                                <Field label="Description" value={ticket.violationSubtype} />
-                            </div>
-                            <Field label="Category" value={ticket.violationCategory} />
-                            <Field label="Sub-category" value={ticket.violationGroup} />
-                            <Field label="Statute Section" value={ids.statuteSection} mono />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right column: Identifiers / Docs / Assignment / Money */}
-                <div className="space-y-5">
-                    <div>
-                        <SectionHeader>Identifiers</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Offense #" value={ticket.offenseNumber} mono />
-                            <Field label="Ticket #" value={ids.ticketNumber} mono />
-                            <Field label="Citation #" value={ids.citationNumber} mono />
-                            <Field label="Docket #" value={ids.docketNumber} mono />
-                            <Field label="Court Case #" value={ids.courtCaseNumber} mono />
-                            <Field label="Receipt #" value={ids.receiptNumber} mono />
-                            <Field label="USDOT" value={ids.usdotNumber} mono />
-                            <Field label="CVOR / NSC" value={ids.cvorNumber || ids.nscNumber} mono />
-                        </div>
-                    </div>
-
-                    <div>
-                        <SectionHeader>{isElectronic ? 'Electronic Ticket Detail' : 'Paper Ticket Detail'}</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            {isElectronic ? (
-                                <>
-                                    <Field label="Portal URL" value={details.portalUrl} mono />
-                                    <Field label="QR Reference" value={details.qrReference} mono />
-                                    <Field label="Issuing Device" value={details.eIssuingDevice} />
-                                </>
-                            ) : (
-                                <>
-                                    <Field label="Officer" value={details.officerName} />
-                                    <Field label="Officer Badge" value={details.officerBadge} mono />
-                                    <Field label="Court Location" value={details.courtLocation} />
-                                    <Field label="Court Date" value={details.courtDate} />
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <SectionHeader>Money &amp; Status</SectionHeader>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field
-                                label="Fine"
-                                value={`${ticket.currency === 'CAD' ? 'CA$' : '$'}${ticket.fineAmount.toFixed(2)} ${ticket.currency}`}
-                            />
-                            <Field label="Status" value={ticket.status} />
-                            <Field label="Has Ticket File" value={ticket.hasTicketFile ? 'Yes' : 'No'} />
-                            <Field label="Has Receipt" value={ticket.hasReceiptFile ? 'Yes' : 'No'} />
-                            <Field label="Has Notice" value={ticket.hasNoticeFile ? 'Yes' : 'No'} />
-                        </div>
-                    </div>
-
-                    <div>
-                        <SectionHeader>Assignment</SectionHeader>
-                        {ticket.assignedToThirdParty ? (
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Assigned" value="Yes — third party" />
-                                <Field label="Assignee" value={(ticket as any).assigneeName} />
-                                <Field label="Email" value={(ticket as any).assigneeEmail} mono />
-                                <div className="col-span-2">
-                                    <Field label="Note" value={(ticket as any).assignmentNote} />
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-slate-400 italic">Not assigned to a third party.</p>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
+export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onNavigate?: (path: string) => void } = {}) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All Statuses');
     const [violationFilter, setViolationFilter] = useState('All Types');
@@ -334,6 +156,13 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     // Ticket awaiting a Remove confirmation. Null when the dialog is closed.
     const [removeCandidate, setRemoveCandidate] = useState<TicketRecord | null>(null);
+    // A ticket being shared to chat (record link), and deep-link open from a shared link.
+    const [shareRecord, setShareRecord] = useState<RecordRef | null>(null);
+    useEffect(() => { const id = consumePendingRecord('/tickets'); if (id) setExpandedId(id); }, []);
+    const ticketRef = (t: TicketRecord): RecordRef => ({
+        type: 'ticket', id: t.id, label: `Ticket ${t.offenseNumber || t.id}`,
+        sublabel: [t.violationType, t.driverName].filter(Boolean).join(' · ') || undefined, path: '/tickets',
+    });
     // Prefill stash for the Add form — populated when the user clicks
     // "Log Ticket" on a missing-record row in the reconciliation banner.
     // Takes precedence over the auto-generated Add defaults when set.
@@ -572,6 +401,7 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                     violationGroup: editingTicket.violationGroup,
                     isOos: editingTicket.isOos,
                     identifiers: editingTicket.identifiers ?? {},
+                    accidentNumber: editingTicket.accidentNumber,
                     assignedToThirdParty: editingTicket.assignedToThirdParty,
                     assigneeName: (editingTicket as any).assigneeName,
                     assigneeEmail: (editingTicket as any).assigneeEmail,
@@ -657,6 +487,9 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                         setEditingTicket(null);
                         return;
                     }
+                    // Carry the cross-reference to a linked accident (not part
+                    // of the violation projection).
+                    built.accidentNumber = draft.accidentNumber || undefined;
                     if (editingTicket) {
                         updateTicket(editingTicket.id, { ...built, id: editingTicket.id });
                     } else {
@@ -668,6 +501,22 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                 }}
             />
         );
+    }
+
+    // ── Dedicated full-page ticket detail (replaces the old popup) ──
+    if (expandedId) {
+        const ticket = tickets.find(t => t.id === expandedId);
+        if (ticket) {
+            return (
+                <TicketDetailPage
+                    ticket={ticket}
+                    onBack={() => setExpandedId(null)}
+                    onEdit={() => { setExpandedId(null); handleEdit(ticket); }}
+                    onDelete={() => { setExpandedId(null); setRemoveCandidate(ticket); }}
+                    onNavigate={onNavigate}
+                />
+            );
+        }
     }
 
     // ── Pagination derived state ──────────────────────────────────────────
@@ -1626,6 +1475,7 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
+                                                <KebabMenu items={[{ label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(ticketRef(ticket)) }]} />
                                             </div>
                                         </td>
                                     </tr>
@@ -1694,31 +1544,6 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                 </div>
             </div>
 
-            {/* ── View modal — opens when a row is clicked or the Eye icon is
-                pressed. Sits on top of the page as an overlay popup, replacing
-                the previous inline-expand behaviour. */}
-            {expandedId && (() => {
-                const ticket = tickets.find(t => t.id === expandedId);
-                if (!ticket) return null;
-                return (
-                    <div
-                        className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6"
-                        onClick={() => setExpandedId(null)}
-                    >
-                        <div
-                            className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl my-4 overflow-hidden border border-slate-200"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <TicketDetailPanel
-                                ticket={ticket}
-                                onEdit={() => { setExpandedId(null); handleEdit(ticket); }}
-                                onClose={() => setExpandedId(null)}
-                            />
-                        </div>
-                    </div>
-                );
-            })()}
-
             {/* ── Remove confirmation — opens when the trash icon is pressed.
                 Asks the user to confirm before destructively removing the
                 ticket from the carrier's ledger. */}
@@ -1767,6 +1592,20 @@ export const TicketsPage = ({ accountId }: { accountId?: string } = {}) => {
                         </div>
                     </div>
                 </div>
+            )}
+            {shareRecord && (
+                <ShareToChat
+                    open
+                    onClose={() => setShareRecord(null)}
+                    title={`Share ${shareRecord.label}`}
+                    subtitle="Send the record + documents in a chat, or to an outsider by email"
+                    source={{ type: 'ticket', id: shareRecord.id, label: shareRecord.label }}
+                    items={[]}
+                    record={shareRecord}
+                    defaultChannel="in-app"
+                    defaultSubject={shareRecord.label}
+                    onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate?.('/messages'); }}
+                />
             )}
         </div>
     );

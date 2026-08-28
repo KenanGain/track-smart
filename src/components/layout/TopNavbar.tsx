@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Bell, HelpCircle, ChevronDown, LogOut, User, Menu } from "lucide-react";
+import { Search, Bell, MessageSquare, HelpCircle, ChevronDown, LogOut, User, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ROLE_BADGE, ROLE_LABELS, getManagedAccountIds, type AppUser } from "@/data/users.data";
@@ -213,6 +213,17 @@ export function TopNavbar({
                         aria-label="Help"
                     >
                         <HelpCircle size={17} />
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onNavigate?.("/messages")}
+                        className="h-9 w-9 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg relative"
+                        aria-label="Messages"
+                    >
+                        <MessageSquare size={17} />
+                        <span className="absolute top-2 right-2 h-2 w-2 bg-blue-500 rounded-full ring-2 ring-white" />
                     </Button>
 
                     <Button

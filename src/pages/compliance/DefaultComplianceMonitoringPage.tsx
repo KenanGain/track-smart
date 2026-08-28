@@ -23,6 +23,8 @@ import { useMonitoringRouting, useMonitoringResponses, resolveRouting, activeSta
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
+import { AssignRecordDialog } from '@/components/share/AssignRecordDialog';
+import { type RecordRef } from '@/pages/messages/messages-store';
 import { APP_USERS, findUserById, getManagedAccountIds, type AppUser } from '@/data/users.data';
 
 /**
@@ -281,6 +283,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
 
     const [tab, setTab] = useState<'Dashboard' | 'Calendar' | 'Activity'>('Dashboard');
     const [actionAlert, setActionAlert] = useState<Alert | null>(null);
+    const [assignAlert, setAssignAlert] = useState<Alert | null>(null); // Share / Assign to chat
     const [search, setSearch] = useState('');
     const [entityFilter, setEntityFilter] = useState<'all' | EntityId>('all');
     const [priorityFilter, setPriorityFilter] = useState<'all' | PriorityLevel>('all');
@@ -307,6 +310,25 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const openLinked = (a: Alert) => {
         try { localStorage.setItem('dcd-focus', JSON.stringify({ acct, entity: a.entity, subjectId: a.subjectId, recordId: a.record.id })); } catch { /* ignore */ }
         onNavigate?.('/default-compliance-documents');
+    };
+
+    // Build a clickable record link + a data summary for the Share / Assign-to-chat dialog.
+    const assignRefFor = (a: Alert): RecordRef => ({
+        type: 'compliance',
+        id: `${a.entity}|${a.subjectId}|${a.record.id}`,
+        label: a.record.recordName,
+        sublabel: `${a.subjectLabel} · ${a.entity}`,
+        path: '/default-compliance-documents',
+    });
+    const assignMetaFor = (a: Alert): Record<string, string> => {
+        const dueText = a.daysUntil === null ? '' : a.daysUntil < 0
+            ? `Overdue by ${-a.daysUntil} day${-a.daysUntil === 1 ? '' : 's'}`
+            : a.daysUntil === 0 ? 'Due today' : `Due in ${a.daysUntil} day${a.daysUntil === 1 ? '' : 's'}`;
+        const m: Record<string, string> = { Subject: a.subjectLabel, Priority: PRIORITY_META[a.priority].label };
+        if (a.date) m.Due = a.date;
+        if (dueText) m.Status = dueText; else if (a.status) m.Status = a.status;
+        if (a.numberValue) m[a.record.numberName || 'Number'] = a.numberValue;
+        return m;
     };
 
     const labelForSubject = (entity: EntityId, subjectId: string): string => {
@@ -618,7 +640,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                         <>
                         {/* Mobile / narrow: stacked cards — column-driven, same as the table */}
                         <div className="lg:hidden divide-y divide-slate-100">
-                            {pageRows.map(a => <AlertCard key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} />)}
+                            {pageRows.map(a => <AlertCard key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
                         </div>
                         {/* Desktop: full table */}
                         <div className="hidden lg:block overflow-x-auto">
@@ -644,7 +666,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pageRows.map(a => <AlertRow key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} />)}
+                                    {pageRows.map(a => <AlertRow key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
                                 </tbody>
                             </table>
                         </div>
@@ -704,6 +726,17 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                     onAssign={assignTo}
                     onSend={sendRequest}
                     onClose={() => setActionAlert(null)}
+                />
+            )}
+
+            {assignAlert && (
+                <AssignRecordDialog
+                    open
+                    onClose={() => setAssignAlert(null)}
+                    record={assignRefFor(assignAlert)}
+                    meta={assignMetaFor(assignAlert)}
+                    subtitle={`${assignAlert.subjectLabel} · ${assignAlert.entity}`}
+                    onNavigate={onNavigate}
                 />
             )}
         </div>
@@ -1028,7 +1061,7 @@ function NotifiedRecipients({ recipients, response, max = 3 }: {
 }
 
 // ── Alert row (column-driven) ─────────────────────────────────────────
-function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void }) {
+function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeAction, onAssign }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void; onAssign?: (a: Alert) => void }) {
     const EntityIcon = ENTITY_ICON[a.entity];
     const pm = PRIORITY_META[a.priority];
     const tm = TYPE_META[a.type];
@@ -1164,6 +1197,12 @@ function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeActio
                             <ExternalLink size={14} /> <span className="hidden xl:inline">Open</span>
                         </button>
                     )}
+                    {onAssign && (
+                        <button type="button" title="Share / assign this record in chat" onClick={() => onAssign(a)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200">
+                            <Send size={14} />
+                        </button>
+                    )}
                     <button type="button" title={a.file?.url ? 'View document' : 'No document'} disabled={!a.file?.url}
                         onClick={() => a.file && openFile(a.file)}
                         className={cn('inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors',
@@ -1179,7 +1218,7 @@ function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeActio
 
 // ── Alert card (mobile / narrow screens — replaces the wide table row) ──
 // Column-driven, exactly like the table: only the columns selected in the Columns dropdown render.
-function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void }) {
+function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeAction, onAssign }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void; onAssign?: (a: Alert) => void }) {
     const EntityIcon = ENTITY_ICON[a.entity];
     const pm = PRIORITY_META[a.priority];
     const tm = TYPE_META[a.type];
@@ -1254,6 +1293,12 @@ function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeActi
                     <button type="button" onClick={() => onOpenLinked(a)}
                         className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[13px] font-semibold hover:bg-blue-100">
                         <ExternalLink size={15} /> Open
+                    </button>
+                )}
+                {onAssign && (
+                    <button type="button" onClick={() => onAssign(a)} title="Share / assign this record in chat"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600">
+                        <Send size={16} />
                     </button>
                 )}
                 <button type="button" disabled={!a.file?.url} onClick={() => a.file && openFile(a.file)} title={a.file?.url ? 'View document' : 'No document'}

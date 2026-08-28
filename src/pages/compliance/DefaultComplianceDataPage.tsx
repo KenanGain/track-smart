@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
     Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
-    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock, CornerDownRight,
+    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock, CornerDownRight, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { KebabMenu } from '@/components/ui/KebabMenu';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { consumePendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, ENTITY_ORDER, isDateMonitored, RECORD_TYPE_LABEL, RECORD_TYPE_ORDER,
@@ -525,7 +528,7 @@ type EntryGetter = (subjectId: string, recordId: string) => RecordDataEntry;
 type EntrySetter = (subjectId: string, recordId: string, entry: RecordDataEntry) => void;
 
 // ── Page ──────────────────────────────────────────────────────────────
-export function DefaultComplianceDataPage({ accountId }: { accountId?: string }) {
+export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId?: string; onNavigate?: (path: string) => void }) {
     const account = accountId ? getAccountById(accountId) : undefined;
     const carrierName = account ? (account.dbaName || account.legalName) : 'the selected carrier';
 
@@ -550,6 +553,19 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
         } catch { /* ignore */ }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [acct]);
+
+    // Deep-link from a shared record link in Messages (id = "entity|subjectId|recordId") →
+    // jump to that record's entity/subject and auto-open its detail.
+    useEffect(() => {
+        const id = consumePendingRecord('/default-compliance-documents');
+        if (!id) return;
+        const [ent, subj, rec] = id.split('|');
+        if (!rec) return;
+        if (ent === 'Carrier' || ent === 'Asset' || ent === 'Driver') setEntity(ent);
+        setSelectedSubject(ent && ent !== 'Carrier' ? (subj || null) : null);
+        setFocusRecordId(rec);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // One combined list — this carrier's custom records (shown first) + every system-default
     // record across all types (Compliances, Documents, Compliances & Documents).
@@ -672,6 +688,7 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                         onFocusConsumed={() => setFocusRecordId(null)}
                         alsoSeedSubjects={sampleSubjects}
                         onDetailChange={setDetailOpen}
+                        onNavigate={onNavigate}
                     />
                 )}
 
@@ -695,11 +712,12 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                                     onBack={() => setSelectedSubject(null)}
                                     backLabel="All assets"
                                     onDetailChange={setDetailOpen}
+                                    onNavigate={onNavigate}
                                 />
                             );
                         })()
                         : (subView === 'records'
-                            ? <AllRecordsView entity="Asset" subjects={assetSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} />
+                            ? <AllRecordsView entity="Asset" subjects={assetSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} />
                             : <SubjectRoster entity="Asset" subjects={assetRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
                 )}
 
@@ -723,11 +741,12 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                                     onBack={() => setSelectedSubject(null)}
                                     backLabel="All drivers"
                                     onDetailChange={setDetailOpen}
+                                    onNavigate={onNavigate}
                                 />
                             );
                         })()
                         : (subView === 'records'
-                            ? <AllRecordsView entity="Driver" subjects={driverSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} />
+                            ? <AllRecordsView entity="Driver" subjects={driverSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} />
                             : <SubjectRoster entity="Driver" subjects={driverRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
                 )}
             </div>
@@ -969,7 +988,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate }: {
     entity: EntityId;
     subjectId: string;
     subjectLabel: string;
@@ -997,6 +1016,8 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     detailExtraFor?: (record: SafetyRecord) => ReactNode;
     // Hide the category tab row (e.g. the DQ Forms tab, where every record is one category → redundant).
     hideCategoryTabs?: boolean;
+    // Deep-link navigation (used by the record-share "Share to chat" flow).
+    onNavigate?: (path: string) => void;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const [category, setCategory] = useState<KeyNumberGroup | 'All'>('All');
@@ -1116,6 +1137,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     setEntry={setEntry}
                     onBack={() => setDetailRecord(null)}
                     detailExtra={detailExtraFor ? detailExtraFor(detailRecord) : detailExtra}
+                    onNavigate={onNavigate}
                 />
             ) : (
             <>
@@ -1348,7 +1370,7 @@ function SubjectCell({ s }: { s: RecSubject }) {
  * with the subject name on each row. KPIs + search + type / status / tag / subject filters + column
  * chooser + Load sample data. Rows open that subject's record detail page. Mirrors SubjectDocuments.
  */
-function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntries, all, onDetailChange }: {
+function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntries, all, onDetailChange, onNavigate }: {
     entity: 'Asset' | 'Driver';
     subjects: RecSubject[];
     records: SafetyRecord[];
@@ -1357,6 +1379,7 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     setEntries: (items: { subjectId: string; recordId: string; entry: RecordDataEntry }[]) => void;
     all: unknown; // store snapshot — changes on every write; forces the memos below to recompute
     onDetailChange?: (open: boolean) => void;
+    onNavigate?: (path: string) => void;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
@@ -1460,6 +1483,7 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                 subjectId={detail.subject.id}
                 setEntry={setEntry}
                 onBack={() => setDetail(null)}
+                onNavigate={onNavigate}
             />
         );
     }
@@ -2238,11 +2262,20 @@ function DocColumnsDropdown({ cols, visible, onToggle }: { cols: DocColId[]; vis
  * Rendered in TWO places: the record detail page's Documents tab, and INLINE inside the list's
  * expandable row. Reads `entry` live from the store, so Load-sample / Fill-demo data reflect here.
  */
-function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel }: {
+function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate }: {
     record: SafetyRecord; entry: RecordDataEntry; subjectId: string; setEntry: EntrySetter;
-    compact?: boolean; subjectLabel?: string;
+    compact?: boolean; subjectLabel?: string; entity?: EntityId; onNavigate?: (path: string) => void;
 }) {
     const [includeHistory, setIncludeHistory] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false); // "Share to chat" (record-link) dialog
+    // A clickable link back to THIS record (entity|subject|record) — clicking it in Messages reopens it here.
+    const shareRef: RecordRef = {
+        type: 'compliance',
+        id: `${entity ?? 'Carrier'}|${subjectId}|${record.id}`,
+        label: record.recordName,
+        sublabel: `${subjectLabel ? `${subjectLabel} · ` : ''}${RECORD_TYPE_LABEL[record.type]}`,
+        path: '/default-compliance-documents',
+    };
     const [editing, setEditing] = useState<{ version: DocVersion; mode: 'add' | 'edit'; instanceId?: string; newPolicy?: boolean } | null>(null);
     const [docSearch, setDocSearch] = useState('');
     const [tagFilter, setTagFilter] = useState('all');
@@ -2342,6 +2375,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         DOC_INSURANCE_COLS.includes(id) ? isInsurance : id === 'issue' ? showIssue : id === 'expiry' ? showDate : id === 'status' ? showStatus : true);
 
     const allRows = buildDocRows(record, entry);
+    // Files across every version → attachments offered in the Share dialog (pdf / image / video).
+    const shareItems = allRows.flatMap(r => r.version.files.map(f => ({ name: f.name, group: r.version.label })));
     // "History" = older/previous versions (position-based, newest = current). Independent of the controllable State field.
     const isCurrentRow = (r: DocRow) => r.isCurrent;
     const historyCount = allRows.filter(r => !isCurrentRow(r)).length;
@@ -2491,6 +2526,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
                                                         <button type="button" onClick={() => setPendingDelete(row)} title="Remove this record"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"><Trash2 size={14} /></button>
+                                                        <KebabMenu title="More actions" items={[{ label: 'Share to chat', icon: Share2, onClick: () => setShareOpen(true) }]} />
                                                     </div>
                                                 </td>
                                             </tr>
@@ -2562,6 +2598,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
                                                 <button type="button" onClick={() => setPendingDelete(row)} title="Remove this record"
                                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"><Trash2 size={14} /></button>
+                                                <KebabMenu title="More actions" items={[{ label: 'Share to chat', icon: Share2, onClick: () => setShareOpen(true) }]} />
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -2646,16 +2683,32 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     onCancel={() => setPendingDelete(null)}
                 />
             )}
+            {shareOpen && (
+                <ShareToChat
+                    open={shareOpen}
+                    onClose={() => setShareOpen(false)}
+                    title={`Share ${record.recordName}`}
+                    subtitle="Send the record + its documents in a chat, or to an outsider by email"
+                    source={{ type: 'manual', id: shareRef.id, label: record.recordName }}
+                    items={shareItems}
+                    record={shareRef}
+                    defaultChannel="in-app"
+                    defaultSubject={record.recordName}
+                    currentUserName={currentUserName()}
+                    onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate?.('/messages'); }}
+                />
+            )}
         </>
     );
 }
 
 type DetailTab = 'documents' | 'monitoring';
-function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra }: {
+function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate }: {
     record: SafetyRecord; entry: RecordDataEntry; entity: EntityId; subjectLabel: string;
     subjectId: string; setEntry: EntrySetter;
     onBack: () => void;
     detailExtra?: ReactNode;
+    onNavigate?: (path: string) => void;
 }) {
     const [tab, setTab] = useState<DetailTab>('documents');
     const status = entryStatus(record, entry);
@@ -2729,7 +2782,7 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                 </div>
 
                 {tab === 'documents' ? (
-                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} />
+                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} />
                 ) : (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
                 )}

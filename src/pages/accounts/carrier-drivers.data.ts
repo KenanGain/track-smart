@@ -318,6 +318,36 @@ for (const account of ACCOUNTS_DB) {
     CARRIER_DRIVERS[account.id] = buildDriversForCarrier(account, account.drivers);
 }
 
+// ── Runtime-added drivers (Add Driver / Import) ──────────────────────────────
+// Persisted per account so drivers created in the UI appear everywhere the shared
+// roster is consumed — including the Default Accidents "Add accident" driver picker.
+const EXTRA_DRIVERS_KEY = 'carrier-extra-drivers';
+function loadExtraDrivers(): Record<string, Driver[]> {
+    try { return JSON.parse(localStorage.getItem(EXTRA_DRIVERS_KEY) || '{}'); } catch { return {}; }
+}
+// Merge any previously-added drivers into the in-memory roster on load (upsert by id).
+try {
+    const extra = loadExtraDrivers();
+    for (const [acct, list] of Object.entries(extra)) {
+        const base = CARRIER_DRIVERS[acct] ?? [];
+        const ids = new Set(list.map(d => d.id));
+        CARRIER_DRIVERS[acct] = [...list, ...base.filter(d => !ids.has(d.id))];
+    }
+} catch { /* ignore */ }
+
+/** Register a driver added through the UI so the shared roster — and every consumer,
+ *  e.g. the accident form's driver picker — can see it. Upserts by id and persists. */
+export function addCarrierDriver(accountId: string | undefined, driver: Driver): void {
+    if (!accountId || !driver?.id) return;
+    const base = CARRIER_DRIVERS[accountId] ?? [];
+    CARRIER_DRIVERS[accountId] = [driver, ...base.filter(d => d.id !== driver.id)];
+    try {
+        const extra = loadExtraDrivers();
+        extra[accountId] = [driver, ...(extra[accountId] ?? []).filter(d => d.id !== driver.id)];
+        localStorage.setItem(EXTRA_DRIVERS_KEY, JSON.stringify(extra));
+    } catch { /* ignore */ }
+}
+
 export const getDriversForAccount = (accountId: string): Driver[] =>
     CARRIER_DRIVERS[accountId] ?? [];
 

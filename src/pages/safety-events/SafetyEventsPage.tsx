@@ -1,24 +1,24 @@
-import { useState } from 'react';
-import { 
-  AlertTriangle, 
-  MapPin, 
-  Clock, 
-  Truck, 
-  User, 
-  Camera, 
-  CloudRain, 
-  Activity, 
-  Info,
-  Map,
-  ChevronDown,
-  ChevronUp,
-  X,
-  Zap,
-  Gauge,
-  CornerDownRight,
-  ShieldAlert,
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Activity, Search, Download, Filter, Columns, ChevronDown, ChevronUp, ChevronsUpDown, X,
+  ShieldAlert, AlertOctagon, CircleAlert, Camera, Gauge, Truck, MapPin,
+  Eye, Trash2, MoreVertical, Flag, CheckCircle2, GraduationCap, FileWarning, Ban, RotateCcw,
+  ClipboardCheck, History, Share2, type LucideIcon,
 } from 'lucide-react';
-import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
+import { cn } from '@/lib/utils';
+import { PageHeader } from '@/pages/ats/ats-ui';
+import { KpiStatCard } from '@/components/ui/KpiStatCard';
+import { ShareToChat, type ShareItem } from '@/components/share/ShareToChat';
+import { setMessagesFocus, consumePendingRecord, sendWidgetToDriver, type RecordRef, type ChatWidget } from '@/pages/messages/messages-store';
+import { loadTelematicsEventTypes } from '@/pages/safety-events/safety-event-types.data';
+import {
+  HOS_STATUS_META, HOS_DISPOSITIONS, HOS_DISPOSITION_BY_ID, HOS_TRAINING_TYPES,
+  type HosVStatus, type HosDisposition,
+} from '@/pages/hos/hos-violations.data';
+import { ActivityTimeline } from '@/components/ui/ActivityTimeline';
+import { ReviewResolutionTab, toActivityEntries } from '@/components/ui/ReviewResolution';
+import { ACTIVITY_BADGE_TONE } from '@/components/ui/activity-kinds';
 
 // ===== RAW DATA =====
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,521 +180,1112 @@ const getSeverityBadge = (severity: string) => {
   }
 };
 
-// ===== MiniKpiCard =====
-const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { title: string; value: number; icon: React.ElementType; active: boolean; onClick: () => void; color: "blue" | "emerald" | "red" | "yellow" | "purple" | "orange" | "gray" | "indigo" | "cyan" | "rose" | "teal" }) => {
-  const colorMap = {
-    blue: "text-blue-600 bg-blue-50 border-blue-200",
-    emerald: "text-emerald-600 bg-emerald-50 border-emerald-200",
-    red: "text-red-600 bg-red-50 border-red-200",
-    yellow: "text-yellow-600 bg-yellow-50 border-yellow-200",
-    purple: "text-purple-600 bg-purple-50 border-purple-200",
-    orange: "text-orange-600 bg-orange-50 border-orange-200",
-    gray: "text-slate-600 bg-slate-50 border-slate-200",
-    rose: "text-rose-600 bg-rose-50 border-rose-200",
-    teal: "text-teal-600 bg-teal-50 border-teal-200",
-    indigo: "text-indigo-600 bg-indigo-50 border-indigo-200",
-    cyan: "text-cyan-600 bg-cyan-50 border-cyan-200",
-    fuchsia: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200",
-    violet: "text-violet-600 bg-violet-50 border-violet-200",
-    lime: "text-lime-700 bg-lime-50 border-lime-200",
-    amber: "text-amber-600 bg-amber-50 border-amber-200",
-    slate: "text-slate-600 bg-slate-50 border-slate-200",
-  } as const;
+// ─────────────────────────────────────────────────────────────────────────────
+// Review lifecycle + rich activity trail. Telematics/video events arrive from
+// the provider "In Review"; a reviewer verifies the clip and closes with a
+// resolution (assign training / warning letter / safety alert / driver notice /
+// terminate / dismiss as false). Every event carries a seeded audit trail —
+// received → clip attached → recorded → opened → verified → resolution — so the
+// Activity tab is meaningful the moment the page loads.
+const SEV_TRAILERS = ['TRL-301', 'TRL-455', 'TRL-782', 'TRL-119', 'TRL-640', 'TRL-528', 'TRL-903', 'TRL-214', 'TRL-376', 'TRL-687'];
+const SEV_REVIEWERS = ['Dana Whitfield', 'Marcus Lee', 'Priya Nair', 'Tom Becker', 'Sofia Alvarez'];
+function hashOf(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
+function frac(n: number): number { const x = Math.sin(n) * 10000; return x - Math.floor(x); }
+function isoPlus(iso: string, mins: number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
+}
 
-  const activeStylesMap = {
-    blue: "ring-2 ring-offset-1 ring-blue-400 border-blue-400 shadow-sm",
-    emerald: "ring-2 ring-offset-1 ring-emerald-400 border-emerald-400 shadow-sm",
-    red: "ring-2 ring-offset-1 ring-red-400 border-red-400 shadow-sm",
-    yellow: "ring-2 ring-offset-1 ring-yellow-400 border-yellow-400 shadow-sm",
-    purple: "ring-2 ring-offset-1 ring-purple-400 border-purple-400 shadow-sm",
-    orange: "ring-2 ring-offset-1 ring-orange-400 border-orange-400 shadow-sm",
-    gray: "ring-2 ring-offset-1 ring-slate-400 border-slate-400 shadow-sm",
-    rose: "ring-2 ring-offset-1 ring-rose-400 border-rose-400 shadow-sm",
-    teal: "ring-2 ring-offset-1 ring-teal-400 border-teal-400 shadow-sm",
-    indigo: "ring-2 ring-offset-1 ring-indigo-400 border-indigo-400 shadow-sm",
-    cyan: "ring-2 ring-offset-1 ring-cyan-400 border-cyan-400 shadow-sm",
-    fuchsia: "ring-2 ring-offset-1 ring-fuchsia-400 border-fuchsia-400 shadow-sm",
-    violet: "ring-2 ring-offset-1 ring-violet-400 border-violet-400 shadow-sm",
-    lime: "ring-2 ring-offset-1 ring-lime-400 border-lime-400 shadow-sm",
-    amber: "ring-2 ring-offset-1 ring-amber-400 border-amber-400 shadow-sm",
-    slate: "ring-2 ring-offset-1 ring-slate-400 border-slate-400 shadow-sm",
-  } as const;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function decorateSafetyEvent(e: any): any {
+  const key = String(e.id);
+  const h = hashOf(key);
+  const trailerId = SEV_TRAILERS[h % SEV_TRAILERS.length];
+  const company = e.provider;
+  const prov = String(company || '').toUpperCase();
+  const receivedAt: string = e.metadata?.addedAt ?? e.startedAt;
+  const closed = frac(h * 0.017 + 3) > 0.6;
+  const status: HosVStatus = closed ? 'resolved' : 'review';
+  const reviewer = SEV_REVIEWERS[h % SEV_REVIEWERS.length];
+  const cam = hasCamera(e);
+  const srcBadge = { label: 'Source', tone: ACTIVITY_BADGE_TONE.Source };
+  const sysBadge = { label: 'System', tone: ACTIVITY_BADGE_TONE.System };
+  const revBadge = { label: 'Reviewer', tone: ACTIVITY_BADGE_TONE.Reviewer };
+  const camBadge = { label: 'Camera', tone: ACTIVITY_BADGE_TONE.Camera };
 
-  const activeStyles = active
-    ? activeStylesMap[color]
-    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activity: any[] = [
+    { id: `${key}-a1`, at: receivedAt, by: prov, kind: 'received', title: 'Received from telematics', detail: `Imported from ${prov} via API`, badge: srcBadge },
+  ];
+  if (cam) {
+    const which = e.cameraMedia?.frontFacing?.available && e.cameraMedia?.rearFacing?.available
+      ? 'Front + rear' : e.cameraMedia?.frontFacing?.available ? 'Front-facing' : 'Rear-facing';
+    activity.push({ id: `${key}-a2`, at: isoPlus(receivedAt, 1), by: prov, kind: 'video', title: 'Video clip attached', detail: `${which} camera footage synced with the event`, badge: camBadge });
+  }
+  activity.push({ id: `${key}-a3`, at: isoPlus(receivedAt, 4), by: 'System', kind: 'recorded', detail: 'Logged to safety events', badge: sysBadge });
+  activity.push({ id: `${key}-a4`, at: isoPlus(receivedAt, 18 * 60), by: reviewer, kind: 'viewed', title: 'Opened for review', detail: `${reviewer} reviewed the clip and telemetry`, badge: revBadge });
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${activeStyles} bg-white`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`p-1.5 rounded-md ${colorMap[color]}`}>
-          <Icon size={16} />
-        </div>
-        <span className="text-sm font-bold text-slate-600 uppercase tracking-wide">{title}</span>
-      </div>
-      <span className="text-lg font-bold text-slate-900">{value}</span>
-    </button>
-  );
+  let disposition: HosDisposition | undefined;
+  let training: { name: string; assignedBy: string; assignedAt: string } | undefined;
+  let reviewedBy: string | undefined;
+  let reviewedAt: string | undefined;
+  let falseViolation = false;
+
+  if (closed) {
+    reviewedBy = reviewer;
+    reviewedAt = isoPlus(receivedAt, 24 * 60);
+    const disp = HOS_DISPOSITIONS[Math.floor(frac(h * 0.031 + 5) * HOS_DISPOSITIONS.length)];
+    disposition = disp.id;
+    if (disp.id === 'false') falseViolation = true;
+    activity.push({ id: `${key}-a5`, at: isoPlus(reviewedAt, -20), by: reviewer, kind: 'verified', title: 'Verified event', detail: disp.id === 'false' ? 'Reviewed footage — not a genuine event.' : 'Reviewed footage — confirmed a genuine event.', badge: revBadge });
+    let detail = `Closed — ${disp.label}`;
+    if (disp.id === 'training') {
+      const tname = HOS_TRAINING_TYPES[Math.floor(frac(h * 0.043 + 7) * HOS_TRAINING_TYPES.length)];
+      training = { name: tname, assignedBy: reviewer, assignedAt: reviewedAt };
+      detail = `Closed — assigned training: ${tname}`;
+    }
+    activity.push({ id: `${key}-a6`, at: reviewedAt, by: reviewer, kind: disp.kind, detail, badge: revBadge });
+  }
+
+  return { ...e, trailerId, company, receivedAt, status, disposition, training, reviewedBy, reviewedAt, falseViolation, reviewNotes: '', activity };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Safety Events list — rebuilt to match the Default Accidents / Tickets pattern
+// (PageHeader → KPI cards → group tabs → event-type cards → toolbar → sortable
+// table + mobile cards → pagination). Risk weight is pulled from the editable
+// Telematics event-type catalog (Settings ▸ Safety Events).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PAGE_SIZES = [10, 25, 50, 100];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// ── Event-type groups (tab buckets) ──────────────────────────────────────────
+type GroupId = 'harsh' | 'distraction' | 'collision' | 'compliance' | 'camera';
+const GROUP_OF: Record<string, GroupId> = {
+  harsh_brake: 'harsh', harsh_acceleration: 'harsh', harsh_cornering: 'harsh', harsh_turn: 'harsh',
+  over_speed: 'harsh', speeding: 'harsh', tailgating: 'harsh', unsafe_lane_change: 'harsh',
+  cell_phone: 'distraction', distracted: 'distraction', drowsiness: 'distraction', smoking: 'distraction', eating_and_drinking: 'distraction',
+  collision_warning: 'collision', near_crash: 'collision', crash: 'collision',
+  seat_belt_violation: 'compliance', stop_sign_violation: 'compliance', red_light_violation: 'compliance', rolling_stop: 'compliance', unsafe_parking: 'compliance',
+  camera_obstruction: 'camera',
+};
+const groupOf = (type: string): GroupId => GROUP_OF[type] ?? 'harsh';
+
+// A few raw event types differ from the settings-catalog ids.
+const TYPE_TO_CATALOG: Record<string, string> = {
+  over_speed: 'speeding',
+  harsh_cornering: 'harsh_turn',
+  collision_warning: 'near_crash',
 };
 
-// ===== Column definitions =====
-const ALL_COLUMNS: ColumnDef[] = [
-  { id: 'date', label: 'Date / Time', visible: true },
-  { id: 'type', label: 'Event Type', visible: true },
-  { id: 'location', label: 'Location', visible: true },
-  { id: 'driver', label: 'Driver', visible: true },
-  { id: 'vehicle', label: 'Vehicle / Plate', visible: true },
-  { id: 'speed', label: 'Speed', visible: true },
-  { id: 'gforce', label: 'G-Force', visible: true },
-  { id: 'provider', label: 'Provider', visible: true },
-  { id: 'severity', label: 'Severity', visible: true },
-  { id: 'camera', label: 'Camera', visible: false },
-  { id: 'id', label: 'Event ID', visible: false },
-];
+const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
-// ===== Sub-components for detail modal =====
-const SectionHeader = ({ icon: Icon, title }: { icon: React.ElementType; title: string }) => (
-  <h3 className="flex items-center text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 mt-4 border-b pb-2">
-    <Icon className="w-4 h-4 mr-2 text-indigo-500" />
-    {title}
-  </h3>
-);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const hasCamera = (e: any) => !!(e.cameraMedia?.frontFacing?.available || e.cameraMedia?.rearFacing?.available);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const gforceOf = (e: any) => Math.max(e.stats?.gForceForwardBackward ?? 0, e.stats?.gForceSideToSide ?? 0);
 
-const DataRow = ({ label, value }: { label: string; value: unknown }) => (
-  <div className="flex flex-col sm:flex-row sm:justify-between py-1 text-sm border-b border-slate-50 last:border-0">
-    <span className="text-slate-500 font-medium">{label}:</span>
-    <span className="text-slate-900 break-all sm:text-right">{value?.toString() || 'N/A'}</span>
-  </div>
-);
+function fmtWhen(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: iso || '—', time: '' };
+  const date = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return { date, time };
+}
 
-const CollapsibleSection = ({ title, data, icon: Icon }: { title: string; data: Record<string, unknown>; icon?: React.ElementType }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const AVATAR_COLORS = ['bg-rose-500', 'bg-pink-500', 'bg-fuchsia-500', 'bg-violet-500', 'bg-indigo-500', 'bg-blue-500', 'bg-sky-500', 'bg-cyan-500', 'bg-teal-500', 'bg-emerald-500', 'bg-amber-500', 'bg-orange-500'];
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name: string): string {
+  const p = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '—';
+  return (p[0][0] + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+}
+function DriverCell({ name }: { name: string }) {
   return (
-    <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
-      <button onClick={() => setIsOpen(!isOpen)} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
-        <div className="flex items-center text-sm font-semibold text-slate-700">
-          {Icon && <Icon className="w-4 h-4 mr-2 text-slate-500" />}
-          {title}
-        </div>
-        {isOpen ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronUp className="w-4 h-4 text-slate-500 rotate-90" />}
+    <div className="flex items-center gap-2 min-w-0">
+      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white', avatarColor(name || '?'))}>{initials(name)}</span>
+      <span className="truncate text-[13px] font-semibold text-slate-800" title={name}>{name || '—'}</span>
+    </div>
+  );
+}
+
+// ── Columns ──────────────────────────────────────────────────────────────────
+type ColId = 'when' | 'type' | 'driver' | 'vehicle' | 'location' | 'speed' | 'gforce' | 'risk' | 'provider' | 'severity' | 'resolution' | 'status' | 'camera';
+const COLUMN_DEFS: { id: ColId; label: string; locked?: boolean; defaultOn: boolean }[] = [
+  { id: 'when', label: 'Date / time', locked: true, defaultOn: true },
+  { id: 'type', label: 'Event type', locked: true, defaultOn: true },
+  { id: 'driver', label: 'Driver', defaultOn: true },
+  { id: 'vehicle', label: 'Truck / Trailer', defaultOn: true },
+  { id: 'location', label: 'Location', defaultOn: false },
+  { id: 'speed', label: 'Max / limit', defaultOn: false },
+  { id: 'gforce', label: 'G-force', defaultOn: false },
+  { id: 'risk', label: 'Risk', defaultOn: false },
+  { id: 'provider', label: 'Source', defaultOn: false },
+  { id: 'severity', label: 'Severity', defaultOn: true },
+  { id: 'resolution', label: 'Resolution', defaultOn: true },
+  { id: 'status', label: 'Status', defaultOn: true },
+  { id: 'camera', label: 'Camera', defaultOn: false },
+];
+const SEV_STATUS_RANK: Record<HosVStatus, number> = { open: 1, review: 2, resolved: 3 };
+type SortState = { col: ColId; dir: 'asc' | 'desc' };
+
+function SortTh({ id, label, minW, align, sort, onSort }: {
+  id: ColId; label: string; minW: string; align?: 'right' | 'center'; sort: SortState | null; onSort: (id: ColId) => void;
+}) {
+  const active = sort?.col === id;
+  return (
+    <th className={cn('px-3 py-2.5 whitespace-nowrap', minW, align === 'right' && 'text-right', align === 'center' && 'text-center')}>
+      <button type="button" onClick={() => onSort(id)}
+        className={cn('inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider hover:text-slate-700', active ? 'text-slate-700' : 'text-slate-500')}>
+        {label}
+        {active ? (sort!.dir === 'asc' ? <ChevronUp size={12} className="text-blue-500" /> : <ChevronDown size={12} className="text-blue-500" />)
+          : <ChevronsUpDown size={12} className="text-slate-300" />}
       </button>
-      {isOpen && (
-        <div className="p-4 bg-white grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
-          {Object.entries(data).map(([key, value]) => (
-            <DataRow key={key} label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase())} value={value} />
-          ))}
-        </div>
+    </th>
+  );
+}
+
+function ColumnsDropdown({ visible, onToggle }: { visible: Set<ColId>; onToggle: (id: ColId) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+        <Columns size={14} /> Columns <ChevronDown size={13} className={cn('text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</div>
+            {COLUMN_DEFS.map(c => (
+              <label key={c.id} className={cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-700', c.locked ? 'opacity-60' : 'cursor-pointer hover:bg-slate-50')}>
+                <input type="checkbox" disabled={c.locked} checked={visible.has(c.id)} onChange={() => onToggle(c.id)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                {c.label}
+                {c.locked && <span className="ml-auto text-[10px] font-medium text-slate-400">Always</span>}
+              </label>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+const TAB_TONE: Record<string, { active: string; badge: string }> = {
+  blue: { active: 'border-blue-600 text-blue-700 bg-blue-50/40', badge: 'bg-blue-100 text-blue-700' },
+  red: { active: 'border-red-600 text-red-700 bg-red-50/40', badge: 'bg-red-100 text-red-700' },
+  violet: { active: 'border-violet-600 text-violet-700 bg-violet-50/40', badge: 'bg-violet-100 text-violet-700' },
+  rose: { active: 'border-rose-600 text-rose-700 bg-rose-50/40', badge: 'bg-rose-100 text-rose-700' },
+  amber: { active: 'border-amber-600 text-amber-700 bg-amber-50/40', badge: 'bg-amber-100 text-amber-700' },
+  sky: { active: 'border-sky-600 text-sky-700 bg-sky-50/40', badge: 'bg-sky-100 text-sky-700' },
 };
 
-// ===== MAIN PAGE =====
-export function SafetyEventsPage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allEvents = RAW_DATA.results as any[];
+const SUBCAT_PALETTE = [
+  { bg: 'bg-sky-50/60', count: 'text-sky-700', chip: 'bg-sky-50 text-sky-700 ring-sky-200', bar: 'bg-sky-500', barBg: 'bg-sky-100' },
+  { bg: 'bg-violet-50/60', count: 'text-violet-700', chip: 'bg-violet-50 text-violet-700 ring-violet-200', bar: 'bg-violet-500', barBg: 'bg-violet-100' },
+  { bg: 'bg-rose-50/60', count: 'text-rose-700', chip: 'bg-rose-50 text-rose-700 ring-rose-200', bar: 'bg-rose-500', barBg: 'bg-rose-100' },
+  { bg: 'bg-amber-50/60', count: 'text-amber-700', chip: 'bg-amber-50 text-amber-700 ring-amber-200', bar: 'bg-amber-500', barBg: 'bg-amber-100' },
+  { bg: 'bg-emerald-50/60', count: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', bar: 'bg-emerald-500', barBg: 'bg-emerald-100' },
+  { bg: 'bg-indigo-50/60', count: 'text-indigo-700', chip: 'bg-indigo-50 text-indigo-700 ring-indigo-200', bar: 'bg-indigo-500', barBg: 'bg-indigo-100' },
+  { bg: 'bg-teal-50/60', count: 'text-teal-700', chip: 'bg-teal-50 text-teal-700 ring-teal-200', bar: 'bg-teal-500', barBg: 'bg-teal-100' },
+  { bg: 'bg-fuchsia-50/60', count: 'text-fuchsia-700', chip: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200', bar: 'bg-fuchsia-500', barBg: 'bg-fuchsia-100' },
+];
 
-  // State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('ALL');
-  const [columns, setColumns] = useState(ALL_COLUMNS);
-  const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+type Sev = 'critical' | 'high' | 'medium' | 'low';
 
-  // Column toggle
-  const toggleColumn = (id: string) => setColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
-  const isVisible = (id: string) => columns.find(c => c.id === id)?.visible ?? true;
-
-  // Filter
-  const filteredEvents = allEvents.filter(e => {
-    const st = searchTerm.toLowerCase();
-    const matchSearch = !st || e.driverName.toLowerCase().includes(st) || e.vehiclePlate.toLowerCase().includes(st) || e.id.toLowerCase().includes(st) || e.extensions.here.roadName.toLowerCase().includes(st);
-    let matchFilter = true;
-    switch (activeFilter) {
-      case 'HARSH_BRAKE': matchFilter = e.type === 'harsh_brake'; break;
-      case 'OVER_SPEED': matchFilter = e.type === 'over_speed'; break;
-      case 'CORNERING': matchFilter = e.type === 'harsh_cornering'; break;
-      case 'COLLISION': matchFilter = e.type === 'collision_warning'; break;
-      case 'CRITICAL': matchFilter = e.severity === 'critical'; break;
-      case 'CAMERA': matchFilter = e.cameraMedia.frontFacing.available || e.cameraMedia.rearFacing.available; break;
-    }
-    return matchSearch && matchFilter;
-  });
-
-  // Pagination
-  const paginatedEvents = filteredEvents.slice((page - 1) * rowsPerPage, page * rowsPerPage);
-
-  // Stats
-  const stats = {
-    total: allEvents.length,
-    harshBrake: allEvents.filter(e => e.type === 'harsh_brake').length,
-    overSpeed: allEvents.filter(e => e.type === 'over_speed').length,
-    cornering: allEvents.filter(e => e.type === 'harsh_cornering').length,
-    collision: allEvents.filter(e => e.type === 'collision_warning').length,
-    critical: allEvents.filter(e => e.severity === 'critical').length,
-    withCamera: allEvents.filter(e => e.cameraMedia.frontFacing.available || e.cameraMedia.rearFacing.available).length,
+// Row-level kebab menu (Edit / Delete) — portal + fixed position so it escapes
+// the sticky Action column's stacking context.
+function RowActions({ items }: { items: { label: string; icon: LucideIcon; onClick: () => void; danger?: boolean }[] }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const openMenu = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: Math.min(r.bottom + 4, window.innerHeight - items.length * 40 - 12), left: Math.max(8, r.right - 160) });
+    setOpen(true);
   };
+  return (
+    <>
+      <button ref={btnRef} type="button" title="More actions" onClick={openMenu}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700">
+        <MoreVertical size={15} />
+      </button>
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
+          <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: 160, zIndex: 80 }}
+            className="rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+            {items.map(it => (
+              <button key={it.label} type="button" onClick={() => { setOpen(false); it.onClick(); }}
+                className={cn('flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]', it.danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50')}>
+                <it.icon size={14} /> {it.label}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// Assign-training modal (bulk or single) for safety events.
+function SafetyTrainingModal({ count, onClose, onAssign }: { count: number; onClose: () => void; onAssign: (name: string) => void }) {
+  const [name, setName] = useState(HOS_TRAINING_TYPES[0]);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600"><GraduationCap size={18} /></div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Assign training</h3>
+            <p className="text-[13px] text-slate-500">Assign a training course to {count === 1 ? 'this driver' : <span className="font-semibold text-slate-700">{count} drivers</span>}.</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Training course</label>
+          <select value={name} onChange={e => setName(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            {HOS_TRAINING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button type="button" onClick={() => onAssign(name)} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-violet-700"><GraduationCap size={15} /> Assign training</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// View popup with Details / Review / Activity tabs. The review lifecycle lives
+// in its own tab (via the shared ReviewResolutionTab); the Activity tab shows
+// the full seeded + live audit trail (received, clip attached, viewed, verified,
+// resolution, notes…). Matches the Hours-of-Service violations surface.
+function SafetyEventModal({ record, riskFor, onClose, onAddNote, onDispose, onAssignTraining, onReopen, onVerify, currentUserName, onNavigate }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  record: any; riskFor: (type: string) => number;
+  onClose: () => void;
+  onAddNote: (text: string) => void;
+  onDispose: (disp: HosDisposition) => void;
+  onAssignTraining: () => void;
+  onReopen: () => void;
+  onVerify: () => void;
+  currentUserName?: string;
+  onNavigate?: (path: string) => void;
+}) {
+  const [shareOpen, setShareOpen] = useState(false);
+  // Everything shareable from a telematics event — the clip(s), a snapshot and the report.
+  const shareItems: ShareItem[] = [
+    { name: `telematics-report-${record.id}.pdf`, group: 'Report' },
+    ...(record.cameraMedia?.frontFacing?.available ? [{ name: `front-camera-${record.id}.mp4`, group: 'Video' }] : []),
+    ...(record.cameraMedia?.rearFacing?.available ? [{ name: `rear-camera-${record.id}.mp4`, group: 'Video' }] : []),
+    { name: `event-snapshot-${record.id}.jpg`, group: 'Evidence' },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const verifiedAct = (record.activity ?? []).find((a: any) => a.kind === 'verified');
+  const when = fmtWhen(record.startedAt);
+  const style = getEventTypeStyle(record.type);
+  const gf = gforceOf(record);
+  const cam = hasCamera(record);
+  const st = HOS_STATUS_META[record.status as HosVStatus];
+  const [tab, setTab] = useState<'details' | 'review' | 'activity'>('details');
+  const labelCls = 'text-[10px] font-bold uppercase tracking-wider text-slate-400';
+  const Row = ({ label, value, title }: { label: string; value: ReactNode; title?: string }) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="shrink-0 text-slate-400">{label}</span>
+      <span className="min-w-0 truncate text-right font-semibold text-slate-700" title={title}>{value}</span>
+    </div>
+  );
+  const camLabel = `${record.cameraMedia?.frontFacing?.available ? 'Front' : ''}${record.cameraMedia?.frontFacing?.available && record.cameraMedia?.rearFacing?.available ? ' + ' : ''}${record.cameraMedia?.rearFacing?.available ? 'Rear' : ''}${!cam ? 'None' : ''}`;
+  const TABS = [['details', 'Details'], ['review', 'Review'], ['activity', `Activity (${record.activity?.length ?? 0})`]] as const;
 
   return (
-    <div className="flex-1 bg-slate-50 min-h-screen">
-      <div className="max-w-[1600px] mx-auto p-4 md:p-6 lg:p-8">
-
-        {/* Page Header */}
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-            <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-indigo-600" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="flex h-[640px] max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 pt-4">
+          <div className="min-w-0 pb-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase', style.bg, style.text, style.border)}>{getEventTypeLabel(record.type)}</span>
+              {getSeverityBadge(record.severity)}
+              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{st.label}</span>
+              <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-600">{record.provider}</span>
+              {record.falseViolation && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Ban size={10} /> False</span>}
             </div>
-            Safety Events
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">Telemetry-based safety events from fleet devices &amp; terminals</p>
+            <h3 className="mt-1.5 text-base font-bold text-slate-900">{record.driverName} · {record.vehiclePlate}</h3>
+            <p className="text-[12px] text-slate-500">{record.extensions?.here?.roadName} · {when.date} {when.time}</p>
+          </div>
+          <button type="button" onClick={onClose} className="mt-1 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-slate-200 px-5">
+          {TABS.map(([id, lbl]) => (
+            <button key={id} type="button" onClick={() => setTab(id)}
+              className={cn('flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold transition-colors', tab === id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800')}>
+              {id === 'review' && <ClipboardCheck size={14} />}{id === 'activity' && <History size={14} />}{lbl}
+            </button>
+          ))}
         </div>
 
-        {/* ===== KPI FILTER CARDS ===== */}
-        <div className="mt-8">
-          <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">Event Filters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-            <MiniKpiCard title="All Events" value={stats.total} icon={Activity} active={activeFilter === 'ALL'} onClick={() => { setActiveFilter('ALL'); setPage(1); }} color="blue" />
-            <MiniKpiCard title="Harsh Brake" value={stats.harshBrake} icon={Zap} active={activeFilter === 'HARSH_BRAKE'} onClick={() => { setActiveFilter('HARSH_BRAKE'); setPage(1); }} color="red" />
-            <MiniKpiCard title="Over Speed" value={stats.overSpeed} icon={Gauge} active={activeFilter === 'OVER_SPEED'} onClick={() => { setActiveFilter('OVER_SPEED'); setPage(1); }} color="yellow" />
-            <MiniKpiCard title="Cornering" value={stats.cornering} icon={CornerDownRight} active={activeFilter === 'CORNERING'} onClick={() => { setActiveFilter('CORNERING'); setPage(1); }} color="orange" />
-            <MiniKpiCard title="Collision" value={stats.collision} icon={AlertTriangle} active={activeFilter === 'COLLISION'} onClick={() => { setActiveFilter('COLLISION'); setPage(1); }} color="rose" />
-            <MiniKpiCard title="Critical" value={stats.critical} icon={ShieldAlert} active={activeFilter === 'CRITICAL'} onClick={() => { setActiveFilter('CRITICAL'); setPage(1); }} color="rose" />
-            <MiniKpiCard title="Camera" value={stats.withCamera} icon={Camera} active={activeFilter === 'CAMERA'} onClick={() => { setActiveFilter('CAMERA'); setPage(1); }} color="indigo" />
-          </div>
-        </div>
-
-        {/* ===== DATA TABLE ===== */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-
-          {/* Toolbar: Search + Columns */}
-          <DataListToolbar
-            searchValue={searchTerm}
-            onSearchChange={(v) => { setSearchTerm(v); setPage(1); }}
-            searchPlaceholder="Search by Driver, Plate, Road..."
-            columns={columns}
-            onToggleColumn={toggleColumn}
-            totalItems={filteredEvents.length}
-            currentPage={page}
-            rowsPerPage={rowsPerPage}
-            onPageChange={setPage}
-            onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
-          />
-
-          {/* Table Header */}
-          <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-            {isVisible('date') && <div className="col-span-2">Date / Time</div>}
-            {isVisible('type') && <div className="col-span-1">Type</div>}
-            {isVisible('location') && <div className="col-span-1">Location</div>}
-            {isVisible('driver') && <div className="col-span-1">Driver</div>}
-            {isVisible('vehicle') && <div className="col-span-1">Vehicle</div>}
-            {isVisible('speed') && <div className="col-span-2 text-center">Max / Limit</div>}
-            {isVisible('gforce') && <div className="col-span-1 text-center">G-Force</div>}
-            {isVisible('provider') && <div className="col-span-1 text-center">Provider</div>}
-            {isVisible('severity') && <div className="col-span-1 text-center">Severity</div>}
-            <div className="col-span-1"></div>
-          </div>
-
-          {/* Table Rows */}
-          <div className="divide-y divide-slate-100">
-            {paginatedEvents.length === 0 ? (
-              <div className="text-center py-16 text-slate-400">
-                <Activity size={32} className="mx-auto mb-3 opacity-40" />
-                <p className="font-semibold">No events found</p>
-                <p className="text-sm mt-1">Try adjusting your filters or search term</p>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {tab === 'details' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div><div className={labelCls}>Resolution</div><div className="mt-0.5 text-[13px] font-semibold text-slate-800">{record.disposition ? HOS_DISPOSITION_BY_ID[record.disposition as HosDisposition].label : 'Pending review'}</div></div>
+                <div><div className={labelCls}>Risk weight</div><div className="mt-0.5 text-[13px] font-semibold text-slate-800">{riskFor(record.type)}</div></div>
+                <div><div className={labelCls}>Truck / Trailer</div><div className="mt-0.5 text-[13px] font-semibold text-slate-800">{record.vehiclePlate} / {record.trailerId ?? '—'}</div></div>
               </div>
-            ) : paginatedEvents.map(event => {
-              const isExpanded = expandedId === event.id;
-              const typeStyle = getEventTypeStyle(event.type);
-              const d = new Date(event.startedAt);
-              const overLimit = event.stats.maximumSpeed > event.stats.roadSpeedLimit;
-
-              return (
-                <div key={event.id} className="group">
-                  {/* Main Row */}
-                  <div
-                    className={`hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-indigo-50/30' : ''}`}
-                    onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                  >
-                    {/* Date/Time */}
-                    {isVisible('date') && (
-                      <div className="col-span-2 flex flex-col">
-                        <span className="text-sm font-bold text-slate-800">{d.toLocaleDateString('en-CA')}</span>
-                        <span className="text-[10px] text-slate-400 font-mono mt-0.5">{d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    )}
-
-                    {/* Type */}
-                    {isVisible('type') && (
-                      <div className="col-span-1">
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border}`}>
-                          {getEventTypeLabel(event.type).substring(0, 8)}…
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Location */}
-                    {isVisible('location') && (
-                      <div className="col-span-1 truncate">
-                        <span className="text-sm font-semibold text-slate-800 truncate block" title={event.extensions.here.roadName}>{event.extensions.here.roadName}</span>
-                      </div>
-                    )}
-
-                    {/* Driver */}
-                    {isVisible('driver') && (
-                      <div className="col-span-1 truncate">
-                        <span className="text-sm font-medium text-slate-800 truncate block">{event.driverName}</span>
-                      </div>
-                    )}
-
-                    {/* Vehicle */}
-                    {isVisible('vehicle') && (
-                      <div className="col-span-1">
-                        <span className="text-sm font-bold text-slate-800">{event.vehiclePlate}</span>
-                      </div>
-                    )}
-
-                    {/* Speed */}
-                    {isVisible('speed') && (
-                      <div className="col-span-2 text-center">
-                        <span className={`text-sm font-bold font-mono ${overLimit ? 'text-red-600' : 'text-slate-700'}`}>{event.stats.maximumSpeed}</span>
-                        <span className="text-xs text-slate-400 mx-1">/</span>
-                        <span className="text-sm font-mono text-slate-500">{event.stats.roadSpeedLimit}</span>
-                        <span className="text-[10px] text-slate-400 ml-0.5">km/h</span>
-                      </div>
-                    )}
-
-                    {/* G-Force */}
-                    {isVisible('gforce') && (
-                      <div className="col-span-1 text-center">
-                        <span className={`text-sm font-bold font-mono ${Math.max(event.stats.gForceForwardBackward, event.stats.gForceSideToSide) >= 0.8 ? 'text-red-600' : 'text-slate-600'}`}>
-                          {Math.max(event.stats.gForceForwardBackward, event.stats.gForceSideToSide).toFixed(1)}g
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Provider */}
-                    {isVisible('provider') && (
-                      <div className="col-span-1 text-center">
-                        <span className="uppercase text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{event.provider}</span>
-                      </div>
-                    )}
-
-                    {/* Severity */}
-                    {isVisible('severity') && (
-                      <div className="col-span-1 flex justify-center">
-                        {getSeverityBadge(event.severity)}
-                      </div>
-                    )}
-
-                    {/* Expand */}
-                    <div className="col-span-1 flex items-center justify-end">
-                      <div className="w-5 h-5 flex items-center justify-center text-slate-400">
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Mobile Row */}
-                  <div
-                    className="md:hidden px-4 py-3 cursor-pointer hover:bg-slate-50/50"
-                    onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border}`}>
-                          {getEventTypeLabel(event.type)}
-                        </span>
-                        <p className="text-sm font-bold text-slate-800 mt-1">{event.driverName} · {event.vehiclePlate}</p>
-                        <p className="text-xs text-slate-500">{event.extensions.here.roadName} · {d.toLocaleDateString()}</p>
-                      </div>
-                      {getSeverityBadge(event.severity)}
-                    </div>
-                  </div>
-
-                  {/* Expanded Detail */}
-                  {isExpanded && (
-                    <div className="bg-slate-50/50 p-4 md:p-6 border-t border-slate-200 shadow-inner">
-                      {/* Info Banner */}
-                      <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border ${typeStyle.bg} ${typeStyle.border} mb-4`}>
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border}`}>
-                          {getEventTypeLabel(event.type)}
-                        </span>
-                        <span className="text-sm text-slate-700">
-                          Source: <span className="font-bold uppercase">{event.provider}</span> — {event.sourceType}
-                        </span>
-                      </div>
-
-                      {/* Info Cards Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-4">
-                        <div className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Time</div>
-                          <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Location</div>
-                          <div className="font-bold text-slate-900 text-sm mt-0.5">{event.extensions.here.roadName}</div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Max Speed</div>
-                          <div className={`font-mono font-bold text-sm mt-0.5 ${overLimit ? 'text-red-600' : 'text-slate-900'}`}>{event.stats.maximumSpeed} km/h</div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Speed Limit</div>
-                          <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{event.stats.roadSpeedLimit} km/h</div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">G-Force</div>
-                          <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">F/B: {event.stats.gForceForwardBackward} | S: {event.stats.gForceSideToSide}</div>
-                        </div>
-                      </div>
-
-                      {/* Detail Cards */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {/* Driver & Vehicle */}
-                        <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
-                          <h4 className="text-xs font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider mb-3"><User size={14} className="text-slate-400" /> Driver & Vehicle</h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between"><span className="text-slate-500">Driver</span><span className="font-semibold text-slate-900">{event.driverName}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Driver ID</span><span className="font-mono text-xs text-slate-700">{event.driver}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Vehicle Plate</span><span className="font-bold text-slate-900">{event.vehiclePlate}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Vehicle ID</span><span className="font-mono text-xs text-slate-700">{event.vehicle}</span></div>
-                          </div>
-                        </div>
-
-                        {/* Location & Media */}
-                        <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
-                          <h4 className="text-xs font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider mb-3"><MapPin size={14} className="text-slate-400" /> Location & Media</h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between"><span className="text-slate-500">Road</span><span className="font-semibold text-slate-900">{event.extensions.here.roadName}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Coordinates</span><span className="font-mono text-xs text-slate-700">{event.startLocation.latitude.toFixed(4)}, {event.startLocation.longitude.toFixed(4)}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Front Camera</span><span className={event.cameraMedia.frontFacing.available ? 'text-emerald-600 font-bold' : 'text-slate-400'}>{event.cameraMedia.frontFacing.available ? '✓ Available' : '✗ N/A'}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Rear Camera</span><span className={event.cameraMedia.rearFacing.available ? 'text-emerald-600 font-bold' : 'text-slate-400'}>{event.cameraMedia.rearFacing.available ? '✓ Available' : '✗ N/A'}</span></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* View Full Details button */}
-                      <div className="mt-4 text-center">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
-                          className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
-                        >
-                          View Full Event Details
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5 text-[12px]">
+                  <div className={labelCls}>Telemetry</div>
+                  <Row label="Max speed" value={<span className="font-mono">{record.stats?.maximumSpeed} km/h</span>} />
+                  <Row label="Avg speed" value={<span className="font-mono">{record.stats?.averageSpeed} km/h</span>} />
+                  <Row label="Road limit" value={<span className="font-mono">{record.stats?.roadSpeedLimit} km/h</span>} />
+                  <Row label="Heading" value={<span className="font-mono">{record.stats?.heading}°</span>} />
+                  <Row label="G-force" value={<span className="font-mono">{gf.toFixed(2)}g</span>} />
                 </div>
+                <div className="space-y-1.5 text-[12px]">
+                  <div className={labelCls}>Context</div>
+                  <Row label="Source" value={<span className="uppercase">{record.provider}</span>} />
+                  <Row label="Event type" title={record.sourceType} value={<span className="uppercase">{record.sourceType}</span>} />
+                  <Row label="Camera" value={camLabel} />
+                  <Row label="Weather" value={`${record.extensions?.here?.weather?.temperature != null ? `${record.extensions.here.weather.temperature}°` : '—'}${record.extensions?.here?.weather?.precipitationType ? ` · ${record.extensions.here.weather.precipitationType}` : ''}`} />
+                  <Row label="Visibility" value={record.extensions?.here?.weather?.visibility ?? '—'} />
+                </div>
+              </div>
+              {cam && (
+                <div className="flex items-center gap-2 rounded-lg border border-fuchsia-100 bg-fuchsia-50/60 px-3 py-2 text-[12px] text-fuchsia-700">
+                  <Camera size={14} className="shrink-0" /> {camLabel} camera footage is attached to this event.
+                </div>
+              )}
+              <div className="text-[11px] text-slate-400">Event ID <span className="font-mono">{record.id}</span> · Received <span className="font-mono">{fmtWhen(record.receivedAt ?? record.startedAt).date}</span></div>
+            </div>
+          )}
+          {tab === 'review' && (
+            <ReviewResolutionTab
+              status={record.status}
+              subjectName={record.driverName}
+              disposition={record.disposition}
+              trainingName={record.training?.name}
+              reviewedBy={record.reviewedBy}
+              reviewNotes={record.reviewNotes}
+              verified={!!verifiedAct}
+              verifiedBy={verifiedAct?.by}
+              onDispose={onDispose}
+              onAssignTraining={onAssignTraining}
+              onReopen={onReopen}
+              onAddNote={onAddNote}
+              onVerify={onVerify}
+            />
+          )}
+          {tab === 'activity' && (
+            <ActivityTimeline entries={toActivityEntries(record.activity, fmtWhen)} />
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
+          <button type="button" onClick={() => setShareOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><Share2 size={15} /> Share</button>
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Close</button>
+        </div>
+      </div>
+
+      {shareOpen && (
+        <ShareToChat
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          title="Share safety event"
+          subtitle={`Share this ${getEventTypeLabel(record.type)} event in a chat — in-app or with an outsider by email.`}
+          source={{ type: 'safety-event', id: record.id, label: `Safety event · ${record.driverName}` }}
+          items={shareItems}
+          defaultChannel="in-app"
+          defaultSubject={`Safety event — ${getEventTypeLabel(record.type)} · ${record.driverName}`}
+          defaultMessage={`Sharing a ${getEventTypeLabel(record.type)} telematics event for ${record.driverName} (${record.vehiclePlate}).`}
+          currentUserName={currentUserName}
+          onOpenInMessages={onNavigate ? (id) => { setMessagesFocus(id); onNavigate('/messages'); } : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigate }: { currentUserName?: string; onNavigate?: (path: string) => void } = {}) {
+  // Local copy so review / delete actions can mutate without touching the shared
+  // SAFETY_EVENTS_RESULTS export (other pages read it). Each raw event is
+  // decorated with a trailer id, review status and a seeded activity trail.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allEvents, setAllEvents] = useState<any[]>(() => RAW_DATA.results.map(decorateSafetyEvent));
+
+  // View popup + delete + multiselect + training.
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [deleting, setDeleting] = useState<any | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [trainingIds, setTrainingIds] = useState<string[] | null>(null);
+  const [shareRecord, setShareRecord] = useState<RecordRef | null>(null);
+  const viewing = viewingId ? allEvents.find(e => e.id === viewingId) ?? null : null;
+  // Open a specific event when arriving from a shared record link.
+  useEffect(() => { const id = consumePendingRecord('/safety-events'); if (id) setViewingId(id); }, []);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sevRef = (e: any): RecordRef => ({
+    type: 'safety-event', id: e.id, label: `Safety event · ${e.driverName}`,
+    sublabel: [getEventTypeLabel(e.type), e.vehiclePlate].filter(Boolean).join(' · ') || undefined, path: '/safety-events',
+  });
+
+  // ── Activity + review actions (each appends to the audit trail) ──
+  const nowStamp = () => new Date().toISOString();
+  const newActId = () => `act-${Math.random().toString(36).slice(2, 9)}`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const withAct = (e: any, kind: string, detail?: string, title?: string): any =>
+    ({ ...e, activity: [...(e.activity ?? []), { id: newActId(), at: nowStamp(), by: currentUserName, kind, detail, title, badge: { label: 'Reviewer', tone: ACTIVITY_BADGE_TONE.Reviewer } }] });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyTo = (ids: string[], fn: (e: any) => any) => setAllEvents(prev => prev.map(e => (ids.includes(e.id) ? fn(e) : e)));
+  const addNote = (id: string, text: string) => applyTo([id], e => withAct({ ...e, reviewNotes: e.reviewNotes ? `${e.reviewNotes}\n${text}` : text }, 'note', text));
+  // Push a driver-facing task/notice into the driver's chat for a resolution.
+  // 'false' (dismiss) sends nothing — it's just a resolution status.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dispatchDisposition = (e: any, disp: HosDisposition) => {
+    if (disp === 'false' || disp === 'training') return;
+    const when = fmtWhen(e.startedAt);
+    const evt = getEventTypeLabel(e.type);
+    const rec = sevRef(e);
+    const base = { status: 'pending' as const, record: rec, subtitle: `${evt} · ${when.date}` };
+    const map: Record<string, ChatWidget> = {
+      warning: { ...base, kind: 'warning-letter', title: 'Warning letter' },
+      alert: { ...base, kind: 'alert', title: 'Safety alert' },
+      notice: { ...base, kind: 'notice', title: 'Driver notice' },
+      terminated: { ...base, kind: 'termination', title: 'Termination notice' },
+    };
+    const widget = map[disp];
+    if (widget) sendWidgetToDriver(e.driverName, widget, `${widget.title} regarding your ${evt} event on ${when.date}.`);
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sendTrainingWidget = (e: any, name: string) => {
+    sendWidgetToDriver(e.driverName, {
+      kind: 'training', title: `Training assigned: ${name}`, subtitle: 'Complete your assigned safety training',
+      status: 'pending', record: sevRef(e),
+    }, `You've been assigned training: ${name}.`);
+  };
+  // Close an event with a chosen resolution (disposition). Works on one or many.
+  const closeWith = (ids: string[], disp: HosDisposition) => {
+    const targets = allEvents.filter(e => ids.includes(e.id));
+    applyTo(ids, e => {
+      const meta = HOS_DISPOSITION_BY_ID[disp];
+      return withAct({
+        ...e, status: 'resolved', disposition: disp,
+        reviewedBy: e.reviewedBy ?? currentUserName, reviewedAt: e.reviewedAt ?? nowStamp(),
+        falseViolation: disp === 'false' ? true : e.falseViolation,
+      }, meta.kind, `Closed — ${meta.label}`);
+    });
+    targets.forEach(e => dispatchDisposition(e, disp));
+  };
+  const assignTraining = (ids: string[], name: string) => {
+    const targets = allEvents.filter(e => ids.includes(e.id));
+    applyTo(ids, e => withAct({
+      ...e, training: { name, assignedBy: currentUserName, assignedAt: nowStamp() },
+      status: 'resolved', disposition: 'training',
+      reviewedBy: e.reviewedBy ?? currentUserName, reviewedAt: e.reviewedAt ?? nowStamp(),
+    }, 'training', `Closed — assigned training: ${name}`));
+    targets.forEach(e => sendTrainingWidget(e, name));
+  };
+  const reopenMany = (ids: string[]) => applyTo(ids, e => (e.status === 'review' ? e : withAct({ ...e, status: 'review', disposition: undefined }, 'reopened', 'Reopened for review')));
+  // Verify — logs a live "Verified" entry by the current user (once).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const verify = (ids: string[]) => applyTo(ids, e => ((e.activity ?? []).some((a: any) => a.kind === 'verified' && a.by === currentUserName)
+    ? e
+    : withAct({ ...e, reviewedBy: e.reviewedBy ?? currentUserName, reviewedAt: e.reviewedAt ?? nowStamp() }, 'verified', 'Reviewed the clip & telemetry — confirmed a genuine event.', 'Verified event')));
+  const confirmDelete = () => { if (deleting) setAllEvents(prev => prev.filter(x => x.id !== deleting.id)); setDeleting(null); };
+  const toggleSel = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clearSel = () => setSelected(new Set());
+
+  // Real-time audit: when the current user opens a record, log it as an
+  // "Opened for review" activity attributed to them (deduped, once per user).
+  useEffect(() => {
+    if (!viewingId) return;
+    setAllEvents(prev => prev.map(e => {
+      if (e.id !== viewingId) return e;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((e.activity ?? []).some((a: any) => a.kind === 'viewed' && a.by === currentUserName)) return e;
+      const title = e.status === 'review' ? 'Opened for review' : 'Viewed record';
+      return { ...e, activity: [...(e.activity ?? []), { id: newActId(), at: nowStamp(), by: currentUserName, kind: 'viewed', title, detail: `${currentUserName} opened this event`, badge: { label: 'Reviewer', tone: ACTIVITY_BADGE_TONE.Reviewer } }] };
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingId]);
+
+  // Risk weight per event type — sourced from the editable settings catalog.
+  const riskById = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const t of loadTelematicsEventTypes()) map[t.id] = t.riskWeight;
+    return map;
+  }, []);
+  const riskFor = (type: string) => riskById[TYPE_TO_CATALOG[type] ?? type] ?? 0;
+
+  const [search, setSearch] = useState('');
+  const [sevFilter, setSevFilter] = useState<Sev | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<HosVStatus | 'all'>('all');
+  const [providerFilter, setProviderFilter] = useState<string>('all');
+  const [group, setGroup] = useState<GroupId | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [subExpanded, setSubExpanded] = useState(false);
+
+  const [sort, setSort] = useState<SortState | null>(null);
+  const toggleSort = (col: ColId) => setSort(s => (s?.col === col ? (s.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }));
+  const [visibleCols, setVisibleCols] = useState<Set<ColId>>(() => new Set(COLUMN_DEFS.filter(c => c.defaultOn).map(c => c.id)));
+  const toggleCol = (id: ColId) => setVisibleCols(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const showCol = (id: ColId) => visibleCols.has(id);
+
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
+
+  const providers = useMemo(() => Array.from(new Set(allEvents.map(e => e.provider).filter(Boolean))).sort(), [allEvents]);
+  const typeOptions = useMemo(
+    () => Array.from(new Set(allEvents.map(e => getEventTypeLabel(e.type as string)).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b)),
+    [allEvents],
+  );
+
+  const kpis = useMemo(() => ({
+    total: allEvents.length,
+    critical: allEvents.filter(e => e.severity === 'critical').length,
+    high: allEvents.filter(e => e.severity === 'high').length,
+    review: allEvents.filter(e => e.status === 'review').length,
+    resolved: allEvents.filter(e => e.status === 'resolved').length,
+    risk: allEvents.reduce((a, e) => a + riskFor(e.type), 0),
+  }), [allEvents, riskById]);
+
+  const groupCounts = useMemo(() => {
+    const c: Record<string, number> = { all: allEvents.length, harsh: 0, distraction: 0, collision: 0, compliance: 0, camera: 0 };
+    for (const e of allEvents) c[groupOf(e.type)]++;
+    return c;
+  }, [allEvents]);
+
+  const baseFiltered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allEvents.filter(e => {
+      if (sevFilter !== 'all' && e.severity !== sevFilter) return false;
+      if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+      if (providerFilter !== 'all' && e.provider !== providerFilter) return false;
+      if (group !== 'all' && groupOf(e.type) !== group) return false;
+      if (q) {
+        const hay = `${e.driverName} ${e.vehiclePlate} ${e.trailerId ?? ''} ${e.extensions?.here?.roadName ?? ''} ${getEventTypeLabel(e.type)} ${e.id}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [allEvents, search, sevFilter, statusFilter, providerFilter, group]);
+
+  // Group by display label so near-synonym raw types (e.g. harsh_cornering
+  // + harsh_turn → "Harsh Turn") collapse into one entry — the same set the
+  // Event Type dropdown offers. `typeFilter` therefore holds a label.
+  const typeBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    baseFiltered.forEach(e => { const l = getEventTypeLabel(e.type); counts.set(l, (counts.get(l) ?? 0) + 1); });
+    return [...counts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [baseFiltered]);
+
+  const filtered = useMemo(
+    () => (typeFilter ? baseFiltered.filter(e => getEventTypeLabel(e.type) === typeFilter) : baseFiltered),
+    [baseFiltered, typeFilter],
+  );
+
+  const sortVal = (e: any, col: ColId): string | number => {
+    switch (col) {
+      case 'when': return e.startedAt;
+      case 'type': return getEventTypeLabel(e.type).toLowerCase();
+      case 'driver': return (e.driverName || '').toLowerCase();
+      case 'vehicle': return (e.vehiclePlate || '').toLowerCase();
+      case 'location': return (e.extensions?.here?.roadName || '').toLowerCase();
+      case 'speed': return e.stats?.maximumSpeed ?? 0;
+      case 'gforce': return gforceOf(e);
+      case 'risk': return riskFor(e.type);
+      case 'provider': return (e.provider || '').toLowerCase();
+      case 'severity': return SEV_RANK[e.severity] ?? 0;
+      case 'resolution': return e.disposition ? HOS_DISPOSITION_BY_ID[e.disposition as HosDisposition].label.toLowerCase() : '';
+      case 'status': return SEV_STATUS_RANK[e.status as HosVStatus] ?? 0;
+      case 'camera': return hasCamera(e) ? 1 : 0;
+      default: return 0;
+    }
+  };
+
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const av = sortVal(a, sort.col), bv = sortVal(b, sort.col);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sort]);
+
+  useEffect(() => { setPage(1); }, [search, sevFilter, statusFilter, providerFilter, group, typeFilter, pageSize]);
+
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pages);
+  const start = (safePage - 1) * pageSize;
+  const rows = sorted.slice(start, start + pageSize);
+  const pageIds = rows.map(e => e.id);
+  const allSel = pageIds.length > 0 && pageIds.every(id => selected.has(id));
+  const toggleAll = () => setSelected(prev => {
+    const n = new Set(prev);
+    if (allSel) pageIds.forEach(id => n.delete(id)); else pageIds.forEach(id => n.add(id));
+    return n;
+  });
+  const selectedIds = [...selected];
+
+  const kpiAllActive = sevFilter === 'all' && statusFilter === 'all';
+  const toggleSev = (s: Sev) => setSevFilter(p => (p === s ? 'all' : s));
+  const toggleStatus = (s: HosVStatus) => setStatusFilter(p => (p === s ? 'all' : s));
+  const anyFilter = sevFilter !== 'all' || statusFilter !== 'all' || providerFilter !== 'all' || group !== 'all' || typeFilter || search;
+  const resetAll = () => { setSearch(''); setSevFilter('all'); setStatusFilter('all'); setProviderFilter('all'); setGroup('all'); setTypeFilter(null); };
+
+  const TABS: { id: GroupId | 'all'; label: string; tone: keyof typeof TAB_TONE; count: number }[] = [
+    { id: 'all', label: 'All Events', tone: 'blue', count: groupCounts.all },
+    { id: 'harsh', label: 'Harsh Driving', tone: 'red', count: groupCounts.harsh },
+    { id: 'distraction', label: 'Distraction', tone: 'violet', count: groupCounts.distraction },
+    { id: 'collision', label: 'Collision', tone: 'rose', count: groupCounts.collision },
+    { id: 'compliance', label: 'Compliance', tone: 'amber', count: groupCounts.compliance },
+    { id: 'camera', label: 'Camera', tone: 'sky', count: groupCounts.camera },
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <PageHeader
+        iconGradient="from-indigo-500 to-violet-600"
+        Icon={Activity}
+        title="Safety Events"
+        subtitle="Telemetry & video safety events from fleet devices & terminals"
+        actions={
+          <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
+            <Download size={15} /> Export
+          </button>
+        }
+      />
+
+      <div className="space-y-5 p-4 sm:p-8">
+        {/* KPI cards — click to filter */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <KpiStatCard label="Total Events" value={kpis.total} Icon={Activity} accent="blue"
+            active={kpiAllActive && group === 'all' && providerFilter === 'all' && !typeFilter}
+            onClick={() => { resetAll(); }} />
+          <KpiStatCard label="Critical" value={kpis.critical} Icon={AlertOctagon} accent="red"
+            active={sevFilter === 'critical'} onClick={() => toggleSev('critical')} />
+          <KpiStatCard label="High" value={kpis.high} Icon={CircleAlert} accent="rose"
+            active={sevFilter === 'high'} onClick={() => toggleSev('high')} />
+          <KpiStatCard label="In Review" value={kpis.review} Icon={Flag} accent="amber"
+            active={statusFilter === 'review'} onClick={() => toggleStatus('review')} />
+          <KpiStatCard label="Closed" value={kpis.resolved} Icon={CheckCircle2} accent="emerald"
+            active={statusFilter === 'resolved'} onClick={() => toggleStatus('resolved')} />
+          <KpiStatCard label="Risk Score" value={kpis.risk} Icon={Gauge} accent="sky" />
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Group tabs */}
+          <div className="flex overflow-x-auto border-b border-slate-200">
+            {TABS.map(tab => {
+              const active = group === tab.id;
+              const tone = TAB_TONE[tab.tone];
+              return (
+                <button key={tab.id} type="button" onClick={() => { setGroup(tab.id); setTypeFilter(null); }}
+                  className={cn('group relative flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 transition-colors',
+                    active ? tone.active : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800')}>
+                  <span className="text-sm font-semibold">{tab.label}</span>
+                  <span className={cn('inline-flex h-5 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? tone.badge : 'bg-slate-100 text-slate-500')}>{tab.count}</span>
+                </button>
               );
             })}
           </div>
 
-          {/* Empty state with clear */}
-          {filteredEvents.length > 0 && filteredEvents.length !== allEvents.length && (
-            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex justify-center">
-              <button onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }} className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm">Clear all filters</button>
+          {/* Event-type breakdown cards */}
+          <div className="border-b border-slate-200 bg-slate-50/40 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Event types in this view</div>
+                <div className="text-[11px] text-slate-400">Click a card to narrow the table to that event type</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {typeFilter && (
+                  <button type="button" onClick={() => setTypeFilter(null)} className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:opacity-80">Clear type <X size={11} /></button>
+                )}
+                {typeBreakdown.length > 8 && (
+                  <button type="button" onClick={() => setSubExpanded(v => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
+                    {subExpanded ? 'Show less' : 'Show all types'}
+                    <ChevronDown size={13} className={cn('transition-transform', subExpanded && 'rotate-180')} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {typeBreakdown.length === 0 ? (
+              <div className="py-4 text-center text-[12px] italic text-slate-400">No event types in this view.</div>
+            ) : (
+              <div className={cn(
+                'grid gap-2',
+                subExpanded
+                  ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 max-h-[240px] overflow-y-auto overscroll-contain pr-1'
+                  : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4',
+              )}>
+                {(subExpanded ? typeBreakdown : typeBreakdown.slice(0, 8)).map((t, i) => {
+                  const selected = typeFilter === t.label;
+                  const denom = baseFiltered.length || 1;
+                  const sharePct = (t.count / denom) * 100;
+                  const c = SUBCAT_PALETTE[i % SUBCAT_PALETTE.length];
+                  // Compact "mini" card when the full list is expanded — label + count
+                  // on one row so many types fit without heavy scrolling.
+                  if (subExpanded) {
+                    return (
+                      <button key={t.label} type="button" onClick={() => setTypeFilter(selected ? null : t.label)} title={`${t.label} — ${t.count} (${sharePct.toFixed(0)}%)`}
+                        className={cn('group flex flex-col overflow-hidden rounded-md border text-left shadow-sm transition-all',
+                          selected ? 'border-blue-600 ring-2 ring-blue-300/40 bg-white' : cn('border-slate-200 hover:border-slate-300 hover:shadow', c.bg))}>
+                        <div className={cn('h-0.5 w-full', selected ? 'bg-blue-500' : c.bar)} />
+                        <div className="flex items-center justify-between gap-1.5 px-2 py-1.5">
+                          <span className="line-clamp-1 text-[10px] font-semibold leading-tight text-slate-700" title={t.label}>{t.label}</span>
+                          <span className={cn('shrink-0 text-[15px] font-bold leading-none tabular-nums', selected ? 'text-blue-700' : c.count)}>{t.count}</span>
+                        </div>
+                      </button>
+                    );
+                  }
+                  return (
+                    <button key={t.label} type="button" onClick={() => setTypeFilter(selected ? null : t.label)} title={`${t.label} — ${t.count}`}
+                      className={cn('group flex h-full flex-col overflow-hidden rounded-lg border text-left shadow-sm transition-all',
+                        selected ? 'border-blue-600 ring-2 ring-blue-300/40 bg-white' : cn('border-slate-200 hover:border-slate-300 hover:shadow-md', c.bg))}>
+                      <div className={cn('h-1 w-full', selected ? 'bg-blue-500' : c.bar)} />
+                      <div className="flex flex-1 flex-col px-3 py-2.5">
+                        <div className="line-clamp-2 min-h-[2.6em] text-[11px] font-semibold leading-snug text-slate-700" title={t.label}>{t.label}</div>
+                        <div className="mt-2 flex items-end justify-between gap-2">
+                          <span className={cn('text-[22px] font-bold leading-none tabular-nums', selected ? 'text-blue-700' : c.count)}>{t.count}</span>
+                          <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ring-1', selected ? 'text-blue-700 bg-white ring-blue-300/40' : c.chip)}>{sharePct.toFixed(0)}%</span>
+                        </div>
+                        <div className={cn('mt-2 h-1 overflow-hidden rounded-full', selected ? 'bg-slate-100' : c.barBg)}>
+                          <div className={cn('h-full rounded-full transition-all', selected ? 'bg-blue-500' : c.bar)} style={{ width: `${Math.min(100, sharePct)}%` }} />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 sm:px-4">
+            <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search driver, plate, road, type…"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+            </div>
+            <span className="hidden shrink-0 items-center text-slate-400 sm:inline-flex"><Filter size={14} /></span>
+            <select value={sevFilter} onChange={e => setSevFilter(e.target.value as Sev | 'all')}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none">
+              <option value="all">All severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as HosVStatus | 'all')}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none">
+              <option value="all">All statuses</option>
+              <option value="review">In Review</option>
+              <option value="resolved">Closed</option>
+            </select>
+            <select value={typeFilter ?? 'all'} onChange={e => setTypeFilter(e.target.value === 'all' ? null : e.target.value)}
+              title="Filter by event type"
+              className="h-9 max-w-[180px] rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none">
+              <option value="all">All event types</option>
+              {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select value={providerFilter} onChange={e => setProviderFilter(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none">
+              <option value="all">All sources</option>
+              {providers.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
+            <div className="ml-auto flex items-center gap-2">
+              {anyFilter && (
+                <button type="button" onClick={resetAll} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">
+                  <X size={13} /> Clear
+                </button>
+              )}
+              <span className="shrink-0 text-[12px] font-medium text-slate-400 tabular-nums">{total} of {allEvents.length}</span>
+            </div>
+          </div>
+
+          {/* Bulk-action bar (multiselect) */}
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-blue-100 bg-blue-50/70 px-3 py-2.5 sm:px-4">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[12px] font-bold text-blue-700 shadow-sm ring-1 ring-blue-200">{selected.size} selected</span>
+              <span className="text-[12px] font-medium text-slate-500">Close as:</span>
+              <button type="button" onClick={() => setTrainingIds(selectedIds)} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:bg-violet-700"><GraduationCap size={14} /> Assign training</button>
+              <button type="button" onClick={() => { closeWith(selectedIds, 'warning'); clearSel(); }} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-50"><FileWarning size={14} /> Warning letter</button>
+              <button type="button" onClick={() => { closeWith(selectedIds, 'false'); clearSel(); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50"><Ban size={14} /> Dismiss false</button>
+              <button type="button" onClick={() => { reopenMany(selectedIds); clearSel(); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={14} /> Reopen</button>
+              <button type="button" onClick={clearSel} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-500 hover:bg-slate-50"><X size={13} /> Clear</button>
             </div>
           )}
 
-          {/* Pagination */}
-          <PaginationBar
-            totalItems={filteredEvents.length}
-            currentPage={page}
-            rowsPerPage={rowsPerPage}
-            onPageChange={setPage}
-            onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
-          />
-        </div>
+          {total === 0 ? (
+            <div className="px-5 py-16 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Activity size={22} /></div>
+              <p className="text-sm font-semibold text-slate-700">No events {anyFilter ? 'match your filters' : 'recorded yet'}</p>
+              <p className="mt-1 text-xs text-slate-400">Try adjusting the filters or search term.</p>
+            </div>
+          ) : (<>
+            {/* Desktop table */}
+            <div className="hidden overflow-x-auto xl:block">
+              <table className="w-full min-w-max text-left">
+                <thead className="border-b border-slate-200 bg-slate-50/60">
+                  <tr>
+                    <th className="w-10 pl-5 pr-1 py-2.5">
+                      <input type="checkbox" checked={allSel} onChange={toggleAll} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                    </th>
+                    {showCol('when') && <SortTh id="when" label="Date / time" minW="min-w-[118px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('type') && <SortTh id="type" label="Event type" minW="min-w-[136px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('driver') && <SortTh id="driver" label="Driver" minW="min-w-[150px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('vehicle') && <SortTh id="vehicle" label="Truck / Trailer" minW="min-w-[118px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('location') && <SortTh id="location" label="Location" minW="min-w-[150px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('speed') && <SortTh id="speed" label="Max / limit" minW="min-w-[120px]" align="center" sort={sort} onSort={toggleSort} />}
+                    {showCol('gforce') && <SortTh id="gforce" label="G-force" minW="min-w-[80px]" align="center" sort={sort} onSort={toggleSort} />}
+                    {showCol('risk') && <SortTh id="risk" label="Risk" minW="min-w-[64px]" align="center" sort={sort} onSort={toggleSort} />}
+                    {showCol('provider') && <SortTh id="provider" label="Source" minW="min-w-[92px]" align="center" sort={sort} onSort={toggleSort} />}
+                    {showCol('severity') && <SortTh id="severity" label="Severity" minW="min-w-[96px]" align="center" sort={sort} onSort={toggleSort} />}
+                    {showCol('resolution') && <SortTh id="resolution" label="Resolution" minW="min-w-[132px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('status') && <SortTh id="status" label="Status" minW="min-w-[100px]" sort={sort} onSort={toggleSort} />}
+                    {showCol('camera') && <SortTh id="camera" label="Camera" minW="min-w-[90px]" align="center" sort={sort} onSort={toggleSort} />}
+                    <th className="sticky right-0 z-[2] min-w-[110px] border-l border-slate-200 bg-slate-100 px-3 py-2.5 pr-5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(e => {
+                    const when = fmtWhen(e.startedAt);
+                    const style = getEventTypeStyle(e.type);
+                    const overLimit = (e.stats?.maximumSpeed ?? 0) > (e.stats?.roadSpeedLimit ?? 0);
+                    const gf = gforceOf(e);
+                    const cam = hasCamera(e);
+                    const st = HOS_STATUS_META[e.status as HosVStatus];
+                    const isSel = selected.has(e.id);
+                    return (
+                        <tr key={e.id} onClick={() => setViewingId(e.id)}
+                          className={cn('group cursor-pointer border-b border-slate-100 align-middle hover:bg-slate-50/60', isSel && 'bg-blue-50/50')}>
+                          <td className="w-10 pl-5 pr-1 py-3" onClick={ev => ev.stopPropagation()}>
+                            <input type="checkbox" checked={isSel} onChange={() => toggleSel(e.id)} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                          </td>
+                          {showCol('when') && (
+                            <td className="px-3 py-3">
+                              <div className="whitespace-nowrap text-[13px] font-semibold text-slate-800">{when.date}</div>
+                              <div className="text-[11px] tabular-nums text-slate-400">{when.time}</div>
+                            </td>
+                          )}
+                          {showCol('type') && (
+                            <td className="px-3 py-3">
+                              <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', style.bg, style.text, style.border)}>{getEventTypeLabel(e.type)}</span>
+                            </td>
+                          )}
+                          {showCol('driver') && <td className="px-3 py-3"><DriverCell name={e.driverName} /></td>}
+                          {showCol('vehicle') && (
+                            <td className="px-3 py-3">
+                              <div className="flex items-center gap-1 whitespace-nowrap text-[13px] font-semibold text-slate-800"><Truck size={11} className="shrink-0 text-slate-300" /> {e.vehiclePlate}</div>
+                              <div className="text-[11px] text-slate-400">{e.trailerId ?? '—'}</div>
+                            </td>
+                          )}
+                          {showCol('location') && (
+                            <td className="px-3 py-3">
+                              <span className="flex items-center gap-1 text-[12px] text-slate-500" title={e.extensions?.here?.roadName}>
+                                <MapPin size={11} className="shrink-0 text-slate-300" />
+                                <span className="max-w-[200px] truncate">{e.extensions?.here?.roadName || '—'}</span>
+                              </span>
+                            </td>
+                          )}
+                          {showCol('speed') && (
+                            <td className="px-3 py-3 text-center">
+                              <span className={cn('text-[13px] font-bold font-mono', overLimit ? 'text-red-600' : 'text-slate-700')}>{e.stats?.maximumSpeed}</span>
+                              <span className="mx-1 text-xs text-slate-400">/</span>
+                              <span className="font-mono text-[13px] text-slate-500">{e.stats?.roadSpeedLimit}</span>
+                            </td>
+                          )}
+                          {showCol('gforce') && (
+                            <td className="px-3 py-3 text-center">
+                              <span className={cn('font-mono text-[13px] font-bold', gf >= 0.8 ? 'text-red-600' : 'text-slate-600')}>{gf.toFixed(1)}g</span>
+                            </td>
+                          )}
+                          {showCol('risk') && (
+                            <td className="px-3 py-3 text-center"><span className="inline-flex min-w-[30px] items-center justify-center rounded-md bg-slate-100 px-2 py-1 text-[12px] font-bold tabular-nums text-slate-700">{riskFor(e.type)}</span></td>
+                          )}
+                          {showCol('provider') && (
+                            <td className="px-3 py-3 text-center"><span className="rounded border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-indigo-600">{e.provider}</span></td>
+                          )}
+                          {showCol('severity') && <td className="px-3 py-3 text-center">{getSeverityBadge(e.severity)}</td>}
+                          {showCol('resolution') && (
+                            <td className="px-3 py-3">
+                              {e.disposition
+                                ? (() => { const d = HOS_DISPOSITION_BY_ID[e.disposition as HosDisposition]; return <span className={cn('inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold', d.tone)}>{d.label}</span>; })()
+                                : <span className="text-[11px] text-slate-400">Pending review</span>}
+                            </td>
+                          )}
+                          {showCol('status') && (
+                            <td className="px-3 py-3"><span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', st.dot)} />{st.label}</span></td>
+                          )}
+                          {showCol('camera') && (
+                            <td className="px-3 py-3 text-center">
+                              {cam ? <Camera size={15} className="mx-auto text-indigo-500" /> : <span className="text-[11px] text-slate-300">—</span>}
+                            </td>
+                          )}
+                          <td className={cn('sticky right-0 z-[1] border-l border-slate-100 px-3 py-3 pr-5', isSel ? 'bg-blue-50/50' : 'bg-white group-hover:bg-slate-50')}>
+                            <div className="flex items-center justify-end gap-1.5" onClick={ev => ev.stopPropagation()}>
+                              <button type="button" title="View" onClick={() => setViewingId(e.id)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                                <Eye size={14} />
+                              </button>
+                              <RowActions items={[
+                                { label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(sevRef(e)) },
+                                { label: 'Assign training', icon: GraduationCap, onClick: () => setTrainingIds([e.id]) },
+                                { label: 'Reopen', icon: RotateCcw, onClick: () => reopenMany([e.id]) },
+                                { label: 'Delete', icon: Trash2, onClick: () => setDeleting(e), danger: true },
+                              ]} />
+                            </div>
+                          </td>
+                        </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-        {/* ===== FULL DETAIL MODAL ===== */}
-        {selectedEvent && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedEvent(null)}></div>
-            <div className="relative bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-              {/* Modal Header */}
-              <div className="flex-none bg-slate-50 border-b border-slate-200 p-4 md:p-6 flex justify-between items-center">
-                <div className="flex items-center">
-                  <div className={`p-2 rounded-full mr-4 ${getEventTypeStyle(selectedEvent.type).bg} ${getEventTypeStyle(selectedEvent.type).text}`}>
-                    <AlertTriangle className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900 capitalize flex items-center gap-3">
-                      {getEventTypeLabel(selectedEvent.type)}
-                      <span className="px-2 py-0.5 bg-indigo-100 border border-indigo-200 rounded text-xs font-bold text-indigo-700 uppercase">{selectedEvent.provider}</span>
-                    </h2>
-                    <p className="text-sm text-slate-500 font-mono mt-1">ID: {selectedEvent.id}</p>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedEvent(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><X className="w-6 h-6" /></button>
-              </div>
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-4 md:p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div>
-                    <SectionHeader icon={Info} title="Event Details" />
-                    <DataRow label="Source Type" value={selectedEvent.sourceType} />
-                    <DataRow label="Source ID" value={selectedEvent.sourceId} />
-                    <DataRow label="Severity" value={selectedEvent.severity} />
-                    <div className="mt-4">
-                      <SectionHeader icon={Clock} title="Timeline" />
-                      <DataRow label="Started At" value={new Date(selectedEvent.startedAt).toLocaleString()} />
-                      <DataRow label="Ended At" value={new Date(selectedEvent.endedAt).toLocaleString()} />
-                      <DataRow label="System Added" value={new Date(selectedEvent.metadata.addedAt).toLocaleString()} />
-                    </div>
-                  </div>
-                  <div>
-                    <SectionHeader icon={User} title="Entities" />
-                    <div className="flex items-center space-x-2 py-1"><Truck className="w-4 h-4 text-slate-400" /><span className="text-sm text-slate-900">{selectedEvent.driverName} ({selectedEvent.vehiclePlate})</span></div>
-                    <DataRow label="Driver ID" value={selectedEvent.driver} />
-                    <DataRow label="Vehicle ID" value={selectedEvent.vehicle} />
-                    <SectionHeader icon={MapPin} title="Locations" />
-                    <DataRow label="Start" value={`${selectedEvent.startLocation.latitude.toFixed(4)}, ${selectedEvent.startLocation.longitude.toFixed(4)}`} />
-                    <DataRow label="End" value={`${selectedEvent.endLocation.latitude.toFixed(4)}, ${selectedEvent.endLocation.longitude.toFixed(4)}`} />
-                  </div>
-                  <div>
-                    <SectionHeader icon={Activity} title="Telemetry Stats" />
-                    <DataRow label="Max Speed" value={`${selectedEvent.stats.maximumSpeed} km/h`} />
-                    <DataRow label="Avg Speed" value={`${selectedEvent.stats.averageSpeed} km/h`} />
-                    <DataRow label="Speed Limit" value={`${selectedEvent.stats.roadSpeedLimit} km/h`} />
-                    <DataRow label="G-Force (F/B)" value={selectedEvent.stats.gForceForwardBackward} />
-                    <DataRow label="G-Force (S/S)" value={selectedEvent.stats.gForceSideToSide} />
-                    <DataRow label="Heading" value={`${selectedEvent.stats.heading}°`} />
-                    <SectionHeader icon={Camera} title="Media" />
-                    <DataRow label="Front Camera" value={selectedEvent.cameraMedia.frontFacing.available ? '✓ Available' : '✗ N/A'} />
-                    <DataRow label="Rear Camera" value={selectedEvent.cameraMedia.rearFacing.available ? '✓ Available' : '✗ N/A'} />
-                  </div>
-                </div>
-                <div className="mt-8 pt-6 border-t border-slate-200">
-                  <SectionHeader icon={Map} title="HERE Maps Extensions" />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    {[
-                      { label: 'Road Name', value: selectedEvent.extensions.here.roadName },
-                      { label: 'Speed Limit Source', value: selectedEvent.extensions.here.speedLimitSource },
-                      { label: 'Speed Limit', value: selectedEvent.extensions.here.speedLimit },
-                      { label: 'Truck Speed Limit', value: selectedEvent.extensions.here.truckSpeedLimit },
-                    ].map(item => (
-                      <div key={item.label} className="bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
-                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">{item.label}</p>
-                        <p className="font-bold text-slate-900 text-lg capitalize">{item.value}</p>
+            {/* Card list (below xl) */}
+            <ul className="divide-y divide-slate-100 xl:hidden">
+              {rows.map(e => {
+                const when = fmtWhen(e.startedAt);
+                const style = getEventTypeStyle(e.type);
+                const st = HOS_STATUS_META[e.status as HosVStatus];
+                const isSel = selected.has(e.id);
+                return (
+                  <li key={e.id} onClick={() => setViewingId(e.id)} className={cn('cursor-pointer space-y-2 px-4 py-3.5', isSel && 'bg-blue-50/50')}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        <input type="checkbox" checked={isSel} onClick={ev => ev.stopPropagation()} onChange={() => toggleSel(e.id)} className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                        <div className="min-w-0">
+                          <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase', style.bg, style.text, style.border)}>{getEventTypeLabel(e.type)}</span>
+                          <p className="mt-1 text-[13px] font-semibold text-slate-800">{e.driverName}</p>
+                          <p className="text-[11px] text-slate-400">{e.vehiclePlate} / {e.trailerId ?? '—'} · {e.extensions?.here?.roadName} · {when.date} · {when.time}</p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <CollapsibleSection icon={MapPin} title="Link Attributes" data={selectedEvent.extensions.here.linkAttributes} />
-                  <CollapsibleSection icon={CloudRain} title="Weather Data" data={selectedEvent.extensions.here.weather} />
-                </div>
+                      <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}>{st.label}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {getSeverityBadge(e.severity)}
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600"><Gauge size={10} /> Risk {riskFor(e.type)}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600"><Truck size={10} /> {e.stats?.maximumSpeed}/{e.stats?.roadSpeedLimit} km/h</span>
+                      {hasCamera(e) && <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600"><Camera size={10} /> Camera</span>}
+                      <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-600">{e.provider}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        {e.disposition
+                          ? (() => { const d = HOS_DISPOSITION_BY_ID[e.disposition as HosDisposition]; return <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', d.tone)}>{d.label}</span>; })()
+                          : <span className="text-[11px] text-slate-400">Pending review</span>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5" onClick={ev => ev.stopPropagation()}>
+                        <button type="button" title="View" onClick={() => setViewingId(e.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Eye size={14} /></button>
+                        <RowActions items={[
+                          { label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(sevRef(e)) },
+                          { label: 'Assign training', icon: GraduationCap, onClick: () => setTrainingIds([e.id]) },
+                          { label: 'Reopen', icon: RotateCcw, onClick: () => reopenMany([e.id]) },
+                          { label: 'Delete', icon: Trash2, onClick: () => setDeleting(e), danger: true },
+                        ]} />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Pagination */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+              <label className="flex items-center gap-1.5 text-[12px] text-slate-500">Rows per page
+                <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none">
+                  {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="mr-2 text-[12px] text-slate-500 tabular-nums">{start + 1}–{Math.min(start + pageSize, total)} of {total}</span>
+                <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} className="inline-flex h-8 items-center rounded-md border border-slate-200 px-2.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+                <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {pages}</span>
+                <button type="button" disabled={safePage >= pages} onClick={() => setPage(safePage + 1)} className="inline-flex h-8 items-center rounded-md border border-slate-200 px-2.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
               </div>
             </div>
-          </div>
-        )}
-
+          </>)}
+        </div>
       </div>
+
+      {viewing && (
+        <SafetyEventModal
+          record={viewing}
+          riskFor={riskFor}
+          onClose={() => setViewingId(null)}
+          onAddNote={(t) => addNote(viewing.id, t)}
+          onDispose={(disp) => closeWith([viewing.id], disp)}
+          onAssignTraining={() => setTrainingIds([viewing.id])}
+          onReopen={() => reopenMany([viewing.id])}
+          onVerify={() => verify([viewing.id])}
+          currentUserName={currentUserName}
+          onNavigate={onNavigate}
+        />
+      )}
+
+      {trainingIds && (
+        <SafetyTrainingModal
+          count={trainingIds.length}
+          onClose={() => setTrainingIds(null)}
+          onAssign={(name) => { assignTraining(trainingIds, name); setTrainingIds(null); if (trainingIds.length > 1) clearSel(); }}
+        />
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setDeleting(null)}>
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600"><Trash2 size={18} /></div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-800">Delete this event?</h3>
+                <p className="mt-1 text-[13px] leading-snug text-slate-500">
+                  This removes the <span className="font-semibold text-slate-700">{getEventTypeLabel(deleting.type)}</span> event for <span className="font-semibold text-slate-700">{deleting.driverName}</span>. This can't be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setDeleting(null)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={confirmDelete} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-rose-700"><Trash2 size={15} /> Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shareRecord && (
+        <ShareToChat
+          open
+          onClose={() => setShareRecord(null)}
+          title={`Share ${shareRecord.label}`}
+          subtitle="Send the record + documents in a chat, or to an outsider by email"
+          source={{ type: 'safety-event', id: shareRecord.id, label: shareRecord.label }}
+          items={[]}
+          record={shareRecord}
+          defaultChannel="in-app"
+          defaultSubject={shareRecord.label}
+          currentUserName={currentUserName}
+          onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate?.('/messages'); }}
+        />
+      )}
     </div>
   );
 }

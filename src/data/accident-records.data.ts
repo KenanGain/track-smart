@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AccidentRiskType } from '@/data/accident-types.data';
 import { buildProfileBundle } from '@/pages/accounts/carrier-datasets.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
+import { getDriverById, getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 
 /**
  * Accident RECORDS — actual reported accidents (distinct from the accident-TYPE
@@ -129,6 +130,7 @@ export interface Witness {
 
 export interface AccidentRecord {
     id: string;
+    accidentNumber?: string;   // human-readable reference, self-incremented per year — "ACC-2026-0001"
     // ── Report (driver / office) ─────────────────────────────
     driverId: string;
     driverName: string;
@@ -151,6 +153,9 @@ export interface AccidentRecord {
     points?: number | '';
     preventable?: Preventability;
     claimNumber?: string;
+    /** Cross-reference to a linked Ticket (its offense #). Lets an accident
+     *  point at the ticket issued for the same event. */
+    ticketNumber?: string;
     policeReport?: string;
     insurer?: string;
     thirdParty?: string;
@@ -337,6 +342,8 @@ export interface AccidentRecord {
     claimDocsFiles?: AccidentFile[];
     // ── Medical report (injury documentation) ──
     medicalReportFiles?: AccidentFile[];
+    // ── Post-accident drug/alcohol test result ──
+    drugTestFiles?: AccidentFile[];
     // ── Internal review ──
     internalNotes?: string;
     additionalDocsFiles?: AccidentFile[];
@@ -403,12 +410,30 @@ export const DRIVER_ACCIDENT_DISCLOSURE = {
 
 const KEY = 'accident-records-v2';
 const SEEDED_KEY = 'accident-records-seeded-v3';   // per-account seed version marker: { [acct]: version }
-const SEED_VERSION = 6;                             // bump when the sample set changes → demo rows refresh (user rows kept)
+const SEED_VERSION = 9;                             // bump when the sample set changes → demo rows refresh (user rows kept)
 const EVENT = 'accident-records-change';
 const NO_ACCOUNT = '_noacct';
 
 export function newAccidentId(): string {
     return `acc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** Reference prefix for a given accident date — "ACC-2026". */
+export function accidentNumberPrefix(dateTime?: string): string {
+    const year = dateTime && /^\d{4}/.test(dateTime) ? dateTime.slice(0, 4) : String(new Date().getFullYear());
+    return `ACC-${year}`;
+}
+/** Next self-incremented accident reference number for the account — "ACC-2026-0001".
+ *  Sequence restarts each year; derived from the highest existing number for that year. */
+export function nextAccidentNumber(existing: AccidentRecord[], dateTime?: string): string {
+    const prefix = accidentNumberPrefix(dateTime);
+    const re = new RegExp(`^${prefix}-(\\d+)$`);
+    let max = 0;
+    for (const r of existing) {
+        const m = r.accidentNumber ? re.exec(r.accidentNumber) : null;
+        if (m) max = Math.max(max, Number(m[1]));
+    }
+    return `${prefix}-${String(max + 1).padStart(4, '0')}`;
 }
 
 /** Blank third-party vehicle / witness cards (unique id per card). */
@@ -814,6 +839,7 @@ function buildShowcaseAccident(accountId?: string): AccidentRecord {
         videoFiles: [f('acc-sample-0-vid', 'scene-walkaround.mp4', ['Original'], 'Michael Reeves')],
         dashcamFiles: [f('acc-sample-0-dc', 'dashcam-forward.mp4', ['Verified'], 'Michael Reeves', 'Forward dashcam, 30s before impact.')],
         elogFiles: [f('acc-sample-0-el', 'eld-hos-log.pdf', ['Certified'], 'Dispatch (office)')],
+        drugTestFiles: [f('acc-sample-0-dt', 'post-accident-drug-test.pdf', ['Negative'], 'Dispatch (office)', 'Post-accident drug & alcohol test — collected within 8 hours, result negative.')],
         // other vehicles
         otherVehicles: [
             {
@@ -1014,7 +1040,34 @@ export function buildSampleAccidents(owner?: Partial<AccidentOwnerInfo>, account
     // Seed the full demo set: the exhaustively-filled showcase record first, then the three
     // detailed samples, then the ~20 historical/recent MORE_SAMPLES so the list, filters, sorting,
     // pagination, case-response indicator and the Historical toggle all have data to work against.
-    return [buildShowcaseAccident(accountId), ...samples, ...MORE_SAMPLES].map(r => ({ ...r, ...o }));
+    const all = [buildShowcaseAccident(accountId), ...samples, ...MORE_SAMPLES].map(r => ({ ...r, ...o }));
+    // Self-incremented reference numbers, restarting per year, assigned chronologically.
+    const perYear: Record<string, number> = {};
+    const numById: Record<string, string> = {};
+    [...all].sort((a, b) => a.dateTime.localeCompare(b.dateTime)).forEach(r => {
+        const prefix = accidentNumberPrefix(r.dateTime);
+        perYear[prefix] = (perYear[prefix] ?? 0) + 1;
+        numById[r.id] = `${prefix}-${String(perYear[prefix]).padStart(4, '0')}`;
+    });
+    // Link each accident to a REAL roster driver, so the driver shown on the Default
+    // Accidents list / detail is the same person in the driver roster and on their
+    // profile (name, contact, licence + the auto-calculated profile stats). When the
+    // sample's driverId isn't in the roster, deterministically bind it to a real one.
+    const roster = accountId ? getDriversForAccount(accountId) : [];
+    return all.map(r => {
+        let rec: AccidentRecord = { ...r, accidentNumber: r.accidentNumber ?? numById[r.id] };
+        let rd = accountId ? getDriverById(accountId, r.driverId) : undefined;
+        if (!rd && roster.length) {
+            const h = [...r.id].reduce((s, c) => s + c.charCodeAt(0), 0);
+            rd = roster[h % roster.length];
+        }
+        if (rd) {
+            const info = driverAccidentInfo(rd as Parameters<typeof driverAccidentInfo>[0]);
+            const stats = driverProfileStats({ ...info, dateTime: rec.dateTime });
+            rec = { ...rec, driverId: rd.id, ...info, driverAgeBand: stats.ageBand, driverDrivingExperience: stats.drivingExperience, driverLengthOfEmployment: stats.lengthOfEmployment };
+        }
+        return rec;
+    });
 }
 
 function loadStore(): Store {
@@ -1088,7 +1141,12 @@ export function useAccidentRecords(accountId?: string) {
     /** Newest first (by report date, then when-it-happened). */
     const sorted = [...records].sort((a, b) => (b.reportedAt).localeCompare(a.reportedAt) || (b.dateTime).localeCompare(a.dateTime));
 
-    const add = (r: AccidentRecord) => persistFor(acct, [r, ...loadFor(acct)]);
+    const add = (r: AccidentRecord) => {
+        const cur = loadFor(acct);
+        // Backfill a self-incremented reference number for any path that didn't set one (e.g. driver app).
+        const rec = r.accidentNumber ? r : { ...r, accidentNumber: nextAccidentNumber(cur, r.dateTime) };
+        persistFor(acct, [rec, ...cur]);
+    };
     const update = (r: AccidentRecord) => persistFor(acct, loadFor(acct).map(x => (x.id === r.id ? r : x)));
     const remove = (id: string) => persistFor(acct, loadFor(acct).filter(x => x.id !== id));
 

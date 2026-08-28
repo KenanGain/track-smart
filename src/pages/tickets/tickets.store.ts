@@ -164,6 +164,7 @@ interface AttachedDoc {
     docNumber?: string;
     issueDate?: string;
     fileName?: string;
+    files?: { id: string; fileName: string; fileSize?: number }[];
     /** Type-specific sub-fields. Open-shape so adding a new doc type
      *  later doesn't require changes here. */
     extras?: {
@@ -376,6 +377,7 @@ export function buildTicketFromViolation(v: ViolationLike): TicketRecord | null 
 
     return {
         id,
+        attachedDocuments: docs.length ? docs : undefined,
         offenseNumber: offense || `OFF-${id}`,
         date: (citationDoc?.issueDate || v.date || '').slice(0, 10),
         time: v.time ?? '00:00',

@@ -37,6 +37,8 @@ import {
     Workflow,
     UserPlus,
     Smartphone,
+    MessageSquare,
+    Video,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -47,6 +49,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Dashboard",
         icon: LayoutDashboard,
         path: "/dashboard",
+    },
+    {
+        key: "messages",
+        label: "Messages",
+        icon: MessageSquare,
+        path: "/messages",
     },
     {
         key: "account",
@@ -66,18 +74,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "DQ Files",
         icon: ListChecks,
         path: "/dq-files",
-    },
-    {
-        key: "new-compliance",
-        label: "New Compliance & Documents",
-        icon: FileText,
-        path: "/new-compliance",
-    },
-    {
-        key: "compliance-monitoring",
-        label: "Compliance Monitoring",
-        icon: Gauge,
-        path: "/compliance-monitoring",
     },
     {
         key: "default-compliance-documents",
@@ -102,18 +98,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Paystubs",
         icon: DollarSign,
         path: "/paystubs",
-    },
-    // Old "Hiring" dropdown — kept visible but disabled (superseded by "Hiring Process").
-    {
-        key: "hiring",
-        label: "Hiring",
-        icon: Briefcase,
-        disabled: true,
-        children: [
-            { key: "ats-main", label: "Applications", icon: Briefcase, path: "/ats-main" },
-            { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
-            { key: "dq-files", label: "Driver Qualification Files", icon: ListChecks, path: "/dq-files" },
-        ],
     },
     {
         key: "hiring-process",
@@ -151,12 +135,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/violations",
     },
     {
-        key: "accidents",
-        label: "Accidents",
-        icon: AlertTriangle,
-        path: "/accidents",
-    },
-    {
         key: "default-accidents",
         label: "Default Accidents",
         icon: ShieldAlert,
@@ -181,6 +159,15 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/safety-events",
     },
     {
+        key: "safety-event",
+        label: "Safety Event",
+        icon: ShieldAlert,
+        children: [
+            { key: "safety-event-hos", label: "Hours of Service", icon: Clock3, path: "/safety-event/hours-of-service-violations" },
+            { key: "safety-event-telematics", label: "Telematics & Video", icon: Video, path: "/safety-event/telematics-video" },
+        ],
+    },
+    {
         key: "settings",
         label: "Settings",
         icon: Settings,
@@ -191,6 +178,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "settings-new-compliance-documents", label: "New Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
             { key: "settings-default-compliance-monitoring", label: "Default Compliance & Monitoring", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
             { key: "settings-tags", label: "Tags", icon: Tags, path: "/settings/tags", badge: "New" },
+            { key: "settings-chat-tags", label: "Chat Tags", icon: MessageSquare, path: "/settings/chat-tags", badge: "New" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             {
                 key: "settings-hiring-process",
@@ -214,6 +202,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
+            { key: "settings-safety-events", label: "Safety Events", icon: Activity, path: "/settings/safety-events", badge: "New" },
+            { key: "settings-integrations", label: "Integrations", icon: Workflow, path: "/settings/integrations", badge: "New" },
         ],
     },
     {
@@ -264,5 +254,43 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Driver Mobile App",
         icon: Smartphone,
         path: "/driver-mobile-app",
+    },
+
+    // ── Superseded / disabled items (grouped at the bottom) ──
+    // Old "Hiring" dropdown — superseded by "Hiring Process".
+    {
+        key: "hiring",
+        label: "Hiring",
+        icon: Briefcase,
+        disabled: true,
+        children: [
+            { key: "ats-main", label: "Applications", icon: Briefcase, path: "/ats-main" },
+            { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
+            { key: "dq-files", label: "Driver Qualification Files", icon: ListChecks, path: "/dq-files" },
+        ],
+    },
+    // Superseded by "Default Compliances & Documents".
+    {
+        key: "new-compliance",
+        label: "New Compliance & Documents",
+        icon: FileText,
+        path: "/new-compliance",
+        disabled: true,
+    },
+    // Superseded by "Default Compliance Monitoring".
+    {
+        key: "compliance-monitoring",
+        label: "Compliance Monitoring",
+        icon: Gauge,
+        path: "/compliance-monitoring",
+        disabled: true,
+    },
+    // Superseded by "Default Accidents".
+    {
+        key: "accidents",
+        label: "Accidents",
+        icon: AlertTriangle,
+        path: "/accidents",
+        disabled: true,
     },
 ];

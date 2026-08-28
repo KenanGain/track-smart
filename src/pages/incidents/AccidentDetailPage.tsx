@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import {
-    ChevronLeft, AlertTriangle, ShieldCheck, Pencil, Trash2, FileText, Camera, Video, Eye, X, Sparkles, Download,
+    ChevronLeft, AlertTriangle, ShieldCheck, Pencil, Trash2, FileText, Camera, Video, Eye, X, Sparkles, Download, Hash,
     Building2, User, Car, Users, Shield, Cloud, MapPin, Truck, Wrench, Activity as ActivityIcon,
-    Boxes, Gauge, Clock, Search, ChevronsUpDown, Mail, Send, Paperclip, MessageSquare, Inbox, CornerUpLeft, Smartphone, Upload, Signature, MoreVertical, Check, ExternalLink, HeartPulse, List, Image as ImageIcon, FolderOpen, type LucideIcon,
+    Boxes, Gauge, Clock, Search, ChevronsUpDown, Send, Share2, Paperclip, MessageSquare, Inbox, CornerUpLeft, Upload, Signature, MoreVertical, Check, HeartPulse, List, Image as ImageIcon, FolderOpen, FlaskConical, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,9 @@ import {
     ACCIDENT_STATUS_META, SOURCE_META, ACTIVITY_ROLE_META, CASE_STATUS_META, ALERT_META, driverProfileStats,
     type AccidentRecord, type AccidentFile, type AccidentActivity, type AccidentCase, type CaseMessage, type CaseAttachment,
 } from '@/data/accident-records.data';
+
+import { ActivityTimeline, type ActivityEntry } from '@/components/ui/ActivityTimeline';
+import { ShareToChat } from '@/components/share/ShareToChat';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtDateTime(dt?: string): string {
@@ -612,19 +615,36 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     // Derive activity if none was stored (older records) from the reported/verified stamps.
     const activity = useMemo<AccidentActivity[]>(() => {
         if (record.activity && record.activity.length) return [...record.activity].sort((a, b) => a.at.localeCompare(b.at));
+        // No stored trail — derive a full, believable sequence from the record:
+        // reported/created → documents uploaded → evidence attached → recorded →
+        // opened for review → verified.
+        const created = record.dateTime || record.reportedAt;
+        const fromDriver = record.source === 'driver-app';
+        const office = record.reportedBy || 'Office';
+        const docN = [record.driverStatementFiles, record.policeReportFiles, record.citationFiles, record.repairFiles,
+            record.towingInvoiceFiles, record.elogFiles, record.ledgerFiles, record.claimDocsFiles,
+            record.medicalReportFiles, record.drugTestFiles, record.additionalDocsFiles].reduce((n, f) => n + (f?.length ?? 0), 0);
+        const vidN = (record.videoFiles?.length ?? 0) + (record.dashcamFiles?.length ?? 0);
+        const photoN = (record.photoFiles?.length ?? 0) + (record.vehicleDamageFiles?.length ?? 0);
         const list: AccidentActivity[] = [{
-            id: 'derived-report', at: record.dateTime || record.reportedAt, by: record.reportedBy,
-            role: record.source === 'driver-app' ? 'driver' : 'office',
-            action: record.source === 'driver-app' ? 'Reported' : 'Created',
-            detail: record.source === 'driver-app' ? 'Submitted from the mobile app.' : 'Entered from the office.',
+            id: 'derived-report', at: created, by: record.reportedBy,
+            role: fromDriver ? 'driver' : 'office',
+            action: fromDriver ? 'Reported' : 'Created',
+            detail: fromDriver ? 'Submitted from the mobile app at the scene.' : 'Entered from the office.',
         }];
-        if (record.verifiedBy && record.verifiedAt) list.push({ id: 'derived-verify', at: record.verifiedAt, by: record.verifiedBy, role: 'manager', action: 'Verified' });
+        if (photoN + vidN > 0) list.push({ id: 'derived-evidence', at: created, by: record.reportedBy, role: fromDriver ? 'driver' : 'office', action: 'Evidence uploaded', detail: `${photoN} photo(s)${vidN ? ` · ${vidN} video/dashcam clip(s)` : ''} attached` });
+        if (docN > 0) list.push({ id: 'derived-docs', at: created, by: office, role: 'office', action: 'Documents uploaded', detail: `${docN} file(s) attached to the file` });
+        list.push({ id: 'derived-recorded', at: created, by: 'System', role: 'system', action: 'Recorded in system', detail: record.accidentNumber ? `Logged as ${record.accidentNumber}` : 'Logged to accident records' });
+        if (record.verifiedBy && record.verifiedAt) {
+            list.push({ id: 'derived-review', at: record.verifiedAt, by: record.verifiedBy, role: 'manager', action: 'Opened for review', detail: 'Reviewed the report, documents and evidence' });
+            list.push({ id: 'derived-verify', at: record.verifiedAt, by: record.verifiedBy, role: 'manager', action: 'Verified', detail: 'Confirmed and classified the accident' });
+        }
         return list;
     }, [record]);
 
     const docCount = (record.driverStatementFiles?.length ?? 0) + (record.policeReportFiles?.length ?? 0)
         + (record.citationFiles?.length ?? 0) + (record.repairFiles?.length ?? 0) + (record.towingInvoiceFiles?.length ?? 0)
-        + (record.elogFiles?.length ?? 0) + (record.ledgerFiles?.length ?? 0) + (record.claimDocsFiles?.length ?? 0) + (record.medicalReportFiles?.length ?? 0) + (record.additionalDocsFiles?.length ?? 0)
+        + (record.elogFiles?.length ?? 0) + (record.ledgerFiles?.length ?? 0) + (record.claimDocsFiles?.length ?? 0) + (record.medicalReportFiles?.length ?? 0) + (record.drugTestFiles?.length ?? 0) + (record.additionalDocsFiles?.length ?? 0)
         + (record.witnesses ?? []).reduce((n, w) => n + (w.statementFiles?.length ?? 0), 0)
         + (record.otherVehicles ?? []).reduce((n, v) => n + (v.coiFiles?.length ?? 0), 0);
     const evidenceCount = (record.photoFiles?.length ?? 0) + (record.videoFiles?.length ?? 0)
@@ -634,7 +654,6 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
         { id: 'overview', label: 'Overview' },
         { id: 'documents', label: 'Documents', count: docCount },
         { id: 'evidence', label: 'Evidence', count: evidenceCount },
-        { id: 'case', label: 'Communication', count: record.case?.messages.length || undefined },
         { id: 'activity', label: 'Activity', count: activity.length },
     ];
 
@@ -661,6 +680,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h1 className="text-base font-bold text-slate-900">{title}</h1>
+                                    {record.accidentNumber && <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600" title="Accident reference number"><Hash size={10} /> {record.accidentNumber}</span>}
                                     <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{st.label}</span>
                                     <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold', src.tone)}>{src.label}</span>
                                     {record.injuries && <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">Injury</span>}
@@ -672,7 +692,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
                         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                             {onUpdate && (
                                 <Button size="sm" onClick={() => { setTab('case'); setPendingCompose(true); }} className="h-8 gap-1.5 px-2.5 text-[13px] bg-blue-600 text-white shadow-sm hover:bg-blue-700">
-                                    <Send className="h-3.5 w-3.5" /> Send to adjuster
+                                    <Share2 className="h-3.5 w-3.5" /> Share
                                 </Button>
                             )}
                             {record.status !== 'verified' && (
@@ -723,42 +743,81 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     );
 }
 
-/** Floating "Sections" widget for the Overview — hidden by default (just a small pill); opens a
- *  jump-to-section list built from the InfoCards actually rendered. Works on mobile + desktop:
- *  a sticky bottom-right FAB whose list opens upward and scrolls. */
-function OverviewSectionNav({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
+/** Section navigator for the Overview. Desktop: a sticky right-hand card ("Jump to section")
+ *  that is part of the page and scroll-spies the active card. Mobile: a floating "Sections"
+ *  pill with the same jump list. The list is built from the InfoCards actually rendered. */
+function OverviewSectionNav({ containerRef, refreshKey }: { containerRef: React.RefObject<HTMLDivElement | null>; refreshKey?: string }) {
     const [open, setOpen] = useState(false);
     const [sections, setSections] = useState<{ id: string; title: string }[]>([]);
+    const [active, setActive] = useState('');
+    // Scan the rendered InfoCards + scroll-spy which one is near the top.
+    useEffect(() => {
+        const els = Array.from(containerRef.current?.querySelectorAll<HTMLElement>('[data-ov-section]') ?? []);
+        setSections(els.map(e => ({ id: e.id, title: e.getAttribute('data-ov-section') || '' })));
+        if (!els.length) return;
+        setActive(a => a || els[0].id);   // highlight the first section until scroll moves past it
+        const visible = new Set<string>();
+        const io = new IntersectionObserver(entries => {
+            for (const e of entries) { if (e.isIntersecting) visible.add(e.target.id); else visible.delete(e.target.id); }
+            const first = els.find(el => visible.has(el.id));
+            if (first) setActive(first.id);
+        }, { rootMargin: '-130px 0px -55% 0px', threshold: 0 });
+        els.forEach(e => io.observe(e));
+        return () => io.disconnect();
+    }, [containerRef, refreshKey]);
+    // Close the mobile popover on an outside click.
     useEffect(() => {
         if (!open) return;
-        const els = containerRef.current?.querySelectorAll<HTMLElement>('[data-ov-section]');
-        setSections(Array.from(els ?? []).map(e => ({ id: e.id, title: e.getAttribute('data-ov-section') || '' })));
         const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest('[data-ov-nav]')) setOpen(false); };
         document.addEventListener('pointerdown', onDown);
         return () => document.removeEventListener('pointerdown', onDown);
-    }, [open, containerRef]);
-    const go = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setOpen(false); };
+    }, [open]);
+    const go = (id: string, close?: boolean) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (close) setOpen(false); };
+    if (!sections.length) return null;
     return (
-        <div data-ov-nav className="pointer-events-none sticky bottom-3 z-30 flex justify-end">
-            <div className="pointer-events-auto relative">
-                {open && (
-                    <div className="absolute bottom-full right-0 mb-2 max-h-[min(60vh,360px)] w-60 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
-                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Jump to section</p>
-                        {sections.map(s => (
-                            <button key={s.id} type="button" onClick={() => go(s.id)}
-                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50">
-                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />{s.title}
-                            </button>
-                        ))}
-                    </div>
-                )}
-                <button type="button" onClick={() => setOpen(v => !v)} title="Jump to section" aria-expanded={open}
-                    className={cn('inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2.5 text-[13px] font-semibold shadow-lg transition-colors',
-                        open ? 'border-blue-300 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
-                    <List size={16} /> <span className="hidden sm:inline">Sections</span>
-                </button>
+        <>
+            {/* Desktop — sticky right-hand section navigator, part of the page */}
+            <aside className="hidden w-56 shrink-0 lg:block">
+                <div className="sticky top-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                    <p className="flex items-center gap-1.5 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400"><List size={12} /> Jump to section</p>
+                    <nav className="max-h-[calc(100vh-180px)] space-y-0.5 overflow-y-auto">
+                        {sections.map(s => {
+                            const on = s.id === active;
+                            return (
+                                <button key={s.id} type="button" onClick={() => go(s.id)}
+                                    className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
+                                        on ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800')}>
+                                    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', on ? 'bg-blue-500' : 'bg-slate-300')} />
+                                    <span className="truncate">{s.title}</span>
+                                </button>
+                            );
+                        })}
+                    </nav>
+                </div>
+            </aside>
+
+            {/* Mobile — floating "Sections" pill with the same jump list */}
+            <div data-ov-nav className="lg:hidden">
+                <div className="fixed bottom-4 right-4 z-40">
+                    {open && (
+                        <div className="absolute bottom-full right-0 mb-2 max-h-[min(60vh,360px)] w-60 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                            <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Jump to section</p>
+                            {sections.map(s => (
+                                <button key={s.id} type="button" onClick={() => go(s.id, true)}
+                                    className={cn('flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium hover:bg-slate-50', s.id === active ? 'text-blue-700' : 'text-slate-700')}>
+                                    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', s.id === active ? 'bg-blue-500' : 'bg-slate-300')} />{s.title}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <button type="button" onClick={() => setOpen(v => !v)} title="Jump to section" aria-expanded={open}
+                        className={cn('inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2.5 text-[13px] font-semibold shadow-lg transition-colors',
+                            open ? 'border-blue-300 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
+                        <List size={16} /> Sections
+                    </button>
+                </div>
             </div>
-        </div>
+        </>
     );
 }
 
@@ -783,13 +842,15 @@ function OverviewTab({ record: r }: { record: AccidentRecord }) {
         { label: 'Citation / Ticket', icon: FileText, count: r.citationFiles?.length ?? 0 },
         { label: 'Insurance Claim', icon: FileText, count: (r.claimDocsFiles?.length ?? 0) + (r.ledgerFiles?.length ?? 0) },
         { label: 'Medical Report', icon: HeartPulse, count: r.medicalReportFiles?.length ?? 0 },
+        { label: 'Drug Test', icon: FlaskConical, count: r.drugTestFiles?.length ?? 0 },
         { label: 'Tow Receipt', icon: Truck, count: r.towingInvoiceFiles?.length ?? 0 },
         { label: 'Photos', icon: Camera, count: (r.photoFiles?.length ?? 0) + (r.vehicleDamageFiles?.length ?? 0) },
-        { label: 'Telemetry', icon: Gauge, count: r.elogFiles?.length ?? 0 },
+        { label: 'ELD', icon: Gauge, count: r.elogFiles?.length ?? 0 },
         { label: 'Dashcam Video', icon: Video, count: r.dashcamFiles?.length ?? 0 },
     ];
     return (
-        <div ref={overviewRef} className="relative space-y-5">
+        <div className="lg:flex lg:gap-6">
+        <div ref={overviewRef} className="min-w-0 flex-1 space-y-5">
             {/* Mini KPI panel — reads as part of the page: severity counts + document status */}
             <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div>
@@ -1065,14 +1126,16 @@ function OverviewTab({ record: r }: { record: AccidentRecord }) {
                     <Field label="Risk points" value={r.points === '' || r.points === undefined ? '' : String(r.points)} />
                     <Field label="Preventability" value={r.preventable} />
                     <Field label="Third party" value={r.thirdParty} />
+                    <Field label="Linked ticket #" value={r.ticketNumber} />
                     <Field label="Internal notes" value={r.internalNotes || r.managerNotes} wide />
                     <Field label="Verified by" value={r.verifiedBy ? `${r.verifiedBy} · ${r.verifiedAt}` : ''} />
                 </Grid>
             </InfoCard>
             </div>
+        </div>
 
-            {/* Hidden-by-default section navigator — jump through the sections on any screen */}
-            <OverviewSectionNav containerRef={overviewRef} />
+            {/* Section navigator — sticky right-hand column on desktop, floating pill on mobile */}
+            <OverviewSectionNav containerRef={overviewRef} refreshKey={r.id} />
         </div>
     );
 }
@@ -1108,10 +1171,11 @@ function DocumentsTab({ record: r, onUpdate, accountId }: { record: AccidentReco
         { label: 'Citation / ticket', icon: FileText, uploader: office, files: r.citationFiles, onChange: onUpdate ? files => onUpdate({ ...r, citationFiles: files }) : undefined },
         { label: 'Towing invoice', icon: Truck, uploader: office, files: r.towingInvoiceFiles, onChange: onUpdate ? files => onUpdate({ ...r, towingInvoiceFiles: files }) : undefined },
         { label: 'Repairs document', icon: Wrench, uploader: office, files: r.repairFiles, onChange: onUpdate ? files => onUpdate({ ...r, repairFiles: files }) : undefined },
-        { label: 'E-log', icon: FileText, uploader: office, files: r.elogFiles, onChange: onUpdate ? files => onUpdate({ ...r, elogFiles: files }) : undefined },
+        { label: 'ELD document (E-log)', icon: Gauge, uploader: office, files: r.elogFiles, onChange: onUpdate ? files => onUpdate({ ...r, elogFiles: files }) : undefined },
         { label: 'Claim ledger', icon: FileText, uploader: claims, files: r.ledgerFiles, onChange: onUpdate ? files => onUpdate({ ...r, ledgerFiles: files }) : undefined },
         { label: 'Claim documents', icon: FileText, uploader: claims, files: r.claimDocsFiles, onChange: onUpdate ? files => onUpdate({ ...r, claimDocsFiles: files }) : undefined },
         { label: 'Medical report', icon: FileText, uploader: office, files: r.medicalReportFiles, onChange: onUpdate ? files => onUpdate({ ...r, medicalReportFiles: files }) : undefined },
+        { label: 'Post-accident drug & alcohol test', icon: FlaskConical, uploader: office, files: r.drugTestFiles, onChange: onUpdate ? files => onUpdate({ ...r, drugTestFiles: files }) : undefined },
         { label: 'Additional documents', icon: FileText, uploader: office, files: r.additionalDocsFiles, onChange: onUpdate ? files => onUpdate({ ...r, additionalDocsFiles: files }) : undefined },
         ...(r.witnesses ?? []).filter(w => (w.statementFiles?.length ?? 0) > 0).map((w, i) => ({
             label: `Witness statement — ${w.name || `Witness ${i + 1}`}`, icon: Users, uploader: w.name || `Witness ${i + 1}`, files: w.statementFiles,
@@ -1164,7 +1228,9 @@ function buildShareable(r: AccidentRecord): CaseAttachment[] {
     add('Dashcam video', r.dashcamFiles);
     add('Repairs document', r.repairFiles);
     add('Towing invoice', r.towingInvoiceFiles);
-    add('E-log', r.elogFiles);
+    add('ELD document (E-log)', r.elogFiles);
+    add('Medical report', r.medicalReportFiles);
+    add('Post-accident drug & alcohol test', r.drugTestFiles);
     add('Police report', r.policeReportFiles);
     add('Citation / ticket', r.citationFiles);
     (r.witnesses ?? []).forEach((w, i) => add(`Witness — ${w.name || `Witness ${i + 1}`}`, w.statementFiles));
@@ -1273,191 +1339,6 @@ function CaseBubble({ m }: { m: CaseMessage }) {
     );
 }
 
-/** Send-to-adjuster composer — modelled on the hiring "Ask driver for more data" request modal:
- *  Send to (email) + Send via (Email / In-app) + a grouped "Items to send" checklist with a
- *  selected-count / Clear-all control + Subject + Message + a footer count. */
-function MailComposeModal({ toName, toEmail, subject, body, attachments, requestedItems, mode, claimFormName, onSend, onClose, onRequestLink, onClaimLink, onChatLink }: {
-    toName: string; toEmail: string; subject: string; body: string; attachments: CaseAttachment[];
-    requestedItems?: string[]; mode: 'send' | 'respond'; claimFormName?: string;
-    onSend: (email: string, via: 'email' | 'inapp', subject: string, body: string, attachments: CaseAttachment[]) => void; onClose: () => void;
-    onRequestLink?: () => void; onClaimLink?: () => void; onChatLink?: () => void;
-}) {
-    const [email, setEmail] = useState(toEmail);
-    const [via, setVia] = useState<'email' | 'inapp'>('email');
-    const [subj, setSubj] = useState(subject);
-    const [text, setText] = useState(body);
-    const [view, setView] = useState<'compose' | 'preview'>('compose');
-    const [checked, setChecked] = useState<Set<number>>(() => new Set(attachments.map((_, i) => i)));
-    const toggle = (i: number) => setChecked(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
-    const selected = attachments.filter((_, i) => checked.has(i));
-    // Ordered groups (preserve first-seen order).
-    const groupOrder: string[] = [];
-    const groups: Record<string, number[]> = {};
-    attachments.forEach((a, i) => { const g = a.group || 'Other'; if (!groups[g]) { groups[g] = []; groupOrder.push(g); } groups[g].push(i); });
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-            <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
-                    <div className="flex items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><Send size={16} /></span>
-                        <div>
-                            <h4 className="text-base font-bold text-slate-900">Send to adjuster</h4>
-                            <p className="mt-0.5 text-[13px] text-slate-500">{mode === 'respond' ? `Reply to ${toName || 'the adjuster'} with the requested documents.` : `Send ${toName || 'the adjuster'} the accident report with documents & evidence.`}</p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={18} /></button>
-                </div>
-                {/* Compose / Preview toggle — keeps the modal short; the preview lives behind a button */}
-                <div className="flex items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-6 py-2.5">
-                    <button type="button" onClick={() => setView('compose')} className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors', view === 'compose' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700')}><Pencil size={14} /> Compose</button>
-                    <button type="button" onClick={() => setView('preview')} className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors', view === 'preview' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700')}><Eye size={14} /> Preview email</button>
-                    <span className="ml-auto text-[12px] font-semibold text-slate-400">{selected.length} of {attachments.length} attached</span>
-                </div>
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto px-6 py-5">
-                    {view === 'compose' ? (
-                        /* Two columns — recipient & message on the left, the item list fills a taller block on the right */
-                        <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2 lg:items-stretch">
-                            {/* Left — recipient, subject & message */}
-                            <div className="flex flex-col gap-5">
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <div>
-                                        <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Send to</label>
-                                        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com"
-                                            className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                    </div>
-                                    <div>
-                                        <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Send via</label>
-                                        <div className="inline-flex w-full rounded-lg border border-slate-200 bg-slate-50 p-1">
-                                            <button type="button" onClick={() => setVia('email')} className={cn('inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors', via === 'email' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800')}><Mail size={14} /> Email</button>
-                                            <button type="button" onClick={() => setVia('inapp')} className={cn('inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors', via === 'inapp' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800')}><Smartphone size={14} /> In-app</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Subject</label>
-                                    <input value={subj} onChange={e => setSubj(e.target.value)}
-                                        className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                                <div className="flex flex-1 flex-col">
-                                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Message</label>
-                                    <textarea value={text} onChange={e => setText(e.target.value)}
-                                        className="min-h-[150px] w-full flex-1 resize-y rounded-lg border border-slate-300 p-3 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                            </div>
-
-                            {/* Right — items to send (one scrollable block that fills the column) */}
-                            <div className="flex min-h-0 flex-col">
-                                <div className="mb-2 flex items-center justify-between">
-                                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Items to send</label>
-                                    <div className="flex items-center gap-3 text-[12px]">
-                                        <span className="font-semibold text-slate-500">{selected.length} selected</span>
-                                        {attachments.length > 0 && <button type="button" onClick={() => setChecked(selected.length ? new Set() : new Set(attachments.map((_, i) => i)))} className="font-semibold text-blue-600 hover:text-blue-700">{selected.length ? 'Clear all' : 'Select all'}</button>}
-                                    </div>
-                                </div>
-                                {requestedItems && requestedItems.length > 0 && (
-                                    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">Adjuster requested</p>
-                                        <ul className="space-y-0.5">{requestedItems.map((it, i) => <li key={i} className="text-[12px] text-amber-800">• {it}</li>)}</ul>
-                                    </div>
-                                )}
-                                {attachments.length === 0 ? (
-                                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-[12px] text-slate-400">No documents or evidence uploaded yet — add files on the accident, then send.</div>
-                                ) : (
-                                    <div className="min-h-[240px] flex-1 space-y-3 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50/40 p-3 lg:max-h-[52vh]">
-                                        {groupOrder.map(g => (
-                                            <div key={g}>
-                                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{g}</p>
-                                                <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                                                    {groups[g].map(i => (
-                                                        <label key={i} className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 text-[13px] text-slate-700 hover:bg-slate-50">
-                                                            <input type="checkbox" checked={checked.has(i)} onChange={() => toggle(i)} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                                            <FileText size={14} className="shrink-0 text-emerald-600" />
-                                                            <span className="truncate">{attachments[i].name}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        /* Email preview — exactly what the adjuster sees, including the action links (readable single column) */
-                        <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-slate-200">
-                            <div className="space-y-0.5 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[12px]">
-                                <p><span className="font-semibold text-slate-600">To:</span> <span className="text-slate-500">{email || 'adjuster@insurer.com'}</span></p>
-                                <p><span className="font-semibold text-slate-600">Subject:</span> <span className="text-slate-500">{subj || '—'}</span></p>
-                                <p><span className="font-semibold text-slate-600">Via:</span> <span className="text-slate-500">{via === 'email' ? 'Email' : 'In-app message'}</span></p>
-                            </div>
-                            <div className="space-y-3 bg-white px-4 py-4">
-                                <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-700">{text}</p>
-
-                                {/* Links inside the email — the adjuster acts on the file straight from here */}
-                                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Links in this email</p>
-                                    {onClaimLink && (
-                                        <button type="button" onClick={onClaimLink} className="flex w-full items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left text-[12px] font-semibold text-blue-700 transition-colors hover:bg-blue-100">
-                                            <FileText size={15} className="shrink-0" />
-                                            <span className="min-w-0 flex-1">Open the accident form — only the claim section is editable
-                                                <span className="block truncate text-[11px] font-normal text-blue-600/80">{claimFormName || 'accident-form.pdf'}</span>
-                                            </span>
-                                            <ExternalLink size={13} className="shrink-0 text-blue-400" />
-                                        </button>
-                                    )}
-                                    {onRequestLink && (
-                                        <button type="button" onClick={onRequestLink} className="flex w-full items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[12px] font-semibold text-amber-700 transition-colors hover:bg-amber-100">
-                                            <Inbox size={15} className="shrink-0" />
-                                            <span className="min-w-0 flex-1">Request documents you still need
-                                                <span className="block truncate text-[11px] font-normal text-amber-600/80">Opens the document-request form</span>
-                                            </span>
-                                            <ExternalLink size={13} className="shrink-0 text-amber-400" />
-                                        </button>
-                                    )}
-                                    {onChatLink && (
-                                        <button type="button" onClick={onChatLink} className="flex w-full items-center gap-2.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-left text-[12px] font-semibold text-violet-700 transition-colors hover:bg-violet-100">
-                                            <MessageSquare size={15} className="shrink-0" />
-                                            <span className="min-w-0 flex-1">Reply in the conversation
-                                                <span className="block truncate text-[11px] font-normal text-violet-600/80">Opens the case chat to message us back</span>
-                                            </span>
-                                            <ExternalLink size={13} className="shrink-0 text-violet-400" />
-                                        </button>
-                                    )}
-                                    <p className="text-[10px] text-slate-400">In this preview you can click a link to open the form or the conversation the adjuster would use.</p>
-                                </div>
-
-                                {selected.length > 0 && (
-                                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{selected.length} attachment{selected.length !== 1 ? 's' : ''}</p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {selected.map((a, i) => (
-                                                <span key={i} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600">
-                                                    <Paperclip size={11} className="text-slate-400" /><span className="max-w-[180px] truncate" title={a.name}>{a.name}</span>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-                {/* Footer */}
-                <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-4">
-                    <span className="text-[12px] text-slate-400">{selected.length} item{selected.length !== 1 ? 's' : ''} · {via === 'email' ? 'Email' : 'In-app'}</span>
-                    <div className="flex items-center gap-2">
-                        {view === 'compose'
-                            ? <button type="button" onClick={() => setView('preview')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"><Eye size={15} /> Preview</button>
-                            : <button type="button" onClick={() => setView('compose')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"><Pencil size={15} /> Edit</button>}
-                        <button type="button" onClick={() => onSend(email, via, subj, text, selected)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"><Send size={15} /> {mode === 'respond' ? 'Send response' : 'Send to adjuster'}</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 /** ── Requestable documents, typed by kind ──────────────────────────
  *  Each requestable item carries a type (Document/PDF, Image, Video). The type decides the
@@ -1665,7 +1546,6 @@ function CaseTab({ record: r, onUpdate, onEdit, autoCompose, onAutoComposeHandle
         ...buildShareable(r),
     ], [r, claimFormName]);
     const me = r.verifiedBy || 'Office';
-    const acc = typesOf(r) || 'Accident report';
     const [compose, setCompose] = useState<null | { mode: 'send' | 'respond'; requested?: string[] }>(null);
     const lastRequest = [...c.messages].reverse().find(m => m.kind === 'request');
     const readOnly = !onUpdate;
@@ -1679,13 +1559,17 @@ function CaseTab({ record: r, onUpdate, onEdit, autoCompose, onAutoComposeHandle
         const activity: AccidentActivity[] = [...(r.activity ?? []), { id: `case-${msg.id}`, at: msg.at, by: msg.by, role: msg.from === 'adjuster' ? 'adjuster' : 'office', action, detail }];
         onUpdate({ ...r, case: nextCase, activity });
     };
-    const doSend = (mode: 'send' | 'respond', email: string, via: 'email' | 'inapp', subject: string, body: string, attachments: CaseAttachment[]) => {
+    const accNo = (r as unknown as { accidentNumber?: string }).accidentNumber || r.id;
+    // Record a send into the accident's own Case thread. The central Messages
+    // conversation (external adjuster chat + secure link) is created by ShareToChat.
+    const recordCaseSend = (mode: 'send' | 'respond', p: { channel: 'in-app' | 'email'; recipientEmail?: string; subject: string; message: string; items: { name: string; group?: string }[] }) => {
         if (!onUpdate) return;
         const at = nowStampLocal();
-        const msg: CaseMessage = { id: newFileId(), kind: mode === 'respond' ? 'response' : 'send', from: 'carrier', by: me, at, subject, body, attachments };
+        const attachments: CaseAttachment[] = p.items.map(it => ({ name: it.name, group: it.group }));
+        const msg: CaseMessage = { id: newFileId(), kind: mode === 'respond' ? 'response' : 'send', from: 'carrier', by: me, at, subject: p.subject, body: p.message, attachments };
         const cur = r.case ?? { status: 'not_started' as const, adjusterName, adjusterEmail, messages: [] };
-        const nextCase: AccidentCase = { ...cur, adjusterName: cur.adjusterName || adjusterName, adjusterEmail: email || cur.adjusterEmail || adjusterEmail, status: mode === 'respond' ? 'responded' : 'sent', messages: [...cur.messages, msg] };
-        const activity: AccidentActivity[] = [...(r.activity ?? []), { id: `case-${msg.id}`, at, by: me, role: 'office', action: mode === 'respond' ? 'Responded to adjuster' : 'Sent case to adjuster', detail: `${attachments.length} item(s) via ${via === 'email' ? 'Email' : 'In-app'} — “${subject}”` }];
+        const nextCase: AccidentCase = { ...cur, adjusterName: cur.adjusterName || adjusterName, adjusterEmail: p.recipientEmail || cur.adjusterEmail || adjusterEmail, status: mode === 'respond' ? 'responded' : 'sent', messages: [...cur.messages, msg] };
+        const activity: AccidentActivity[] = [...(r.activity ?? []), { id: `case-${msg.id}`, at, by: me, role: 'office', action: mode === 'respond' ? 'Responded to adjuster' : 'Sent case to adjuster', detail: `${attachments.length} item(s) via ${p.channel === 'email' ? 'Email' : 'In-app'} — “${p.subject}”` }];
         onUpdate({ ...r, case: nextCase, activity });
         setCompose(null);
     };
@@ -1874,19 +1758,28 @@ function CaseTab({ record: r, onUpdate, onEdit, autoCompose, onAutoComposeHandle
             </div>
 
             {compose && (
-                <MailComposeModal
-                    toName={adjusterName} toEmail={adjusterEmail}
-                    subject={compose.mode === 'respond' ? `Re: Requested documents — ${acc}` : `Accident report — ${acc} (${r.driverName || 'driver'})`}
-                    body={compose.mode === 'respond'
+                <ShareToChat
+                    open
+                    onClose={() => setCompose(null)}
+                    title={compose.mode === 'respond' ? 'Respond to adjuster' : 'Send to adjuster'}
+                    subtitle={compose.mode === 'respond'
+                        ? `Reply to ${adjusterName || 'the adjuster'} with the requested documents.`
+                        : `Send ${adjusterName || 'the adjuster'} the accident report with documents & evidence.`}
+                    source={{ type: 'accident', id: accNo, label: `Accident ${accNo}` }}
+                    items={shareable.map(a => ({ name: a.name, group: a.group }))}
+                    recipientName={adjusterName}
+                    recipientEmail={adjusterEmail}
+                    recipientRoleTag="External"
+                    defaultChannel="email"
+                    defaultSubject={compose.mode === 'respond'
+                        ? `Re: Requested documents — accident ${accNo}`
+                        : `Accident report — ${r.driverName || 'driver'} · ${accNo}`}
+                    defaultMessage={compose.mode === 'respond'
                         ? `Hi ${adjusterName || 'there'},\n\nPlease find the requested documents attached.\n\nThanks,\n${me}`
                         : `Hi ${adjusterName || 'there'},\n\nPlease find attached our accident report for ${r.driverName || 'our driver'} (unit ${r.unitId || '—'}) on ${fmtDateTime(r.dateTime)} at ${r.location || 'the location noted'}, along with the supporting documents and evidence.\n\nRegards,\n${me}`}
-                    attachments={shareable} requestedItems={compose.requested} mode={compose.mode}
-                    claimFormName={claimFormName}
-                    onSend={(email, via, subject, body, attachments) => doSend(compose.mode, email, via, subject, body, attachments)}
-                    onClose={() => setCompose(null)}
-                    onRequestLink={() => { setCompose(null); setRequestForm(true); }}
-                    onClaimLink={() => { setCompose(null); setClaimForm(true); }}
-                    onChatLink={() => { setCompose(null); setMobileView('chat'); }}
+                    currentUserName={me}
+                    onShared={(p) => recordCaseSend(compose.mode, { channel: p.channel, recipientEmail: p.recipientEmail, subject: p.subject, message: p.message, items: p.items })}
+                    onSent={() => setCompose(null)}
                 />
             )}
             {requestForm && (
@@ -2024,46 +1917,35 @@ function activityIcon(action: string): LucideIcon {
     const a = action.toLowerCase();
     if (a.includes('verif')) return ShieldCheck;
     if (a.includes('respond')) return CornerUpLeft;
+    if (a.includes('delete') || a.includes('removed')) return Trash2;
+    if (a.includes('upload') || a.includes('attach')) return Upload;
+    if (a.includes('video') || a.includes('photo') || a.includes('evidence') || a.includes('dashcam') || a.includes('image')) return Video;
+    if (a.includes('document') || a.includes('file')) return FileText;
+    if (a.includes('shar') || a.includes('notif')) return Share2;
+    if (a.includes('sign')) return Signature;
+    if (a.includes('assign')) return Users;
+    if (a.includes('note') || a.includes('comment')) return MessageSquare;
+    if (a.includes('open') || a.includes('view')) return Eye;
     if (a.includes('sent')) return Send;
     if (a.includes('request')) return Inbox;
     if (a.includes('claim')) return FileText;
-    if (a.includes('updat')) return Pencil;
+    if (a.includes('updat') || a.includes('edit')) return Pencil;
     if (a.includes('report') || a.includes('creat')) return AlertTriangle;
     return ActivityIcon;
 }
 function ActivityTab({ activity }: { activity: AccidentActivity[] }) {
-    if (activity.length === 0) {
-        return <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">No activity recorded yet.</div>;
-    }
-    return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-5 py-3">
-                <ActivityIcon size={15} className="text-blue-600" />
-                <h3 className="text-sm font-bold text-slate-800">Activity — report, review, claim &amp; adjuster case</h3>
-            </div>
-            {/* Scroll on the wrapper, not the <ol> — the timeline dots use negative left offsets and
-                would be clipped if overflow lived on the <ol> itself. */}
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            <ol className="relative space-y-5 border-l border-slate-200 pl-8">
-                {activity.map(a => {
-                    const role = ACTIVITY_ROLE_META[a.role];
-                    const Icon = activityIcon(a.action);
-                    return (
-                        <li key={a.id} className="relative">
-                            <span className={cn('absolute -left-[41px] top-0 flex h-6 w-6 items-center justify-center rounded-full text-white ring-4 ring-white', role.ring)}><Icon size={12} /></span>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-semibold text-slate-800">{a.action}</span>
-                                <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold', role.tone)}>{role.label}</span>
-                                <span className="flex items-center gap-1 text-[12px] text-slate-400"><Clock size={11} /> {fmtDateTime(a.at)}</span>
-                            </div>
-                            <p className="mt-0.5 text-[13px] text-slate-600">
-                                <span className="font-medium text-slate-700">{a.by}</span>{a.detail ? ` — ${a.detail}` : ''}
-                            </p>
-                        </li>
-                    );
-                })}
-            </ol>
-            </div>
-        </div>
-    );
+    const entries: ActivityEntry[] = activity.map(a => {
+        const role = ACTIVITY_ROLE_META[a.role];
+        return {
+            id: a.id,
+            icon: activityIcon(a.action),
+            iconTone: role.ring,
+            title: a.action,
+            badge: { label: role.label, tone: role.tone },
+            by: a.by,
+            detail: a.detail,
+            at: fmtDateTime(a.at),
+        };
+    });
+    return <ActivityTimeline heading="Activity — report, review, claim & adjuster case" entries={entries} />;
 }
