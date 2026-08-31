@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { buildAgentReply, type AiPanel } from './ai-agents';
+import { interpretAgent, AGENTS, type AiPanel, type AiAction } from './ai-agents';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messages store — the single source of truth for every conversation in the app.
@@ -76,6 +76,7 @@ export interface ChatMessage {
   record?: RecordRef;         // a shared record link (click → open the record)
   widget?: ChatWidget;        // an interactive task card
   panel?: AiPanel;            // an AI-agent data card (drivers / documents / …)
+  action?: AiAction;          // an AI-agent action-result card (mail sent, training assigned …)
   suggestions?: string[];     // AI-agent follow-up quick prompts
 }
 
@@ -94,6 +95,7 @@ export interface Conversation {
   color: string;              // avatar bg
   online?: boolean;
   ai?: boolean;
+  agentKey?: string;          // AI agents — links to an AgentDef in ai-agents.ts
 
   kind: ConvKind;
   channel: ConvChannel;
@@ -320,54 +322,31 @@ const SEED_EXTERNAL: Conversation[] = [
   },
 ];
 
-const SEED_AI: Conversation[] = [
-  {
-    id: 'ai1', name: 'Safety Copilot', role: 'AI Agent · Safety insights', roleTag: 'AI Agent', color: 'bg-violet-600', online: true, ai: true,
-    kind: 'internal', channel: 'in-app', status: 'active', lastAt: '10:30 AM', unread: 1,
-    messages: [
-      { id: 'm1', fromMe: false, day: 'Today', text: 'I analyzed today’s telematics — 3 harsh-braking events on TRK-042. Want a summary?', at: '10:28 AM' },
-      { id: 'm2', fromMe: true, text: 'Yes, summarize the high-severity ones.', at: '10:29 AM' },
-      { id: 'm3', fromMe: false, text: '2 were High severity (John Smith, Robert Chen). I drafted coaching notes — reply “apply” to assign training.', at: '10:30 AM' },
-    ],
-  },
-  {
-    id: 'ai2', name: 'Compliance Assistant', role: 'AI Agent · DQ & compliance', roleTag: 'AI Agent', color: 'bg-blue-600', online: true, ai: true,
-    kind: 'internal', channel: 'in-app', status: 'active', lastAt: '9:15 AM', unread: 0,
-    messages: [
-      { id: 'm1', fromMe: false, day: 'Today', text: 'Maria Rodriguez’s medical certificate expires in 12 days. Should I notify her?', at: '9:10 AM' },
-      { id: 'm2', fromMe: true, text: 'Yes, send a reminder.', at: '9:12 AM' },
-      { id: 'm3', fromMe: false, text: 'Reminder sent ✅ and flagged on her DQ file.', at: '9:15 AM' },
-    ],
-  },
-  {
-    id: 'ai3', name: 'Dispatch AI', role: 'AI Agent · Load planning', roleTag: 'AI Agent', color: 'bg-emerald-600', online: true, ai: true,
-    kind: 'internal', channel: 'in-app', status: 'active', lastAt: 'Yesterday', unread: 0,
-    messages: [
-      { id: 'm1', fromMe: false, day: 'Yesterday', text: 'The Reno run has no assigned driver. James Sullivan is closest and within HOS limits.', at: '3:40 PM' },
-      { id: 'm2', fromMe: true, text: 'Assign him.', at: '3:42 PM' },
-      { id: 'm3', fromMe: false, text: 'Done — load #4821 assigned to James Sullivan.', at: '3:43 PM' },
-    ],
-  },
-  {
-    id: 'ai4', name: 'HOS Advisor', role: 'AI Agent · Hours of Service', roleTag: 'AI Agent', color: 'bg-orange-600', online: true, ai: true,
-    kind: 'internal', channel: 'in-app', status: 'active', lastAt: 'Mon', unread: 0,
-    messages: [
-      { id: 'm1', fromMe: false, day: 'Monday', text: '2 drivers are within 1 hour of their 14-hour limit. I can suggest rest stops.', at: '5:02 PM' },
-      { id: 'm2', fromMe: true, text: 'Show me.', at: '5:03 PM' },
-      { id: 'm3', fromMe: false, text: 'Sent to your Hours of Service dashboard.', at: '5:05 PM' },
-    ],
-  },
-];
+// One conversation per specialized AI agent (from the AGENTS catalog). Each opens
+// with the agent's intro so the thread and list preview aren't empty.
+const SEED_AI: Conversation[] = AGENTS.map((a, i) => ({
+  id: a.key, name: a.name, role: a.role, roleTag: 'AI Agent' as RoleTag, color: a.color,
+  online: true, ai: true, agentKey: a.key,
+  kind: 'internal' as ConvKind, channel: 'in-app' as ConvChannel, status: 'active' as ConvStatus,
+  lastAt: 'Today', unread: i === 0 ? 1 : 0,
+  messages: [
+    { id: 'm1', fromMe: false, day: 'Today', text: `Hi! I’m ${a.name} — ${a.greeting}`, at: '9:00 AM',
+      suggestions: a.prompts },
+  ],
+}));
 
 function seedConversations(): Conversation[] {
   return [...SEED_INTERNAL, ...SEED_EXTERNAL, ...SEED_AI];
 }
 
 // ── persistence + tiny pub/sub store ─────────────────────────────────────────
-const STORAGE_KEY = 'messages:conversations:v1';
+// v2: specialized AI agents (hiring / safety / HOS / violations / DQ / account /
+// payroll) replaced the four generic agents.
+const STORAGE_KEY = 'messages:conversations:v2';
 
 function load(): Conversation[] {
   try {
+    localStorage.removeItem('messages:conversations:v1'); // drop the superseded seed
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Conversation[];
@@ -482,9 +461,23 @@ export function markRead(convId: string) {
 }
 
 // ── AI agent chat (front-end demo) ───────────────────────────────────────────
-// The user asks an AI agent something; we append their message, show a brief
-// "typing" state, then deliver a canned reply with an optional rich data panel.
+// The user asks an AI agent something (natural language OR a /command with an
+// optional @contact); we append their message, show a brief "typing" state, then
+// deliver a specialized reply — a data panel and/or an action-result card. Actions
+// that target a driver are also delivered into that driver's own chat.
 const aiTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Resolve an `@token` (first name or full name) to an internal contact conversation. */
+function resolveContact(token: string): { id: string; name: string; first: string } {
+  const t = token.replace(/^@/, '').trim().toLowerCase();
+  const found = conversations.find(c =>
+    c.kind === 'internal' && !c.ai &&
+    (c.name.toLowerCase() === t || c.name.toLowerCase().split(/\s+/)[0] === t));
+  if (found) return { id: found.id, name: found.name, first: found.name.split(/\s+/)[0] };
+  // Unknown contact → create a driver chat named after the token (title-cased).
+  const name = token.replace(/^@/, '').trim().replace(/\b\w/g, m => m.toUpperCase()) || 'Driver';
+  return { id: getOrCreateDriverConversation(name), name, first: name.split(/\s+/)[0] };
+}
 
 /** Send a prompt to an AI agent conversation and schedule its demo reply. */
 export function askAgent(convId: string, text: string) {
@@ -500,18 +493,27 @@ export function askAgent(convId: string, text: string) {
     messages: [...c.messages, { id: uid('me'), fromMe: true, text: clean, at, iso: nowIso() }],
   }), true);
 
-  // 2. Show the agent "typing", then deliver the reply.
-  const reply = buildAgentReply(conv.name, clean);
+  // 2. Interpret against the specialized agent.
+  const reply = interpretAgent(conv.agentKey, clean);
   setTyping(convId, true);
   const prev = aiTimers.get(convId);
   if (prev) clearTimeout(prev);
   const t = setTimeout(() => {
     setTyping(convId, false);
     aiTimers.delete(convId);
+
+    // 3. If the action targets a contact, deliver the message into their chat.
+    let action = reply.action;
+    if (reply.deliver) {
+      const c = resolveContact(reply.deliver.toToken);
+      sendMessage(c.id, reply.deliver.text);
+      if (action) action = { ...action, title: `${action.title} → ${c.first}`, openConvId: c.id, openLabel: `Open chat with ${c.first}` };
+    }
+
     const rat = nowTime();
     const msg: ChatMessage = {
       id: uid('ai'), fromMe: false, text: reply.text, at: rat, iso: nowIso(),
-      panel: reply.panel, suggestions: reply.suggestions,
+      panel: reply.panel, action, suggestions: reply.suggestions,
     };
     patch(convId, c => ({ ...c, lastAt: rat, messages: [...c.messages, msg] }), true);
   }, 850);

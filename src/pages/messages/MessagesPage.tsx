@@ -5,7 +5,7 @@ import {
   Image as ImageIcon, Play, FileText, Mail, Hash, Download, Eye, Share2, X, Clock,
   Bot, Users, Link2, Copy, Ban, RotateCcw, ShieldCheck, ExternalLink,
   GraduationCap, PenLine, ClipboardList, Upload, ClipboardCheck, FileWarning, BellRing, Megaphone, UserX, CheckCircle2, CornerUpRight,
-  AlertTriangle, Ticket, UserPlus, Sparkles, ArrowRight,
+  AlertTriangle, Ticket, UserPlus, Sparkles, ArrowRight, DollarSign, AtSign, Slash, Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,10 @@ import {
   type Conversation, type RoleTag, type MsgAttachment, type AttachmentKind, type RecordRef,
   type ChatWidget, type WidgetKind,
 } from './messages-store';
-import { DEFAULT_AGENT_PROMPTS, type AiPanel, type AiTone, type AgentIntent } from './ai-agents';
+import {
+  DEFAULT_AGENT_PROMPTS, getAgent,
+  type AiPanel, type AiTone, type AgentIntent, type AiAction, type AiActionIcon, type AgentCommand,
+} from './ai-agents';
 import { ShareToChat } from '@/components/share/ShareToChat';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,14 +157,20 @@ const CONTACT_DETAILS: Record<string, ContactDetails> = {
     media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'CDL-renewal-notice.pdf', size: '54 KB', ext: 'PDF' }] } },
   c15: { userId: 'ADM-0033', email: 'rachel.green@acmelogistics.co', phone: '+1 (512) 555-0133',
     media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Onboarding-packet.pdf', size: '320 KB', ext: 'PDF' }] } },
-  ai1: { userId: 'AGENT-SAFETY', email: 'safety-copilot@tracksmart.ai', phone: 'Always available',
+  'ai-hiring': { userId: 'AGENT-HIRING', email: 'hiring@tracksmart.ai', phone: 'Always available',
+    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Hiring-pipeline.pdf', size: '140 KB', ext: 'PDF' }] } },
+  'ai-safety': { userId: 'AGENT-SAFETY', email: 'safety@tracksmart.ai', phone: 'Always available',
     media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Safety-summary.pdf', size: '180 KB', ext: 'PDF' }] } },
-  ai2: { userId: 'AGENT-DQ', email: 'compliance@tracksmart.ai', phone: 'Always available',
-    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Expiring-credentials.pdf', size: '96 KB', ext: 'PDF' }] } },
-  ai3: { userId: 'AGENT-DISPATCH', email: 'dispatch@tracksmart.ai', phone: 'Always available',
-    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Load-plan-Reno.pdf', size: '120 KB', ext: 'PDF' }] } },
-  ai4: { userId: 'AGENT-HOS', email: 'hos@tracksmart.ai', phone: 'Always available',
+  'ai-hos': { userId: 'AGENT-HOS', email: 'hos@tracksmart.ai', phone: 'Always available',
     media: { photos: [], videos: [], docs: [] } },
+  'ai-violations': { userId: 'AGENT-VIOLATIONS', email: 'violations@tracksmart.ai', phone: 'Always available',
+    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Open-violations.pdf', size: '104 KB', ext: 'PDF' }] } },
+  'ai-dq': { userId: 'AGENT-DQ', email: 'dq@tracksmart.ai', phone: 'Always available',
+    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Expiring-credentials.pdf', size: '96 KB', ext: 'PDF' }] } },
+  'ai-account': { userId: 'AGENT-ACCOUNT', email: 'account@tracksmart.ai', phone: 'Always available',
+    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Account-overview.pdf', size: '120 KB', ext: 'PDF' }] } },
+  'ai-paystub': { userId: 'AGENT-PAYROLL', email: 'payroll@tracksmart.ai', phone: 'Always available',
+    media: { photos: [], videos: [], docs: [{ id: 'd1', name: 'Pay-run-Aug25.pdf', size: '150 KB', ext: 'PDF' }] } },
 };
 // Build a profile from the conversation itself — used for shared / external
 // chats that have no hand-written entry. Files shared in the thread become media.
@@ -279,15 +288,51 @@ const AI_TONE: Record<AiTone, { chip: string; num: string; sq: string }> = {
 };
 
 const AI_INTENT: Record<AgentIntent, { icon: LucideIcon; tone: AiTone }> = {
-  greeting:  { icon: Sparkles,       tone: 'violet' },
-  help:      { icon: Sparkles,       tone: 'violet' },
-  drivers:   { icon: Users,          tone: 'blue' },
-  documents: { icon: FileText,       tone: 'blue' },
-  expiring:  { icon: BellRing,       tone: 'amber' },
-  accidents: { icon: AlertTriangle,  tone: 'rose' },
-  tickets:   { icon: Ticket,         tone: 'amber' },
-  hiring:    { icon: UserPlus,       tone: 'violet' },
+  greeting:   { icon: Sparkles,       tone: 'violet' },
+  help:       { icon: Sparkles,       tone: 'violet' },
+  drivers:    { icon: Users,          tone: 'blue' },
+  documents:  { icon: FileText,       tone: 'blue' },
+  expiring:   { icon: BellRing,       tone: 'amber' },
+  accidents:  { icon: AlertTriangle,  tone: 'rose' },
+  tickets:    { icon: Ticket,         tone: 'amber' },
+  hiring:     { icon: UserPlus,       tone: 'violet' },
+  onboarding: { icon: UserPlus,       tone: 'violet' },
+  safety:     { icon: ShieldCheck,    tone: 'rose' },
+  hos:        { icon: Clock,          tone: 'amber' },
+  violations: { icon: AlertTriangle,  tone: 'amber' },
+  dqfiles:    { icon: ClipboardCheck, tone: 'blue' },
+  account:    { icon: Building2,      tone: 'emerald' },
+  paystub:    { icon: DollarSign,     tone: 'emerald' },
 };
+
+// Action-result card icons (the agent "did something").
+const AI_ACTION_ICON: Record<AiActionIcon, LucideIcon> = {
+  mail: Mail, send: Send, check: CheckCircle2, bell: BellRing, upload: Upload,
+  graduation: GraduationCap, file: FileText, user: Users, dollar: DollarSign, clipboard: ClipboardList,
+};
+
+// A compact "the agent did it" result card — icon + title + status, with an
+// optional button to open the driver's chat where the message was delivered.
+function AiActionCard({ action, onOpen }: { action: AiAction; onOpen?: (convId: string) => void }) {
+  const Icon = AI_ACTION_ICON[action.icon];
+  const tone = AI_TONE[action.tone];
+  return (
+    <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tone.sq)}><Icon size={17} /></span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-bold text-slate-800">{action.title}</p>
+        {action.detail && <p className="truncate text-[11.5px] text-slate-500">{action.detail}</p>}
+      </div>
+      {action.status && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', tone.chip)}>{action.status}</span>}
+      {action.openConvId && onOpen && (
+        <button type="button" onClick={() => onOpen(action.openConvId!)}
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-slate-700">
+          {action.openLabel ?? 'Open chat'} <ArrowRight size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function AiPanelCard({ panel, onOpen }: { panel: AiPanel; onOpen?: (path: string) => void }) {
   const { icon: Icon, tone } = AI_INTENT[panel.intent];
@@ -481,20 +526,75 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
     if (selected.ai) askAgent(selected.id, text);
     else sendMessage(selected.id, text);
     setDraft('');
+    setPicker(null); setPendingCmd(null);
   };
 
   // Send a canned prompt to the current AI agent (quick-prompt chips).
   const sendPrompt = (text: string) => { if (selected?.ai) askAgent(selected.id, text); };
 
-  // Quick-prompt chips: the latest AI reply's follow-ups, else the starter set.
+  // The specialized agent behind this AI chat (its prompts + slash commands).
+  const agent = selected?.ai ? getAgent(selected.agentKey) : undefined;
+
+  // Quick-prompt chips: the latest AI reply's follow-ups, else the agent's starters.
   const aiSuggestions = useMemo(() => {
     if (!selected?.ai) return [];
     for (let i = selected.messages.length - 1; i >= 0; i--) {
       const s = selected.messages[i].suggestions;
       if (s && s.length) return s;
     }
-    return DEFAULT_AGENT_PROMPTS;
-  }, [selected]);
+    return agent?.prompts ?? DEFAULT_AGENT_PROMPTS;
+  }, [selected, agent]);
+
+  // ── @contact / slash-command pickers (AI console helpers) ──
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [picker, setPicker] = useState<null | 'contact' | 'command'>(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pendingCmd, setPendingCmd] = useState<AgentCommand | null>(null);
+
+  const pickerContacts = useMemo(() => {
+    const q = pickerQuery.toLowerCase();
+    return convos.filter(c => c.kind === 'internal' && !c.ai
+      && (!q || c.name.toLowerCase().includes(q) || c.role.toLowerCase().includes(q))).slice(0, 6);
+  }, [convos, pickerQuery]);
+  const pickerCommands = useMemo(() => {
+    const q = pickerQuery.toLowerCase();
+    return (agent?.commands ?? []).filter(c => !q || c.id.includes(q) || c.label.toLowerCase().includes(q));
+  }, [agent, pickerQuery]);
+
+  const closePicker = () => { setPicker(null); setPendingCmd(null); };
+
+  const onDraftChange = (v: string) => {
+    setDraft(v);
+    if (!selected?.ai) { setPicker(null); return; }
+    const m = v.match(/(?:^|\s)([@/])([\w'’.-]*)$/);
+    if (m) { setPicker(m[1] === '@' ? 'contact' : 'command'); setPickerQuery(m[2]); }
+    else setPicker(null);
+  };
+
+  const runCmd = (cmd: AgentCommand, contactFirst?: string) => {
+    if (!selected) return;
+    askAgent(selected.id, contactFirst ? `/${cmd.id} @${contactFirst}` : `/${cmd.id}`);
+    setDraft(''); closePicker(); taRef.current?.focus();
+  };
+  const pickCommand = (cmd: AgentCommand) => {
+    if (cmd.needsContact) {
+      setDraft(d => d.replace(/[/][\w'’.-]*$/, ''));   // drop the /token
+      setPendingCmd(cmd); setPicker('contact'); setPickerQuery('');
+      taRef.current?.focus();
+    } else { runCmd(cmd); }
+  };
+  const pickContact = (c: Conversation) => {
+    const first = c.name.split(' ')[0];
+    if (pendingCmd) { runCmd(pendingCmd, first); return; }
+    setDraft(d => d.replace(/[@][\w'’.-]*$/, `@${first} `));
+    setPicker(null); taRef.current?.focus();
+  };
+  const openTrigger = (t: '@' | '/') => {
+    if (!selected?.ai) return;
+    setDraft(d => (d && !d.endsWith(' ') ? d + ' ' : d) + t);
+    setPicker(t === '@' ? 'contact' : 'command'); setPickerQuery(''); setPendingCmd(null);
+    taRef.current?.focus();
+  };
 
   const disabledExternal = selected?.kind === 'external' && selected.status === 'disabled';
   const oneWayEmail = selected?.kind === 'external' && !!selected.emailOnly;
@@ -760,6 +860,9 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                             {m.panel && (
                               <AiPanelCard panel={m.panel} onOpen={(path) => onNavigate?.(path)} />
                             )}
+                            {m.action && (
+                              <AiActionCard action={m.action} onOpen={(id) => select(id)} />
+                            )}
                           </div>
                         </div>
                       </div>
@@ -801,8 +904,11 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                   {/* AI quick-prompt chips — canned questions the agent can answer */}
                   {selected.ai && aiSuggestions.length > 0 && (
                     <div className="mx-auto mb-2.5 w-full max-w-5xl">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">
-                        <Sparkles size={12} className="text-violet-500" /> Ask {selected.name.split(' ')[0]}
+                      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">
+                        <span className="flex items-center gap-1.5"><Sparkles size={12} className="text-violet-500" /> Ask {selected.name.split(' ')[0]}</span>
+                        <span className="hidden items-center gap-1 font-semibold normal-case text-slate-400 sm:flex">
+                          · <AtSign size={11} className="text-slate-400" /> mention a driver · <Slash size={11} className="text-slate-400" /> run a task
+                        </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {aiSuggestions.map(s => (
@@ -816,13 +922,71 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                   )}
                   <div className="mx-auto flex w-full max-w-5xl items-end gap-2">
                     <button type="button" onClick={() => setShareOpen(true)} title="Attach / share" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Paperclip size={18} /></button>
+                    {selected.ai && (
+                      <>
+                        <button type="button" onClick={() => openTrigger('@')} title="Mention a driver / contact" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-600"><AtSign size={18} /></button>
+                        <button type="button" onClick={() => openTrigger('/')} title="Run a task" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-600"><Slash size={18} /></button>
+                      </>
+                    )}
                     <div className="relative flex-1">
+                      {/* @contact / slash-command picker */}
+                      {selected.ai && picker && (
+                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+                          <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
+                            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                              {picker === 'command'
+                                ? <><Slash size={12} /> Tasks</>
+                                : <><AtSign size={12} /> {pendingCmd ? `Send “${pendingCmd.label}” to…` : 'Mention a contact'}</>}
+                            </span>
+                            <button type="button" onClick={closePicker} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={14} /></button>
+                          </div>
+                          {picker === 'command' ? (
+                            pickerCommands.length === 0
+                              ? <p className="px-3 py-4 text-center text-[12px] text-slate-400">No tasks match.</p>
+                              : pickerCommands.map(cmd => {
+                                  const CIcon = AI_ACTION_ICON[cmd.icon];
+                                  return (
+                                    <button key={cmd.id} type="button" onClick={() => pickCommand(cmd)}
+                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50">
+                                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><CIcon size={14} /></span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-[12.5px] font-bold text-slate-800">/{cmd.id} <span className="font-medium text-slate-400">· {cmd.label}</span></span>
+                                        <span className="block truncate text-[11px] text-slate-500">{cmd.hint}</span>
+                                      </span>
+                                      {cmd.needsContact && <AtSign size={13} className="shrink-0 text-slate-300" />}
+                                    </button>
+                                  );
+                                })
+                          ) : (
+                            pickerContacts.length === 0
+                              ? <p className="px-3 py-4 text-center text-[12px] text-slate-400">No contacts match.</p>
+                              : pickerContacts.map(c => (
+                                  <button key={c.id} type="button" onClick={() => pickContact(c)}
+                                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50">
+                                    <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white', c.color)}>{initials(c.name)}</span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-[12.5px] font-bold text-slate-800">{c.name}</span>
+                                      <span className="block truncate text-[11px] text-slate-500">{c.role}</span>
+                                    </span>
+                                  </button>
+                                ))
+                          )}
+                        </div>
+                      )}
                       <textarea
+                        ref={taRef}
                         value={draft}
-                        onChange={e => setDraft(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                        onChange={e => onDraftChange(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Escape' && picker) { e.preventDefault(); setPicker(null); return; }
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            if (picker === 'command' && pickerCommands[0]) { e.preventDefault(); pickCommand(pickerCommands[0]); return; }
+                            if (picker === 'contact' && pickerContacts[0]) { e.preventDefault(); pickContact(pickerContacts[0]); return; }
+                            e.preventDefault(); send();
+                          }
+                        }}
                         rows={1}
-                        placeholder={selected.ai ? `Ask ${selected.name.split(' ')[0]} anything…` : `Message ${selected.name.split(' ')[0]}…`}
+                        placeholder={selected.ai ? `Ask ${selected.name.split(' ')[0]} — or type @ / …` : `Message ${selected.name.split(' ')[0]}…`}
                         className="max-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                       <button type="button" title="Emoji" className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Smile size={17} /></button>
