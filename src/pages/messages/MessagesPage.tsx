@@ -5,15 +5,18 @@ import {
   Image as ImageIcon, Play, FileText, Mail, Hash, Download, Eye, Share2, X, Clock,
   Bot, Users, Link2, Copy, Ban, RotateCcw, ShieldCheck, ExternalLink,
   GraduationCap, PenLine, ClipboardList, Upload, ClipboardCheck, FileWarning, BellRing, Megaphone, UserX, CheckCircle2, CornerUpRight,
+  AlertTriangle, Ticket, UserPlus, Sparkles, ArrowRight,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   useConversations, sendMessage, markRead, setExternalEnabled, startNewExternalChat,
   externalChatUrl, consumeMessagesFocus, setPendingRecord, setWidgetStatus,
+  askAgent, useAiTyping,
   type Conversation, type RoleTag, type MsgAttachment, type AttachmentKind, type RecordRef,
   type ChatWidget, type WidgetKind,
 } from './messages-store';
+import { DEFAULT_AGENT_PROMPTS, type AiPanel, type AiTone, type AgentIntent } from './ai-agents';
 import { ShareToChat } from '@/components/share/ShareToChat';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -262,6 +265,88 @@ function valueTone(v: string): string {
   return 'bg-slate-100 text-slate-600';
 }
 
+// ── AI agent data panel ──────────────────────────────────────────────────────
+// The rich data card an AI agent attaches to a reply (drivers / documents /
+// expiring / accidents / tickets / hiring): a header, KPI tiles, a list of rows
+// with colored status chips, and a deep-link into the matching page.
+const AI_TONE: Record<AiTone, { chip: string; num: string; sq: string }> = {
+  rose:    { chip: 'bg-rose-100 text-rose-700',       num: 'text-rose-600',    sq: 'bg-rose-50 text-rose-600' },
+  amber:   { chip: 'bg-amber-100 text-amber-700',     num: 'text-amber-600',   sq: 'bg-amber-50 text-amber-600' },
+  emerald: { chip: 'bg-emerald-100 text-emerald-700', num: 'text-emerald-600', sq: 'bg-emerald-50 text-emerald-600' },
+  blue:    { chip: 'bg-blue-100 text-blue-700',       num: 'text-blue-600',    sq: 'bg-blue-50 text-blue-600' },
+  violet:  { chip: 'bg-violet-100 text-violet-700',   num: 'text-violet-600',  sq: 'bg-violet-50 text-violet-600' },
+  slate:   { chip: 'bg-slate-100 text-slate-600',     num: 'text-slate-700',   sq: 'bg-slate-100 text-slate-500' },
+};
+
+const AI_INTENT: Record<AgentIntent, { icon: LucideIcon; tone: AiTone }> = {
+  greeting:  { icon: Sparkles,       tone: 'violet' },
+  help:      { icon: Sparkles,       tone: 'violet' },
+  drivers:   { icon: Users,          tone: 'blue' },
+  documents: { icon: FileText,       tone: 'blue' },
+  expiring:  { icon: BellRing,       tone: 'amber' },
+  accidents: { icon: AlertTriangle,  tone: 'rose' },
+  tickets:   { icon: Ticket,         tone: 'amber' },
+  hiring:    { icon: UserPlus,       tone: 'violet' },
+};
+
+function AiPanelCard({ panel, onOpen }: { panel: AiPanel; onOpen?: (path: string) => void }) {
+  const { icon: Icon, tone } = AI_INTENT[panel.intent];
+  const accent = AI_TONE[tone];
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-start gap-2.5 border-b border-slate-100 p-3">
+        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', accent.sq)}><Icon size={17} /></span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13.5px] font-bold text-slate-800">{panel.title}</p>
+          {panel.summary && <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">{panel.summary}</p>}
+        </div>
+      </div>
+
+      {/* KPI tiles */}
+      {panel.stats && panel.stats.length > 0 && (
+        <div className={cn('grid gap-px bg-slate-100', panel.stats.length >= 4 ? 'grid-cols-4' : panel.stats.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+          {panel.stats.map(s => (
+            <div key={s.label} className="bg-white px-2.5 py-2 text-center">
+              <p className={cn('text-[17px] font-extrabold leading-none', s.tone ? AI_TONE[s.tone].num : 'text-slate-700')}>{s.value}</p>
+              <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Rows */}
+      {panel.rows && panel.rows.length > 0 && (
+        <div className="divide-y divide-slate-50">
+          {panel.rows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12.5px] font-semibold text-slate-800">{r.title}</p>
+                {r.subtitle && <p className="truncate text-[11px] text-slate-500">{r.subtitle}</p>}
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {r.badge && <span className={cn('rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide', r.tone ? AI_TONE[r.tone].chip : 'bg-slate-100 text-slate-600')}>{r.badge}</span>}
+                {r.meta && <span className="text-[10.5px] font-medium text-slate-400">{r.meta}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Footnote + deep link */}
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2.5">
+        <span className="min-w-0 truncate text-[10.5px] font-medium text-slate-400">{panel.footnote}</span>
+        {panel.link && (
+          <button type="button" onClick={() => onOpen?.(panel.link!.path)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-slate-700">
+            {panel.link.label} <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // A task card inside a chat bubble — a titled header, a data grid of the record's
 // details (from widget.meta), and the primary action. Always light for readability.
 function ChatTaskCard({ widget, onComplete, onOpenRecord }: {
@@ -330,6 +415,7 @@ type PreviewItem = { type: 'photo' | 'video' | 'doc'; title: string; hue?: strin
 
 export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?: string; onNavigate?: (path: string) => void }) {
   const convos = useConversations();
+  const typingIds = useAiTyping();
   const [selectedId, setSelectedId] = useState<string>(() => consumeMessagesFocus() ?? convos[0]?.id ?? '');
   const [listTab, setListTab] = useState<'contacts' | 'ai'>('contacts');
   const [search, setSearch] = useState('');
@@ -358,6 +444,8 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
 
   const selected = convos.find(c => c.id === selectedId) ?? null;
   const details = selected ? deriveDetails(selected) : null;
+  // Agent is mid-reply (typing bubble).
+  const aiTyping = !!selected?.ai && typingIds.includes(selected.id);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const inTab = convos.filter(c => !!c.ai === (listTab === 'ai'));
@@ -368,7 +456,7 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
   const contactsUnread = convos.filter(c => !c.ai).reduce((n, c) => n + c.unread, 0);
   const aiUnread = convos.filter(c => c.ai).reduce((n, c) => n + c.unread, 0);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [selectedId, selected?.messages.length]);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [selectedId, selected?.messages.length, aiTyping]);
   // Reading a conversation clears its unread — including messages that arrive while it's open.
   useEffect(() => { if (selectedId) markRead(selectedId); }, [selectedId, selected?.messages.length]);
 
@@ -390,9 +478,23 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
     const text = draft.trim();
     if (!text || !selected) return;
     if (selected.kind === 'external' && (selected.status === 'disabled' || selected.emailOnly)) return;
-    sendMessage(selected.id, text);
+    if (selected.ai) askAgent(selected.id, text);
+    else sendMessage(selected.id, text);
     setDraft('');
   };
+
+  // Send a canned prompt to the current AI agent (quick-prompt chips).
+  const sendPrompt = (text: string) => { if (selected?.ai) askAgent(selected.id, text); };
+
+  // Quick-prompt chips: the latest AI reply's follow-ups, else the starter set.
+  const aiSuggestions = useMemo(() => {
+    if (!selected?.ai) return [];
+    for (let i = selected.messages.length - 1; i >= 0; i--) {
+      const s = selected.messages[i].suggestions;
+      if (s && s.length) return s;
+    }
+    return DEFAULT_AGENT_PROMPTS;
+  }, [selected]);
 
   const disabledExternal = selected?.kind === 'external' && selected.status === 'disabled';
   const oneWayEmail = selected?.kind === 'external' && !!selected.emailOnly;
@@ -655,11 +757,27 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                             {m.widget && (
                               <ChatTaskCard widget={m.widget} onComplete={() => completeWidget(m.id)} onOpenRecord={openRecord} />
                             )}
+                            {m.panel && (
+                              <AiPanelCard panel={m.panel} onOpen={(path) => onNavigate?.(path)} />
+                            )}
                           </div>
                         </div>
                       </div>
                     );
                   })}
+                  {aiTyping && (
+                    <div className="flex justify-start">
+                      <div className="flex items-center gap-2 rounded-2xl bg-amber-50/70 px-4 py-3 shadow-sm ring-1 ring-inset ring-amber-100">
+                        <Bot size={15} className="text-violet-500" />
+                        <span className="text-[12px] font-semibold text-slate-500">{selected.name} is typing</span>
+                        <span className="flex items-center gap-1">
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.2s]" />
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.1s]" />
+                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <div ref={endRef} />
                 </div>
               </div>
@@ -680,6 +798,22 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                 </div>
               ) : (
                 <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 sm:px-6 2xl:px-8">
+                  {/* AI quick-prompt chips — canned questions the agent can answer */}
+                  {selected.ai && aiSuggestions.length > 0 && (
+                    <div className="mx-auto mb-2.5 w-full max-w-5xl">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">
+                        <Sparkles size={12} className="text-violet-500" /> Ask {selected.name.split(' ')[0]}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {aiSuggestions.map(s => (
+                          <button key={s} type="button" onClick={() => sendPrompt(s)}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-semibold text-slate-600 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700">
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mx-auto flex w-full max-w-5xl items-end gap-2">
                     <button type="button" onClick={() => setShareOpen(true)} title="Attach / share" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Paperclip size={18} /></button>
                     <div className="relative flex-1">
@@ -688,7 +822,7 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                         onChange={e => setDraft(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
                         rows={1}
-                        placeholder={`Message ${selected.name.split(' ')[0]}…`}
+                        placeholder={selected.ai ? `Ask ${selected.name.split(' ')[0]} anything…` : `Message ${selected.name.split(' ')[0]}…`}
                         className="max-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                       <button type="button" title="Emoji" className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Smile size={17} /></button>

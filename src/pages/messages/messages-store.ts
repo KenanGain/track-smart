@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { buildAgentReply, type AiPanel } from './ai-agents';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messages store — the single source of truth for every conversation in the app.
@@ -74,6 +75,8 @@ export interface ChatMessage {
   attachments?: MsgAttachment[];
   record?: RecordRef;         // a shared record link (click → open the record)
   widget?: ChatWidget;        // an interactive task card
+  panel?: AiPanel;            // an AI-agent data card (drivers / documents / …)
+  suggestions?: string[];     // AI-agent follow-up quick prompts
 }
 
 /** Where a shared conversation originated, so Messages can link back to the record. */
@@ -403,6 +406,25 @@ export function useConversations(): Conversation[] {
   return useSyncExternalStore(subscribe, getConversations, getConversations);
 }
 
+// ── AI "typing" indicator (its own tiny pub/sub) ─────────────────────────────
+// Tracks which AI conversations are mid-reply so the UI can show a typing bubble.
+const typingIds = new Set<string>();
+const typingListeners = new Set<() => void>();
+let typingSnapshot: string[] = [];
+function refreshTyping() { typingSnapshot = [...typingIds]; }
+function emitTyping() { typingListeners.forEach(l => l()); }
+function setTyping(convId: string, on: boolean) {
+  if (on) typingIds.add(convId); else typingIds.delete(convId);
+  refreshTyping();
+  emitTyping();
+}
+function subscribeTyping(l: () => void): () => void { typingListeners.add(l); return () => { typingListeners.delete(l); }; }
+function getTyping(): string[] { return typingSnapshot; }
+/** React hook — the list of conversation ids whose AI agent is currently typing. */
+export function useAiTyping(): string[] {
+  return useSyncExternalStore(subscribeTyping, getTyping, getTyping);
+}
+
 // ── simulated outsider replies (external chats only) ─────────────────────────
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
 const AUTO_REPLIES = [
@@ -457,6 +479,43 @@ export function receiveMessage(convId: string, text: string) {
 export function markRead(convId: string) {
   const c = conversations.find(x => x.id === convId);
   if (c && c.unread) patch(convId, x => ({ ...x, unread: 0 }));
+}
+
+// ── AI agent chat (front-end demo) ───────────────────────────────────────────
+// The user asks an AI agent something; we append their message, show a brief
+// "typing" state, then deliver a canned reply with an optional rich data panel.
+const aiTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Send a prompt to an AI agent conversation and schedule its demo reply. */
+export function askAgent(convId: string, text: string) {
+  const clean = text.trim();
+  if (!clean) return;
+  const conv = conversations.find(c => c.id === convId);
+  if (!conv) return;
+
+  // 1. Append the user's message.
+  const at = nowTime();
+  patch(convId, c => ({
+    ...c, lastAt: at,
+    messages: [...c.messages, { id: uid('me'), fromMe: true, text: clean, at, iso: nowIso() }],
+  }), true);
+
+  // 2. Show the agent "typing", then deliver the reply.
+  const reply = buildAgentReply(conv.name, clean);
+  setTyping(convId, true);
+  const prev = aiTimers.get(convId);
+  if (prev) clearTimeout(prev);
+  const t = setTimeout(() => {
+    setTyping(convId, false);
+    aiTimers.delete(convId);
+    const rat = nowTime();
+    const msg: ChatMessage = {
+      id: uid('ai'), fromMe: false, text: reply.text, at: rat, iso: nowIso(),
+      panel: reply.panel, suggestions: reply.suggestions,
+    };
+    patch(convId, c => ({ ...c, lastAt: rat, messages: [...c.messages, msg] }), true);
+  }, 850);
+  aiTimers.set(convId, t);
 }
 
 /** Enable / disable an external chat. Disabling stops the outsider from replying. */
@@ -658,4 +717,8 @@ export function resetMessages() {
   cancelAll();
   setConversations(seedConversations());
 }
-function cancelAll() { pendingTimers.forEach(arr => arr.forEach(clearTimeout)); pendingTimers.clear(); }
+function cancelAll() {
+  pendingTimers.forEach(arr => arr.forEach(clearTimeout)); pendingTimers.clear();
+  aiTimers.forEach(clearTimeout); aiTimers.clear();
+  typingIds.clear(); refreshTyping(); emitTyping();
+}
