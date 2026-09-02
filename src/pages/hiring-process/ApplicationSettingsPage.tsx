@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical, User, Phone, CreditCard, ShieldAlert, Briefcase, CalendarClock, GraduationCap, Car, Ban, Award, BellRing } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WizardStepNav, type WizardStep } from "@/components/ui/WizardEditor";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +14,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { SubTabs } from "@/components/ui/SubTabs";
 import { ConsentPhase } from "./ApplicationConsents";
 import { consentsForType, consentRegion, consentForms } from "./policy-forms.data";
+import { ViolationPicker } from "@/pages/tickets/ViolationPicker";
+import { violationFromCharge } from "@/pages/tickets/violation-presets";
+import type { TicketViolation } from "@/pages/tickets/tickets.data";
 
 /**
  * Settings -> Hiring Process -> Applications
@@ -47,7 +51,8 @@ export const CA_PROVINCES = [
 ];
 export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
 const POSITIONS = ["Company Driver", "Owner Operator", "Lease Operator", "Driver Trainee", "Other"];
-const VISA_TYPES = ["B1/B2", "TN", "H-2B", "L-1", "Work Permit", "Other"];
+const VISA_TYPES = ["B1/B2", "TN", "H-2B", "L-1", "Other"];
+const WORK_PERMIT_TYPES = ["Open Work Permit", "Employer-Specific (LMIA)", "Post-Graduation (PGWP)", "Other"];
 const CONTACT_METHODS = ["Primary Phone", "Cell Phone", "Email Address"];
 const CONTACT_TIMES = ["Any", "Morning", "Afternoon", "Evening"];
 export const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
@@ -88,10 +93,12 @@ const newLicense = (): License => ({
 });
 
 type Military = {
-    country: string; branch: string; start: DateMY; end: DateMY; rank: string; dd214: string;
+    // `dd214` is the "Can you obtain your DD214?" Yes/No answer; `dd214Doc` is the
+    // uploaded DD214 file name (shown when the answer is Yes).
+    country: string; branch: string; start: DateMY; end: DateMY; rank: string; dd214: string; dd214Doc: string;
 };
 const newMilitary = (): Military => ({
-    country: "", branch: "", start: { ...emptyMY }, end: { ...emptyMY }, rank: "", dd214: "",
+    country: "", branch: "", start: { ...emptyMY }, end: { ...emptyMY }, rank: "", dd214: "", dd214Doc: "",
 });
 
 // Per-employer verification documents. Each one is either off, uploaded by the
@@ -162,20 +169,17 @@ type MvrAnswer = { answer: string; my: DateMY; explain: string; doc: string };
 const newMvrState = (): Record<string, MvrAnswer> =>
     Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "", my: { ...emptyMY }, explain: "", doc: "" }]));
 
-const CHARGE_DESCRIPTIONS = [
-    "Speeding", "Improper Lane Change", "Failure to Yield", "Following Too Closely",
-    "Running Red Light / Stop Sign", "Distracted Driving", "Improper Turn",
-    "Failure to Obey Traffic Control", "Other",
-];
 const FINE_AMOUNTS = ["$0 - $100", "$100 - $250", "$250 - $500", "$500 - $1,000", "$1,000+"];
 const PENALTIES = ["Fine", "Suspension", "Revocation", "Community Service", "Other"];
 const VIOLATION_CATEGORIES = ["Driver Documents", "Visible Vehicle Components", "Cargo Securement", "Hazmat / Dangerous Goods", "Hours of Service"];
 export type Incident = {
-    date: DateMY; charges: string[]; state: string; commercial: string; category: string; outOfService: string;
+    // `violations` mirrors the ticket form's multi-violation model (coded charges),
+    // so the hiring / Add-Driver Traffic Violation form uses the same picker.
+    date: DateMY; violations: TicketViolation[]; state: string; commercial: string; category: string; outOfService: string;
     penalties: string[]; penaltyPoints: string; fineAmount: string; comments: string;
 };
 export const newIncident = (): Incident => ({
-    date: { ...emptyMY }, charges: [], state: "", commercial: "", category: "", outOfService: "", penalties: [], penaltyPoints: "", fineAmount: "", comments: "",
+    date: { ...emptyMY }, violations: [], state: "", commercial: "", category: "", outOfService: "", penalties: [], penaltyPoints: "", fineAmount: "", comments: "",
 });
 
 const ACCIDENT_TYPES = [
@@ -243,6 +247,55 @@ function FormSection({ title, children }: { title: string; children: React.React
             <p className="mb-3 border-b border-slate-100 pb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
             {children}
         </section>
+    );
+}
+
+// App-side expiry-monitoring block for a travel document (visa / work permit).
+// Only rendered on the office-facing form (Add Driver, page mode) — never on the
+// driver-facing application. Toggling it on seeds an expiry alert for the driver.
+const REMINDER_DAY_OPTIONS = [90, 60, 30, 14, 7];
+function TravelDocMonitoring({ label, enabled, onToggle, reminderDays, onReminders }: {
+    label: string;
+    enabled: boolean;
+    onToggle: (v: boolean) => void;
+    reminderDays: number[];
+    onReminders: (days: number[]) => void;
+}) {
+    return (
+        <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                        <BellRing className="h-4 w-4 text-blue-600" /> Monitor {label} expiry
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">App-side only — seeds an expiry alert for this driver. Not shown to the driver.</p>
+                </div>
+                <Switch checked={enabled} onCheckedChange={onToggle} />
+            </div>
+            {enabled && (
+                <div className="mt-3">
+                    <p className="mb-1.5 text-[11px] font-semibold text-slate-500">Remind before expiry</p>
+                    <div className="flex flex-wrap gap-2">
+                        {REMINDER_DAY_OPTIONS.map((d) => {
+                            const on = reminderDays.includes(d);
+                            return (
+                                <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => onReminders(on ? reminderDays.filter((x) => x !== d) : [...reminderDays, d].sort((a, b) => b - a))}
+                                    className={cn(
+                                        "rounded-full border px-3 py-1 text-xs font-medium transition",
+                                        on ? "border-blue-500 bg-blue-100 text-blue-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                                    )}
+                                >
+                                    {d} days
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -640,8 +693,15 @@ export function ViolationFields({ d, set }: { d: Incident; set: (patch: Partial<
                     <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
                     <Field label="Violation Category" required><Select value={d.category} placeholder="Please Choose" onChange={(v) => set({ category: v })}><Options items={VIOLATION_CATEGORIES} /></Select></Field>
                     <Field label="Out of Service?" required><YesNo value={d.outOfService} onChange={(v) => set({ outOfService: v })} /></Field>
-                    <Field className="sm:col-span-2" label="Charge / Description (select all that apply)" required><CheckList items={CHARGE_DESCRIPTIONS} selected={d.charges} onToggle={(v) => set({ charges: toggleArr(d.charges, v) })} /></Field>
                 </Grid>
+                <div className="mt-4">
+                    <ViolationPicker
+                        value={d.violations}
+                        onChange={(v) => set({ violations: v })}
+                        label="Charge / Description"
+                        hint="· select all that apply, a violation can have multiple charges"
+                    />
+                </div>
             </FormSection>
             <FormSection title="Penalty">
                 <Grid>
@@ -655,7 +715,7 @@ export function ViolationFields({ d, set }: { d: Incident; set: (patch: Partial<
         </div>
     );
 }
-export const violationTitle = (d: Incident) => (d.charges[0] ? `${d.charges[0]}${d.charges.length > 1 ? ` +${d.charges.length - 1}` : ""}` : "New Violation");
+export const violationTitle = (d: Incident) => (d.violations[0]?.label ? `${d.violations[0].label}${d.violations.length > 1 ? ` +${d.violations.length - 1}` : ""}` : "New Violation");
 export const violationCard = (d: Incident) => (<><KV k="Date" v={fmtMY(d.date)} /><KV k="State / Prov" v={d.state ? abbr(d.state) : "-"} /><KV k="Demerit pts" v={d.penaltyPoints || "-"} /><KV k="Penalty" v={d.penalties.join(", ") || "-"} /></>);
 
 export function AccidentFields({ d, set }: { d: Accident; set: (patch: Partial<Accident>) => void }) {
@@ -817,8 +877,18 @@ export type ApplicationData = {
     attendedSchool: string; education: Education[];
     militaryEver: string; military: Military;
     passport: { number: string; country: string; expiry: DateVal; doc: string };
-    visa: { has: string; number: string; type: string; expiry: DateVal; doc: string };
+    // `monitor` + `reminderDays` are the app-side expiry-monitoring config for the
+    // document (seeded when the office adds the driver; hidden on the driver-facing form).
+    visa: { has: string; number: string; type: string; expiry: DateVal; doc: string; monitor: boolean; reminderDays: number[] };
+    workPermit: { has: string; number: string; type: string; expiry: DateVal; doc: string; monitor: boolean; reminderDays: number[] };
     signedDoc: string;
+};
+
+// Section → rail icon (page/Add-Driver mode). Falls back to FileText.
+const STEP_ICONS: Record<string, React.ElementType> = {
+    applicant: User, address: MapPin, contact: Phone, license: CreditCard,
+    disqualification: ShieldAlert, employment: Briefcase, unemployment: CalendarClock,
+    education: GraduationCap, accident: Car, violation: Ban, military: Award, signature: FileSignature,
 };
 
 // ----------------------------- application form view -----------------------------
@@ -907,6 +977,17 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [visaNumber, setVisaNumber] = useState(d0?.visa?.number ?? "");
     const [visaExpiry, setVisaExpiry] = useState<DateVal>(d0?.visa?.expiry ?? { ...emptyDate });
     const [visaDoc, setVisaDoc] = useState(d0?.visa?.doc ?? "");
+    // App-side expiry monitoring for the visa (seeded on Add Driver; hidden on the driver form).
+    const [visaMonitor, setVisaMonitor] = useState(d0?.visa?.monitor ?? true);
+    const [visaReminderDays, setVisaReminderDays] = useState<number[]>(d0?.visa?.reminderDays ?? [90, 60, 30]);
+    // Work Permit — a separate document from the visa (its own expiry, monitored on the app side).
+    const [hasWorkPermit, setHasWorkPermit] = useState(d0?.workPermit?.has ?? "");
+    const [workPermitType, setWorkPermitType] = useState(d0?.workPermit?.type ?? "");
+    const [workPermitNumber, setWorkPermitNumber] = useState(d0?.workPermit?.number ?? "");
+    const [workPermitExpiry, setWorkPermitExpiry] = useState<DateVal>(d0?.workPermit?.expiry ?? { ...emptyDate });
+    const [workPermitDoc, setWorkPermitDoc] = useState(d0?.workPermit?.doc ?? "");
+    const [workPermitMonitor, setWorkPermitMonitor] = useState(d0?.workPermit?.monitor ?? true);
+    const [workPermitReminderDays, setWorkPermitReminderDays] = useState<number[]>(d0?.workPermit?.reminderDays ?? [90, 60, 30]);
 
     // Signed application document — page mode (Add Driver) uploads the signed
     // application/declaration instead of collecting a live e-signature.
@@ -949,7 +1030,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         setHadAccidents("Yes");
         setAccidents([{ date: { m: "06", y: "2023" }, type: "Rear-end collision", hazmat: "No", towed: "No", chemicalSpill: "No", address: "1420 W Industrial Pkwy, Springfield, IL 62704", city: "Springfield", state: st, commercial: "Yes", atFault: "No", ticketed: "No", fatalities: "0", injuries: "0", detail: "Minor rear-end at low speed; no injuries." }]);
         setHadViolations("Yes");
-        setIncidents([{ date: { m: "02", y: "2024" }, charges: ["Speeding"], state: st, commercial: "No", category: "Hours of Service", outOfService: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
+        setIncidents([{ date: { m: "02", y: "2024" }, violations: [violationFromCharge("Speeding")], state: st, commercial: "No", category: "Hours of Service", outOfService: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
         setEmployedRecently("Yes");
         setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", subjectFMCSR: "Yes", safetySensitive: "Yes", docs: { performance: "upload", experience: "upload", insurance: "ask" } }]);
         setAttendedSchool("Yes");
@@ -958,10 +1039,12 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         setWasUnemployed("Yes");
         setUnemployment([{ start: { m: "04", y: "2020" }, end: { m: "08", y: "2020" }, comments: "Between roles during COVID-19." }]);
         setCopyEmail("kenan.gain@example.com");
-        // Travel documents — passport always; visa for cross-border drivers.
+        // Travel documents — passport always; visa + work permit for cross-border drivers.
         setPassportNumber("X1234567"); setPassportCountry(config.defaultCountry); setPassportExpiry({ m: "08", d: "15", y: "2030" }); setPassportDoc("passport.pdf");
-        if (isCross) { setHasVisa("Yes"); setVisaType("TN"); setVisaNumber("V-99120"); setVisaExpiry({ m: "08", d: "15", y: "2029" }); setVisaDoc("visa.pdf"); }
-        else { setHasVisa("No"); }
+        if (isCross) {
+            setHasVisa("Yes"); setVisaType("TN"); setVisaNumber("V-99120"); setVisaExpiry({ m: "08", d: "15", y: "2029" }); setVisaDoc("visa.pdf");
+            setHasWorkPermit("Yes"); setWorkPermitType("Employer-Specific (LMIA)"); setWorkPermitNumber("WP-40877"); setWorkPermitExpiry({ m: "06", d: "30", y: "2028" }); setWorkPermitDoc("work-permit.pdf");
+        } else { setHasVisa("No"); setHasWorkPermit("No"); }
         setSignedDoc("signed-application.pdf");
     };
 
@@ -1193,9 +1276,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             ),
         },
         {
-            key: "travel-documents", title: "Travel Documents", fields: 6, render: () => (
+            key: "travel-documents", title: "Travel Documents", fields: 8, render: () => (
                 <div className="space-y-6">
-                    <InfoAlert>Passport and visa details — used for identity verification and cross-border travel.</InfoAlert>
+                    <InfoAlert>Passport, visa and work permit details — used for identity verification and cross-border travel.</InfoAlert>
                     <FormSection title="Passport">
                         <Grid>
                             <Field label="Passport Number"><TextInput value={passportNumber} onChange={(e) => setPassportNumber(e.target.value)} /></Field>
@@ -1205,9 +1288,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                             <div className="sm:col-span-2"><ImageUpload label="Passport document" hint="PNG, JPG or PDF · max 10MB" value={passportDoc} onChange={setPassportDoc} /></div>
                         </Grid>
                     </FormSection>
-                    <FormSection title="Visa / Work Permit">
+                    <FormSection title="Visa">
                         <Grid>
-                            <Field className="sm:col-span-2" label="Do you have a visa or work permit?"><YesNo value={hasVisa} onChange={setHasVisa} /></Field>
+                            <Field className="sm:col-span-2" label="Do you have a visa?"><YesNo value={hasVisa} onChange={setHasVisa} /></Field>
                             {hasVisa === "Yes" && (
                                 <>
                                     <Field label="Visa Type"><Select value={visaType} placeholder="Please Choose" onChange={setVisaType}><Options items={VISA_TYPES} /></Select></Field>
@@ -1215,6 +1298,26 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                     <Field label="Expiration Date"><DateTriple value={visaExpiry} years={EXP_YEARS} onChange={setVisaExpiry} /></Field>
                                     <div className="hidden sm:block" />
                                     <div className="sm:col-span-2"><ImageUpload label="Visa document" hint="PNG, JPG or PDF · max 10MB" value={visaDoc} onChange={setVisaDoc} /></div>
+                                    {mode === "page" && (
+                                        <TravelDocMonitoring label="visa" enabled={visaMonitor} onToggle={setVisaMonitor} reminderDays={visaReminderDays} onReminders={setVisaReminderDays} />
+                                    )}
+                                </>
+                            )}
+                        </Grid>
+                    </FormSection>
+                    <FormSection title="Work Permit">
+                        <Grid>
+                            <Field className="sm:col-span-2" label="Do you have a work permit?"><YesNo value={hasWorkPermit} onChange={setHasWorkPermit} /></Field>
+                            {hasWorkPermit === "Yes" && (
+                                <>
+                                    <Field label="Work Permit Type"><Select value={workPermitType} placeholder="Please Choose" onChange={setWorkPermitType}><Options items={WORK_PERMIT_TYPES} /></Select></Field>
+                                    <Field label="Work Permit Number"><TextInput value={workPermitNumber} onChange={(e) => setWorkPermitNumber(e.target.value)} /></Field>
+                                    <Field label="Expiration Date"><DateTriple value={workPermitExpiry} years={EXP_YEARS} onChange={setWorkPermitExpiry} /></Field>
+                                    <div className="hidden sm:block" />
+                                    <div className="sm:col-span-2"><ImageUpload label="Work permit document" hint="PNG, JPG or PDF · max 10MB" value={workPermitDoc} onChange={setWorkPermitDoc} /></div>
+                                    {mode === "page" && (
+                                        <TravelDocMonitoring label="work permit" enabled={workPermitMonitor} onToggle={setWorkPermitMonitor} reminderDays={workPermitReminderDays} onReminders={setWorkPermitReminderDays} />
+                                    )}
                                 </>
                             )}
                         </Grid>
@@ -1443,6 +1546,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                             <Field label="End Date" required hint={endDateHint("in the military")}><DateDuo value={military.end} years={HIST_YEARS} onChange={(v) => setM({ end: v })} /></Field>
                             <Field label="Rank at discharge" required><TextInput value={military.rank} onChange={(e) => setM({ rank: e.target.value })} /></Field>
                             <Field label="Can you obtain your DD214?"><YesNo value={military.dd214} onChange={(v) => setM({ dd214: v })} /></Field>
+                            {military.dd214 === "Yes" && (
+                                <div className="sm:col-span-2"><ImageUpload label="DD214 document" hint="PNG, JPG or PDF · max 10MB" value={military.dd214Doc} onChange={(name) => setM({ dd214Doc: name })} /></div>
+                            )}
                         </Grid>
                     )}
                 </div>
@@ -1536,16 +1642,63 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         employedRecently, employers, wasUnemployed, unemployment, attendedSchool, education,
         militaryEver, military,
         passport: { number: passportNumber, country: passportCountry, expiry: passportExpiry, doc: passportDoc },
-        visa: { has: hasVisa, number: visaNumber, type: visaType, expiry: visaExpiry, doc: visaDoc },
+        visa: { has: hasVisa, number: visaNumber, type: visaType, expiry: visaExpiry, doc: visaDoc, monitor: visaMonitor, reminderDays: visaReminderDays },
+        workPermit: { has: hasWorkPermit, number: workPermitNumber, type: workPermitType, expiry: workPermitExpiry, doc: workPermitDoc, monitor: workPermitMonitor, reminderDays: workPermitReminderDays },
         signedDoc,
     });
 
-    // Page mode — one big scrolling page (Add Driver). Every step's fields are
-    // rendered stacked in a card; no steps sidebar, nav or consent phase.
+    // ── Page mode (Add Driver): left progress rail + scroll-spy, like Add Asset ──
+    const wizardSteps: WizardStep[] = steps.map((s) => ({ id: s.key, label: s.title, icon: STEP_ICONS[s.key] ?? FileText }));
+    const pageScrollRef = useRef<HTMLDivElement | null>(null);
+    const [activeSection, setActiveSection] = useState<string>(steps[0]?.key ?? "");
+    useEffect(() => {
+        if (mode !== "page") return;
+        const root = pageScrollRef.current;
+        if (!root) return;
+        const obs = new IntersectionObserver(
+            (entries) => {
+                const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+                if (vis[0]) setActiveSection(vis[0].target.id.replace("section-", ""));
+            },
+            { root, rootMargin: "-12px 0px -55% 0px", threshold: 0 },
+        );
+        steps.forEach((s) => { const el = document.getElementById(`section-${s.key}`); if (el) obs.observe(el); });
+        return () => obs.disconnect();
+    }, [mode, config.id, steps.length]);
+    const goToSection = (key: string) => {
+        const sec = document.getElementById(`section-${key}`);
+        const el = pageScrollRef.current;
+        if (!sec || !el) return;
+        el.scrollTo({ top: el.scrollTop + (sec.getBoundingClientRect().top - el.getBoundingClientRect().top) - 12, behavior: "smooth" });
+        setActiveSection(key);
+    };
+    const sectionFilled = (...vals: unknown[]) => vals.filter((v) => v !== "" && v != null && v !== false && !(Array.isArray(v) && v.length === 0)).length;
+    const sectionCompletion = (key: string): number => {
+        const dd = collectData();
+        switch (key) {
+            case "applicant": return sectionFilled(dd.firstName, dd.lastName, dd.email, dd.phone, dd.dob, dd.ssn, dd.position);
+            case "address": return sectionFilled(dd.address.addr1, dd.address.city, dd.address.state, dd.address.zip, dd.address.country);
+            case "contact": return sectionFilled(dd.cellPhone, dd.preferredContact, dd.bestTime);
+            case "license": return dd.licenses.filter((l) => l.number || l.authority).length;
+            case "disqualification": return sectionFilled(...Object.values(dd.mvr ?? {}));
+            case "employment": return (dd.employers ?? []).filter((e) => e.company).length;
+            case "unemployment": return sectionFilled(dd.wasUnemployed) + (dd.unemployment?.length ?? 0);
+            case "education": return sectionFilled(dd.attendedSchool) + (dd.education?.length ?? 0);
+            case "accident": return sectionFilled(dd.hadAccidents) + (dd.accidents?.length ?? 0);
+            case "violation": return sectionFilled(dd.hadViolations) + (dd.incidents?.length ?? 0);
+            case "military": return sectionFilled(dd.militaryEver) + sectionFilled(...Object.values((dd.military ?? {}) as Record<string, unknown>));
+            case "travel-documents": return sectionFilled(dd.passport.number, dd.passport.doc, dd.visa.has, dd.workPermit.has);
+            case "signature": return sectionFilled(dd.signedDoc);
+            default: return 0;
+        }
+    };
+
+    // Page mode — one big scrolling page (Add Driver) with a left progress rail.
     if (mode === "page") {
         return (
-            <div className="min-h-screen bg-slate-50 pb-16">
-                <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+            <div className="flex h-full flex-col bg-[#F8FAFC]">
+                {/* Header bar */}
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
                     <div className="flex items-center gap-3">
                         <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
                             <ChevronLeft className="h-4 w-4" /> Cancel
@@ -1558,44 +1711,51 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                     </div>
                 </div>
 
-                <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-                    {/* Driver type (region) — picks which application fields apply. */}
-                    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Driver Type</p>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            {APPLICATION_FORMS.map((f) => {
-                                const active = f.id === config.id;
-                                return (
-                                    <button key={f.id} type="button" onClick={() => onConfigChange?.(f.id)} disabled={!onConfigChange}
-                                        className={cn(
-                                            "flex items-start gap-3 rounded-xl border p-4 text-left transition disabled:cursor-default",
-                                            active ? "border-blue-500 bg-blue-50/60 ring-1 ring-blue-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
-                                        )}>
-                                        <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", f.accent)}><f.Icon className="h-5 w-5" /></span>
-                                        <span className="min-w-0">
-                                            <span className="block text-sm font-semibold text-slate-800">{f.name}</span>
-                                            <span className="block text-xs text-slate-500">{f.region}</span>
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
+                {/* Body: progress rail + scrolling form */}
+                <div className="flex flex-1 overflow-hidden">
+                    <WizardStepNav steps={wizardSteps} active={activeSection} onGo={goToSection} completionFor={sectionCompletion} />
 
-                    <div className="space-y-6">
-                        {steps.map((s, i) => (
-                            <section key={s.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4">
-                                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
-                                    <h2 className="text-base font-bold text-slate-900">{s.title}</h2>
+                    <div ref={pageScrollRef} className="min-w-0 flex-1 overflow-y-auto">
+                        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+                            {/* Driver type (region) — picks which application fields apply. */}
+                            <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Driver Type</p>
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    {APPLICATION_FORMS.map((f) => {
+                                        const active = f.id === config.id;
+                                        return (
+                                            <button key={f.id} type="button" onClick={() => onConfigChange?.(f.id)} disabled={!onConfigChange}
+                                                className={cn(
+                                                    "flex items-start gap-3 rounded-xl border p-4 text-left transition disabled:cursor-default",
+                                                    active ? "border-blue-500 bg-blue-50/60 ring-1 ring-blue-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+                                                )}>
+                                                <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", f.accent)}><f.Icon className="h-5 w-5" /></span>
+                                                <span className="min-w-0">
+                                                    <span className="block text-sm font-semibold text-slate-800">{f.name}</span>
+                                                    <span className="block text-xs text-slate-500">{f.region}</span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
-                                <div className="p-6">{s.render()}</div>
-                            </section>
-                        ))}
-                    </div>
+                            </div>
 
-                    <div className="mt-8 flex justify-end">
-                        <Button type="button" onClick={() => onSaveDriver?.(collectData())}><Save className="h-4 w-4" /> {saveLabel}</Button>
+                            <div className="space-y-6">
+                                {steps.map((s, i) => (
+                                    <section key={s.key} id={`section-${s.key}`} data-step={s.key} className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                        <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4">
+                                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                            <h2 className="text-base font-bold text-slate-900">{s.title}</h2>
+                                        </div>
+                                        <div className="p-6">{s.render()}</div>
+                                    </section>
+                                ))}
+                            </div>
+
+                            <div className="mt-8 flex justify-end">
+                                <Button type="button" onClick={() => onSaveDriver?.(collectData())}><Save className="h-4 w-4" /> {saveLabel}</Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

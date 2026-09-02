@@ -82,6 +82,32 @@ export interface TicketAttachedDoc {
     files?: { id: string; fileName: string; fileSize?: number }[];
 }
 
+/** One violation on a ticket. A ticket can carry several (multiple charges).
+ *  `source` distinguishes a quick preset "charge" chip from a specific
+ *  SMS/CVOR code picked in the search list. The FIRST entry is treated as the
+ *  primary and mirrored onto the flat `violationType`/`violationSubtype`/… fields
+ *  for back-compat with the list badge, filters and safety score. */
+export interface TicketViolation {
+    /** Display label — preset charge name or the SMS/CVOR description. */
+    label: string;
+    /** Narrow bucket for badges/filters (Speeding, Overweight, …). */
+    type?: string;
+    /** Full descriptive text from the master chart. */
+    subtype?: string;
+    /** BASIC category label from VIOLATION_DATA. */
+    category?: string;
+    /** Sub-category / violation group. */
+    group?: string;
+    /** SMS/CVOR/NSC violation code. */
+    code?: string;
+    /** Out-of-service qualifying. */
+    isOos?: boolean;
+    /** Where it came from — a preset charge chip or the searchable code list. */
+    source: 'preset' | 'sms';
+    /** VIOLATION_DATA item id (sms source) — round-trips the code back into the list. */
+    dataId?: string;
+}
+
 export interface TicketRecord {
     id: string;
     attachedDocuments?: TicketAttachedDoc[];
@@ -104,9 +130,24 @@ export interface TicketRecord {
     /** Sub-category / violation group from VIOLATION_DATA
      *  (e.g. "Speeding 6-10"). */
     violationGroup?: string;
+    /** All violations/charges on this ticket (a ticket can have several). The
+     *  first entry mirrors the flat `violationType`/`violationSubtype`/… fields. */
+    violations?: TicketViolation[];
     /** Out-of-service flag — mirrors the master chart's isOos for the
      *  picked violation. Drives the OOS-qualifying chip on the form. */
     isOos?: boolean;
+    /** Was the driver/vehicle actually placed Out of Service for this ticket?
+     *  Explicit Yes/No answered on the form (undefined = unanswered). Distinct
+     *  from `isOos`, which only flags an OOS-qualifying violation type. */
+    outOfService?: boolean;
+    /** Was the driver operating a commercial vehicle at the time? Explicit
+     *  Yes/No answered on the form (undefined = unanswered). */
+    commercialVehicle?: boolean;
+    /** Penalty / fine types applied — "select all that apply" chips
+     *  (Fine, Suspension, Revocation, Community Service, Other). */
+    penalties?: string[];
+    /** Demerit / points assessed for the violation. */
+    demeritPoints?: number;
     fineAmount: number;
     currency: 'USD' | 'CAD';
     status: TicketStatus;

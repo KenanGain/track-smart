@@ -401,7 +401,7 @@ export const DriverForm = ({ initialData, onSave, onCancel, isEditing = false }:
                             <button onClick={() => removeListItem('travelDocuments', idx)} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                <InputGroup label="Document Type" options={['Passport', 'Visa', 'FAST Card', 'TWIC Card', 'Other']} value={doc.type} onChange={(e: any) => handleListChange('travelDocuments', idx, 'type', e.target.value)} />
+                                <InputGroup label="Document Type" options={['Passport', 'Visa', 'Work Permit', 'FAST Card', 'TWIC Card', 'Other']} value={doc.type} onChange={(e: any) => handleListChange('travelDocuments', idx, 'type', e.target.value)} />
                                 <InputGroup label="Document Number" value={doc.number} onChange={(e: any) => handleListChange('travelDocuments', idx, 'number', e.target.value)} />
                                 <InputGroup label="Issuing Country" value={doc.country} onChange={(e: any) => handleListChange('travelDocuments', idx, 'country', e.target.value)} />
                                 <InputGroup label="Expiry Date" type="date" value={doc.expiryDate} onChange={(e: any) => handleListChange('travelDocuments', idx, 'expiryDate', e.target.value)} />

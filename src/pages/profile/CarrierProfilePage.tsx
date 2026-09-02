@@ -64,6 +64,8 @@ import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { addCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
 import { AddDriverApplication } from './AddDriverApplication';
+import { addTicket } from '@/pages/tickets/tickets.store';
+import { ticketsFromApplicationIncidents } from '@/pages/tickets/ticket-from-application';
 import { useDriverDqHealth, ComplianceChecklist, CompletionBar } from '@/pages/ats/DqFilesPage';
 import { DriverImportModal } from './DriverImportModal';
 
@@ -599,6 +601,10 @@ export function CarrierProfilePage({
     // the carrier breadcrumb/dropdown/tabs so the asset detail page reads
     // cleanly with only its own breadcrumb + back button.
     const [isAssetDetailActive, setIsAssetDetailActive] = useState(false);
+    // True while AssetDirectoryPage is showing the Add/Edit Asset wizard. Hides the
+    // carrier chrome AND switches to a bounded full-height layout so the wizard can
+    // inner-scroll (fixed header + progress rail), like the Add Accident page.
+    const [isAssetFormActive, setIsAssetFormActive] = useState(false);
     const [selectedDriverData, setSelectedDriverData] = useState<any>(null); // State to hold detailed driver data
     const [isAddingDriver, setIsAddingDriver] = useState(false);
     const [editingDriverData, setEditingDriverData] = useState<any>(null);
@@ -1082,10 +1088,25 @@ export function CarrierProfilePage({
     }
 
     if (isAddingDriver) {
+        // Traffic violations reported on the application become tickets by default,
+        // so they show up in the Tickets list for that driver. Deterministic ids
+        // mean re-saving an edit updates the same tickets in place (dedup by
+        // offenseNumber) rather than duplicating them.
+        const syncViolationTickets = (driver: any) => {
+            const app = driver?.application;
+            if (app?.hadViolations !== 'Yes' || !Array.isArray(app.incidents)) return;
+            ticketsFromApplicationIncidents(
+                app.incidents,
+                { id: driver.id, name: driver.name, assetId: driver.assignedAsset ?? '' },
+                accountId,
+            ).forEach(addTicket);
+        };
+
         const handleDriverSave = (data: any) => {
             if (editingDriverData) {
                 setDrivers(prev => prev.map(d => d.id === data.id ? data : d));
                 setSelectedDriverData(data);
+                syncViolationTickets(data);
                 showToast("Driver updated successfully");
             } else {
                 const newDriver = {
@@ -1097,6 +1118,7 @@ export function CarrierProfilePage({
                 };
                 addCarrierDriver(accountId, newDriver as any);   // link into the shared roster (accident picker, etc.)
                 setDrivers(prev => [...prev, newDriver]);
+                syncViolationTickets(newDriver);
                 showToast("Driver added successfully");
             }
             setIsAddingDriver(false);
@@ -1121,14 +1143,14 @@ export function CarrierProfilePage({
     ];
 
     return (
-        <div className="flex-1 overflow-x-hidden bg-slate-50 min-h-screen">
+        <div className={`bg-slate-50 ${isAssetFormActive ? 'h-full flex flex-col overflow-hidden' : 'flex-1 overflow-x-hidden min-h-screen'}`}>
             {/* Header — white edge-to-edge bar with breadcrumb, page title +
                 subtitle and underline tabs, mirroring the New Compliance &
                 Documents catalog header. Hidden while reading a single asset
                 so the detail page's own header is the only navigational
                 element on screen. The carrier-switcher in the top navbar is
                 the single carrier-pick surface. */}
-            {!isAssetDetailActive && (
+            {!isAssetDetailActive && !isAssetFormActive && (
                 <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
                     <div className="flex items-center gap-3 flex-wrap min-h-[18px]">
                         {backTarget && (
@@ -1171,9 +1193,10 @@ export function CarrierProfilePage({
                 </div>
             )}
 
-            {/* Tab Content — edge-to-edge (no body padding) while reading an
-                asset detail so it sits flush with the top edge. */}
-            <div className={isAssetDetailActive ? "" : "px-4 sm:px-8 py-6"}>
+            {/* Tab Content — edge-to-edge (no body padding) while reading an asset
+                detail; a bounded full-height flex column while the Add/Edit wizard
+                is open so it can inner-scroll like the Add Accident page. */}
+            <div className={isAssetFormActive ? "flex-1 min-h-0" : (isAssetDetailActive ? "" : "px-4 sm:px-8 py-6")}>
 
 
                 {activeTab === 'fleet' && (
@@ -1517,11 +1540,12 @@ export function CarrierProfilePage({
                 )}
 
                 {activeTab === 'assets' && (
-                    <div className="w-full">
+                    <div className={isAssetFormActive ? "h-full" : "w-full"}>
                         <AssetDirectoryPage
                             isEmbedded={true}
                             assets={profileBundle?.assets}
                             onDetailViewChange={setIsAssetDetailActive}
+                            onFormActiveChange={setIsAssetFormActive}
                             accountId={accountId}
                         />
                     </div>

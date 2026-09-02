@@ -8,8 +8,6 @@ import {
 import { cn } from '@/lib/utils';
 // Removed: import { Badge } from '../../components/ui/Badge';
 import { StatusBadge, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge, Toggle, AddressFormFields } from './DriverComponents';
-import { PaystubsPage } from '../finance/PaystubsPage';
-import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
 import { MVR_QUESTIONS } from '@/pages/hiring-process/ApplicationSettingsPage';
 import { MOCK_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
@@ -1752,8 +1750,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
     //   2. Records      — Documents, Training, Certificates
     //   3. Operations   — Trips, Hours of Service, Mileage Report
     //   4. Safety       — Inspections, Violations, Accidents, Tickets
-    //   5. Finance      — Paystubs
-    //   6. Other        — Inventory
+    //   5. Other        — Inventory
     type DriverTab = SubTab<string> & { group: 'identity' | 'records' | 'operations' | 'safety' | 'finance' | 'other' };
     const tabs: DriverTab[] = [
         // Identity
@@ -1771,8 +1768,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Violations',     label: 'Violations',       icon: AlertTriangle,   group: 'safety' },
         { id: 'Accidents',      label: 'Accidents',        icon: Car,             group: 'safety' },
         { id: 'Tickets',        label: 'Tickets',          icon: Ticket,          group: 'safety' },
-        // Finance
-        { id: 'Paystubs',       label: 'Paystubs',         icon: DollarSign,      group: 'finance' },
         // Other
         { id: 'Inventory',      label: 'Inventory',        icon: Boxes, count: inventoryRecords.length, group: 'other' },
     ];
@@ -2930,18 +2925,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             </table>
                         </div>
                     )}
-                </div>
-            )}
-
-            {activeTab === 'Paystubs' && (
-                <div className="animate-in fade-in">
-                    <PaystubsPage
-                        driverId={driverData.id}
-                        onPaystubChange={() => {
-                            const fresh = MOCK_DRIVERS.find(d => d.id === driverData.id);
-                            if (fresh) setDriverData({...fresh});
-                        }}
-                    />
                 </div>
             )}
 

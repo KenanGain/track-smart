@@ -94,12 +94,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/maintenance",
     },
     {
-        key: "paystubs",
-        label: "Paystubs",
-        icon: DollarSign,
-        path: "/paystubs",
-    },
-    {
         key: "hiring-process",
         label: "Hiring Process",
         icon: Workflow,

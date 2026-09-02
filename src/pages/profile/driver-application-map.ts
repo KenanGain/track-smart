@@ -51,9 +51,10 @@ export function emptyApplication(typeId = "us"): ApplicationData {
         employedRecently: "", employers: [],
         wasUnemployed: "", unemployment: [],
         attendedSchool: "", education: [],
-        militaryEver: "", military: { country: "", branch: "", start: { ...EMPTY_MY }, end: { ...EMPTY_MY }, rank: "", dd214: "" },
+        militaryEver: "", military: { country: "", branch: "", start: { ...EMPTY_MY }, end: { ...EMPTY_MY }, rank: "", dd214: "", dd214Doc: "" },
         passport: { number: "", country, expiry: { ...EMPTY_DMY }, doc: "" },
-        visa: { has: "", number: "", type: "", expiry: { ...EMPTY_DMY }, doc: "" },
+        visa: { has: "", number: "", type: "", expiry: { ...EMPTY_DMY }, doc: "", monitor: true, reminderDays: [90, 60, 30] },
+        workPermit: { has: "", number: "", type: "", expiry: { ...EMPTY_DMY }, doc: "", monitor: true, reminderDays: [90, 60, 30] },
         signedDoc: "",
     };
 }
@@ -112,6 +113,7 @@ export function applicationFromDriver(driver: any): ApplicationData {
     const travel: any[] = Array.isArray(d.travelDocuments) ? d.travelDocuments : [];
     const pp = travel.find((t) => /passport/i.test(t.type ?? ""));
     const vs = travel.find((t) => /visa/i.test(t.type ?? ""));
+    const wp = travel.find((t) => /work\s*permit/i.test(t.type ?? ""));
 
     return {
         ...base,
@@ -139,7 +141,10 @@ export function applicationFromDriver(driver: any): ApplicationData {
             ? { number: pp.number ?? "", country: pp.country ?? country, expiry: toDateVal(pp.expiryDate), doc: pp.number ? "passport.pdf" : "" }
             : base.passport,
         visa: vs
-            ? { has: "Yes", number: vs.number ?? "", type: vs.visaType ?? "", expiry: toDateVal(vs.expiryDate), doc: vs.number ? "visa.pdf" : "" }
+            ? { has: "Yes", number: vs.number ?? "", type: vs.visaType ?? "", expiry: toDateVal(vs.expiryDate), doc: vs.number ? "visa.pdf" : "", monitor: vs.monitor ?? true, reminderDays: vs.reminderDays ?? [90, 60, 30] }
             : { ...base.visa, has: "No" },
+        workPermit: wp
+            ? { has: "Yes", number: wp.number ?? "", type: wp.visaType ?? wp.permitType ?? "", expiry: toDateVal(wp.expiryDate), doc: wp.number ? "work-permit.pdf" : "", monitor: wp.monitor ?? true, reminderDays: wp.reminderDays ?? [90, 60, 30] }
+            : { ...base.workPermit, has: "No" },
     };
 }

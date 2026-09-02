@@ -18,7 +18,7 @@ import {
 } from './messages-store';
 import {
   DEFAULT_AGENT_PROMPTS, getAgent,
-  type AiPanel, type AiTone, type AgentIntent, type AiAction, type AiActionIcon, type AgentCommand,
+  type AiPanel, type AiTone, type AgentIntent, type AiAction, type AiActionIcon, type AgentCommand, type AiResource,
 } from './ai-agents';
 import { ShareToChat } from '@/components/share/ShareToChat';
 
@@ -330,6 +330,34 @@ function AiActionCard({ action, onOpen }: { action: AiAction; onOpen?: (convId: 
           {action.openLabel ?? 'Open chat'} <ArrowRight size={12} />
         </button>
       )}
+    </div>
+  );
+}
+
+// A tappable "resource" widget the agent attaches to a message — the recipient
+// uses it to upload a document, open a form, review & sign, or view a link.
+const AI_RESOURCE_ICON: Record<AiResource['kind'], LucideIcon> = {
+  upload: Upload, form: ClipboardList, sign: FileText, view: ExternalLink, link: ExternalLink,
+};
+function AiResourceCard({ resource, onAct }: { resource: AiResource; onAct?: (r: AiResource) => void }) {
+  const Icon = AI_RESOURCE_ICON[resource.kind];
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/40 shadow-sm">
+      <div className="flex items-start gap-3 p-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><Icon size={17} /></span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-bold text-slate-800">{resource.title}</p>
+          {resource.detail && <p className="truncate text-[11.5px] text-slate-500">{resource.detail}</p>}
+          <p className="mt-0.5 truncate font-mono text-[10.5px] text-blue-500">{resource.url}</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onAct?.(resource)}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-blue-200 bg-white/70 py-2 text-[12px] font-bold text-blue-700 transition-colors hover:bg-white"
+      >
+        <Icon size={13} /> {resource.actionLabel} <ArrowRight size={12} />
+      </button>
     </div>
   );
 }
@@ -862,6 +890,9 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                             )}
                             {m.action && (
                               <AiActionCard action={m.action} onOpen={(id) => select(id)} />
+                            )}
+                            {m.resource && (
+                              <AiResourceCard resource={m.resource} onAct={(r) => notify(`Opening ${r.actionLabel.toLowerCase()} — ${r.url}`)} />
                             )}
                           </div>
                         </div>

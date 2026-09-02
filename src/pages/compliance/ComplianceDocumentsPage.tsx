@@ -775,6 +775,19 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
         { id: 'Driver', label: 'Driver', icon: User }
     ];
 
+    // The Add/Edit Asset wizard replaces the page content (keeps the sidebar),
+    // consistent with the Add Accident page.
+    if (isAssetModalOpen) {
+        return (
+            <AssetModal
+                asset={editingAsset}
+                onClose={() => { setIsAssetModalOpen(false); setEditingAsset(null); }}
+                onSave={handleSaveAsset}
+                isSaving={isSavingAsset}
+            />
+        );
+    }
+
     return (
         <div className="flex-1 p-4 lg:p-6 overflow-x-hidden bg-slate-50 min-h-screen">
                 {/* Unified Dynamic Header */}
@@ -2014,15 +2027,6 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
                         </div>
                     </div>
                 </div>
-            )}
-            {/* ASSET MODAL */}
-            {isAssetModalOpen && (
-                <AssetModal
-                    asset={editingAsset}
-                    onClose={() => { setIsAssetModalOpen(false); setEditingAsset(null); }}
-                    onSave={handleSaveAsset}
-                    isSaving={isSavingAsset}
-                />
             )}
         </div>
     );

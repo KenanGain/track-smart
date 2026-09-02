@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import {
-    X, Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
-    Plus, Trash, Clock, Fingerprint, KeyRound, Shield,
+    Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
+    Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2, Gauge
+    UploadCloud, FileText, Trash2, Gauge, Zap, Check
 } from 'lucide-react';
+import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -156,14 +157,18 @@ const assetSchema = z.object({
 });
 
 // --- Helper Form Components ---
-const FormSection = ({ title, icon: Icon, children, className }: { title: string; icon: React.ElementType; children: React.ReactNode; className?: string }) => (
-    <div className={cn("space-y-6", className)}>
-        <div className="flex items-center gap-3 border-b border-slate-50 pb-2.5">
-            <div className="p-1.5 bg-blue-50 text-[#2563EB] rounded-lg shadow-sm"><Icon size={14} strokeWidth={2.5} /></div>
-            <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{title}</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">{children}</div>
-    </div>
+// A 3-column field grid used inside each wizard section (replaces the old
+// FormSection's inner grid; the section header/card now comes from WizardSection).
+const FieldGrid = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6", className)}>{children}</div>
+);
+
+// A wizard section card (icon-tile header, à la Add Accident) wrapping a 3-col
+// field grid — the drop-in replacement for the old FormSection.
+const AssetSection = ({ id, title, subtitle, icon, right, children }: { id: string; title: string; subtitle?: string; icon: React.ElementType; right?: React.ReactNode; children: React.ReactNode }) => (
+    <WizardSection id={id} icon={icon} title={title} subtitle={subtitle} right={right}>
+        <FieldGrid>{children}</FieldGrid>
+    </WizardSection>
 );
 
 const FormInput = ({ label, error, children, className, required }: { label: string; error?: string; children: React.ReactNode; className?: string; required?: boolean }) => (
@@ -383,7 +388,19 @@ function AddressSection({ register, watch }: { register: any; watch: any }) {
     );
 }
 
-// --- Main Asset Modal Component ---
+// Wizard sections (left-rail steps). Transponder was removed from the form.
+const STEPS: readonly WizardStep[] = [
+    { id: 'class', label: 'Asset class', icon: IdCard },
+    { id: 'vehicle', label: 'Vehicle info', icon: ShieldCheck },
+    { id: 'plate', label: 'Registration & plate', icon: Globe },
+    { id: 'yard', label: 'Yard / terminal', icon: Warehouse },
+    { id: 'drivers', label: 'Driver assignment', icon: Users },
+    { id: 'ownership', label: 'Ownership & financial', icon: KeyRound },
+    { id: 'notes', label: 'Notes', icon: FileText },
+    { id: 'insurance', label: 'Insurance & status', icon: Shield },
+];
+
+// --- Main Asset Form Page (in-page wizard, mirrors the Add Accident layout) ---
 interface AssetModalProps {
     asset: any;
     onClose: () => void;
@@ -407,19 +424,12 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
 
     const { fields: driverFields, append: appendDriver, remove: removeDriver } = useFieldArray({ control, name: "driverAssignments" });
 
-    const category = watch('assetCategory');
     const assetType = watch('assetType');
     const financial = watch('financialStructure');
     const plateCountry = watch('plateCountry');
     const opStatus = watch('operationalStatus');
     const grossWeightValue = watch('grossWeight');
     const grossWeightUnit = watch('grossWeightUnit');
-
-    const assetTypeOptions = useMemo(() => {
-        if (category === 'CMV') return ['Truck', 'Trailer'];
-        if (category === 'Non-CMV') return ['Non-CMV Vehicle', 'Equipment'];
-        return [];
-    }, [category]);
 
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
@@ -428,38 +438,115 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
         return [];
     }, [assetType]);
 
-    return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]">
-            <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-[1000px] max-h-[90vh] flex flex-col overflow-hidden">
-                <div className="relative px-8 py-7 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center shrink-0">
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-12 bg-[#2563EB] rounded-r-full" />
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">{isEdit ? `Edit Asset — ${asset?.unitNumber}` : 'Register New Asset'}</h2>
-                        <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-widest mt-1">Asset Identity & Operational Profile</p>
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full text-slate-400"><X size={20} /></Button>
-                </div>
+    // ── Section navigator ── the form scrolls inside `scrollRef` (fixed header +
+    // rail, like the Add Accident page). Scroll-spy via IntersectionObserver.
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [activeStep, setActiveStep] = useState<string>(STEPS[0].id);
 
-                <div className="flex-1 overflow-y-auto p-8 bg-white space-y-12">
-                    <form id="asset-form" onSubmit={handleSubmit(onSave)} className="space-y-12 pb-8">
+    useEffect(() => {
+        const root = scrollRef.current;
+        if (!root) return;
+        const obs = new IntersectionObserver(
+            entries => {
+                const visible = entries.filter(e => e.isIntersecting)
+                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+                if (visible[0]) setActiveStep(visible[0].target.id.replace('section-', ''));
+            },
+            { root, rootMargin: '-12px 0px -55% 0px', threshold: 0 },
+        );
+        STEPS.forEach(s => {
+            const sec = document.getElementById(`section-${s.id}`);
+            if (sec) obs.observe(sec);
+        });
+        return () => obs.disconnect();
+    }, []);
+
+    const go = (id: string) => {
+        const sec = document.getElementById(`section-${id}`);
+        const el = scrollRef.current;
+        if (!sec || !el) return;
+        el.scrollTo({ top: el.scrollTop + (sec.getBoundingClientRect().top - el.getBoundingClientRect().top) - 12, behavior: 'smooth' });
+        setActiveStep(id);
+    };
+
+    // ── Plate lookup (demo API) — one click populates the Registration & Plate
+    // section from the plate number, simulating a DMV/registry lookup. ──
+    const [plateLookup, setPlateLookup] = useState<'idle' | 'loading' | 'done'>('idle');
+    const plateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (plateTimer.current) clearTimeout(plateTimer.current); }, []);
+    const lookupPlate = () => {
+        if (plateLookup === 'loading') return;
+        setPlateLookup('loading');
+        if (plateTimer.current) clearTimeout(plateTimer.current);
+        plateTimer.current = setTimeout(() => {
+            const current = (watch('plateNumber') || '').toString().trim();
+            // Simulated registry response.
+            setValue('plateNumber', current || 'TX-4821RC', { shouldDirty: true });
+            setValue('plateType', 'Commercial', { shouldDirty: true });
+            setValue('plateCountry', 'USA', { shouldDirty: true });
+            setValue('plateJurisdiction', 'Texas', { shouldDirty: true });
+            setValue('registrationIssueDate', '2025-04-01', { shouldDirty: true });
+            setValue('registrationExpiryDate', '2026-03-31', { shouldDirty: true });
+            setPlateLookup('done');
+            plateTimer.current = setTimeout(() => setPlateLookup('idle'), 2600);
+        }, 950);
+    };
+
+    // Per-section completion count → green check + badge in the rail.
+    const allValues = watch();
+    const filledCount = (...vals: unknown[]) => vals.filter(v => v !== '' && v !== undefined && v !== null && v !== false && !(Array.isArray(v) && v.length === 0)).length;
+    const completionFor = (id: string): number => {
+        switch (id) {
+            case 'class': return filledCount(allValues.assetType, allValues.vehicleType);
+            case 'vehicle': return filledCount(allValues.unitNumber, allValues.vin, allValues.make, allValues.model, allValues.year, allValues.color, allValues.grossWeight, allValues.unloadedWeight);
+            case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
+            case 'yard': return filledCount(allValues.yardId);
+            case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
+            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness);
+            case 'notes': return filledCount(allValues.notes);
+            case 'insurance': return filledCount(allValues.operationalStatus, allValues.dateAdded, allValues.insuranceAddedDate, allValues.odometer, allValues.dateRemoved);
+            default: return 0;
+        }
+    };
+
+    return (
+        <div className="flex h-full flex-col bg-[#F8FAFC] text-slate-900">
+            <WizardHeader
+                backLabel="Back to assets"
+                onBack={onClose}
+                icon={Truck}
+                title={isEdit ? `Edit Asset — ${asset?.unitNumber}` : 'Register New Asset'}
+                subtitle="Asset identity & operational profile"
+                actions={
+                    <>
+                        <Button variant="ghost" onClick={onClose} className="text-slate-600">Discard</Button>
+                        <Button type="submit" form="asset-form" disabled={(!isDirty && isEdit) || isSaving} className="h-10 px-8 shadow-lg shadow-blue-500/10 font-bold uppercase tracking-widest text-[11px]">
+                            {isSaving ? <RotateCcw size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                            {isEdit ? 'Update Asset' : 'Register Asset'}
+                        </Button>
+                    </>
+                }
+            />
+
+            <div className="flex flex-1 overflow-hidden">
+                <WizardStepNav steps={STEPS} active={activeStep} onGo={go} completionFor={completionFor} />
+
+                <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
+                    <form id="asset-form" onSubmit={handleSubmit(onSave)} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
 
                         {/* 1. Asset Class */}
-                        <FormSection title="Asset Class & Status" icon={IdCard}>
-                            <FormInput label="Asset Category">
-                                <select {...register('assetCategory')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white" onChange={(e) => {
-                                    setValue('assetCategory', e.target.value as 'CMV' | 'Non-CMV');
-                                    const firstType = e.target.value === 'CMV' ? 'Truck' : 'Non-CMV Vehicle';
-                                    setValue('assetType', firstType);
-                                    setValue('vehicleType', firstType === 'Truck' ? 'Power Unit' : 'Pickup');
-                                }}><option value="CMV">CMV</option><option value="Non-CMV">Non-CMV</option></select>
-                            </FormInput>
-
+                        <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
+                            {/* Asset Type merges the old Category (CMV/Non-CMV) + Type: Truck = CMV, Trailer = Non-CMV. */}
                             <FormInput label="Asset Type">
                                 <select {...register('assetType')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white" onChange={(e) => {
-                                    setValue('assetType', e.target.value);
-                                    const defaultVehicleMap: Record<string, string> = { 'Truck': 'Power Unit', 'Trailer': 'Dry Van', 'Non-CMV Vehicle': 'Pickup', 'Equipment': '' };
-                                    setValue('vehicleType', defaultVehicleMap[e.target.value] || '');
-                                }}>{assetTypeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select>
+                                    const t = e.target.value;
+                                    setValue('assetType', t);
+                                    setValue('assetCategory', t === 'Trailer' ? 'Non-CMV' : 'CMV');
+                                    setValue('vehicleType', t === 'Trailer' ? 'Dry Van' : 'Power Unit');
+                                }}>
+                                    <option value="Truck">Truck</option>
+                                    <option value="Trailer">Trailer</option>
+                                </select>
                             </FormInput>
 
                             <FormInput label="Vehicle Type">
@@ -467,10 +554,10 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     {vehicleTypeOptions.length > 0 ? vehicleTypeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>) : <option value="">N/A</option>}
                                 </select>
                             </FormInput>
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 2. Vehicle Information */}
-                        <FormSection title="Vehicle Information" icon={ShieldCheck}>
+                        <AssetSection id="vehicle" title="Vehicle Information" subtitle="Identity, weights and specifications." icon={ShieldCheck}>
                             <FormInput label="Unit Number" error={errors.unitNumber?.message as string} required><Input {...register('unitNumber')} placeholder="TR-100" /></FormInput>
                             <FormInput label="VIN (17 Characters)" error={errors.vin?.message as string} required><Input {...register('vin')} maxLength={17} className="font-mono font-semibold" /></FormInput>
                             <FormInput label="Manufacturer/Make" required><Input {...register('make')} placeholder="Freightliner" /></FormInput>
@@ -516,10 +603,37 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     </select>
                                 </div>
                             </FormInput>
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 3. Plate */}
-                        <FormSection title="Registration & Plate" icon={Globe}>
+                        <AssetSection id="plate" title="Registration & Plate" subtitle="Plate, jurisdiction and expiry monitoring." icon={Globe}
+                            right={
+                                <div className="flex items-end gap-2">
+                                    <label className="flex flex-col gap-1">
+                                        <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Plate Number</span>
+                                        <Input {...register('plateNumber')} placeholder="ABC-1234" className="h-9 w-36 sm:w-44" />
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={lookupPlate}
+                                        disabled={plateLookup === 'loading'}
+                                        title="Look up the plate number and auto-fill this section"
+                                        className={cn(
+                                            "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[11px] font-bold uppercase tracking-wide shadow-sm transition-colors",
+                                            plateLookup === 'done'
+                                                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                : "bg-[#2563EB] text-white shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-60"
+                                        )}
+                                    >
+                                        {plateLookup === 'loading'
+                                            ? <><RotateCcw size={13} className="animate-spin" /> Looking…</>
+                                            : plateLookup === 'done'
+                                                ? <><Check size={13} /> Filled</>
+                                                : <><Zap size={13} /> Lookup</>}
+                                    </button>
+                                </div>
+                            }
+                        >
                             <FormInput label="Plate Number"><Input {...register('plateNumber')} placeholder="ABC-1234" /></FormInput>
                             <FormInput label="Plate Type"><Input {...register('plateType')} placeholder="Commercial" /></FormInput>
                             <FormInput label="Plate Country"><select {...register('plateCountry')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white"><option value="USA">USA</option><option value="Canada">Canada</option></select></FormInput>
@@ -535,23 +649,16 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 />
                             </div>
                             <MonitoringBlock title="Plate / Registration Expiry Monitoring" prefix="plate" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 4. Yard Terminal */}
-                        <FormSection title="Yard / Terminal Assignment" icon={Warehouse}>
+                        <AssetSection id="yard" title="Yard / Terminal Assignment" subtitle="Where this asset is based." icon={Warehouse}>
                             <FormInput label="Location Name"><select {...register('yardId')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white"><option value="">Unassigned</option>{MOCK_YARDS.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}</select></FormInput>
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 5. Driver Assignment */}
-                        <div className="space-y-6 border-t border-slate-100 pt-12">
-                            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg shadow-sm"><Users size={14} strokeWidth={2.5} /></div>
-                                    <div>
-                                        <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Driver Assignment</h3>
-                                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Assigned Fleet Personnel</p>
-                                    </div>
-                                </div>
+                        <WizardSection id="drivers" icon={Users} title="Driver Assignment" subtitle="Assigned fleet personnel."
+                            right={
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -562,8 +669,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 >
                                     <Plus size={14} /> Assign Driver {driverFields.length}/2
                                 </Button>
-                            </div>
-
+                            }
+                        >
+                            <div className="space-y-6">
                             {driverFields.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                     {driverFields.map((field, idx) => {
@@ -609,26 +717,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     ))}
                                 </div>
                             )}
-                        </div>
-
-                        {/* 6. Transponder Details */}
-                        <FormSection title="Transponder Details" icon={Fingerprint}>
-                            <FormInput label="Transponder Number"><Input {...register('transponderNumber')} placeholder="TX-882193" /></FormInput>
-                            <FormInput label="Issue Date"><Input type="date" {...register('transponderIssueDate')} /></FormInput>
-                            <FormInput label="Expiry Date"><Input type="date" {...register('transponderExpiryDate')} /></FormInput>
-                            <div className="col-span-full">
-                                <DocumentUploadInput
-                                    label="Transponder Document"
-                                    description="Upload transponder assignment or receipt"
-                                    files={watch('transponderDocument') || []}
-                                    onFilesChange={(files) => setValue('transponderDocument', files, { shouldDirty: true })}
-                                />
                             </div>
-                            <MonitoringBlock title="Transponder Monitoring" prefix="transponder" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
-                        </FormSection>
+                        </WizardSection>
 
-                        {/* 7. Ownership & Financial Profile */}
-                        <FormSection title="Ownership & Financial Profile" icon={KeyRound}>
+                        {/* Ownership & Financial Profile */}
+                        <AssetSection id="ownership" title="Ownership & Financial Profile" subtitle="Ownership structure, value and lien details." icon={KeyRound}>
                             <FormInput label="Ownership Structure">
                                 <select {...register('financialStructure')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
                                     <option value="Owned">Owned</option>
@@ -676,19 +769,19 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     </div>
                                 )}
                             </div>
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 8. Notes */}
-                        <FormSection title="Additional Notes" icon={FileText}>
+                        <AssetSection id="notes" title="Additional Notes" subtitle="Free-form details about this asset." icon={FileText}>
                             <div className="col-span-full">
                                 <FormInput label="Notes (Max 2000 Chars)">
                                     <textarea {...register('notes')} className="w-full h-32 p-3 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-blue-500" placeholder="Enter additional asset details..." />
                                 </FormInput>
                             </div>
-                        </FormSection>
+                        </AssetSection>
 
                         {/* 9. Insurance & Operational Status */}
-                        <FormSection title="Insurance & Operational Status" icon={Shield}>
+                        <AssetSection id="insurance" title="Insurance & Operational Status" subtitle="Fleet & insurance dates and operational state." icon={Shield}>
                             <FormInput label="Operational Status">
                                 <select {...register('operationalStatus')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
                                     <option value="Active">Active</option>
@@ -738,16 +831,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                      </div>
                                 )}
                             </div>
-                        </FormSection>
+                        </AssetSection>
                     </form>
-                </div>
-
-                <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-                    <Button variant="ghost" onClick={onClose}>Discard</Button>
-                    <Button type="submit" form="asset-form" disabled={(!isDirty && isEdit) || isSaving} className="px-10 h-10 shadow-lg shadow-blue-500/10 font-bold uppercase tracking-widest text-[11px]">
-                        {isSaving ? <RotateCcw size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
-                        {isEdit ? 'Update Asset' : 'Register Asset'}
-                    </Button>
                 </div>
             </div>
         </div>

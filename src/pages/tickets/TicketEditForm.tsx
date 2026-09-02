@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Save, User as UserIcon, Truck, Clock, MapPin, Globe, FileText, Hash, Ticket,
+    Save, User as UserIcon, Truck, Clock, MapPin, Globe, FileText, Hash, Ticket, Check,
 } from 'lucide-react';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS } from '@/pages/assets/assets.data';
@@ -20,13 +20,12 @@ import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { useAppData } from '@/context/AppDataContext';
-import { Combobox } from '@/components/ui/combobox';
-import { VIOLATION_DATA } from '@/data/violations.data';
-import { ALL_VIOLATIONS } from '@/pages/violations/violations-list.data';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { FileDropZone, type DropFile } from '@/components/compliance/FileDropZone';
 import { useAccidentRecords } from '@/data/accident-records.data';
-import type { TicketIdentifiers } from './tickets.data';
+import type { TicketIdentifiers, TicketViolation } from './tickets.data';
+import { PENALTY_OPTIONS } from './violation-presets';
+import { ViolationPicker } from './ViolationPicker';
 
 // ── Shape of the working draft ─────────────────────────────────────────────
 // Tickets store the location as one string but we edit it as structured
@@ -63,7 +62,18 @@ export interface TicketFormDraft {
     // Violation form's Category / Sub-category strip exactly.
     violationCategory?: string;
     violationGroup?: string;
+    // All violations/charges on the ticket (a ticket can have several). The
+    // first entry is mirrored onto the flat violationType/… fields above.
+    violations?: TicketViolation[];
     isOos?: boolean;
+    // Explicit "was this ticket placed Out of Service?" answer (Yes/No).
+    outOfService?: boolean;
+    // Explicit "were you in a commercial vehicle?" answer (Yes/No).
+    commercialVehicle?: boolean;
+    // Penalty / fine types applied — "select all that apply" chips.
+    penalties?: string[];
+    // Demerit / points assessed for the violation.
+    demeritPoints?: number;
     // Used to round-trip the FMCSA item id back into the Combobox value
     // on edit. Free-form because the master chart isn't a closed enum.
     violationDataId?: string;
@@ -137,21 +147,6 @@ function toDropFiles(list: FileList | null): DropFile[] {
     }));
 }
 
-/** Map a master-chart violation description to one of the narrow
- *  TicketRecord violationType buckets so the list view can keep
- *  showing a colour-coded badge. We use a simple keyword match —
- *  same heuristic the store applies in inferViolationType. */
-function narrowTypeFor(description: string, group?: string): string {
-    const text = `${description} ${group ?? ''}`.toLowerCase();
-    if (/speed|mph|over\s*limit|kph|excess/.test(text))                return 'Speeding';
-    if (/overweight|axle|gvw|gross\s*weight/.test(text))               return 'Overweight';
-    if (/logbook|log\s*book|hos|hours\s*of\s*service|eld/.test(text))  return 'Logbook violation';
-    if (/insurance|liability|coverage/.test(text))                     return 'Insurance lapse';
-    if (/red\s*light|signal|stop\s*sign/.test(text))                   return 'Red Light';
-    if (/parking|stopping|stopped/.test(text))                         return 'Parking';
-    return 'Equipment defect';
-}
-
 export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEditFormProps) => {
     // Carrier-scoped roster — falls back to global mocks when no carrier is
     // active. For the demo Acme carrier (acct-001) the curated MOCK_DRIVERS
@@ -206,11 +201,32 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
 
     useEffect(() => {
         const base: TicketFormDraft = record ?? {};
+        // Back-compat: older tickets carry only the flat violationType/subtype
+        // (no `violations[]`). Seed a single violation from those fields so the
+        // multi-violation UI shows it and the primary-sync effect below keeps it
+        // instead of wiping it. Gated so a brand-new ticket's placeholder default
+        // type doesn't auto-add a phantom violation.
+        let violations = base.violations;
+        const hasRealViolation = !!(base.violationSubtype || base.violationCategory || (base.violationType && base.id));
+        if ((!violations || violations.length === 0) && hasRealViolation) {
+            violations = [{
+                label: base.violationSubtype || base.violationType || 'Violation',
+                type: base.violationType,
+                subtype: base.violationSubtype,
+                category: base.violationCategory,
+                group: base.violationGroup,
+                code: base.identifiers?.violationCode,
+                isOos: base.isOos,
+                source: base.violationDataId ? 'sms' : 'preset',
+                dataId: base.violationDataId,
+            }];
+        }
         setDraft({
             currency: 'USD',
             locationCountry: 'USA',
             status: 'Due',
             ...base,
+            violations,
             identifiers: { ...(base.identifiers ?? {}) },
         });
         setDocs(record?.attachedDocuments ?? []);
@@ -220,31 +236,40 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
         setDraft(prev => ({ ...prev, [key]: value }));
     };
 
+    // Toggle a "select all that apply" penalty / fine type.
+    const togglePenalty = (penalty: string) => {
+        setDraft(prev => {
+            const current = prev.penalties ?? [];
+            const next = current.includes(penalty)
+                ? current.filter(p => p !== penalty)
+                : [...current, penalty];
+            return { ...prev, penalties: next };
+        });
+    };
+
+    // Keep the flat primary fields mirrored to the first violation so the list
+    // badge, filters and safety score (all single-value) stay correct.
+    useEffect(() => {
+        const first = draft.violations?.[0];
+        setDraft(prev => ({
+            ...prev,
+            violationType: first?.type || first?.label || undefined,
+            violationSubtype: first?.subtype || first?.label || undefined,
+            violationCategory: first?.category || undefined,
+            violationGroup: first?.group || undefined,
+            isOos: first?.isOos,
+            violationDataId: first?.source === 'sms' ? first?.dataId : undefined,
+            identifiers: { ...(prev.identifiers ?? {}), violationCode: first?.code },
+        }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draft.violations]);
+
     const totalAmount = (draft.fineAmount ?? 0) + (draft.expenseAmount ?? 0);
     const stateOptions = draft.locationCountry === 'Canada' ? CA_PROVINCE_ABBREVS : US_STATE_ABBREVS;
 
-    // Violation Type comes from the Violation settings (VIOLATION_DATA).
+    // The Violation Type picker (ViolationPicker) needs to know whether to offer
+    // Canadian CVOR/NSC codes or US SMS codes.
     const isCanada = draft.locationCountry === 'Canada';
-    const violationOptions = useMemo(() => {
-        if (isCanada) {
-            return Object.values(VIOLATION_DATA.categories)
-                .flatMap(cat => cat.items)
-                .filter(item => item.canadaEnforcement)
-                .map(item => ({
-                    value: item.canadaEnforcement!.code,
-                    label: `[${item.canadaEnforcement!.code}] ${item.canadaEnforcement!.descriptions?.full || item.violationDescription}`,
-                    description: `${item.canadaEnforcement!.category || item.violationGroup} · CVOR/NSC`,
-                }));
-        }
-        return ALL_VIOLATIONS.map(v => ({
-            value: v.id,
-            label: `[${v.violationCode}] ${v.violationDescription}`,
-            description: `${v.violationGroup} · SMS`,
-        }));
-    }, [isCanada]);
-    const selectedViolationValue = isCanada
-        ? (draft.identifiers?.violationCode ?? '')
-        : (draft.violationDataId ?? '');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -521,86 +546,91 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                         <WizardSection id="what" icon={FileText} title="Violation & Fine" subtitle="The violation code plus the fine, expense and status.">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
-                                    <label className={labelClass}>Violation Type</label>
-                                    <Combobox
-                                        options={violationOptions}
-                                        value={selectedViolationValue}
-                                        onValueChange={(val: string) => {
-                                            if (isCanada) {
-                                                for (const [catKey, cat] of Object.entries(VIOLATION_DATA.categories)) {
-                                                    const v = cat.items.find(item => item.canadaEnforcement?.code === val);
-                                                    if (!v) continue;
-                                                    const subtype = v.canadaEnforcement!.descriptions?.full || v.violationDescription;
-                                                    const categoryLabel = (cat as any).label ?? catKey.replace(/_/g, ' ');
-                                                    setDraft(prev => ({
-                                                        ...prev,
-                                                        violationType: narrowTypeFor(subtype, v.canadaEnforcement!.category || v.violationGroup),
-                                                        violationSubtype: subtype,
-                                                        violationCategory: categoryLabel,
-                                                        violationGroup: v.violationGroup,
-                                                        isOos: !!v.isOos,
-                                                        identifiers: {
-                                                            ...(prev.identifiers ?? {}),
-                                                            violationCode: v.canadaEnforcement!.code,
-                                                            statuteSection: v.canadaEnforcement!.category,
-                                                        },
-                                                    }));
-                                                    break;
-                                                }
-                                            } else {
-                                                for (const [catKey, cat] of Object.entries(VIOLATION_DATA.categories)) {
-                                                    const v = cat.items.find(item => item.id === val);
-                                                    if (!v) continue;
-                                                    const categoryLabel = (cat as any).label ?? catKey.replace(/_/g, ' ');
-                                                    setDraft(prev => ({
-                                                        ...prev,
-                                                        violationType: narrowTypeFor(v.violationDescription, v.violationGroup),
-                                                        violationSubtype: v.violationDescription,
-                                                        violationCategory: categoryLabel,
-                                                        violationGroup: v.violationGroup,
-                                                        isOos: !!v.isOos,
-                                                        violationDataId: v.id,
-                                                        identifiers: {
-                                                            ...(prev.identifiers ?? {}),
-                                                            violationCode: v.violationCode,
-                                                        },
-                                                    }));
-                                                    break;
-                                                }
-                                            }
-                                        }}
-                                        placeholder={isCanada ? 'Search Canadian violation code...' : 'Search SMS violation code...'}
-                                        searchPlaceholder={isCanada ? 'Search CVOR/NSC violations...' : 'Search SMS violations...'}
-                                        className="w-full bg-white"
+                                    <ViolationPicker
+                                        value={draft.violations ?? []}
+                                        onChange={vs => setDraft(prev => ({ ...prev, violations: vs }))}
+                                        isCanada={isCanada}
+                                        label="Violation Type"
+                                        hint="· select all that apply, a ticket can have multiple"
                                     />
-                                    {draft.violationCategory && (
-                                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Category</span>
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                                {draft.violationCategory}
-                                            </span>
-                                            {draft.violationGroup && (
-                                                <>
-                                                    <span className="text-[10px] text-slate-300">/</span>
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Sub-category</span>
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                                        {draft.violationGroup}
-                                                    </span>
-                                                </>
-                                            )}
-                                            {draft.isOos && (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
-                                                    OOS-qualifying
-                                                </span>
-                                            )}
-                                            {draft.identifiers?.violationCode && (
-                                                <span className="ml-1 text-[10px] font-mono text-slate-400">code {draft.identifiers.violationCode}</span>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
                                 <div>
-                                    <label className={labelClass}>Status</label>
+                                    <label className={labelClass}>Were you in a commercial vehicle?</label>
+                                    <div className="flex h-10 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+                                        {([['Yes', true], ['No', false]] as const).map(([opt, val]) => {
+                                            const on = draft.commercialVehicle === val;
+                                            return (
+                                                <button
+                                                    key={opt}
+                                                    type="button"
+                                                    aria-pressed={on}
+                                                    onClick={() => set('commercialVehicle', on ? undefined : val)}
+                                                    className={
+                                                        'flex flex-1 items-center justify-center rounded-md text-sm font-semibold transition-colors ' +
+                                                        (on
+                                                            ? 'bg-blue-600 text-white shadow-sm'
+                                                            : 'text-slate-500 hover:bg-white hover:text-slate-700')
+                                                    }
+                                                >
+                                                    {opt}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Out of Service?</label>
+                                    <div className="flex h-10 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+                                        {([['Yes', true], ['No', false]] as const).map(([opt, val]) => {
+                                            const on = draft.outOfService === val;
+                                            return (
+                                                <button
+                                                    key={opt}
+                                                    type="button"
+                                                    aria-pressed={on}
+                                                    onClick={() => set('outOfService', on ? undefined : val)}
+                                                    className={
+                                                        'flex flex-1 items-center justify-center rounded-md text-sm font-semibold transition-colors ' +
+                                                        (on
+                                                            ? (val ? 'bg-red-600 text-white shadow-sm' : 'bg-blue-600 text-white shadow-sm')
+                                                            : 'text-slate-500 hover:bg-white hover:text-slate-700')
+                                                    }
+                                                >
+                                                    {opt}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelClass}>
+                                        Penalty / Fine <span className="font-normal normal-case tracking-normal text-slate-400">· select all that apply</span>
+                                    </label>
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                        {PENALTY_OPTIONS.map(pen => {
+                                            const active = (draft.penalties ?? []).includes(pen);
+                                            return (
+                                                <button
+                                                    key={pen}
+                                                    type="button"
+                                                    aria-pressed={active}
+                                                    onClick={() => togglePenalty(pen)}
+                                                    className={
+                                                        'inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ' +
+                                                        (active
+                                                            ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                                                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700')
+                                                    }
+                                                >
+                                                    {active && <Check size={13} className="text-blue-600" />}
+                                                    {pen}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Ticket Status</label>
                                     <select className={inputClass} value={draft.status || 'Due'} onChange={e => set('status', e.target.value)}>
                                         {TICKET_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
@@ -608,6 +638,10 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                 <div>
                                     <label className={labelClass}>Fine Amount</label>
                                     <input type="number" min="0" step="0.01" className={inputClass} placeholder="0.00" value={draft.fineAmount ?? ''} onChange={e => set('fineAmount', e.target.value === '' ? undefined : Number(e.target.value))} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Demerit Points</label>
+                                    <input type="number" min="0" step="1" className={inputClass} placeholder="e.g. 2" value={draft.demeritPoints ?? ''} onChange={e => set('demeritPoints', e.target.value === '' ? undefined : Number(e.target.value))} />
                                 </div>
                                 <div>
                                     <label className={labelClass}>Expense Amount</label>

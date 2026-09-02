@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import {
     ChevronLeft, Pencil, FileText, User, MapPin, Ticket as TicketIcon, Hash,
-    DollarSign, Clock, UserPlus, FileCheck, Paperclip, List, Share2, MoreVertical, Trash2,
+    DollarSign, Clock, FileCheck, Paperclip, List, Share2, MoreVertical, Trash2,
     CheckCircle2, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -304,6 +304,31 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate 
                                     <Field label="Description" value={ticket.violationSubtype} wide />
                                     <Field label="Category" value={ticket.violationCategory} />
                                     <Field label="Sub-category" value={ticket.violationGroup} />
+                                    {ticket.violations && ticket.violations.length > 0 && (
+                                        <Field
+                                            label={`All violations · ${ticket.violations.length}`}
+                                            wide
+                                            value={
+                                                <div className="flex flex-col gap-1.5">
+                                                    {ticket.violations.map((v, i) => (
+                                                        <div key={`${v.label}-${i}`} className="flex flex-wrap items-center gap-1.5">
+                                                            {i === 0 && (
+                                                                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-blue-600 text-white">Primary</span>
+                                                            )}
+                                                            <span className="text-[13px] font-semibold text-slate-800">{v.label}</span>
+                                                            {v.code && <span className="text-[10px] font-mono text-slate-400">code {v.code}</span>}
+                                                            {v.category && (
+                                                                <span className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">{v.category}</span>
+                                                            )}
+                                                            {v.isOos && (
+                                                                <span className="inline-flex items-center rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700">OOS</span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            }
+                                        />
+                                    )}
                                 </Grid>
                             </InfoCard>
 
@@ -345,20 +370,49 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate 
                                     <Field label="Fine" value={money} />
                                     <Field label="Status" value={<span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', st.chip)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{ticket.status}</span>} />
                                     <Field label="Currency" value={ticket.currency} />
+                                    {ticket.demeritPoints !== undefined && <Field label="Demerit points" value={String(ticket.demeritPoints)} />}
+                                    {ticket.outOfService !== undefined && (
+                                        <Field
+                                            label="Out of service"
+                                            value={
+                                                <span className={cn(
+                                                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold',
+                                                    ticket.outOfService ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'
+                                                )}>
+                                                    {ticket.outOfService ? 'Yes' : 'No'}
+                                                </span>
+                                            }
+                                        />
+                                    )}
+                                    {ticket.commercialVehicle !== undefined && (
+                                        <Field
+                                            label="Commercial vehicle"
+                                            value={
+                                                <span className={cn(
+                                                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold',
+                                                    ticket.commercialVehicle ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-600'
+                                                )}>
+                                                    {ticket.commercialVehicle ? 'Yes' : 'No'}
+                                                </span>
+                                            }
+                                        />
+                                    )}
+                                    {ticket.penalties && ticket.penalties.length > 0 && (
+                                        <Field
+                                            label="Penalty / fine"
+                                            wide
+                                            value={
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {ticket.penalties.map(p => (
+                                                        <span key={p} className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            }
+                                        />
+                                    )}
                                 </Grid>
-                            </InfoCard>
-
-                            <InfoCard title="Assignment" icon={UserPlus}>
-                                {ticket.assignedToThirdParty ? (
-                                    <Grid>
-                                        <Field label="Assigned" value="Yes — third party" />
-                                        <Field label="Assignee" value={(ticket as any).assigneeName} />
-                                        <Field label="Email" value={(ticket as any).assigneeEmail} mono />
-                                        <Field label="Note" value={(ticket as any).assignmentNote} wide />
-                                    </Grid>
-                                ) : (
-                                    <p className="text-[13px] text-slate-400">Not assigned to a third party.</p>
-                                )}
                             </InfoCard>
                         </div>
                         <TicketSectionNav containerRef={overviewRef} />

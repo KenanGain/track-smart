@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon, Pencil, Calendar, Eye } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -21,11 +21,16 @@ const EVENT_STYLE: Record<string, { Icon: React.ElementType; cls: string }> = {
     status: { Icon: Activity, cls: "bg-slate-100 text-slate-600" },
     remark: { Icon: MessageSquarePlus, cls: "bg-amber-100 text-amber-600" },
     reissue: { Icon: RotateCcw, cls: "bg-amber-100 text-amber-600" },
+    viewed: { Icon: Eye, cls: "bg-slate-100 text-slate-500" },
+    edited: { Icon: Pencil, cls: "bg-slate-100 text-slate-600" },
 };
 const evStyle = (t: string) => EVENT_STYLE[t] ?? { Icon: Activity, cls: "bg-slate-100 text-slate-600" };
 import { StatusSelect } from "./ApplicationsHiringPage";
 
 const HP_PATH = "/hiring-process/applications";
+
+// Slug for a submitted-data section — used as the scroll anchor + jump-nav target.
+const sectionId = (title: string) => "sec-" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
 type Tab = "data" | "document" | "uploads" | "consent" | "remarks" | "events";
 
@@ -47,6 +52,22 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
     const docRef = useRef<HTMLDivElement>(null);
 
     const a = applicants.find((x) => x.id === applicantId);
+
+    // Log who opened the application (realtime activity). Fires once per open;
+    // deduped so re-opening within 5 minutes by the same person isn't repeated.
+    const viewLogged = useRef(false);
+    useEffect(() => {
+        if (!a || viewLogged.current) return;
+        viewLogged.current = true;
+        updateOne(a.id, (prev) => {
+            const latest = prev.events[0];
+            const now = Date.now();
+            if (latest && latest.type === "viewed" && latest.author === ACTOR && now - latest.at < 5 * 60_000) return {};
+            return { events: [{ id: `v-${now}`, type: "viewed", text: `${ACTOR} opened the application`, at: now, author: ACTOR }, ...prev.events] };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [a?.id]);
+
     if (!a) {
         return (
             <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
@@ -228,7 +249,18 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
 
                 {/* Event log */}
                 {tab === "events" && (
-                    <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-6 py-3.5">
+                            <div className="flex items-center gap-2">
+                                <History className="h-4 w-4 text-blue-600" />
+                                <h3 className="text-sm font-bold text-slate-800">Activity Log</h3>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{a.events.length}</span>
+                            </div>
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
+                            </span>
+                        </div>
+                        <div className="p-6">
                         {a.events.length === 0 ? (
                             <p className="py-8 text-center text-sm text-slate-500">No activity yet.</p>
                         ) : (
@@ -236,16 +268,21 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                                 {a.events.map((e, i) => {
                                     const st = evStyle(e.type);
                                     const last = i === a.events.length - 1;
+                                    const authorInitials = e.author.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
                                     return (
                                         <li key={e.id} className="flex gap-3">
                                             <div className="flex flex-col items-center">
                                                 <span className={cn("flex h-8 w-8 items-center justify-center rounded-full", st.cls)}><st.Icon className="h-4 w-4" /></span>
                                                 {!last && <span className="my-1 w-px flex-1 bg-slate-200" />}
                                             </div>
-                                            <div className={cn("min-w-0", last ? "pb-0" : "pb-6")}>
+                                            <div className={cn("min-w-0 flex-1", last ? "pb-0" : "pb-6")}>
                                                 <p className="text-sm font-medium text-slate-800">{e.text}</p>
-                                                <p className="mt-0.5 text-xs text-slate-400">
-                                                    {e.author} · {relativeTime(e.at)} · {new Date(e.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-bold text-slate-600">{authorInitials}</span>
+                                                        <span className="font-medium text-slate-500">{e.author}</span>
+                                                    </span>
+                                                    · {relativeTime(e.at)} · {new Date(e.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                                                 </p>
                                             </div>
                                         </li>
@@ -253,6 +290,7 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                                 })}
                             </ol>
                         )}
+                        </div>
                     </div>
                 )}
 
@@ -312,19 +350,20 @@ function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: stri
         const now = Date.now();
         updateOne(a.id, (prev) => ({
             submission: (prev.submission ?? []).map((s) => s.title === draft.title ? draft : s),
-            events: [{ id: `e-${now}`, type: "status", text: `Edited “${draft.title}”`, at: now, author: ACTOR }, ...prev.events],
+            events: [{ id: `e-${now}`, type: "edited", text: `${ACTOR} edited “${draft.title}”`, at: now, author: ACTOR }, ...prev.events],
         }));
         cancelEdit();
     };
 
     return (
-        <div className="space-y-4">
+        <div className="flex gap-6">
+            <div className="min-w-0 flex-1 space-y-4">
             {a.submission!.map((sec) => {
                 const isMulti = sec.groups.length > 1;
                 const isEditing = editing === sec.title;
                 const view = isEditing && draft ? draft : sec;
                 return (
-                    <div key={sec.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div key={sec.title} id={sectionId(sec.title)} className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <header className="mb-4 flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                                 <h2 className="text-sm font-bold uppercase tracking-wide" style={{ color: accent }}>{sec.title}</h2>
@@ -381,6 +420,26 @@ function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: stri
                     </div>
                 );
             })}
+            </div>
+
+            <aside className="no-print sticky top-6 hidden h-fit w-64 shrink-0 lg:block">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Jump to section</p>
+                    <nav className="space-y-0.5">
+                        {a.submission!.map((sec) => (
+                            <button
+                                key={sec.title}
+                                type="button"
+                                onClick={() => document.getElementById(sectionId(sec.title))?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                                className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                <span className="truncate">{sec.title}</span>
+                                {sec.groups.length > 1 && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{sec.groups.length}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            </aside>
 
             {preview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setPreview(null)}>
@@ -498,32 +557,55 @@ function UploadsTab({ applicant }: { applicant: Applicant }) {
     if (!ups.length) {
         return <div className="mx-auto max-w-2xl rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center text-sm text-slate-500">No documents were uploaded with this application.</div>;
     }
-    const cats = Array.from(new Set(ups.map((u) => u.category)));
+    const fileExt = (f: string) => (f.split(".").pop() || "").toUpperCase();
     return (
-        <div className="mx-auto max-w-3xl space-y-6">
-            {cats.map((cat) => {
-                const rows = ups.filter((u) => u.category === cat);
-                return (
-                    <div key={cat}>
-                        <div className="mb-2.5 flex items-center gap-2">
-                            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{cat}</h3>
-                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">{rows.length}</span>
-                        </div>
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-                            {rows.map((u) => (
-                                <div key={u.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70">
-                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><ImageIcon className="h-4 w-4" /></div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-semibold text-slate-800">{u.label}</p>
-                                        <p className="truncate text-xs text-slate-400">{u.file}</p>
-                                    </div>
-                                    <button type="button" className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white hover:border-slate-300">View</button>
-                                </div>
+        <div className="mx-auto max-w-4xl">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
+                    <Paperclip className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-bold text-slate-800">Uploaded Documents</h3>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{ups.length}</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-sm">
+                        <thead>
+                            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                                <th className="w-10 px-5 py-2.5">#</th>
+                                <th className="px-5 py-2.5">Document</th>
+                                <th className="px-5 py-2.5">File name</th>
+                                <th className="px-5 py-2.5">Type</th>
+                                <th className="px-5 py-2.5">Category</th>
+                                <th className="px-5 py-2.5">Status</th>
+                                <th className="px-5 py-2.5 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {ups.map((u, i) => (
+                                <tr key={u.id} className="transition-colors hover:bg-slate-50/70">
+                                    <td className="px-5 py-3 text-slate-400">{i + 1}</td>
+                                    <td className="px-5 py-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><ImageIcon className="h-4 w-4" /></div>
+                                            <span className="font-semibold text-slate-800">{u.label}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-5 py-3 font-mono text-xs text-slate-500">{u.file}</td>
+                                    <td className="px-5 py-3 text-slate-500">{fileExt(u.file)}</td>
+                                    <td className="px-5 py-3">
+                                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{u.category}</span>
+                                    </td>
+                                    <td className="px-5 py-3">
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700"><Check className="h-3 w-3" /> Uploaded</span>
+                                    </td>
+                                    <td className="px-5 py-3 text-right">
+                                        <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"><Eye className="h-3.5 w-3.5" /> View</button>
+                                    </td>
+                                </tr>
                             ))}
-                        </div>
-                    </div>
-                );
-            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 }

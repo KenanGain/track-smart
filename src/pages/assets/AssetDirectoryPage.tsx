@@ -170,6 +170,7 @@ export function AssetDirectoryPage({
     isEmbedded = false,
     assets: assetsProp,
     onDetailViewChange,
+    onFormActiveChange,
     accountId,
 }: {
     isEmbedded?: boolean;
@@ -178,6 +179,10 @@ export function AssetDirectoryPage({
      *  the parent (CarrierProfilePage) hide its own breadcrumb/tabs while
      *  the user is on the detail page. */
     onDetailViewChange?: (active: boolean) => void;
+    /** Fired when the Add/Edit Asset wizard opens/closes — lets the parent hide
+     *  its chrome AND switch to a bounded full-height layout so the wizard can
+     *  inner-scroll (fixed header + progress rail), like the Add Accident page. */
+    onFormActiveChange?: (active: boolean) => void;
     /** Active carrier — threaded down to AssetDetailView so its safety
      *  analysis breakdown can be computed for the right scorecard bucket. */
     accountId?: string;
@@ -193,12 +198,15 @@ export function AssetDirectoryPage({
     const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
     const [selectedAsset, setSelectedAsset] = useState<DetailedAsset | null>(null);
 
-    // Notify the parent (CarrierProfilePage) when the embedded detail view
-    // opens or closes so it can hide its own carrier breadcrumb + tabs while
-    // the user is reading a single asset.
+    // Notify the parent (CarrierProfilePage) when the embedded detail view opens/
+    // closes (page-scroll) vs. the Add/Edit wizard opens/closes (bounded full-height
+    // so it inner-scrolls). Both hide the carrier breadcrumb/tabs.
     useEffect(() => {
         onDetailViewChange?.(selectedAsset !== null);
     }, [selectedAsset, onDetailViewChange]);
+    useEffect(() => {
+        onFormActiveChange?.(isModalOpen);
+    }, [isModalOpen, onFormActiveChange]);
 
 
     // Pagination
@@ -313,6 +321,19 @@ export function AssetDirectoryPage({
         { id: 'trucks', label: 'Trucks (CMV)', icon: Truck },
         { id: 'trailers', label: 'Trailers (Non-CMV)', icon: Briefcase },
     ];
+
+    // The Add/Edit Asset wizard replaces the page content (keeps the sidebar),
+    // consistent with the Add Accident page.
+    if (isModalOpen) {
+        return (
+            <AssetModal
+                asset={editingAsset}
+                onClose={() => { setIsModalOpen(false); setEditingAsset(null); }}
+                onSave={handleSaveAsset}
+                isSaving={isSaving}
+            />
+        );
+    }
 
     return (
         <>
@@ -656,15 +677,6 @@ export function AssetDirectoryPage({
                         </div>
                     </div>
                 </div>
-            )}
-
-            {isModalOpen && (
-                <AssetModal
-                    asset={editingAsset}
-                    onClose={() => { setIsModalOpen(false); setEditingAsset(null); }}
-                    onSave={handleSaveAsset}
-                    isSaving={isSaving}
-                />
             )}
         </>
     );

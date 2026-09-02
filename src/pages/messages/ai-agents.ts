@@ -57,14 +57,27 @@ export interface AiAction {
   openConvId?: string;        // target conversation id (filled by the store)
 }
 
+/** A tappable "resource" widget the agent attaches to a delivered message — the
+ *  recipient (a driver or another user) taps it to upload a document, open a
+ *  form, sign, or view a link. Rendered as an AiResourceCard in the chat. */
+export type AiResourceKind = 'upload' | 'form' | 'sign' | 'view' | 'link';
+export interface AiResource {
+  kind: AiResourceKind;
+  title: string;              // 'Upload your Medical Certificate'
+  detail?: string;            // 'Required for your DQ file · expires in 12 days'
+  actionLabel: string;        // 'Upload document'
+  url: string;                // 'tracksmart.app/upload/•••'
+}
+
 /** What the store should deliver into a contact's chat for an action. */
-export interface AgentDeliver { toToken: string; text: string }
+export interface AgentDeliver { toToken: string; text: string; resource?: AiResource }
 
 export interface AgentReply {
   text: string;
   panel?: AiPanel;
   action?: AiAction;
-  deliver?: AgentDeliver;     // store posts `text` into the `toToken` contact's chat
+  resource?: AiResource;      // a resource widget the agent attached (preview + delivered)
+  deliver?: AgentDeliver;     // store posts `text` (+ resource) into the `toToken` contact's chat
   suggestions?: string[];     // follow-up quick prompts shown as chips
 }
 
@@ -78,6 +91,7 @@ export interface AgentCommand {
   action?: Omit<AiAction, 'openConvId'>; // → static result card
   needsContact?: boolean;     // requires an @contact; delivers a message
   deliver?: (firstName: string) => string; // message posted into the contact's chat
+  resource?: (firstName: string) => AiResource; // resource widget attached to the delivered message
   reply?: string;             // lead-in text
 }
 
@@ -303,6 +317,16 @@ const REPLY_TEXT: Partial<Record<AgentIntent, string>> = {
   paystub: 'Here’s your latest payroll run:',
 };
 
+// ── resource-widget builders (attached to delivered messages) ────────────────
+const uploadRes = (title: string, detail: string): AiResource =>
+  ({ kind: 'upload', title, detail, actionLabel: 'Upload document', url: 'tracksmart.app/upload/•••' });
+const formRes = (title: string, detail: string): AiResource =>
+  ({ kind: 'form', title, detail, actionLabel: 'Open form', url: 'tracksmart.app/form/•••' });
+const signRes = (title: string, detail: string): AiResource =>
+  ({ kind: 'sign', title, detail, actionLabel: 'Review & sign', url: 'tracksmart.app/sign/•••' });
+const viewRes = (title: string, detail: string): AiResource =>
+  ({ kind: 'view', title, detail, actionLabel: 'Open link', url: 'tracksmart.app/view/•••' });
+
 // ── the agents ───────────────────────────────────────────────────────────────
 export const AGENTS: AgentDef[] = [
   {
@@ -311,13 +335,22 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'hiring',
     blurb: 'applicants, reports and onboarding',
     greeting: 'I track applicants from application through onboarding — I can pull pipeline status, order reports, send applications and start onboarding.',
-    prompts: ['Hiring pipeline status', 'Who’s ready to approve?', 'Onboarding progress', 'Send an application', 'Order MVR + PSP'],
+    prompts: ['Hiring pipeline status', 'Who’s ready to approve?', 'Onboarding progress', 'Send an application', 'Request a document', 'Order MVR + PSP'],
     commands: [
       { id: 'pipeline', label: 'Pipeline status', hint: 'Show the hiring pipeline', icon: 'user', intent: 'hiring' },
       { id: 'onboarding', label: 'Onboarding progress', hint: 'Show onboarding steps', icon: 'clipboard', intent: 'onboarding' },
       { id: 'send-application', label: 'Send application', hint: 'Email an application link to a contact', icon: 'send', needsContact: true,
-        deliver: (n) => `Hi ${n}, please complete your driver application here: tracksmart.app/apply/•••. It takes about 15 minutes.`,
+        deliver: (n) => `Hi ${n}, please complete your driver application using the secure link below. It takes about 15 minutes.`,
+        resource: () => viewRes('Start your driver application', 'Secure link · about 15 minutes'),
         action: { icon: 'send', tone: 'blue', title: 'Application sent', detail: 'Driver application link', status: 'Delivered' } },
+      { id: 'request-doc', label: 'Request a document', hint: 'Ask an applicant to upload a document', icon: 'upload', needsContact: true,
+        deliver: (n) => `Hi ${n}, we need one more document to continue your application. Please upload it using the secure link below.`,
+        resource: (n) => uploadRes('Upload a required document', `Requested for ${n}’s driver application`),
+        action: { icon: 'upload', tone: 'emerald', title: 'Document requested', detail: 'Secure upload link attached', status: 'Delivered' } },
+      { id: 'send-form', label: 'Send a form to fill', hint: 'Send a form for the driver to complete', icon: 'clipboard', needsContact: true,
+        deliver: (n) => `Hi ${n}, please complete this form so we can move your application forward.`,
+        resource: () => formRes('Complete your application form', 'About 10 minutes'),
+        action: { icon: 'clipboard', tone: 'blue', title: 'Form sent', detail: 'Application form to complete', status: 'Delivered' } },
       { id: 'order-report', label: 'Order MVR + PSP', hint: 'Request screening reports', icon: 'clipboard',
         action: { icon: 'clipboard', tone: 'amber', title: 'MVR + PSP ordered', detail: 'Requested from the screening provider', status: 'Queued' } },
       { id: 'approve', label: 'Approve applicant', hint: 'Approve & move to onboarding', icon: 'check',
@@ -330,15 +363,25 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'safety',
     blurb: 'safety events, coaching and accidents',
     greeting: 'I watch telematics and safety events — I can summarize events, assign coaching, send warning letters and pull accident status.',
-    prompts: ['Recent safety events', 'High-severity events', 'Recent accidents', 'Assign coaching', 'Send a warning letter'],
+    prompts: ['Recent safety events', 'High-severity events', 'Recent accidents', 'Assign coaching', 'Request acknowledgement', 'Send a coaching video'],
     commands: [
       { id: 'events', label: 'Safety events', hint: 'Show this week’s events', icon: 'bell', intent: 'safety' },
       { id: 'accidents', label: 'Accidents', hint: 'Show recent accidents', icon: 'file', intent: 'accidents' },
       { id: 'assign-training', label: 'Assign coaching', hint: 'Assign a training to a driver', icon: 'graduation', needsContact: true,
         deliver: (n) => `Hi ${n}, you’ve been assigned a Defensive Driving refresher after a recent harsh-braking event. Please complete it within 7 days.`,
+        resource: () => viewRes('Defensive Driving refresher', 'Assigned training · due in 7 days'),
         action: { icon: 'graduation', tone: 'violet', title: 'Training assigned', detail: 'Defensive Driving refresher', status: 'Sent' } },
+      { id: 'send-video', label: 'Send a coaching video', hint: 'Share a coaching clip with a driver', icon: 'graduation', needsContact: true,
+        deliver: (n) => `Hi ${n}, here’s a short coaching clip on smooth braking from your recent event. Please watch it before your next trip.`,
+        resource: () => viewRes('Coaching clip · Smooth braking', '2-minute video · watch before next trip'),
+        action: { icon: 'graduation', tone: 'blue', title: 'Coaching video sent', detail: 'Smooth braking clip', status: 'Delivered' } },
+      { id: 'request-ack', label: 'Request acknowledgement', hint: 'Ask a driver to review & sign', icon: 'file', needsContact: true,
+        deliver: (n) => `Hi ${n}, please review and sign the acknowledgement for your recent safety event.`,
+        resource: () => signRes('Safety event acknowledgement', 'Review & sign · harsh-braking event'),
+        action: { icon: 'file', tone: 'amber', title: 'Acknowledgement requested', detail: 'Review & sign attached', status: 'Sent' } },
       { id: 'send-warning', label: 'Send warning letter', hint: 'Send a warning to a driver', icon: 'file', needsContact: true,
         deliver: (n) => `Hi ${n}, this is a formal warning letter regarding a repeated harsh-braking safety event. Please acknowledge and sign.`,
+        resource: () => signRes('Warning letter — Harsh braking', 'Formal notice · acknowledgement required'),
         action: { icon: 'file', tone: 'amber', title: 'Warning letter sent', detail: 'Harsh-braking · acknowledgement required', status: 'Sent' } },
     ],
   },
@@ -354,7 +397,8 @@ export const AGENTS: AgentDef[] = [
       { id: 'rest', label: 'Suggest rest stops', hint: 'Send nearest safe stops to dispatch', icon: 'check',
         action: { icon: 'check', tone: 'blue', title: 'Rest stops suggested', detail: '2 drivers near their 14-hour limit — nearest safe stops sent to dispatch', status: 'Done' } },
       { id: 'notify', label: 'Alert a driver', hint: 'Send an HOS alert to a driver', icon: 'bell', needsContact: true,
-        deliver: (n) => `Hi ${n}, you’re within 1 hour of your 14-hour limit. Please plan your next rest break now.`,
+        deliver: (n) => `Hi ${n}, you’re within 1 hour of your 14-hour limit. Please plan your next rest break now — nearest safe stops are in the link below.`,
+        resource: () => viewRes('Nearest safe rest stops', 'Live map · within 20 miles of your route'),
         action: { icon: 'bell', tone: 'amber', title: 'HOS alert sent', detail: 'Approaching 14-hour limit', status: 'Delivered' } },
     ],
   },
@@ -364,15 +408,24 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'violations',
     blurb: 'violations, inspections and tickets',
     greeting: 'I track roadside inspections, violations and tickets — I can list open items, log a violation, or notify a driver.',
-    prompts: ['Open violations', 'Tickets & citations', 'Log a violation', 'Notify a driver'],
+    prompts: ['Open violations', 'Tickets & citations', 'Log a violation', 'Notify a driver', 'Request driver response'],
     commands: [
       { id: 'violations', label: 'Open violations', hint: 'Show open violations', icon: 'file', intent: 'violations' },
       { id: 'tickets', label: 'Tickets', hint: 'Show tickets & citations', icon: 'clipboard', intent: 'tickets' },
       { id: 'log-violation', label: 'Log a violation', hint: 'Create a draft violation', icon: 'clipboard',
         action: { icon: 'clipboard', tone: 'amber', title: 'Violation logged', detail: 'Draft created for review', status: 'Draft' } },
       { id: 'notify', label: 'Notify a driver', hint: 'Send a violation notice to a driver', icon: 'bell', needsContact: true,
-        deliver: (n) => `Hi ${n}, a new violation was recorded on your file. Please review and respond.`,
+        deliver: (n) => `Hi ${n}, a new violation was recorded on your file. Please review and respond using the link below.`,
+        resource: () => viewRes('Violation notice', 'Review the recorded violation on your file'),
         action: { icon: 'bell', tone: 'amber', title: 'Notice sent', detail: 'Violation notice', status: 'Delivered' } },
+      { id: 'request-response', label: 'Request driver response', hint: 'Ask a driver to explain a violation', icon: 'clipboard', needsContact: true,
+        deliver: (n) => `Hi ${n}, please complete the driver-response form for the recent roadside violation.`,
+        resource: () => formRes('Driver response form', 'Explain the roadside violation · required'),
+        action: { icon: 'clipboard', tone: 'blue', title: 'Response requested', detail: 'Driver-response form attached', status: 'Delivered' } },
+      { id: 'request-doc', label: 'Request a document', hint: 'Ask a driver to upload proof', icon: 'upload', needsContact: true,
+        deliver: (n) => `Hi ${n}, please upload proof of repair / correction for the roadside violation.`,
+        resource: () => uploadRes('Upload proof of correction', 'Roadside violation · required for DataQ'),
+        action: { icon: 'upload', tone: 'emerald', title: 'Document requested', detail: 'Proof-of-correction upload link', status: 'Delivered' } },
     ],
   },
   {
@@ -381,14 +434,23 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'dqfiles',
     blurb: 'DQ files, documents and expirations',
     greeting: 'I keep driver-qualification files complete — I can show completeness, expiring items, missing documents, and request an upload.',
-    prompts: ['DQ file completeness', 'Expiring documents', 'Missing documents', 'Request a document'],
+    prompts: ['DQ file completeness', 'Expiring documents', 'Missing documents', 'Request a document', 'Request medical certificate'],
     commands: [
       { id: 'dqfiles', label: 'DQ completeness', hint: 'Show DQ file status', icon: 'clipboard', intent: 'dqfiles' },
       { id: 'expiring', label: 'Expiring items', hint: 'Show expiring documents', icon: 'bell', intent: 'expiring' },
       { id: 'missing', label: 'Missing documents', hint: 'Show documents that need attention', icon: 'file', intent: 'documents' },
       { id: 'request-doc', label: 'Request a document', hint: 'Ask a driver to upload a document', icon: 'upload', needsContact: true,
-        deliver: (n) => `Hi ${n}, your DQ file is missing a current document. Please upload it here: tracksmart.app/upload/•••.`,
-        action: { icon: 'upload', tone: 'emerald', title: 'Document requested', detail: 'Upload link sent', status: 'Delivered' } },
+        deliver: (n) => `Hi ${n}, your DQ file is missing a current document. Please upload it using the secure link below.`,
+        resource: (n) => uploadRes('Upload a missing DQ document', `Required to complete ${n}’s DQ file`),
+        action: { icon: 'upload', tone: 'emerald', title: 'Document requested', detail: 'Secure upload link attached', status: 'Delivered' } },
+      { id: 'request-medical', label: 'Request medical certificate', hint: 'Ask a driver to upload their DOT medical', icon: 'upload', needsContact: true,
+        deliver: (n) => `Hi ${n}, your DOT medical certificate is expiring soon. Please upload your renewed certificate below.`,
+        resource: () => uploadRes('Upload your Medical Certificate', 'DOT medical (MCSA-5876) · expires in 12 days'),
+        action: { icon: 'upload', tone: 'amber', title: 'Medical cert requested', detail: 'Expiring in 12 days', status: 'Delivered' } },
+      { id: 'send-dq-link', label: 'Send DQ file link', hint: 'Share the driver’s DQ file with them', icon: 'file', needsContact: true,
+        deliver: (n) => `Hi ${n}, here’s a link to your driver-qualification file so you can see what’s still needed.`,
+        resource: () => viewRes('Your DQ file', 'See completed & missing items'),
+        action: { icon: 'file', tone: 'blue', title: 'DQ file shared', detail: 'Read-only link', status: 'Delivered' } },
     ],
   },
   {
@@ -397,30 +459,20 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'account',
     blurb: 'account, drivers and assets',
     greeting: 'I know your carrier account inside out — drivers, assets, compliance and alerts. I can also message a driver for you.',
-    prompts: ['Account overview', 'Driver roster', 'Open alerts', 'Message a driver'],
+    prompts: ['Account overview', 'Driver roster', 'Open alerts', 'Message a driver', 'Request a document', 'Send a notification'],
     commands: [
       { id: 'account', label: 'Account overview', hint: 'Show account at a glance', icon: 'user', intent: 'account' },
       { id: 'drivers', label: 'Driver roster', hint: 'Show all drivers', icon: 'user', intent: 'drivers' },
       { id: 'message', label: 'Message a driver', hint: 'Send a message to a driver', icon: 'mail', needsContact: true,
         deliver: (n) => `Hi ${n}, checking in from the office — let me know if you need anything on your current run.`,
         action: { icon: 'mail', tone: 'blue', title: 'Message sent', detail: 'Office check-in', status: 'Delivered' } },
-    ],
-  },
-  {
-    key: 'ai-paystub', name: 'Pay Stub Agent', role: 'AI Agent · Payroll & settlements',
-    domainLabel: 'payroll', color: 'bg-emerald-600', email: 'payroll@tracksmart.ai',
-    primaryIntent: 'paystub',
-    blurb: 'pay runs, earnings and paystubs',
-    greeting: 'I handle payroll — I can show the latest run, driver earnings, generate a paystub, or send one to a driver.',
-    prompts: ['Latest pay run', 'Driver earnings', 'Generate a paystub', 'Send a paystub'],
-    commands: [
-      { id: 'payrun', label: 'Latest pay run', hint: 'Show the last payroll run', icon: 'dollar', intent: 'paystub' },
-      { id: 'earnings', label: 'Driver earnings', hint: 'Show per-driver earnings', icon: 'dollar', intent: 'paystub' },
-      { id: 'generate', label: 'Generate a paystub', hint: 'Build the latest settlement PDF', icon: 'file',
-        action: { icon: 'file', tone: 'emerald', title: 'Paystub generated', detail: 'Latest settlement · PDF ready', status: 'Ready' } },
-      { id: 'send-paystub', label: 'Send a paystub', hint: 'Email a paystub to a driver', icon: 'dollar', needsContact: true,
-        deliver: (n) => `Hi ${n}, your latest paystub is ready. View it here: tracksmart.app/paystub/•••.`,
-        action: { icon: 'dollar', tone: 'emerald', title: 'Paystub sent', detail: 'Latest settlement', status: 'Delivered' } },
+      { id: 'notify', label: 'Send a notification', hint: 'Send a text notification to a driver or user', icon: 'bell', needsContact: true,
+        deliver: (n) => `Hi ${n}, a quick notification from the office — please check the app when you have a moment.`,
+        action: { icon: 'bell', tone: 'amber', title: 'Notification sent', detail: 'Office notification', status: 'Delivered' } },
+      { id: 'request-doc', label: 'Request a document', hint: 'Ask a driver or user to upload a document', icon: 'upload', needsContact: true,
+        deliver: (n) => `Hi ${n}, please upload the requested document using the secure link below.`,
+        resource: () => uploadRes('Upload a document', 'Requested by the office'),
+        action: { icon: 'upload', tone: 'emerald', title: 'Document requested', detail: 'Secure upload link attached', status: 'Delivered' } },
     ],
   },
 ];
@@ -440,7 +492,6 @@ const INTENT_RULES: { intent: Exclude<AgentIntent, 'greeting' | 'help'>; re: Reg
   { intent: 'hiring',     re: /\b(hiring|hire|applicant|application|recruit\w*|candidate|pipeline)\b/i },
   { intent: 'expiring',   re: /\b(expir\w*|expiry|renew\w*|due soon|coming up)\b/i },
   { intent: 'dqfiles',    re: /\b(dq files?|dq file|dq|qualification)\b/i },
-  { intent: 'paystub',    re: /\b(paystub|pay stub|payroll|pay ?run|earnings|settlement|\bpay\b)\b/i },
   { intent: 'hos',        re: /\b(hours of service|hos|duty status|14-?hour|rest|eld)\b/i },
   { intent: 'safety',     re: /\b(safety|harsh|coaching|coach|braking|telematics)\b/i },
   { intent: 'violations', re: /\b(violation|violations|roadside|inspection|dataq)\b/i },
@@ -470,10 +521,12 @@ function commandReply(agent: AgentDef, cmd: AgentCommand, contactToken: string |
       return { text: `Who should I send this to? Type “@” to pick a driver — e.g. \`/${cmd.id} @John\`.`, suggestions };
     }
     const first = contactToken.replace(/^@/, '');
+    const resource = cmd.resource?.(first);
     return {
       text: cmd.reply ?? `Done — ${cmd.label.toLowerCase()} to ${first}.`,
       action: cmd.action ? { ...cmd.action } : { icon: cmd.icon, tone: 'blue', title: cmd.label, status: 'Delivered' },
-      deliver: cmd.deliver ? { toToken: contactToken, text: cmd.deliver(first) } : undefined,
+      resource,
+      deliver: cmd.deliver ? { toToken: contactToken, text: cmd.deliver(first), resource } : undefined,
       suggestions,
     };
   }
@@ -483,6 +536,35 @@ function commandReply(agent: AgentDef, cmd: AgentCommand, contactToken: string |
     action: cmd.action ? { ...cmd.action } : { icon: cmd.icon, tone: 'emerald', title: cmd.label, status: 'Done' },
     suggestions,
   };
+}
+
+/** Free-text action that targets an `@contact` — e.g. "ask @Maria to upload her
+ *  medical certificate", "notify @John to sign", "send @Ava a form". Delivers the
+ *  message (with a resource widget where relevant) into the contact's chat. */
+function freeTextDeliver(agent: AgentDef, token: string, first: string, kind: 'upload' | 'form' | 'sign' | 'notify'): AgentReply {
+  const map: Record<typeof kind, { res?: AiResource; icon: AiActionIcon; tone: AiTone; title: string; text: string }> = {
+    upload: { res: uploadRes('Upload a document', `Requested by ${agent.name}`), icon: 'upload', tone: 'emerald', title: 'Document requested', text: `Hi ${first}, please upload the requested document using the secure link below.` },
+    form:   { res: formRes('Complete a form', `Sent by ${agent.name}`), icon: 'clipboard', tone: 'blue', title: 'Form sent', text: `Hi ${first}, please complete this form when you have a moment.` },
+    sign:   { res: signRes('Review & sign', `Sent by ${agent.name}`), icon: 'file', tone: 'amber', title: 'Signature requested', text: `Hi ${first}, please review and sign the document below.` },
+    notify: { icon: 'bell', tone: 'amber', title: 'Notification sent', text: `Hi ${first}, a quick notification from the office — please check the app when you have a moment.` },
+  };
+  const m = map[kind];
+  return {
+    text: `Done — I’ve messaged ${first}.`,
+    action: { icon: m.icon, tone: m.tone, title: m.title, status: 'Delivered' },
+    resource: m.res,
+    deliver: { toToken: token, text: m.text, resource: m.res },
+    suggestions: agent.prompts,
+  };
+}
+
+/** Detect the kind of contact-targeted action a free-text message is asking for. */
+function freeTextKind(raw: string): 'upload' | 'form' | 'sign' | 'notify' | null {
+  if (/\b(upload|document|docs?|proof|medical|cdl|licen[cs]e|certificate|dq|file)\b/i.test(raw)) return 'upload';
+  if (/\b(form|fill|complete|questionnaire|response)\b/i.test(raw)) return 'form';
+  if (/\b(sign|signature|acknowledg\w*|consent)\b/i.test(raw)) return 'sign';
+  if (/\b(notify|remind|alert|message|text|tell|send|ping|check in)\b/i.test(raw)) return 'notify';
+  return null;
 }
 
 /**
@@ -502,6 +584,13 @@ export function interpretAgent(agentKey: string | undefined, text: string): Agen
     const contact = raw.match(/@([\w'’.-]+)/)?.[0] ?? null; // includes the leading @
     if (cmd) return commandReply(agent, cmd, contact);
     return { text: `I don’t know the command \`/${id}\`. Type “/” to see what I can do.`, suggestions: agent.prompts };
+  }
+
+  // 1b. Free-text action targeting an @contact (upload / form / sign / notify).
+  const atToken = raw.match(/@([\w'’.-]+)/)?.[0] ?? null;
+  if (atToken) {
+    const kind = freeTextKind(raw);
+    if (kind) return freeTextDeliver(agent, atToken, atToken.replace(/^@/, ''), kind);
   }
 
   // 2. Greeting?

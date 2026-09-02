@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { interpretAgent, AGENTS, type AiPanel, type AiAction } from './ai-agents';
+import { interpretAgent, AGENTS, type AiPanel, type AiAction, type AiResource } from './ai-agents';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messages store — the single source of truth for every conversation in the app.
@@ -77,6 +77,7 @@ export interface ChatMessage {
   widget?: ChatWidget;        // an interactive task card
   panel?: AiPanel;            // an AI-agent data card (drivers / documents / …)
   action?: AiAction;          // an AI-agent action-result card (mail sent, training assigned …)
+  resource?: AiResource;      // a tappable resource widget (upload / form / sign / view)
   suggestions?: string[];     // AI-agent follow-up quick prompts
 }
 
@@ -342,11 +343,12 @@ function seedConversations(): Conversation[] {
 // ── persistence + tiny pub/sub store ─────────────────────────────────────────
 // v2: specialized AI agents (hiring / safety / HOS / violations / DQ / account /
 // payroll) replaced the four generic agents.
-const STORAGE_KEY = 'messages:conversations:v2';
+const STORAGE_KEY = 'messages:conversations:v3';
 
 function load(): Conversation[] {
   try {
     localStorage.removeItem('messages:conversations:v1'); // drop the superseded seed
+    localStorage.removeItem('messages:conversations:v2'); // v2 seeded the removed Pay Stub agent
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Conversation[];
@@ -433,12 +435,12 @@ function scheduleInbound(convId: string, delay = 2600) {
 // ── mutations ────────────────────────────────────────────────────────────────
 
 /** Append a message from us; on active external chats an outsider reply follows. */
-export function sendMessage(convId: string, text: string, attachments?: MsgAttachment[]) {
+export function sendMessage(convId: string, text: string, attachments?: MsgAttachment[], resource?: AiResource) {
   const at = nowTime();
   patch(convId, c => ({
     ...c,
     lastAt: at,
-    messages: [...c.messages, { id: uid('me'), fromMe: true, text, at, iso: nowIso(), attachments }],
+    messages: [...c.messages, { id: uid('me'), fromMe: true, text, at, iso: nowIso(), attachments, resource }],
   }), true);
   const conv = conversations.find(c => c.id === convId);
   if (conv && conv.kind === 'external' && conv.status === 'active') scheduleInbound(convId);
@@ -502,18 +504,19 @@ export function askAgent(convId: string, text: string) {
     setTyping(convId, false);
     aiTimers.delete(convId);
 
-    // 3. If the action targets a contact, deliver the message into their chat.
+    // 3. If the action targets a contact, deliver the message (and any resource
+    //    widget) into their chat.
     let action = reply.action;
     if (reply.deliver) {
       const c = resolveContact(reply.deliver.toToken);
-      sendMessage(c.id, reply.deliver.text);
+      sendMessage(c.id, reply.deliver.text, undefined, reply.deliver.resource);
       if (action) action = { ...action, title: `${action.title} → ${c.first}`, openConvId: c.id, openLabel: `Open chat with ${c.first}` };
     }
 
     const rat = nowTime();
     const msg: ChatMessage = {
       id: uid('ai'), fromMe: false, text: reply.text, at: rat, iso: nowIso(),
-      panel: reply.panel, action, suggestions: reply.suggestions,
+      panel: reply.panel, action, resource: reply.resource, suggestions: reply.suggestions,
     };
     patch(convId, c => ({ ...c, lastAt: rat, messages: [...c.messages, msg] }), true);
   }, 850);

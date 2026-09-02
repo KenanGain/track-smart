@@ -170,6 +170,12 @@ type Profile = {
     education: Edu[];
     record: Rec[];          // accidents + violations
     signedAt: string;
+    // Optional sections — surfaced in Submitted Data even when the seed omits
+    // them (they render a sensible "None reported" / "Not provided" fallback).
+    contact?: { cell?: string; preferred?: string; bestTime?: string };
+    disqualification?: Rec[];
+    military?: { branch?: string; country?: string; from?: string; to?: string; rank?: string };
+    travelDocs?: { passport?: string; passportCountry?: string; passportExp?: string; visaType?: string; visaNumber?: string; visaExp?: string; workPermitType?: string; workPermitNumber?: string; workPermitExp?: string };
 };
 
 export type UploadedFile = { id: string; label: string; file: string; category: string };
@@ -190,6 +196,11 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
             { label: idLabel, value: p.idNumber },
             { label: `Legal right to work in ${country === "Canada" ? "Canada" : "the U.S."}`, value: "Yes" },
             { label: "Position Type", value: a.position ?? "Driver" },
+        ] }] },
+        { title: "Contact", groups: [{ fields: [
+            { label: "Cell Phone", value: p.contact?.cell ?? p.phone },
+            { label: "Preferred Contact Method", value: p.contact?.preferred ?? "Primary Phone" },
+            { label: "Best Time to Reach", value: p.contact?.bestTime ?? "Any" },
         ] }] },
         { title: "Address History", groups: p.addresses.length ? p.addresses.map((ad, i) => ({
             label: i === 0 ? "Current Address" : `Previous Address ${i}`,
@@ -215,6 +226,9 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
                 { label: "License Images", value: l.frontImage || l.backImage ? "Front & back uploaded" : "Not uploaded" },
             ],
         })) : [naGroup("License")] },
+        { title: "License Disqualification", groups: [{ fields: p.disqualification?.length
+            ? p.disqualification.map((r) => ({ label: r.label, value: r.detail }))
+            : [{ label: "Disqualifying convictions", value: "None reported" }] }] },
         { title: "Driving Experience", groups: p.drivingExperience?.length ? p.drivingExperience.map((d, i) => ({
             label: p.drivingExperience!.length > 1 ? `Experience ${i + 1}` : undefined,
             fields: [
@@ -257,6 +271,25 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
             ],
         })) : [{ fields: [{ label: "Education", value: "None reported" }] }] },
         { title: "Driving Record", groups: [{ fields: p.record.length ? p.record.map((r) => ({ label: r.label, value: r.detail })) : [{ label: "Record", value: "None reported" }] }] },
+        { title: "Military Service", groups: [{ fields: p.military
+            ? [
+                { label: "Branch", value: p.military.branch ?? "" },
+                { label: "Country", value: p.military.country ?? "" },
+                { label: "Service Dates", value: [p.military.from, p.military.to].filter(Boolean).join(" – ") },
+                { label: "Rank at Discharge", value: p.military.rank ?? "" },
+            ]
+            : [{ label: "Military service", value: "None reported" }] }] },
+        { title: "Travel Documents", groups: [{ fields: [
+            { label: "Passport Number", value: p.travelDocs?.passport || "Not provided" },
+            { label: "Passport Issuing Country", value: p.travelDocs?.passportCountry || "—" },
+            { label: "Passport Expiration", value: p.travelDocs?.passportExp || "—" },
+            { label: "Visa Type", value: p.travelDocs?.visaType || "None" },
+            { label: "Visa Number", value: p.travelDocs?.visaNumber || "—" },
+            { label: "Visa Expiration", value: p.travelDocs?.visaExp || "—" },
+            { label: "Work Permit Type", value: p.travelDocs?.workPermitType || "None" },
+            { label: "Work Permit Number", value: p.travelDocs?.workPermitNumber || "—" },
+            { label: "Work Permit Expiration", value: p.travelDocs?.workPermitExp || "—" },
+        ] }] },
         { title: "Signature", groups: [{ fields: [
             { label: "Signed By", value: `${a.firstName} ${a.lastName}` },
             { label: "Date Signed", value: p.signedAt },

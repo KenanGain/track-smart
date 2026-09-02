@@ -69,7 +69,10 @@ function toDomain(d: ApplicationData) {
             ? [{ id: "passport", type: "Passport", number: d.passport.number, country: d.passport.country, expiryDate: fmtDMY(d.passport.expiry), uploadType: "images" }]
             : []),
         ...(d.visa.has === "Yes" && (d.visa.number || d.visa.doc)
-            ? [{ id: "visa", type: "Visa", number: d.visa.number, country: "", expiryDate: fmtDMY(d.visa.expiry), uploadType: "images" }]
+            ? [{ id: "visa", type: "Visa", number: d.visa.number, visaType: d.visa.type, country: "", expiryDate: fmtDMY(d.visa.expiry), uploadType: "images", monitor: d.visa.monitor, reminderDays: d.visa.reminderDays }]
+            : []),
+        ...(d.workPermit.has === "Yes" && (d.workPermit.number || d.workPermit.doc)
+            ? [{ id: "work-permit", type: "Work Permit", number: d.workPermit.number, permitType: d.workPermit.type, country: "", expiryDate: fmtDMY(d.workPermit.expiry), uploadType: "images", monitor: d.workPermit.monitor, reminderDays: d.workPermit.reminderDays }]
             : []),
     ];
 
@@ -104,9 +107,13 @@ function toDomain(d: ApplicationData) {
         emergencyContacts: [] as any[],
         previousResidences,
         travelDocuments,
-        documents: d.signedDoc
-            ? [{ id: "signed-application", label: "Signed Application", file: d.signedDoc, category: "Application" }]
-            : [],
+        documents: [
+            ...(d.signedDoc ? [{ id: "signed-application", label: "Signed Application", file: d.signedDoc, category: "Application" }] : []),
+            // DD214 (military discharge) — captured when the driver can obtain it.
+            ...(d.militaryEver === "Yes" && d.military.dd214 === "Yes" && d.military.dd214Doc
+                ? [{ id: "dd214", label: "DD214 (Military Discharge)", file: d.military.dd214Doc, category: "Military" }]
+                : []),
+        ],
         // The full application object — the same data captured across the app.
         application: d,
     };

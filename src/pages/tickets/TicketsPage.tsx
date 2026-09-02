@@ -399,7 +399,12 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                     violationSubtype: editingTicket.violationSubtype,
                     violationCategory: editingTicket.violationCategory,
                     violationGroup: editingTicket.violationGroup,
+                    violations: editingTicket.violations,
                     isOos: editingTicket.isOos,
+                    outOfService: editingTicket.outOfService,
+                    commercialVehicle: editingTicket.commercialVehicle,
+                    penalties: editingTicket.penalties,
+                    demeritPoints: editingTicket.demeritPoints,
                     identifiers: editingTicket.identifiers ?? {},
                     accidentNumber: editingTicket.accidentNumber,
                     assignedToThirdParty: editingTicket.assignedToThirdParty,
@@ -490,6 +495,14 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                     // Carry the cross-reference to a linked accident (not part
                     // of the violation projection).
                     built.accidentNumber = draft.accidentNumber || undefined;
+                    // Carry the full multi-violation list (the projection only
+                    // derives the single primary violation from violations[0]).
+                    built.violations = draft.violations?.length ? draft.violations : undefined;
+                    // Carry the explicit Out-of-Service + commercial-vehicle answers.
+                    built.outOfService = draft.outOfService;
+                    built.commercialVehicle = draft.commercialVehicle;
+                    built.penalties = draft.penalties?.length ? draft.penalties : undefined;
+                    built.demeritPoints = draft.demeritPoints;
                     if (editingTicket) {
                         updateTicket(editingTicket.id, { ...built, id: editingTicket.id });
                     } else {
@@ -1389,6 +1402,14 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                             <div className="flex flex-col gap-1.5 min-w-[220px]">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                     {getViolationBadge(ticket.violationType)}
+                                                    {ticket.violations && ticket.violations.length > 1 && (
+                                                        <span
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200"
+                                                            title={ticket.violations.map(v => v.label).join(' · ')}
+                                                        >
+                                                            +{ticket.violations.length - 1} more
+                                                        </span>
+                                                    )}
                                                     {ticket.isOos && (
                                                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
                                                             OOS
