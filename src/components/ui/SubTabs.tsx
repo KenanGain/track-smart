@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { TabScroller } from "@/components/ui/TabScroller";
 
 export type SubTab<T extends string = string> = {
     id: T;
@@ -47,7 +48,7 @@ export function SubTabs<T extends string>({
                 className
             )}
         >
-            <div className={cn("flex items-center gap-1", !segmented && "-mb-px", fill ? "w-full" : "overflow-x-auto no-scrollbar")}>
+            <TabRow segmented={segmented} fill={fill} activeKey={String(activeId)}>
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const active = activeId === tab.id;
@@ -73,6 +74,7 @@ export function SubTabs<T extends string>({
                                     )
                             )}
                             aria-current={active ? "page" : undefined}
+                            data-tab-active={active || undefined}
                         >
                             {Icon && <Icon size={15} className={active ? "text-blue-600" : "text-slate-400"} />}
                             <span>{tab.label}</span>
@@ -89,7 +91,25 @@ export function SubTabs<T extends string>({
                         </button>
                     );
                 })}
-            </div>
+            </TabRow>
         </div>
+    );
+}
+
+/**
+ * The tab row itself. When the bar can scroll it is wrapped in TabScroller, which
+ * hides the scrollbar and adds the left/right chevrons; `fill` bars can't scroll
+ * (the tabs share the width), so they stay a plain flex row.
+ */
+function TabRow({ segmented, fill, activeKey, children }: {
+    segmented: boolean; fill: boolean; activeKey: string; children: React.ReactNode;
+}) {
+    if (fill) {
+        return <div className={cn("flex w-full items-center gap-1", !segmented && "-mb-px")}>{children}</div>;
+    }
+    return (
+        <TabScroller activeKey={activeKey} navClassName={cn("gap-1", !segmented && "-mb-px")}>
+            {children}
+        </TabScroller>
     );
 }

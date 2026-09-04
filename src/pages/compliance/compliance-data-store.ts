@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SAFETY_RECORDS, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { SAFETY_RECORDS, recordFields, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
@@ -66,11 +66,15 @@ export interface DocVersion {
     status: string;      // the monitored status value (status-based records)
     notes: string;
     tags: string[];
+    /** Values for the record's extra select fields (`SafetyRecord.selectFields`), keyed by field key. */
+    fields?: Record<string, string>;
     files: DataDocFile[];
     monitoring: MonitoringConfig;
     uploadedAt: string;  // ISO
     uploadedBy?: string; // name of the person who captured/uploaded this version
-    state?: string;      // lifecycle state override: current | historical | superseded | cancelled | expired | pending (unset → derived from position)
+    /** Pinned as THE current record. Unset on every version → the newest one is current.
+     *  Only one version in a list carries it; the save paths clear it from the others. */
+    isCurrent?: boolean;
     // Insurance-only fields (multi-instance records).
     producer?: string;    // broker / producer of record
     insurer?: string;     // insurance carrier
@@ -88,17 +92,18 @@ export interface DocInstance {
     versions: DocVersion[];  // versions[0] === this instance's current
 }
 
-export interface RecordDataEntry {
-    versions: DocVersion[];      // single-current records — versions[0] === current (newest)
-    instances?: DocInstance[];   // multi-instance records (e.g. Insurance) — many concurrent policies
+    export interface RecordDataEntry {
+        versions: DocVersion[];      // single-current records — versions[0] === current (newest)
+        instances?: DocInstance[];   // multi-instance records (e.g. Insurance) — many concurrent policies
+    }
+
+    export function emptyEntry(): RecordDataEntry {
+        return { versions: [] };
 }
 
-export function emptyEntry(): RecordDataEntry {
-    return { versions: [] };
-}
-
+/** The record being monitored: whichever version is pinned, else the newest. */
 export function currentVersion(entry: RecordDataEntry): DocVersion | null {
-    return entry.versions[0] ?? null;
+    return entry.versions.find(v => v.isCurrent) ?? entry.versions[0] ?? null;
 }
 
 export function newInstance(name: string): DocInstance {
@@ -181,9 +186,9 @@ export function instancesOf(entry: RecordDataEntry): DocInstance[] {
     return entry.instances ?? [];
 }
 
-/** Current (newest) version of a specific instance. */
+/** Current version of a specific instance — pinned if one is, else the newest. */
 export function instanceCurrent(inst: DocInstance): DocVersion | null {
-    return inst.versions[0] ?? null;
+    return inst.versions.find(v => v.isCurrent) ?? inst.versions[0] ?? null;
 }
 
 export function newVersion(label: string): DocVersion {
@@ -225,6 +230,88 @@ function persist(all: Store) {
     window.dispatchEvent(new CustomEvent(EVENT));
 }
 
+// ── Catalog migration ─────────────────────────────────────────────────────────
+// Records already captured in the browser were stored under the FIELD RULES the
+// catalog had at the time. When a record's rules change — a jurisdiction field is
+// dropped, its status gains its own value set, a new select field appears — the
+// stored versions still carry the old shape and would read wrong on the page.
+// This normalizes them once against the current catalog, so it also covers any
+// future rule change without another migration.
+// Bump this (not KEY) whenever the catalog's field rules change again — bumping KEY would
+// discard every record the user has captured.
+const MIGRATION_KEY = 'compliance-data-catalog-v7';
+
+/** Deterministic pick so a migrated version keeps the same value on every reload. */
+function pickFor(seed: string, options: string[]): string {
+    let h = 0;
+    for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return options[h % options.length] ?? '';
+}
+
+function migrateVersion(r: SafetyRecord | undefined, v: DocVersion): DocVersion | null {
+    let next: DocVersion | null = null;
+    const patch = (p: Partial<DocVersion>) => { next = { ...(next ?? v), ...p }; };
+    // The old free-form lifecycle value (current | historical | superseded | …) is gone:
+    // a record is either the pinned current one or history. Anything that was explicitly
+    // "current" becomes the pin; every other value falls back to position.
+    const legacy = (v as DocVersion & { state?: string }).state;
+    if (legacy !== undefined) {
+        patch({ isCurrent: legacy === 'current' ? true : undefined });
+        delete (next as unknown as { state?: string }).state;
+    }
+    if (!r) return next;
+    // Jurisdiction fields the record no longer shows would otherwise stay in the data.
+    if (r.hideCountry && ((next ?? v).country || (next ?? v).stateProv)) patch({ country: '', stateProv: '' });
+    else if (r.hideState && (next ?? v).stateProv) patch({ stateProv: '' });
+    // A status value from the old generic list is meaningless under the record's own set.
+    if (r.statusOptions?.length) {
+        const cur = (next ?? v).status;
+        if (cur && !r.statusOptions.includes(cur)) patch({ status: r.statusOptions[0] });
+    }
+    // Fields added to a record after the fact start unanswered — give stored history a
+    // plausible value so the new columns don't read as an empty grid.
+    for (const f of recordFields(r)) {
+        const pool = f.kind === 'select' ? f.options : (f.demoValues ?? []);
+        if (pool.length && !(next ?? v).fields?.[f.key]) {
+            patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: pickFor(v.id + f.key, pool) } });
+        }
+    }
+    // Monitoring the record no longer offers must not stay switched on — it would keep
+    // firing alerts from a config the form can no longer reach.
+    if (r.hideMonitoring && (next ?? v).monitoring?.enabled) patch({ monitoring: { ...(next ?? v).monitoring, enabled: false } });
+    // "Record 2026" → "CDL 2026" for records now named after themselves.
+    if (r.nameFromRecord) {
+        const m = /^Record\s*(\d{4})?$/.exec((next ?? v).label.trim());
+        if (m) patch({ label: m[1] ? `${r.recordName} ${m[1]}` : r.recordName });
+    }
+    return next;
+}
+
+function migrateStore(): void {
+    if (typeof window === 'undefined') return;
+    try {
+        if (localStorage.getItem(MIGRATION_KEY)) return;
+        const all = loadAll();
+        let changed = false;
+        for (const [key, entry] of Object.entries(all)) {
+            // Every entry is visited: the lifecycle-value cleanup applies to all of them, and
+            // migrateVersion applies the per-record rules only where the catalog defines them.
+            const rec = RECORD_BY_ID.get(key.split('::')[2] ?? '');
+            const mapVersions = (list: DocVersion[]) => list.map(v => migrateVersion(rec, v) ?? v);
+            const versions = mapVersions(entry.versions ?? []);
+            const instances = entry.instances?.map(i => ({ ...i, versions: mapVersions(i.versions ?? []) }));
+            if (versions.some((v, i) => v !== entry.versions?.[i])
+                || instances?.some((inst, i) => inst.versions.some((v, j) => v !== entry.instances?.[i]?.versions?.[j]))) {
+                all[key] = instances ? { versions, instances } : { versions };
+                changed = true;
+            }
+        }
+        if (changed) persist(all);
+        localStorage.setItem(MIGRATION_KEY, '1');
+    } catch { /* ignore — migration is best-effort */ }
+}
+migrateStore();
+
 export function useComplianceData(accountId?: string) {
     const acct = accountId ?? 'acct-001';
     const [all, setAll] = useState<Store>(loadAll);
@@ -254,6 +341,22 @@ export function useComplianceData(accountId?: string) {
     };
 
     return { acct, all, getEntry, setEntry, setEntries };
+}
+
+/**
+ * Prepend a version to ONE record entry without the hook — used when a document is
+ * captured outside the compliance pages (e.g. a driver fills & uploads a compliance
+ * request straight from a chat widget). Fires the same change event, so any open
+ * compliance page picks it up immediately.
+ */
+export function writeComplianceVersion(
+    accountId: string | undefined, subjectId: string, recordId: string, version: DocVersion,
+): void {
+    if (!subjectId || !recordId) return;
+    const key = `${accountId ?? 'acct-001'}::${subjectId}::${recordId}`;
+    const all = loadAll();
+    const entry = all[key] ?? emptyEntry();
+    persist({ ...all, [key]: { ...entry, versions: [version, ...entry.versions] } });
 }
 
 // ── Status + completeness ─────────────────────────────────────────────

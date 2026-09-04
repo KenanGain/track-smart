@@ -1681,6 +1681,28 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                 {currentVehicle.financialStructure === 'Financed' && currentVehicle.lienHolderBusiness && (
                     <MetadataItem label="Lien Holder" value={currentVehicle.lienHolderBusiness} />
                 )}
+                {currentVehicle.financialStructure === 'Rented' && currentVehicle.rentalAgencyName && (
+                    <MetadataItem label="Rental Agency" value={currentVehicle.rentalAgencyName} />
+                )}
+
+                {/* Agreement term — only Leased and Financed assets carry dates. */}
+                {(currentVehicle.financialStructure === 'Leased' || currentVehicle.financialStructure === 'Financed') && (
+                    <MetadataItem
+                        label={currentVehicle.financialStructure === 'Leased' ? 'Lease Term' : 'Finance Term'}
+                        value={currentVehicle.agreementStartDate && currentVehicle.agreementEndDate
+                            ? `${currentVehicle.agreementStartDate} → ${currentVehicle.agreementEndDate}`
+                            : '—'}
+                    />
+                )}
+                {/* Recurring monthly cost — a lease/finance payment, or an open-ended rent. */}
+                {currentVehicle.financialStructure !== 'Owned' && (
+                    <MetadataItem
+                        label={currentVehicle.financialStructure === 'Rented' ? 'Monthly Rent' : 'Monthly Payment'}
+                        value={currentVehicle.monthlyPayment
+                            ? `${currentVehicle.monthlyPaymentCurrency === 'CAD' ? 'CA$' : '$'}${currentVehicle.monthlyPayment.toLocaleString()} / mo`
+                            : '—'}
+                    />
+                )}
 
                 <MetadataItem label="Date Added" value={currentVehicle.dateAdded || '—'} />
                 {currentVehicle.dateRemoved && <MetadataItem label="Date Removed" value={currentVehicle.dateRemoved} warning />}

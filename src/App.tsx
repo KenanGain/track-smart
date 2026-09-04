@@ -288,7 +288,15 @@ function App() {
             )
         }
         if (path === "/messages") {
-            return <MessagesPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <MessagesPage
+                    currentUserName={currentUser?.name}
+                    accountId={account?.id}
+                    onNavigate={handleNavigate}
+                />
+            )
         }
         if (path === "/compliance") {
             const account = selectedAccount

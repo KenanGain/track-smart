@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   User, Phone, MapPin, Briefcase,
   AlertTriangle, Edit, Edit3, Trash2, Mail, History,
@@ -6,6 +6,9 @@ import {
   CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe, Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TabScroller } from '@/components/ui/TabScroller';
+import { SectionNav } from '@/components/ui/SectionNav';
+import { sectionId } from '@/components/ui/section-anchor';
 // Removed: import { Badge } from '../../components/ui/Badge';
 import { StatusBadge, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge, Toggle, AddressFormFields } from './DriverComponents';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
@@ -511,18 +514,25 @@ export const EditEmploymentModal = ({ isOpen, onClose, history, onSave }: any) =
 };
 
 // --- Profile Tab Component ---
-const ProfileTab = ({ data, onEdit }: any) => {
+const ProfileTab = ({ data, onEdit, scrollRootRef }: any) => {
   // The driver's full application data file (same shape captured by Add / Edit).
   const app: any = data.application || {};
+  // The section rail reads the rendered cards out of this column.
+  const sectionsRef = useRef<HTMLDivElement>(null);
   const mmYY = (d: any) => (d && d.m && d.y ? `${String(d.m).padStart(2, '0')}/${d.y}` : '—');
   const yesNo = (v: any) => (v === true ? 'Yes' : v === false ? 'No' : (v || '—'));
 
-  // Numbered read-only section — mirrors the Add / Edit application form layout.
-  const Section = ({ num, title, children }: { num: number; title: string; children: React.ReactNode }) => (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  // Read-only section — mirrors the Add / Edit application form layout, each card
+  // badged with the icon for what it holds.
+  const Section = ({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) => (
+    <section
+      id={sectionId('dp', title)}
+      data-section={title}
+      className="scroll-mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+    >
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{num}</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Icon className="h-4 w-4" /></span>
           <h3 className="text-base font-bold text-slate-900">{title}</h3>
         </div>
         {onEdit && (
@@ -554,9 +564,10 @@ const ProfileTab = ({ data, onEdit }: any) => {
   const mvrYes = MVR_QUESTIONS.filter((q: any) => app.mvr && app.mvr[q.id] && app.mvr[q.id].answer === 'Yes');
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300">
+    <div className="animate-in fade-in duration-300 lg:flex lg:gap-6">
+    <div ref={sectionsRef} className="min-w-0 flex-1 space-y-5">
       {/* 1. Applicant Information */}
-      <Section num={1} title="Applicant Information">
+      <Section icon={User} title="Applicant Information">
         <Fields>
           <ViewField label="First Name" value={data.firstName} />
           <ViewField label="Middle Name" value={data.middleName || '—'} />
@@ -577,7 +588,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 2. Address Details */}
-      <Section num={2} title="Address Details">
+      <Section icon={MapPin} title="Address Details">
         <Fields>
           <ViewField label="Country" value={data.country} />
           <ViewField label="Street Address" value={data.address} />
@@ -615,7 +626,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 3. Contact Details */}
-      <Section num={3} title="Contact Details">
+      <Section icon={Phone} title="Contact Details">
         <Fields>
           <ViewField label="Primary Phone" value={data.phone} icon={Phone} />
           <ViewField label="Cell Phone" value={app.cellPhone || '—'} icon={Phone} />
@@ -626,7 +637,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 4. License Details */}
-      <Section num={4} title="License Details">
+      <Section icon={FileKey} title="License Details">
         <TableWrap>
           <THead cols={['Type', 'Number', 'State', 'Class', 'Endorsements', 'Expires', 'Status']} />
           <tbody className="divide-y divide-slate-50">
@@ -656,7 +667,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 5. Travel Documents */}
-      <Section num={5} title="Travel Documents">
+      <Section icon={Globe} title="Travel Documents">
         <TableWrap>
           <THead cols={['Type', 'Number', 'Country', 'Expires']} />
           <tbody className="divide-y divide-slate-50">
@@ -674,7 +685,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 6. License Disqualification */}
-      <Section num={6} title="License Disqualification">
+      <Section icon={AlertOctagon} title="License Disqualification">
         {mvrYes.length > 0 ? (
           <div className="divide-y divide-slate-100">
             {mvrYes.map((q: any) => {
@@ -697,7 +708,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 7. Driving Experience */}
-      <Section num={7} title="Driving Experience">
+      <Section icon={Car} title="Driving Experience">
         <TableWrap>
           <THead cols={['Equipment', 'Freight', 'Regions', 'Dates', 'Miles', 'O/O']} />
           <tbody className="divide-y divide-slate-50">
@@ -717,7 +728,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 8. Employment History */}
-      <Section num={8} title="Employment History">
+      <Section icon={Briefcase} title="Employment History">
         <TableWrap>
           <THead cols={['Employer', 'Timeline', 'Zone', 'Status']} />
           <tbody className="divide-y divide-slate-50">
@@ -740,7 +751,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 9. Unemployment */}
-      <Section num={9} title="Unemployment">
+      <Section icon={CalendarX} title="Unemployment">
         <TableWrap>
           <THead cols={['Dates', 'Comments']} />
           <tbody className="divide-y divide-slate-50">
@@ -756,7 +767,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 10. Education */}
-      <Section num={10} title="Education">
+      <Section icon={GraduationCap} title="Education">
         <TableWrap>
           <THead cols={['School', 'Field of Study', 'Location', 'Dates']} />
           <tbody className="divide-y divide-slate-50">
@@ -774,7 +785,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 11. Accident History */}
-      <Section num={11} title="Accident History">
+      <Section icon={AlertTriangle} title="Accident History">
         <TableWrap>
           <THead cols={['Date', 'Type', 'At Fault', 'Location']} />
           <tbody className="divide-y divide-slate-50">
@@ -792,7 +803,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 12. Traffic Violations */}
-      <Section num={12} title="Traffic Violations">
+      <Section icon={Ticket} title="Traffic Violations">
         <TableWrap>
           <THead cols={['Date', 'Charge', 'State', 'Penalty']} />
           <tbody className="divide-y divide-slate-50">
@@ -810,7 +821,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 13. Military Service */}
-      <Section num={13} title="Military Service">
+      <Section icon={ShieldCheck} title="Military Service">
         {app.militaryEver === 'Yes' && app.military ? (
           <Fields>
             <ViewField label="Country" value={app.military.country || '—'} />
@@ -825,7 +836,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
       </Section>
 
       {/* 14. Signature & Declaration */}
-      <Section num={14} title="Signature & Declaration">
+      <Section icon={FileCheck} title="Signature & Declaration">
         <div className="px-5 py-5">
           {app.signedDoc ? (
             <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
@@ -840,6 +851,8 @@ const ProfileTab = ({ data, onEdit }: any) => {
           )}
         </div>
       </Section>
+    </div>
+      <SectionNav containerRef={sectionsRef} scrollRootRef={scrollRootRef} />
     </div>
   );
 };
@@ -1101,6 +1114,26 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   const [activeTab, setActiveTab] = useState('Overview'); // Default to Overview
   const [driverData, setDriverData] = useState(initialDriverData);
   const [shareOpen, setShareOpen] = useState(false);
+
+  // ── Condensing header ──
+  // The body scrolls inside its own container, so the header band never scrolls
+  // away — it just shrinks. Two thresholds (condense past 56px, expand back under
+  // 16px) give it hysteresis so a header that changes height can't oscillate:
+  // collapsing the band shortens the content, which nudges scrollTop, which would
+  // otherwise cross a single threshold back the other way and flip it forever.
+  const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+  const [condensed, setCondensed] = useState(false);
+  const onBodyScroll = useCallback(() => {
+    const top = bodyScrollRef.current?.scrollTop ?? 0;
+    setCondensed(prev => (prev ? top > 16 : top > 56));
+  }, []);
+
+  // A tab switch resets the body to the top, so expand the header with it.
+  useEffect(() => {
+    const el = bodyScrollRef.current;
+    if (el) el.scrollTop = 0;
+    setCondensed(false);
+  }, [activeTab]);
   const { keyNumbers, documents, tagSections, getDocumentTypeById } = useAppData();
 
   // Sync state if initialData changes
@@ -1903,13 +1936,22 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   }, [driverData]);
 
   return (
-    <div className="bg-slate-50 min-h-screen pb-12 font-sans text-slate-900">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50 font-sans text-slate-900">
+      {/* Header — a fixed band that CONDENSES as the body scrolls: the breadcrumb and
+          the four stat cards collapse away, the avatar and name shrink, and the tabs
+          plus every action button stay put and keep working. */}
+      <div className={cn(
+        'relative z-30 shrink-0 border-b border-slate-200 bg-white transition-shadow duration-300',
+        condensed ? 'shadow-md' : 'shadow-sm',
+      )}>
         {/* Breadcrumb bar — Pattern B (matches Asset Detail + MyProfile shell):
             explicit Back-to-list button + vertical divider + breadcrumb chain.
             Thin h-11 strip on slate-50 with a single bottom border. */}
-        <header className="h-11 px-4 sm:px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+        <header className={cn(
+          'px-4 sm:px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60 overflow-hidden',
+          'transition-all duration-300 ease-out',
+          condensed ? 'h-0 opacity-0 border-b-0' : 'h-11 opacity-100',
+        )}>
           <button
             type="button"
             onClick={onBack}
@@ -1928,29 +1970,70 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         </header>
 
         {/* Profile Header */}
-        <div className="w-full px-4 sm:px-8 py-5">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-            <div className="flex items-center gap-5">
+        <div className={cn('w-full px-4 sm:px-8 transition-all duration-300 ease-out', condensed ? 'py-2.5' : 'py-5')}>
+          <div className={cn(
+            'flex gap-4',
+            condensed
+              ? 'flex-row items-center justify-between gap-3'
+              : 'flex-col lg:flex-row lg:items-start lg:justify-between',
+          )}>
+            <div className={cn('flex items-center min-w-0 transition-all duration-300 ease-out', condensed ? 'gap-3' : 'gap-5')}>
+              {/* Back arrow — takes over from the collapsed breadcrumb */}
+              <button
+                type="button"
+                onClick={onBack}
+                title="Back to Drivers"
+                className={cn(
+                  'shrink-0 inline-flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 overflow-hidden',
+                  'transition-all duration-300 ease-out',
+                  condensed ? 'h-8 w-8 opacity-100' : 'h-8 w-0 opacity-0 pointer-events-none',
+                )}
+              >
+                <ArrowLeft size={16} />
+              </button>
+
               {/* Avatar with Online Indicator */}
               <div className="relative flex-shrink-0">
-                <div className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-slate-100 to-slate-200 border-[3px] border-white shadow-md flex items-center justify-center text-xl font-bold text-slate-600 overflow-hidden ring-1 ring-slate-200/60">
+                <div className={cn(
+                  'rounded-full bg-gradient-to-br from-slate-100 to-slate-200 border-white shadow-md flex items-center justify-center font-bold text-slate-600 overflow-hidden ring-1 ring-slate-200/60',
+                  'transition-all duration-300 ease-out',
+                  condensed ? 'w-10 h-10 border-2 text-sm' : 'w-[72px] h-[72px] border-[3px] text-xl',
+                )}>
                   {driverData.photo
                     ? <img src={driverData.photo} alt={`${driverData.firstName} ${driverData.lastName}`} className="w-full h-full object-cover" />
                     : `${driverData.firstName?.[0] || ''}${driverData.lastName?.[0] || ''}`
                   }
                 </div>
-                <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${driverData.status === 'Active' ? 'bg-emerald-500' : driverData.status === 'On Leave' ? 'bg-amber-400' : 'bg-slate-400'}`} title={driverData.status} />
+                <div className={cn(
+                  'absolute bottom-0 right-0 rounded-full border-2 border-white shadow-sm transition-all duration-300 ease-out',
+                  condensed ? 'w-3 h-3' : 'w-4 h-4',
+                  driverData.status === 'Active' ? 'bg-emerald-500' : driverData.status === 'On Leave' ? 'bg-amber-400' : 'bg-slate-400',
+                )} title={driverData.status} />
               </div>
 
               {/* Name & Meta */}
               <div className="min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{driverData.firstName} {driverData.lastName}</h1>
+                <div className={cn('flex items-center gap-3 transition-all duration-300 ease-out', condensed ? 'mb-0' : 'mb-1')}>
+                  <h1 className={cn(
+                    'font-bold text-slate-900 tracking-tight truncate transition-all duration-300 ease-out',
+                    condensed ? 'text-base' : 'text-2xl',
+                  )}>{driverData.firstName} {driverData.lastName}</h1>
                   <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded border border-blue-200 uppercase tracking-wider whitespace-nowrap">
                     {driverData.driverType || 'Long Haul Driver'}
                   </span>
+                  {/* Condensed-only: the identifiers the collapsed meta line would lose */}
+                  <span className={cn(
+                    'hidden items-center gap-2 text-[11px] text-slate-500 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out lg:flex',
+                    condensed ? 'max-w-[24rem] opacity-100' : 'max-w-0 opacity-0',
+                  )}>
+                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">{driverData.id}</span>
+                    <StatusBadge status={driverData.status} />
+                  </span>
                 </div>
-                <div className="flex items-center gap-2.5 text-xs text-slate-500 mt-1 flex-wrap">
+                <div className={cn(
+                  'flex items-center gap-2.5 text-xs text-slate-500 flex-wrap overflow-hidden transition-all duration-300 ease-out',
+                  condensed ? 'max-h-0 opacity-0 mt-0' : 'max-h-12 opacity-100 mt-1',
+                )}>
                   <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200 text-[11px]">{driverData.id}</span>
                   <span className="text-slate-300">|</span>
                   <span className="flex items-center gap-1">
@@ -1973,7 +2056,10 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             </div>
 
             {/* Actions — uniform height, consistent icon sizing, mobile-friendly */}
-            <div className="flex items-center gap-2 flex-shrink-0 pt-1 self-start lg:self-auto flex-wrap">
+            <div className={cn(
+              'flex items-center gap-2 flex-shrink-0 flex-wrap transition-all duration-300 ease-out',
+              condensed ? 'pt-0 self-center [&>button]:h-8' : 'pt-1 self-start lg:self-auto',
+            )}>
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
@@ -2026,7 +2112,10 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
         {/* Header stat cards — persistent across all tabs, mirrors the
             MyProfilePage layout (4 cards: Status, Tenure, CDL, Terminal). */}
-        <div className="w-full px-4 sm:px-8 pb-5">
+        <div className={cn(
+          'w-full px-4 sm:px-8 overflow-hidden transition-all duration-300 ease-out',
+          condensed ? 'max-h-0 pb-0 opacity-0' : 'max-h-64 pb-5 opacity-100',
+        )}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
               <div className={cn(
@@ -2086,7 +2175,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             · Finance · Other). Same pattern as the Asset Detail page so the
             two profile views read consistently. */}
         <div className="w-full px-4 sm:px-8 border-b border-slate-200">
-          <nav className="flex items-center gap-0.5 overflow-x-auto no-scrollbar -mb-px" aria-label="Driver sections">
+          <TabScroller ariaLabel="Driver sections" activeKey={activeTab}>
             {tabs.map((tab, idx) => {
               const showSeparator = idx > 0 && tabs[idx - 1]!.group !== tab.group;
               const active = activeTab === tab.id;
@@ -2105,6 +2194,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                         : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300'
                     }`}
                     aria-current={active ? 'page' : undefined}
+                    data-tab-active={active || undefined}
                   >
                     {Icon && <Icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />}
                     <span>{tab.label}</span>
@@ -2117,10 +2207,13 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 </React.Fragment>
               );
             })}
-          </nav>
+          </TabScroller>
         </div>
       </div>
-        
+
+      {/* Body — the only scrolling region on the page, so the header band above
+          stays put and condenses in response to THIS container's scrollTop. */}
+      <div ref={bodyScrollRef} onScroll={onBodyScroll} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="w-full p-4 sm:p-8">
             {activeTab === 'Compliance' && (
                 <div className="animate-in fade-in">
@@ -2642,6 +2735,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               <ProfileTab
                 data={driverData}
                 onEdit={() => onEditProfile(driverData)}
+                scrollRootRef={bodyScrollRef}
               />
             )}
 
@@ -4342,7 +4436,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 );
             })()}
         </div>
-      
+      </div>{/* end body scroll container */}
+
         <KeyNumberModal 
             isOpen={isKeyNumberModalOpen}
             onClose={() => setIsKeyNumberModalOpen(false)}

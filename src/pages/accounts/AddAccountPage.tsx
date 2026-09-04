@@ -14,6 +14,7 @@ import {
     Plus,
     Trash2,
     Search,
+    Check,
 } from 'lucide-react';
 import { UI_DATA, DIRECTOR_UI } from '../profile/carrier-profile.data';
 import { WizardSectionHeader as SectionHeader, WizardStepNav } from '@/components/ui/WizardEditor';
@@ -256,6 +257,61 @@ const FieldRenderer = ({ field, value, onChange, error, dotLookup }: FieldRender
         );
     }
 
+    // ── check-all-that-apply variants of the two radio styles above ──
+    // Carrier operation, hazmat classification and FMCSA authority are all
+    // "select every one that applies" on the MCS-150, so they hold an ARRAY.
+    if (field.type === 'checkCards' || field.type === 'checkboxList') {
+        const picked: string[] = Array.isArray(value) ? value : value ? [String(value)] : [];
+        const toggle = (opt: string) =>
+            onChange(picked.includes(opt) ? picked.filter((v) => v !== opt) : [...picked, opt]);
+        const opts: string[] = (field.options ?? []).map((o: any) => (typeof o === 'string' ? o : o.value));
+
+        if (field.type === 'checkCards') {
+            return (
+                <div className="space-y-3">
+                    {opts.map((opt) => {
+                        const on = picked.includes(opt);
+                        return (
+                            <div
+                                key={opt}
+                                onClick={() => toggle(opt)}
+                                className={cn(
+                                    'p-3 border rounded-lg cursor-pointer flex items-center gap-3 transition-all',
+                                    on ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                                )}
+                            >
+                                <div className={cn(
+                                    'w-4 h-4 rounded border flex items-center justify-center shrink-0',
+                                    on ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
+                                )}>
+                                    {on && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                                </div>
+                                <span className="text-sm font-medium text-slate-700">{opt}</span>
+                            </div>
+                        );
+                    })}
+                    {field.helperText && <p className="text-xs text-slate-500">{field.helperText}</p>}
+                </div>
+            );
+        }
+        return (
+            <div className="space-y-2">
+                {opts.map((opt) => (
+                    <label key={opt} className="flex items-start gap-3 p-2 rounded hover:bg-slate-50 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            checked={picked.includes(opt)}
+                            onChange={() => toggle(opt)}
+                        />
+                        <span className="text-sm text-slate-700">{opt}</span>
+                    </label>
+                ))}
+                {field.helperText && <p className="text-xs text-slate-500 pt-0.5">{field.helperText}</p>}
+            </div>
+        );
+    }
+
     if (field.type === 'textarea') {
         return (
             <textarea
@@ -270,6 +326,9 @@ const FieldRenderer = ({ field, value, onChange, error, dotLookup }: FieldRender
 
     return null;
 };
+
+/** Has the user actually filled this field in? An empty multi-select array is empty. */
+const hasValue = (v: any): boolean => (Array.isArray(v) ? v.length > 0 : Boolean(v));
 
 // ── Section grid (layout rows → form fields) ────────────────────────────────
 
@@ -434,7 +493,7 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
         };
         let ok = true;
         corpCfg.fields.forEach((f: any) => { if (f.required && !corpVals[f.key]) { next.corp[f.key] = true; ok = false; } });
-        opsCfg.fields.forEach((f: any) => { if (f.required && !opsVals[f.key]) { next.ops[f.key] = true; ok = false; } });
+        opsCfg.fields.forEach((f: any) => { if (f.required && !hasValue(opsVals[f.key])) { next.ops[f.key] = true; ok = false; } });
         legalCfg.fields.forEach((f: any) => { if (f.required && !legalVals[f.key]) { next.legal[f.key] = true; ok = false; } });
         mailCfg.fields.forEach((f: any) => { if (f.required && !mailVals[f.key]) { next.mail[f.key] = true; ok = false; } });
         setErrors(next);
@@ -482,7 +541,7 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
     // Total field count for side-nav progress chip
     const completionFor = (key: string) => {
         if (key === 'general')    return Object.values(corpVals).filter(Boolean).length;
-        if (key === 'operations') return Object.values(opsVals).filter(Boolean).length;
+        if (key === 'operations') return Object.values(opsVals).filter(hasValue).length;
         if (key === 'legal')      return Object.values(legalVals).filter(Boolean).length;
         if (key === 'mailing')    return Object.values(mailVals).filter(Boolean).length;
         if (key === 'cargo')      return cargoSelected.length;

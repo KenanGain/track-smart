@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from 'react';
-import { interpretAgent, AGENTS, type AiPanel, type AiAction, type AiResource } from './ai-agents';
+import {
+  interpretAgent, AGENTS,
+  type AiPanel, type AiAction, type AiResource, type AiDashboard,
+  type AgentContext, type ComplianceRequest, type ComplianceSubmission,
+} from './ai-agents';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messages store — the single source of truth for every conversation in the app.
@@ -78,6 +82,8 @@ export interface ChatMessage {
   panel?: AiPanel;            // an AI-agent data card (drivers / documents / …)
   action?: AiAction;          // an AI-agent action-result card (mail sent, training assigned …)
   resource?: AiResource;      // a tappable resource widget (upload / form / sign / view)
+  compliance?: ComplianceRequest; // an interactive "fill the data & upload" compliance request
+  dashboard?: AiDashboard;    // a tagged driver's / asset's interactive mini dashboard
   suggestions?: string[];     // AI-agent follow-up quick prompts
 }
 
@@ -435,12 +441,12 @@ function scheduleInbound(convId: string, delay = 2600) {
 // ── mutations ────────────────────────────────────────────────────────────────
 
 /** Append a message from us; on active external chats an outsider reply follows. */
-export function sendMessage(convId: string, text: string, attachments?: MsgAttachment[], resource?: AiResource) {
+export function sendMessage(convId: string, text: string, attachments?: MsgAttachment[], resource?: AiResource, compliance?: ComplianceRequest) {
   const at = nowTime();
   patch(convId, c => ({
     ...c,
     lastAt: at,
-    messages: [...c.messages, { id: uid('me'), fromMe: true, text, at, iso: nowIso(), attachments, resource }],
+    messages: [...c.messages, { id: uid('me'), fromMe: true, text, at, iso: nowIso(), attachments, resource, compliance }],
   }), true);
   const conv = conversations.find(c => c.id === convId);
   if (conv && conv.kind === 'external' && conv.status === 'active') scheduleInbound(convId);
@@ -482,7 +488,7 @@ function resolveContact(token: string): { id: string; name: string; first: strin
 }
 
 /** Send a prompt to an AI agent conversation and schedule its demo reply. */
-export function askAgent(convId: string, text: string) {
+export function askAgent(convId: string, text: string, ctx?: AgentContext) {
   const clean = text.trim();
   if (!clean) return;
   const conv = conversations.find(c => c.id === convId);
@@ -496,7 +502,7 @@ export function askAgent(convId: string, text: string) {
   }), true);
 
   // 2. Interpret against the specialized agent.
-  const reply = interpretAgent(conv.agentKey, clean);
+  const reply = interpretAgent(conv.agentKey, clean, ctx);
   setTyping(convId, true);
   const prev = aiTimers.get(convId);
   if (prev) clearTimeout(prev);
@@ -509,14 +515,15 @@ export function askAgent(convId: string, text: string) {
     let action = reply.action;
     if (reply.deliver) {
       const c = resolveContact(reply.deliver.toToken);
-      sendMessage(c.id, reply.deliver.text, undefined, reply.deliver.resource);
+      sendMessage(c.id, reply.deliver.text, undefined, reply.deliver.resource, reply.deliver.compliance);
       if (action) action = { ...action, title: `${action.title} → ${c.first}`, openConvId: c.id, openLabel: `Open chat with ${c.first}` };
     }
 
     const rat = nowTime();
     const msg: ChatMessage = {
       id: uid('ai'), fromMe: false, text: reply.text, at: rat, iso: nowIso(),
-      panel: reply.panel, action, resource: reply.resource, suggestions: reply.suggestions,
+      panel: reply.panel, action, resource: reply.resource,
+      compliance: reply.compliance, dashboard: reply.dashboard, suggestions: reply.suggestions,
     };
     patch(convId, c => ({ ...c, lastAt: rat, messages: [...c.messages, msg] }), true);
   }, 850);
@@ -693,6 +700,38 @@ export function sendWidgetToDriver(driverName: string, widget: ChatWidget, text?
   const convId = getOrCreateDriverConversation(driverName);
   sendWidget(convId, { widget, text });
   return convId;
+}
+
+/**
+ * The recipient filled in and uploaded a compliance request. Flips EVERY copy of that
+ * request (the driver's card and the office-side preview in the agent chat) to
+ * "submitted", and posts a short confirmation line into the driver's thread so the
+ * conversation reads naturally.
+ */
+export function submitComplianceRequest(convId: string, requestId: string, submission: ComplianceSubmission) {
+  let label = 'the document';
+  let name = '';
+  for (const c of conversations) {
+    if (!c.messages.some(m => m.compliance?.id === requestId)) continue;
+    patch(c.id, x => ({
+      ...x,
+      messages: x.messages.map(m => (m.compliance?.id === requestId
+        ? { ...m, compliance: { ...m.compliance, status: 'submitted' as const, submission } }
+        : m)),
+    }));
+    const hit = c.messages.find(m => m.compliance?.id === requestId);
+    if (hit?.compliance) { label = hit.compliance.ask.documentName || hit.compliance.ask.recordName; name = hit.compliance.forName; }
+  }
+  const at = nowTime();
+  const files = submission.files.length;
+  const line: ChatMessage = {
+    id: uid('in'), fromMe: false, at, iso: nowIso(),
+    text: files
+      ? `Done — I’ve filled in the details and uploaded ${files === 1 ? label : `${files} files for ${label}`}.`
+      : `Done — I’ve confirmed the details for ${label}.`,
+  };
+  patch(convId, c => ({ ...c, lastAt: at, messages: [...c.messages, line] }), true);
+  return { label, name };
 }
 
 /** Advance a widget's status (the recipient acting on the task). */

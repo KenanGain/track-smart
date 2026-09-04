@@ -5,21 +5,37 @@ import {
   Image as ImageIcon, Play, FileText, Mail, Hash, Download, Eye, Share2, X, Clock,
   Bot, Users, Link2, Copy, Ban, RotateCcw, ShieldCheck, ExternalLink,
   GraduationCap, PenLine, ClipboardList, Upload, ClipboardCheck, FileWarning, BellRing, Megaphone, UserX, CheckCircle2, CornerUpRight,
-  AlertTriangle, Ticket, UserPlus, Sparkles, ArrowRight, DollarSign, AtSign, Slash, Building2,
+  Sparkles, ArrowRight, DollarSign, AtSign, Slash, BarChart3, LayoutDashboard,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   useConversations, sendMessage, markRead, setExternalEnabled, startNewExternalChat,
   externalChatUrl, consumeMessagesFocus, setPendingRecord, setWidgetStatus,
-  askAgent, useAiTyping,
+  askAgent, useAiTyping, submitComplianceRequest,
   type Conversation, type RoleTag, type MsgAttachment, type AttachmentKind, type RecordRef,
-  type ChatWidget, type WidgetKind,
+  type ChatWidget, type WidgetKind, type ChatMessage,
 } from './messages-store';
 import {
   DEFAULT_AGENT_PROMPTS, getAgent,
-  type AiPanel, type AiTone, type AgentIntent, type AiAction, type AiActionIcon, type AgentCommand, type AiResource,
+  type AiAction, type AiActionIcon, type AgentCommand, type AiResource,
+  type AgentContext, type AiWidgetKey, type ComplianceAsk, type ComplianceSubmission,
 } from './ai-agents';
+import { AiPanelCard, AiDashboardCard, AI_TONE, type RowTarget } from './AiWidgets';
+import { ComplianceRequestCard } from './ComplianceRequestCard';
+import {
+  ChatPicker, ComposerChips,
+  type PickerItem, type PickerMode, type PickerSubject, type PickerCompliance, type PickerTask,
+} from './ChatPicker';
+import { compliancePicks, matchesCompliance, saveComplianceSubmission } from './compliance-picker';
+import { buildSubjectDashboard, driverSubject, assetSubject, type DqSnapshot } from './subject-dashboard';
+import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
+import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
+import { useComplianceData } from '@/pages/compliance/compliance-data-store';
+import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
+import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data';
+import { useCarrierTickets } from '@/pages/tickets/tickets.store';
+import { useDriverDqFiles, checklistForType, computeCompletion } from '@/pages/dq-files/dq-driver-files.data';
 import { ShareToChat } from '@/components/share/ShareToChat';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,16 +253,49 @@ const WIDGET_VERB: Record<WidgetKind, string> = {
   termination: 'Termination notice', forward: 'Forwarded item', record: 'Shared record',
 };
 
-// The colored "action" line in a message-card header (like the screenshot's
-// "Sent package" / "Requested documents"): a verb + icon summarizing what the
-// message carries. Plain chatter returns null (no verb, just name + time).
-function headerAction(m: { fromMe: boolean; attachments?: MsgAttachment[]; record?: RecordRef; widget?: ChatWidget }):
-  { label: string; Icon: LucideIcon } | null {
-  if (m.widget) return { label: WIDGET_VERB[m.widget.kind], Icon: WIDGET_META[m.widget.kind].icon };
-  if (m.record) return { label: 'Shared record', Icon: Link2 };
-  if (m.attachments && m.attachments.length) return { label: m.fromMe ? 'Sent files' : 'Shared files', Icon: m.fromMe ? Send : Paperclip };
-  return null;
+// ── message classification ───────────────────────────────────────────────────
+// Every message in a thread is one of a handful of KINDS, and each kind is drawn by
+// the component that suits it. A chat line stays a bubble; a data panel gets a wide
+// neutral card; a tagged driver's dashboard breaks out of the bubble entirely; a
+// compliance request renders its own fill-in & upload widget.
+export type MsgKind =
+  | 'system' | 'text' | 'files' | 'record' | 'task'
+  | 'panel' | 'dashboard' | 'compliance' | 'action' | 'resource';
+
+export function messageKind(m: ChatMessage): MsgKind {
+  if (m.system) return 'system';
+  if (m.dashboard) return 'dashboard';
+  if (m.compliance) return 'compliance';
+  if (m.panel) return 'panel';
+  if (m.widget) return 'task';
+  if (m.resource) return 'resource';
+  if (m.action) return 'action';
+  if (m.record) return 'record';
+  if (m.attachments && m.attachments.length) return 'files';
+  return 'text';
 }
+
+interface MsgKindMeta {
+  icon?: LucideIcon;
+  /** The colored verb in the header ("Sent files", "Live dashboard", …). */
+  label?: (m: ChatMessage, mine: boolean) => string;
+  verbCls: string;
+  /** Rendered outside a chat bubble (the card brings its own chrome). */
+  breakout?: boolean;
+}
+
+const MSG_KIND: Record<MsgKind, MsgKindMeta> = {
+  system:     { verbCls: 'text-slate-400' },
+  text:       { verbCls: 'text-slate-500' },
+  files:      { icon: Paperclip,      verbCls: 'text-blue-700',    label: (_m, mine) => (mine ? 'Sent files' : 'Shared files') },
+  record:     { icon: Link2,          verbCls: 'text-blue-700',    label: () => 'Shared record' },
+  task:       { icon: ClipboardCheck, verbCls: 'text-indigo-700',  label: (m) => (m.widget ? WIDGET_VERB[m.widget.kind] : 'Task') },
+  panel:      { icon: BarChart3,      verbCls: 'text-violet-700',  label: () => 'Live data' },
+  dashboard:  { icon: LayoutDashboard, verbCls: 'text-violet-700', label: (m) => `${m.dashboard?.subject.kind === 'asset' ? 'Asset' : 'Driver'} dashboard`, breakout: true },
+  compliance: { icon: Upload,         verbCls: 'text-emerald-700', label: (m) => (m.compliance?.status === 'submitted' ? 'Submitted' : m.compliance?.ask.needsUpload ? 'Document request' : 'Data request') },
+  action:     { icon: CheckCircle2,   verbCls: 'text-emerald-700', label: () => 'Task run' },
+  resource:   { icon: ExternalLink,   verbCls: 'text-blue-700',    label: () => 'Secure link sent' },
+};
 
 // One attached file inside a message card — filename + View + Download actions.
 function AttachmentChip({ att, onView, onDownload }: { att: MsgAttachment; onView: () => void; onDownload: () => void }) {
@@ -273,37 +322,6 @@ function valueTone(v: string): string {
   if (/(on track|valid|complete|verified|active|current|low|ok|good)/.test(s)) return 'bg-emerald-100 text-emerald-700';
   return 'bg-slate-100 text-slate-600';
 }
-
-// ── AI agent data panel ──────────────────────────────────────────────────────
-// The rich data card an AI agent attaches to a reply (drivers / documents /
-// expiring / accidents / tickets / hiring): a header, KPI tiles, a list of rows
-// with colored status chips, and a deep-link into the matching page.
-const AI_TONE: Record<AiTone, { chip: string; num: string; sq: string }> = {
-  rose:    { chip: 'bg-rose-100 text-rose-700',       num: 'text-rose-600',    sq: 'bg-rose-50 text-rose-600' },
-  amber:   { chip: 'bg-amber-100 text-amber-700',     num: 'text-amber-600',   sq: 'bg-amber-50 text-amber-600' },
-  emerald: { chip: 'bg-emerald-100 text-emerald-700', num: 'text-emerald-600', sq: 'bg-emerald-50 text-emerald-600' },
-  blue:    { chip: 'bg-blue-100 text-blue-700',       num: 'text-blue-600',    sq: 'bg-blue-50 text-blue-600' },
-  violet:  { chip: 'bg-violet-100 text-violet-700',   num: 'text-violet-600',  sq: 'bg-violet-50 text-violet-600' },
-  slate:   { chip: 'bg-slate-100 text-slate-600',     num: 'text-slate-700',   sq: 'bg-slate-100 text-slate-500' },
-};
-
-const AI_INTENT: Record<AgentIntent, { icon: LucideIcon; tone: AiTone }> = {
-  greeting:   { icon: Sparkles,       tone: 'violet' },
-  help:       { icon: Sparkles,       tone: 'violet' },
-  drivers:    { icon: Users,          tone: 'blue' },
-  documents:  { icon: FileText,       tone: 'blue' },
-  expiring:   { icon: BellRing,       tone: 'amber' },
-  accidents:  { icon: AlertTriangle,  tone: 'rose' },
-  tickets:    { icon: Ticket,         tone: 'amber' },
-  hiring:     { icon: UserPlus,       tone: 'violet' },
-  onboarding: { icon: UserPlus,       tone: 'violet' },
-  safety:     { icon: ShieldCheck,    tone: 'rose' },
-  hos:        { icon: Clock,          tone: 'amber' },
-  violations: { icon: AlertTriangle,  tone: 'amber' },
-  dqfiles:    { icon: ClipboardCheck, tone: 'blue' },
-  account:    { icon: Building2,      tone: 'emerald' },
-  paystub:    { icon: DollarSign,     tone: 'emerald' },
-};
 
 // Action-result card icons (the agent "did something").
 const AI_ACTION_ICON: Record<AiActionIcon, LucideIcon> = {
@@ -358,64 +376,6 @@ function AiResourceCard({ resource, onAct }: { resource: AiResource; onAct?: (r:
       >
         <Icon size={13} /> {resource.actionLabel} <ArrowRight size={12} />
       </button>
-    </div>
-  );
-}
-
-function AiPanelCard({ panel, onOpen }: { panel: AiPanel; onOpen?: (path: string) => void }) {
-  const { icon: Icon, tone } = AI_INTENT[panel.intent];
-  const accent = AI_TONE[tone];
-  return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {/* Header */}
-      <div className="flex items-start gap-2.5 border-b border-slate-100 p-3">
-        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', accent.sq)}><Icon size={17} /></span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-bold text-slate-800">{panel.title}</p>
-          {panel.summary && <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">{panel.summary}</p>}
-        </div>
-      </div>
-
-      {/* KPI tiles */}
-      {panel.stats && panel.stats.length > 0 && (
-        <div className={cn('grid gap-px bg-slate-100', panel.stats.length >= 4 ? 'grid-cols-4' : panel.stats.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
-          {panel.stats.map(s => (
-            <div key={s.label} className="bg-white px-2.5 py-2 text-center">
-              <p className={cn('text-[17px] font-extrabold leading-none', s.tone ? AI_TONE[s.tone].num : 'text-slate-700')}>{s.value}</p>
-              <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Rows */}
-      {panel.rows && panel.rows.length > 0 && (
-        <div className="divide-y divide-slate-50">
-          {panel.rows.map((r, i) => (
-            <div key={i} className="flex items-center gap-2.5 px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-semibold text-slate-800">{r.title}</p>
-                {r.subtitle && <p className="truncate text-[11px] text-slate-500">{r.subtitle}</p>}
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                {r.badge && <span className={cn('rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide', r.tone ? AI_TONE[r.tone].chip : 'bg-slate-100 text-slate-600')}>{r.badge}</span>}
-                {r.meta && <span className="text-[10.5px] font-medium text-slate-400">{r.meta}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Footnote + deep link */}
-      <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2.5">
-        <span className="min-w-0 truncate text-[10.5px] font-medium text-slate-400">{panel.footnote}</span>
-        {panel.link && (
-          <button type="button" onClick={() => onOpen?.(panel.link!.path)}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-slate-700">
-            {panel.link.label} <ArrowRight size={12} />
-          </button>
-        )}
-      </div>
     </div>
   );
 }
@@ -484,9 +444,40 @@ function ChatTaskCard({ widget, onComplete, onOpenRecord }: {
   );
 }
 
+// ── `@` / `/` palette helpers ────────────────────────────────────────────────
+
+/** Terse "what the recipient must provide" chips for a compliance row. */
+function askNeeds(ask: ComplianceAsk): string[] {
+  const out: string[] = [];
+  if (ask.needsNumber) out.push(ask.numberName);
+  if (ask.needsIssueDate) out.push('Issue date');
+  if (ask.needsExpiryDate) out.push(ask.monitorType || 'Expiry');
+  if (ask.needsStatus) out.push('Status');
+  if (ask.needsUpload) out.push(ask.slotLabels?.length ? `${ask.slotLabels.length} uploads` : 'Upload');
+  return out;
+}
+
+/** Match a driver / asset / teammate on name, unit number, role or id. */
+function filterSubjects(items: PickerSubject[], q: string): PickerSubject[] {
+  const s = q.trim().toLowerCase();
+  if (!s) return items;
+  return items.filter(i =>
+    i.name.toLowerCase().includes(s) || i.sub.toLowerCase().includes(s) || i.id.toLowerCase().includes(s));
+}
+
+function matchTask(t: PickerTask, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  return !s || t.id.includes(s) || t.name.toLowerCase().includes(s) || t.sub.toLowerCase().includes(s);
+}
+
 type PreviewItem = { type: 'photo' | 'video' | 'doc'; title: string; hue?: string; sub?: string };
 
-export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?: string; onNavigate?: (path: string) => void }) {
+export function MessagesPage({ currentUserName, accountId, onNavigate }: {
+  currentUserName?: string;
+  /** Active carrier — drives the `@` roster and the compliance data a dashboard reads. */
+  accountId?: string;
+  onNavigate?: (path: string) => void;
+}) {
   const convos = useConversations();
   const typingIds = useAiTyping();
   const [selectedId, setSelectedId] = useState<string>(() => consumeMessagesFocus() ?? convos[0]?.id ?? '');
@@ -547,81 +538,274 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
     if (inTab.length && !inTab.some(c => c.id === selectedId)) select(inTab[0].id);
   };
 
+  // ── `@` / `/` command palette ───────────────────────────────────────────────
+  // `@` tags a driver / asset / teammate, `/` picks a compliance record or an agent
+  // task. Both land as CHIPS in the composer (see ComposerChips) and travel with the
+  // next message as structured context, so the agent knows exactly who and what.
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [picker, setPicker] = useState<PickerMode | null>(null);
+  const [pickerTab, setPickerTab] = useState<string>('driver');
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerIx, setPickerIx] = useState(0);
+  const [pendingCmd, setPendingCmd] = useState<AgentCommand | null>(null);
+  const [taggedSubject, setTaggedSubject] = useState<PickerSubject | null>(null);
+  const [pickedRecord, setPickedRecord] = useState<PickerCompliance | null>(null);
+  // Avatar-rail tier only: the search icon expands into a floating field.
+  const [railSearch, setRailSearch] = useState(false);
+
   const send = () => {
     const text = draft.trim();
-    if (!text || !selected) return;
+    if (!selected) return;
     if (selected.kind === 'external' && (selected.status === 'disabled' || selected.emailOnly)) return;
-    if (selected.ai) askAgent(selected.id, text);
-    else sendMessage(selected.id, text);
+    if (selected.ai) {
+      // Nothing typed but context tagged → run the obvious action for that context.
+      const fallback = pickedRecord
+        ? (pickedRecord.hasDoc ? 'send it to upload the document' : 'ask them to confirm the details')
+        : taggedSubject ? 'give me all their information' : '';
+      if (!text && !fallback) return;
+      askAgent(selected.id, text || fallback, agentCtx());
+      clearAsk();
+    } else {
+      if (!text) return;
+      sendMessage(selected.id, text);
+    }
     setDraft('');
-    setPicker(null); setPendingCmd(null);
+    closePicker();
   };
 
-  // Send a canned prompt to the current AI agent (quick-prompt chips).
-  const sendPrompt = (text: string) => { if (selected?.ai) askAgent(selected.id, text); };
+  // Send a canned prompt to the current AI agent (quick-prompt chips), keeping the
+  // tagged driver / picked record as context.
+  const sendPrompt = (text: string) => {
+    if (!selected?.ai) return;
+    askAgent(selected.id, text, agentCtx());
+    clearAsk();
+  };
 
   // The specialized agent behind this AI chat (its prompts + slash commands).
   const agent = selected?.ai ? getAgent(selected.agentKey) : undefined;
 
   // Quick-prompt chips: the latest AI reply's follow-ups, else the agent's starters.
+  // With something tagged, offer the dashboard / request shortcuts instead.
   const aiSuggestions = useMemo(() => {
     if (!selected?.ai) return [];
+    if (pickedRecord) {
+      return taggedSubject
+        ? [`Send it to ${taggedSubject.name.split(' ')[0]} to upload`, 'Ask them to fill it in today', 'Request it within 7 days']
+        : ['Tag a driver to send it to'];
+    }
+    if (taggedSubject) {
+      const first = taggedSubject.name.split(' ')[0];
+      return [`Give me all information on ${first}`, 'Documents', 'Safety score', 'Monitoring', 'Tickets',
+        ...(taggedSubject.kind === 'driver' ? ['DQ file', 'Hours of service'] : ['Violations'])];
+    }
     for (let i = selected.messages.length - 1; i >= 0; i--) {
       const s = selected.messages[i].suggestions;
       if (s && s.length) return s;
     }
     return agent?.prompts ?? DEFAULT_AGENT_PROMPTS;
-  }, [selected, agent]);
+  }, [selected, agent, taggedSubject, pickedRecord]);
 
-  // ── @contact / slash-command pickers (AI console helpers) ──
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const [picker, setPicker] = useState<null | 'contact' | 'command'>(null);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const [pendingCmd, setPendingCmd] = useState<AgentCommand | null>(null);
+  // ── live carrier data behind the palette + the dashboards ──
+  const drivers = useMemo(() => (accountId ? getDriversForAccount(accountId) : []), [accountId]);
+  const assets = useMemo(() => (accountId ? getAssetsForAccount(accountId) : []), [accountId]);
+  const { records: customRecords } = useCustomSafetyRecords(accountId);
+  const { getEntry } = useComplianceData(accountId);
+  const carrierTickets = useCarrierTickets(accountId);
+  const { getRecord: getDqRecord } = useDriverDqFiles(accountId);
 
-  const pickerContacts = useMemo(() => {
-    const q = pickerQuery.toLowerCase();
-    return convos.filter(c => c.kind === 'internal' && !c.ai
-      && (!q || c.name.toLowerCase().includes(q) || c.role.toLowerCase().includes(q))).slice(0, 6);
-  }, [convos, pickerQuery]);
-  const pickerCommands = useMemo(() => {
-    const q = pickerQuery.toLowerCase();
-    return (agent?.commands ?? []).filter(c => !q || c.id.includes(q) || c.label.toLowerCase().includes(q));
-  }, [agent, pickerQuery]);
+  const allSafetyRecords = useMemo(() => [...customRecords, ...SAFETY_RECORDS], [customRecords]);
+  const complianceCatalog = useMemo(
+    () => compliancePicks(customRecords, taggedSubject?.kind === 'asset' ? 'Asset' : 'Driver'),
+    [customRecords, taggedSubject],
+  );
 
-  const closePicker = () => { setPicker(null); setPendingCmd(null); };
+  // ── palette items (flat + ordered, so arrow keys work) ──
+  const driverItems = useMemo<PickerSubject[]>(() => drivers.map(d => {
+    const s = driverSubject(d);
+    return {
+      kind: 'driver', id: d.id, name: d.name, sub: s.sub, initials: s.initials, color: s.color,
+      badge: d.status === 'Active' ? undefined : d.status,
+      badgeTone: d.status === 'Terminated' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700',
+    };
+  }), [drivers]);
 
+  const assetItems = useMemo<PickerSubject[]>(() => assets.map(a => {
+    const s = assetSubject(a);
+    return {
+      kind: 'asset', id: a.id, name: a.unitNumber, sub: s.sub, initials: s.initials, color: s.color,
+      badge: a.operationalStatus === 'Active' ? undefined : (a.operationalStatus === 'OutOfService' ? 'OOS' : a.operationalStatus),
+      badgeTone: a.operationalStatus === 'OutOfService' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700',
+    };
+  }), [assets]);
+
+  const contactItems = useMemo<PickerSubject[]>(() => convos
+    .filter(c => c.kind === 'internal' && !c.ai)
+    .map(c => ({ kind: 'contact', id: c.id, name: c.name, sub: c.role, initials: initials(c.name), color: c.color, badge: c.roleTag })),
+  [convos]);
+
+  const taskItems = useMemo<PickerTask[]>(() => (agent?.commands ?? []).map(c => ({
+    kind: 'task', id: c.id, name: c.label, sub: c.hint, icon: AI_ACTION_ICON[c.icon], needsContact: c.needsContact,
+  })), [agent]);
+
+  const complianceItems = useMemo<PickerCompliance[]>(() => complianceCatalog.map(({ record, ask }) => ({
+    kind: 'compliance', id: record.id, name: record.recordName,
+    sub: record.documentName || record.description,
+    entity: record.entity, category: record.category,
+    needs: askNeeds(ask), hasDoc: ask.needsUpload, custom: record.custom,
+  })), [complianceCatalog]);
+
+  const pickerTabs = useMemo(() => {
+    if (picker === 'mention') {
+      return [
+        { id: 'driver', label: 'Drivers', count: filterSubjects(driverItems, pickerQuery).length },
+        { id: 'asset', label: 'Assets', count: filterSubjects(assetItems, pickerQuery).length },
+        { id: 'contact', label: 'Team', count: filterSubjects(contactItems, pickerQuery).length },
+      ];
+    }
+    return [
+      { id: 'compliance', label: 'Compliance & documents', count: complianceItems.filter((_, i) => matchesCompliance(complianceCatalog[i], pickerQuery)).length },
+      { id: 'task', label: 'Agent tasks', count: taskItems.filter(t => matchTask(t, pickerQuery)).length },
+    ];
+  }, [picker, pickerQuery, driverItems, assetItems, contactItems, complianceItems, complianceCatalog, taskItems]);
+
+  const pickerItems = useMemo<PickerItem[]>(() => {
+    if (picker === 'mention') {
+      if (pickerTab === 'asset') return filterSubjects(assetItems, pickerQuery);
+      if (pickerTab === 'contact') return filterSubjects(contactItems, pickerQuery);
+      // Drivers tab: a query with no driver hits still surfaces assets/team so nothing feels missing.
+      const d = filterSubjects(driverItems, pickerQuery);
+      if (d.length || !pickerQuery) return d;
+      return [...filterSubjects(assetItems, pickerQuery), ...filterSubjects(contactItems, pickerQuery)];
+    }
+    if (picker === 'task') {
+      if (pickerTab === 'task') return taskItems.filter(t => matchTask(t, pickerQuery));
+      return complianceItems.filter((_, i) => matchesCompliance(complianceCatalog[i], pickerQuery));
+    }
+    return [];
+  }, [picker, pickerTab, pickerQuery, driverItems, assetItems, contactItems, taskItems, complianceItems, complianceCatalog]);
+
+  // Reset the highlighted row whenever the result set changes.
+  useEffect(() => { setPickerIx(0); }, [picker, pickerTab, pickerQuery]);
+
+  const closePicker = () => { setPicker(null); setPendingCmd(null); setPickerQuery(''); };
+  /** A picked record is a ONE-SHOT ask — consume it after sending. The tagged driver
+   *  stays, so "documents", "safety score", "request another document" keep their scope. */
+  const clearAsk = () => { setPickedRecord(null); setPendingCmd(null); };
+
+  const openPicker = (mode: PickerMode) => {
+    if (!selected?.ai) return;
+    setPicker(mode);
+    setPickerTab(mode === 'mention' ? 'driver' : 'compliance');
+    setPickerQuery(''); setPickerIx(0); setPendingCmd(null);
+    taRef.current?.focus();
+  };
+
+  // Typing "@" / "/" at a word boundary opens the palette and keeps its query live.
   const onDraftChange = (v: string) => {
     setDraft(v);
     if (!selected?.ai) { setPicker(null); return; }
-    const m = v.match(/(?:^|\s)([@/])([\w'’.-]*)$/);
-    if (m) { setPicker(m[1] === '@' ? 'contact' : 'command'); setPickerQuery(m[2]); }
-    else setPicker(null);
+    const m = v.match(/(?:^|\s)([@/])([\w'’.\- ]{0,40})$/);
+    if (m) {
+      const mode: PickerMode = m[1] === '@' ? 'mention' : 'task';
+      if (mode !== picker) { setPicker(mode); setPickerTab(mode === 'mention' ? 'driver' : 'compliance'); }
+      setPickerQuery(m[2].trimStart());
+    } else if (picker) {
+      setPicker(null);
+    }
   };
 
-  const runCmd = (cmd: AgentCommand, contactFirst?: string) => {
+  /** Drop the trailing "@…" / "/…" token the palette was driven by. */
+  const stripTrigger = () => setDraft(d => d.replace(/(?:^|\s)[@/][\w'’.\- ]{0,40}$/, m => (m.startsWith(' ') ? ' ' : '')));
+
+  const runCmd = (cmd: AgentCommand, contactName?: string) => {
     if (!selected) return;
-    askAgent(selected.id, contactFirst ? `/${cmd.id} @${contactFirst}` : `/${cmd.id}`);
-    setDraft(''); closePicker(); taRef.current?.focus();
+    askAgent(selected.id, contactName ? `/${cmd.id} @${contactName}` : `/${cmd.id}`, agentCtx());
+    setDraft(''); closePicker(); clearAsk(); taRef.current?.focus();
   };
-  const pickCommand = (cmd: AgentCommand) => {
-    if (cmd.needsContact) {
-      setDraft(d => d.replace(/[/][\w'’.-]*$/, ''));   // drop the /token
-      setPendingCmd(cmd); setPicker('contact'); setPickerQuery('');
+
+  const pickItem = (item: PickerItem) => {
+    stripTrigger();
+    if (item.kind === 'task') {
+      const cmd = agent?.commands.find(c => c.id === item.id);
+      if (!cmd) return;
+      if (cmd.needsContact && !taggedSubject) {
+        setPendingCmd(cmd); setPicker('mention'); setPickerTab('driver'); setPickerQuery(''); setPickerIx(0);
+        taRef.current?.focus();
+        return;
+      }
+      runCmd(cmd, taggedSubject?.name);
+      return;
+    }
+    if (item.kind === 'compliance') {
+      setPickedRecord(item);
+      closePicker();
       taRef.current?.focus();
-    } else { runCmd(cmd); }
-  };
-  const pickContact = (c: Conversation) => {
-    const first = c.name.split(' ')[0];
-    if (pendingCmd) { runCmd(pendingCmd, first); return; }
-    setDraft(d => d.replace(/[@][\w'’.-]*$/, `@${first} `));
-    setPicker(null); taRef.current?.focus();
-  };
-  const openTrigger = (t: '@' | '/') => {
-    if (!selected?.ai) return;
-    setDraft(d => (d && !d.endsWith(' ') ? d + ' ' : d) + t);
-    setPicker(t === '@' ? 'contact' : 'command'); setPickerQuery(''); setPendingCmd(null);
+      return;
+    }
+    // A subject was tagged.
+    setTaggedSubject(item);
+    if (pendingCmd) { const cmd = pendingCmd; setPendingCmd(null); closePicker(); runCmd(cmd, item.name); return; }
+    closePicker();
     taRef.current?.focus();
+  };
+
+  // ── the structured context that travels with every agent message ───────────
+  /** Build one driver's / asset's dashboard from live carrier data. */
+  const buildDashFor = (kind: 'driver' | 'asset' | 'contact', id: string, keys: AiWidgetKey[]) => {
+    if (kind === 'contact') return null;
+    if (kind === 'driver') {
+      const d = drivers.find(x => x.id === id);
+      if (!d) return null;
+      const rec = getDqRecord(d);
+      const checklist = checklistForType(rec.driverType);
+      const c = computeCompletion(rec, checklist);
+      const dq: DqSnapshot = {
+        typeLabel: checklist?.name ?? rec.driverType.replace(/_/g, ' '),
+        pct: c.pct, present: c.present, missing: c.missing, na: c.na, total: c.total, required: c.required, complete: c.complete,
+      };
+      return buildSubjectDashboard({
+        subject: driverSubject(d), keys, records: allSafetyRecords, getEntry,
+        tickets: carrierTickets.filter(t => t.driverId === d.id || t.driverName === d.name),
+        dq,
+      });
+    }
+    const a = assets.find(x => x.id === id);
+    if (!a) return null;
+    return buildSubjectDashboard({
+      subject: assetSubject(a), keys, records: allSafetyRecords, getEntry,
+      tickets: carrierTickets.filter(t => t.assetId === a.id || t.assetId === a.unitNumber),
+    });
+  };
+
+  /** The dashboard builder for whatever is tagged right now (travels in the context). */
+  const dashboardFor = (keys: AiWidgetKey[]) =>
+    (taggedSubject ? buildDashFor(taggedSubject.kind, taggedSubject.id, keys) : null);
+
+  /** The builder for a subject already rendered in the thread — powers the
+   *  "Zoom in" chips under a dashboard card, whatever is tagged in the composer. */
+  const dashboardForSubject = (s: { kind: 'driver' | 'asset'; id: string }) =>
+    (keys: AiWidgetKey[]) => buildDashFor(s.kind, s.id, keys);
+
+  const agentCtx = (): AgentContext => ({
+    subject: taggedSubject ? { kind: taggedSubject.kind, id: taggedSubject.id, name: taggedSubject.name, role: taggedSubject.sub } : undefined,
+    record: pickedRecord ? complianceCatalog.find(p => p.record.id === pickedRecord.id)?.ask : undefined,
+    accountId,
+    dashboardFor,
+  });
+
+  // ── row click → open that record on its own page ───────────────────────────
+  const openRow = (t: RowTarget) => {
+    if (t.recordId) setPendingRecord(t.path, t.recordId);
+    onNavigate?.(t.path);
+  };
+
+  // ── a driver submitting a compliance request from the chat ─────────────────
+  const onComplianceSubmit = (requestId: string, subjectId: string | undefined, recordId: string, submission: ComplianceSubmission, files: Parameters<typeof saveComplianceSubmission>[0]['files']) => {
+    if (!selected) return;
+    submitComplianceRequest(selected.id, requestId, submission);
+    const ask = complianceCatalog.find(p => p.record.id === recordId)?.ask;
+    const saved = ask && saveComplianceSubmission({ accountId, subjectId, ask, submission, files, uploadedBy: selected.name });
+    notify(saved ? 'Submitted — it’s on the compliance record now' : 'Submitted');
   };
 
   const disabledExternal = selected?.kind === 'external' && selected.status === 'disabled';
@@ -655,36 +839,72 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
 
   return (
     <div className={cn('flex h-full min-h-0 bg-white', listOnRight && 'md:flex-row-reverse')}>
-      {/* ── Conversation list ── */}
-      <aside className={cn('w-full shrink-0 flex-col border-slate-200 bg-white md:flex md:w-80 lg:w-96',
+      {/* ── Conversation list ──
+          Three responsive tiers so a squeezed window never mangles the list:
+            md   → an AVATAR RAIL (logo + unread dot only, name in a tooltip)
+            lg   → the full list, names truncated
+            2xl  → the list grows with the window                              */}
+      <aside className={cn('w-full shrink-0 flex-col border-slate-200 bg-white md:flex md:w-[4.5rem] lg:w-80 xl:w-96',
         '2xl:w-auto 2xl:shrink 2xl:flex-1 2xl:min-w-[360px] 2xl:max-w-[560px]',
         listOnRight ? 'md:border-l' : 'md:border-r',
         mobileView === 'list' ? 'flex' : 'hidden')}>
-        <div className="shrink-0 border-b border-slate-100 px-4 pt-4 pb-3">
-          <div className="mb-3 flex items-center justify-between">
+        <div className="relative shrink-0 border-b border-slate-100 px-4 pt-4 pb-3 md:px-2 lg:px-4">
+          <div className="mb-3 flex items-center justify-between md:flex-col md:gap-2 lg:flex-row lg:gap-0">
             <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-              Messages
+              <span className="md:hidden lg:inline">Messages</span>
+              <MessageSquare size={20} className="hidden text-slate-700 md:inline lg:hidden" />
               {(contactsUnread + aiUnread) > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">{contactsUnread + aiUnread}</span>}
             </h1>
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 md:flex-col lg:flex-row">
               <button type="button" onClick={toggleSide} title={listOnRight ? 'Move list to the left' : 'Move list to the right'}
-                className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:inline-flex"><ArrowLeftRight size={17} /></button>
+                className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 lg:inline-flex"><ArrowLeftRight size={17} /></button>
               <button type="button" onClick={() => setShareOpen(true)} title="New message / share" className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Plus size={18} /></button>
             </div>
           </div>
-          <div className="relative">
+
+          {/* Search — a full field at lg+, an icon that expands into an overlay on the rail */}
+          <div className="relative hidden lg:block">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${listTab === 'ai' ? 'AI agents' : 'messages'}…`}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+            {search && (
+              <button type="button" onClick={() => setSearch('')} title="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={13} /></button>
+            )}
+          </div>
+          <div className="hidden md:block lg:hidden">
+            <button type="button" onClick={() => setRailSearch(v => !v)} title={`Search ${listTab === 'ai' ? 'AI agents' : 'messages'}`}
+              className={cn('inline-flex h-9 w-full items-center justify-center rounded-lg transition-colors',
+                search || railSearch ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700')}>
+              <Search size={17} />
+            </button>
+            {railSearch && (
+              <div className="absolute left-full top-3 z-30 ml-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="relative">
+                  <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') setRailSearch(false); }}
+                    placeholder={`Search ${listTab === 'ai' ? 'AI agents' : 'messages'}…`}
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-7 text-[13px] focus:border-blue-400 focus:bg-white focus:outline-none" />
+                  <button type="button" onClick={() => { setSearch(''); setRailSearch(false); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100"><X size={13} /></button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-0.5">
+          {/* Contacts ⇄ AI Agents switch — labelled at lg+, icon-only on the rail */}
+          <div className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-0.5 md:flex-col lg:flex-row">
             {([['contacts', 'Contacts', Users, contactsUnread], ['ai', 'AI Agents', Bot, aiUnread]] as const).map(([id, label, Icon, n]) => (
-              <button key={id} type="button" onClick={() => switchTab(id)}
-                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
+              <button key={id} type="button" onClick={() => switchTab(id)} title={label}
+                className={cn('relative flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
                   listTab === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
-                <Icon size={14} /> {label}
-                {n > 0 && <span className={cn('inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold', listTab === id ? 'bg-blue-600 text-white' : 'bg-slate-400 text-white')}>{n}</span>}
+                <Icon size={14} className="shrink-0" />
+                <span className="truncate md:hidden lg:inline">{label}</span>
+                {n > 0 && (
+                  <span className={cn('inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold md:absolute md:-right-0.5 md:-top-0.5 lg:static',
+                    listTab === id ? 'bg-blue-600 text-white' : 'bg-slate-400 text-white')}>{n}</span>
+                )}
               </button>
             ))}
           </div>
@@ -692,27 +912,35 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-400">No {listTab === 'ai' ? 'AI agents' : 'conversations'}{search ? ` match “${search}”` : ' yet'}.</div>
+            <div className="px-4 py-10 text-center text-sm text-slate-400 md:px-2 lg:px-4">
+              <span className="md:hidden lg:inline">No {listTab === 'ai' ? 'AI agents' : 'conversations'}{search ? ` match “${search}”` : ' yet'}.</span>
+              <span className="hidden md:inline lg:hidden">—</span>
+            </div>
           ) : filtered.map(c => {
             const last = c.messages[c.messages.length - 1];
             const active = c.id === selectedId;
             const isExternal = c.kind === 'external';
             return (
-              <button key={c.id} type="button" onClick={() => select(c.id)}
-                className={cn('flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left transition-colors',
+              <button key={c.id} type="button" onClick={() => select(c.id)} title={`${c.name} · ${c.role}`}
+                className={cn('flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left transition-colors md:justify-center md:px-2 lg:justify-start lg:px-4',
                   active ? 'bg-blue-50/70' : 'hover:bg-slate-50')}>
                 <div className="relative shrink-0">
-                  <span className={cn('flex h-11 w-11 items-center justify-center rounded-full text-[13px] font-bold text-white', c.color)}>{c.ai ? <Bot size={20} /> : initials(c.name)}</span>
+                  <span className={cn('flex h-11 w-11 items-center justify-center rounded-full text-[13px] font-bold text-white', c.color,
+                    active && 'ring-2 ring-blue-500 ring-offset-2')}>{c.ai ? <Bot size={20} /> : initials(c.name)}</span>
                   {c.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}
                   {isExternal && (c.emailOnly
                     ? <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-slate-400"><Mail size={9} className="text-white" /></span>
                     : <span className={cn('absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white', c.status === 'active' ? 'bg-orange-500' : 'bg-slate-400')}><Link2 size={9} className="text-white" /></span>)}
+                  {/* On the rail the unread count rides the avatar */}
+                  {c.unread > 0 && (
+                    <span className="absolute -right-1 -top-1 hidden h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-blue-600 px-1 text-[9px] font-bold text-white md:inline-flex lg:hidden">{c.unread}</span>
+                  )}
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 md:hidden lg:block">
                   <div className="flex items-center gap-1.5">
                     <span className={cn('min-w-0 truncate text-[14px] font-semibold', active ? 'text-blue-900' : 'text-slate-800')}>{c.name}</span>
-                    <ConvBadge conv={c} />
-                    <span className="ml-auto shrink-0 text-[11px] text-slate-400">{c.lastAt}</span>
+                    <ConvBadge conv={c} className="hidden lg:inline-block xl:inline-block" />
+                    <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-slate-400">{c.lastAt}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className={cn('truncate text-[12px]', c.unread ? 'font-semibold text-slate-700' : 'text-slate-500')}>
@@ -816,52 +1044,131 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                 </div>
               )}
 
-              {/* Messages thread */}
+              {/* Messages thread — every message is CLASSIFIED (see messageKind) and
+                  rendered by the component that suits it: a chat line stays a bubble, a
+                  data panel gets a wide neutral card, a subject dashboard breaks out of
+                  the bubble entirely, a compliance request renders its own widget. */}
               <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6 2xl:px-8">
                 <div className="mx-auto w-full max-w-5xl space-y-3.5">
                   {selected.messages.map((m, i) => {
                     const prev = selected.messages[i - 1];
                     const showDay = m.day && m.day !== prev?.day;
-                    // Light, differentiated bubbles: mine = soft blue (right), theirs = white (left).
                     const mine = m.fromMe;
-                    if (m.system) {
+                    const kind = messageKind(m);
+                    const meta = MSG_KIND[kind];
+                    const senderName = mine ? (currentUserName || 'You') : selected.name;
+
+                    const dayRule = showDay ? (
+                      <div className="my-4 flex items-center justify-center">
+                        <span className="rounded-full bg-slate-200/70 px-3 py-1 text-[11px] font-semibold text-slate-500">{m.day}</span>
+                      </div>
+                    ) : null;
+
+                    // ── system line ──
+                    if (kind === 'system') {
                       return (
                         <div key={m.id}>
-                          {showDay && <div className="my-4 flex items-center justify-center"><span className="rounded-full bg-slate-200/70 px-3 py-1 text-[11px] font-semibold text-slate-500">{m.day}</span></div>}
+                          {dayRule}
                           <div className="my-2 flex items-center justify-center">
                             <span className="max-w-[90%] rounded-full bg-slate-100 px-3 py-1 text-center text-[11px] font-medium text-slate-500">{m.text}</span>
                           </div>
                         </div>
                       );
                     }
-                    const action = headerAction(m);
-                    const senderName = mine ? (currentUserName || 'You') : selected.name;
+
+                    // The header line every non-system message shares.
+                    const header = (
+                      <div className={cn('flex items-center gap-2', meta.breakout ? 'mb-1 px-1' : 'mb-1.5')}>
+                        {meta.icon && <meta.icon size={13} className={cn('shrink-0', meta.verbCls)} />}
+                        {meta.label && <span className={cn('shrink-0 text-[12px] font-bold', meta.verbCls)}>{meta.label(m, mine)}</span>}
+                        <span className="min-w-0 truncate text-[12.5px] font-bold text-slate-900">{senderName}</span>
+                        {mine
+                          ? <span className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-blue-100 text-blue-700 ring-blue-200">You</span>
+                          : <ConvBadge conv={selected} />}
+                        <span className="ml-auto flex shrink-0 items-center gap-1 text-[10.5px] text-slate-400">
+                          <Clock size={11} /> {m.at}
+                          {mine && <CheckCheck size={13} className="text-blue-500" />}
+                        </span>
+                      </div>
+                    );
+
+                    const lead = m.text ? (
+                      <p className={cn('whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-700', meta.breakout && 'px-1')}>{m.text}</p>
+                    ) : null;
+
+                    // ── a tagged driver's / asset's mini dashboard: full width, no bubble ──
+                    if (kind === 'dashboard' && m.dashboard) {
+                      return (
+                        <div key={m.id}>
+                          {dayRule}
+                          <div className="w-full">
+                            {header}
+                            {lead}
+                            <AiDashboardCard
+                              dash={m.dashboard}
+                              onOpen={(path) => onNavigate?.(path)}
+                              onOpenRow={openRow}
+                              onAsk={(prompt) => selected.ai && askAgent(selected.id, prompt, {
+                                subject: { kind: m.dashboard!.subject.kind, id: m.dashboard!.subject.id, name: m.dashboard!.subject.name },
+                                accountId, dashboardFor: dashboardForSubject(m.dashboard!.subject),
+                              })}
+                            />
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // ── an interactive data panel: wide neutral card so charts breathe ──
+                    if (kind === 'panel' && m.panel) {
+                      return (
+                        <div key={m.id}>
+                          {dayRule}
+                          <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                            <div className="w-full max-w-[95%] rounded-2xl bg-white px-3.5 py-3 shadow-sm ring-1 ring-inset ring-slate-200 sm:max-w-[88%]">
+                              {header}
+                              {lead}
+                              <AiPanelCard panel={m.panel} onOpen={(path) => onNavigate?.(path)} onOpenRow={openRow} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // ── a compliance fill-in & upload request ──
+                    if (kind === 'compliance' && m.compliance) {
+                      const req = m.compliance;
+                      // The office side sees a read-only mirror; the recipient gets the form.
+                      const isPreview = !!selected.ai;
+                      return (
+                        <div key={m.id}>
+                          {dayRule}
+                          <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                            <div className={cn('w-full max-w-[92%] rounded-2xl px-3.5 py-3 shadow-sm ring-1 ring-inset sm:max-w-[76%]',
+                              req.status === 'submitted' ? 'bg-emerald-50/60 ring-emerald-100' : mine ? 'bg-blue-50 ring-blue-100' : 'bg-amber-50/70 ring-amber-100')}>
+                              {header}
+                              {lead}
+                              <ComplianceRequestCard
+                                request={req}
+                                preview={isPreview}
+                                onSubmit={(submission, files) => onComplianceSubmit(req.id, req.subjectId, req.ask.recordId, submission, files)}
+                                onOpenRecord={() => openRow({ path: '/default-compliance-documents', recordId: req.ask.recordId, label: req.ask.recordName })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // ── everything else: the chat bubble, with the right card inside ──
                     return (
                       <div key={m.id}>
-                        {showDay && (
-                          <div className="my-4 flex items-center justify-center">
-                            <span className="rounded-full bg-slate-200/70 px-3 py-1 text-[11px] font-semibold text-slate-500">{m.day}</span>
-                          </div>
-                        )}
+                        {dayRule}
                         <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-                          {/* Message card — mine = soft blue, theirs = soft amber (matches the case-thread scheme). */}
                           <div className={cn('min-w-[14rem] max-w-[88%] rounded-2xl px-4 py-3 shadow-sm ring-1 ring-inset sm:max-w-[80%]',
                             mine ? 'bg-blue-50 ring-blue-100' : 'bg-amber-50/70 ring-amber-100')}>
-                            {/* Header: action verb + sender + role badge + timestamp */}
-                            <div className="mb-1.5 flex items-center gap-2">
-                              {action && <action.Icon size={13} className={cn('shrink-0', mine ? 'text-blue-600' : 'text-amber-600')} />}
-                              {action && <span className={cn('shrink-0 text-[12px] font-bold', mine ? 'text-blue-700' : 'text-amber-700')}>{action.label}</span>}
-                              <span className="min-w-0 truncate text-[12.5px] font-bold text-slate-900">{senderName}</span>
-                              {mine
-                                ? <span className="shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-blue-100 text-blue-700 ring-blue-200">You</span>
-                                : <ConvBadge conv={selected} />}
-                              <span className="ml-auto flex shrink-0 items-center gap-1 text-[10.5px] text-slate-400">
-                                <Clock size={11} /> {m.at}
-                                {mine && <CheckCheck size={13} className="text-blue-500" />}
-                              </span>
-                            </div>
-                            {m.text && <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-700">{m.text}</p>}
-                            {m.attachments && m.attachments.length > 0 && (
+                            {header}
+                            {lead}
+                            {kind === 'files' && m.attachments && (
                               <div className={cn('mt-3 border-t pt-2.5', mine ? 'border-blue-200/60' : 'border-amber-200/70')}>
                                 <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{m.attachments.length} attachment{m.attachments.length > 1 ? 's' : ''}</p>
                                 <div className="flex flex-wrap gap-2">
@@ -884,9 +1191,6 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                             )}
                             {m.widget && (
                               <ChatTaskCard widget={m.widget} onComplete={() => completeWidget(m.id)} onOpenRecord={openRecord} />
-                            )}
-                            {m.panel && (
-                              <AiPanelCard panel={m.panel} onOpen={(path) => onNavigate?.(path)} />
                             )}
                             {m.action && (
                               <AiActionCard action={m.action} onOpen={(id) => select(id)} />
@@ -932,13 +1236,14 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                 </div>
               ) : (
                 <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 sm:px-6 2xl:px-8">
-                  {/* AI quick-prompt chips — canned questions the agent can answer */}
+                  {/* AI quick-prompt chips — what this agent can answer right now. With a
+                      driver / record tagged these become the matching shortcuts. */}
                   {selected.ai && aiSuggestions.length > 0 && (
                     <div className="mx-auto mb-2.5 w-full max-w-5xl">
                       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">
                         <span className="flex items-center gap-1.5"><Sparkles size={12} className="text-violet-500" /> Ask {selected.name.split(' ')[0]}</span>
                         <span className="hidden items-center gap-1 font-semibold normal-case text-slate-400 sm:flex">
-                          · <AtSign size={11} className="text-slate-400" /> mention a driver · <Slash size={11} className="text-slate-400" /> run a task
+                          · <AtSign size={11} className="text-violet-400" /> tag a driver or asset · <Slash size={11} className="text-blue-400" /> pick a compliance record
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -951,78 +1256,96 @@ export function MessagesPage({ currentUserName, onNavigate }: { currentUserName?
                       </div>
                     </div>
                   )}
+
+                  {/* Tagged context — the @driver / @asset and the picked compliance record */}
+                  {selected.ai && (
+                    <div className="mx-auto w-full max-w-5xl">
+                      <ComposerChips
+                        subject={taggedSubject}
+                        record={pickedRecord}
+                        onClearSubject={() => setTaggedSubject(null)}
+                        onClearRecord={() => setPickedRecord(null)}
+                      />
+                      {taggedSubject && pickedRecord && (
+                        <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+                          <CheckCircle2 size={12} /> Ready — hit send and {taggedSubject.name.split(' ')[0]} gets a
+                          “{pickedRecord.name}” {pickedRecord.hasDoc ? 'fill-in & upload' : 'confirmation'} widget in their chat.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mx-auto flex w-full max-w-5xl items-end gap-2">
                     <button type="button" onClick={() => setShareOpen(true)} title="Attach / share" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Paperclip size={18} /></button>
                     {selected.ai && (
                       <>
-                        <button type="button" onClick={() => openTrigger('@')} title="Mention a driver / contact" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-600"><AtSign size={18} /></button>
-                        <button type="button" onClick={() => openTrigger('/')} title="Run a task" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-600"><Slash size={18} /></button>
+                        <button type="button" onClick={() => openPicker('mention')} title="Tag a driver, asset or teammate"
+                          className={cn('inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors',
+                            picker === 'mention' ? 'bg-violet-100 text-violet-700' : 'text-slate-500 hover:bg-violet-50 hover:text-violet-600')}><AtSign size={18} /></button>
+                        <button type="button" onClick={() => openPicker('task')} title="Pick a compliance record or run a task"
+                          className={cn('inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors',
+                            picker === 'task' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600')}><Slash size={18} /></button>
                       </>
                     )}
                     <div className="relative flex-1">
-                      {/* @contact / slash-command picker */}
                       {selected.ai && picker && (
-                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-                          <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
-                            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                              {picker === 'command'
-                                ? <><Slash size={12} /> Tasks</>
-                                : <><AtSign size={12} /> {pendingCmd ? `Send “${pendingCmd.label}” to…` : 'Mention a contact'}</>}
-                            </span>
-                            <button type="button" onClick={closePicker} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={14} /></button>
-                          </div>
-                          {picker === 'command' ? (
-                            pickerCommands.length === 0
-                              ? <p className="px-3 py-4 text-center text-[12px] text-slate-400">No tasks match.</p>
-                              : pickerCommands.map(cmd => {
-                                  const CIcon = AI_ACTION_ICON[cmd.icon];
-                                  return (
-                                    <button key={cmd.id} type="button" onClick={() => pickCommand(cmd)}
-                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50">
-                                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><CIcon size={14} /></span>
-                                      <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-[12.5px] font-bold text-slate-800">/{cmd.id} <span className="font-medium text-slate-400">· {cmd.label}</span></span>
-                                        <span className="block truncate text-[11px] text-slate-500">{cmd.hint}</span>
-                                      </span>
-                                      {cmd.needsContact && <AtSign size={13} className="shrink-0 text-slate-300" />}
-                                    </button>
-                                  );
-                                })
-                          ) : (
-                            pickerContacts.length === 0
-                              ? <p className="px-3 py-4 text-center text-[12px] text-slate-400">No contacts match.</p>
-                              : pickerContacts.map(c => (
-                                  <button key={c.id} type="button" onClick={() => pickContact(c)}
-                                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50">
-                                    <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white', c.color)}>{initials(c.name)}</span>
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-[12.5px] font-bold text-slate-800">{c.name}</span>
-                                      <span className="block truncate text-[11px] text-slate-500">{c.role}</span>
-                                    </span>
-                                  </button>
-                                ))
-                          )}
-                        </div>
+                        <ChatPicker
+                          mode={picker}
+                          tabs={pickerTabs}
+                          activeTab={pickerTab}
+                          onTab={setPickerTab}
+                          items={pickerItems}
+                          activeIx={pickerIx}
+                          onActive={setPickerIx}
+                          onPick={pickItem}
+                          onClose={closePicker}
+                          query={pickerQuery}
+                          pendingLabel={pendingCmd ? `Send “${pendingCmd.label}” to…` : undefined}
+                        />
                       )}
                       <textarea
                         ref={taRef}
                         value={draft}
                         onChange={e => onDraftChange(e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Escape' && picker) { e.preventDefault(); setPicker(null); return; }
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            if (picker === 'command' && pickerCommands[0]) { e.preventDefault(); pickCommand(pickerCommands[0]); return; }
-                            if (picker === 'contact' && pickerContacts[0]) { e.preventDefault(); pickContact(pickerContacts[0]); return; }
-                            e.preventDefault(); send();
+                          if (picker) {
+                            if (e.key === 'Escape') { e.preventDefault(); closePicker(); return; }
+                            if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIx(i => Math.min(pickerItems.length - 1, i + 1)); return; }
+                            if (e.key === 'ArrowUp') { e.preventDefault(); setPickerIx(i => Math.max(0, i - 1)); return; }
+                            if (e.key === 'Tab' && pickerTabs.length > 1) {
+                              e.preventDefault();
+                              const ix = pickerTabs.findIndex(t => t.id === pickerTab);
+                              setPickerTab(pickerTabs[(ix + (e.shiftKey ? pickerTabs.length - 1 : 1)) % pickerTabs.length].id);
+                              return;
+                            }
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              const item = pickerItems[pickerIx];
+                              if (item) pickItem(item); else closePicker();
+                              return;
+                            }
                           }
+                          // Backspace on an empty draft peels the tagged context back off.
+                          if (e.key === 'Backspace' && !draft && (pickedRecord || taggedSubject)) {
+                            e.preventDefault();
+                            if (pickedRecord) setPickedRecord(null); else setTaggedSubject(null);
+                            return;
+                          }
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
                         }}
                         rows={1}
-                        placeholder={selected.ai ? `Ask ${selected.name.split(' ')[0]} — or type @ / …` : `Message ${selected.name.split(' ')[0]}…`}
+                        placeholder={selected.ai
+                          ? (pickedRecord
+                            ? `Ask ${selected.name.split(' ')[0]} to send “${pickedRecord.name}”…`
+                            : taggedSubject
+                              ? `Ask about ${taggedSubject.name.split(' ')[0]} — or type / to pick a record…`
+                              : `Ask ${selected.name.split(' ')[0]} — type @ for a driver, / for a compliance record…`)
+                          : `Message ${selected.name.split(' ')[0]}…`}
                         className="max-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                       <button type="button" title="Emoji" className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Smile size={17} /></button>
                     </div>
-                    <button type="button" onClick={send} disabled={!draft.trim()}
+                    <button type="button" onClick={send} disabled={!draft.trim() && !taggedSubject && !pickedRecord}
                       className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
                       <Send size={17} />
                     </button>

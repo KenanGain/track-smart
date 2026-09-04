@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { Search, Plus, Building2, Edit3, ChevronDown, Check, X, Grid, DoorClosed, Camera, UserCircle, Lock, Trash2 } from 'lucide-react';
 import {
     LOCATIONS_UI,
@@ -56,6 +57,8 @@ interface LocationsTableProps {
 
 const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters, onEditLocation, onViewLocation, onDeleteLocation }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const [page, setPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
 
     const toggleGroup = (key: string) => {
         setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
@@ -78,6 +81,41 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
         return matchesSearch && matchesStatus && matchesSecurity;
     };
 
+    // Every location that survives the filters, flattened but remembering its group.
+    const flatFiltered = useMemo(() => {
+        const out: { groupKey: string; loc: Location }[] = [];
+        for (const g of locationsData.groups) {
+            for (const loc of g.items) if (filterItem(loc)) out.push({ groupKey: g.key, loc });
+        }
+        return out;
+        // filterItem is a closure over `filters`, so `filters` is the real dependency.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [locationsData, filters]);
+
+    const totalItems = flatFiltered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / rowsPerPage));
+    // Tightening a filter can leave the stored page past the end of the results.
+    // Clamp on the way out rather than writing a correction back from an effect —
+    // that would cost a second render and can cascade.
+    const safePage = Math.min(page, totalPages);
+
+    // Rows are grouped, but paging has to run over the FLAT list or a page would hold
+    // a different number of locations depending on how they group. So page the flat
+    // list, then rebuild the groups from whatever landed on this page — a group with
+    // nothing on the current page drops out of the table entirely.
+    const pageGroups = useMemo(() => {
+        const start = (safePage - 1) * rowsPerPage;
+        const byGroup = new Map<string, Location[]>();
+        for (const row of flatFiltered.slice(start, start + rowsPerPage)) {
+            const list = byGroup.get(row.groupKey) ?? [];
+            list.push(row.loc);
+            byGroup.set(row.groupKey, list);
+        }
+        return locationsData.groups
+            .map(g => ({ ...g, visibleItems: byGroup.get(g.key) ?? [] }))
+            .filter(g => g.visibleItems.length > 0);
+    }, [locationsData, flatFiltered, safePage, rowsPerPage]);
+
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -97,9 +135,16 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                         </tr>
                     </thead>
                     <tbody>
-                        {locationsData.groups.map((group) => {
-                            const visibleItems = group.items.filter(filterItem);
-                            if (visibleItems.length === 0) return null;
+                        {pageGroups.length === 0 && (
+                            <tr>
+                                <td colSpan={10} className="px-6 py-12 text-center">
+                                    <p className="text-sm font-semibold text-slate-500">No locations match these filters.</p>
+                                    <p className="mt-0.5 text-xs text-slate-400">Clear the search or the status / security filter to see the full list.</p>
+                                </td>
+                            </tr>
+                        )}
+                        {pageGroups.map((group) => {
+                            const visibleItems = group.visibleItems;
 
                             return (
                                 <React.Fragment key={group.key}>
@@ -173,6 +218,13 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                     </tbody>
                 </table>
             </div>
+            <PaginationBar
+                totalItems={totalItems}
+                currentPage={safePage}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setPage}
+                onRowsPerPageChange={(n) => { setRowsPerPage(n); setPage(1); }}
+            />
         </div>
     );
 };

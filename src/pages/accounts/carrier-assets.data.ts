@@ -38,7 +38,11 @@ const VAN_MODELS: Record<string, { models: string[]; minYear: number; maxYear: n
     Chevrolet: { models: ['Express 2500', 'Express 3500'], minYear: 2018, maxYear: 2025 },
 };
 const COLORS = ['White', 'Black', 'Silver', 'Red', 'Blue', 'Gray', 'Green'];
-const FINANCIAL: Asset['financialStructure'][] = ['Owned', 'Leased', 'Financed'];
+// Counterparties behind each ownership structure — real names in this industry.
+const LEASING_COMPANIES = ['Ryder System', 'Penske Truck Leasing', 'PacLease', 'Volvo Financial Services', 'Idealease'];
+const LIEN_HOLDERS = ['Daimler Truck Financial', 'PACCAR Financial', 'Wells Fargo Equipment Finance', 'BMO Transportation Finance', 'Fleet Finance LLC'];
+const RENTAL_AGENCIES = ['Enterprise Truck Rental', 'Penske Truck Rental', 'Budget Truck Rental', 'National Trailer Rentals'];
+const FINANCIAL: Asset['financialStructure'][] = ['Owned', 'Leased', 'Owned', 'Financed', 'Owned', 'Leased', 'Financed', 'Rented'];
 
 // ─── VIN generator (17-char, deterministic, simplified — not checksum-valid)
 
@@ -157,6 +161,34 @@ function buildAssetsForCarrier(account: AccountRecord, count: number): Asset[] {
         // ~60% of trucks have a transponder (PrePass, BestPass, etc.).
         const hasTransponder = type === 'Truck' && rng() < 0.6;
 
+        // Leased / financed assets carry an agreement term: a 36–60 month window
+        // opening the year the asset joined the fleet. Rentals are open-ended, so they
+        // carry a monthly rent but no dates. Owned assets carry neither.
+        const financial = FINANCIAL[idx % FINANCIAL.length];
+        const onTerm = financial === 'Leased' || financial === 'Financed';
+        const termMonths = onTerm ? 36 + 12 * Math.floor(rng() * 3) : 0;
+        const inService = operationalStatus !== 'Deactivated';
+        const [termStart, termEnd] = onTerm
+            ? (() => {
+                const start = new Date(dateAdded);
+                const end = new Date(start); end.setMonth(end.getMonth() + termMonths);
+                // Roll renewals forward so an in-service asset is on a live agreement.
+                while (inService && end < new Date()) {
+                    start.setMonth(start.getMonth() + termMonths);
+                    end.setMonth(end.getMonth() + termMonths);
+                }
+                return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+            })()
+            : [undefined, undefined];
+        // A base monthly cost by asset type; renting runs dearer per month than owning
+        // the payment on the same unit, which is why fleets only rent short-term.
+        const baseMonthly = type === 'Truck' ? 1900 + rng() * 900 : type === 'Trailer' ? 700 + rng() * 400 : 450 + rng() * 250;
+        const monthlyPayment = onTerm
+            ? Math.round(baseMonthly / 5) * 5
+            : financial === 'Rented'
+                ? Math.round((baseMonthly * 1.35) / 5) * 5
+                : undefined;
+
         out.push({
             id,
             unitNumber: unit,
@@ -169,11 +201,19 @@ function buildAssetsForCarrier(account: AccountRecord, count: number): Asset[] {
             make,
             model,
             color: pick(rng, COLORS),
-            financialStructure: FINANCIAL[idx % FINANCIAL.length],
+            financialStructure: financial,
+            ownerName: financial === 'Owned' ? (account.dbaName || account.legalName) : undefined,
+            leasingName: financial === 'Leased' ? pick(rng, LEASING_COMPANIES) : undefined,
+            lienHolderBusiness: financial === 'Financed' ? pick(rng, LIEN_HOLDERS) : undefined,
+            rentalAgencyName: financial === 'Rented' ? pick(rng, RENTAL_AGENCIES) : undefined,
             plateNumber: makePlate(account.state, idx),
             plateJurisdiction: account.state,
             plateCountry,
-            plateType: type === 'Trailer' ? 'Apportioned' : 'Commercial',
+            plateType: type === 'Truck' ? 'IRP' : 'Local',
+            agreementStartDate: termStart,
+            agreementEndDate: termEnd,
+            monthlyPayment,
+            monthlyPaymentCurrency: monthlyPayment ? (account.country === 'CA' ? 'CAD' : 'USD') : undefined,
             registrationIssueDate: regIssueDate,
             registrationExpiryDate: regExpiryDate,
             insuranceAddedDate: dateAdded,
@@ -189,7 +229,6 @@ function buildAssetsForCarrier(account: AccountRecord, count: number): Asset[] {
             transponderExpiryDate: hasTransponder
                 ? `${regIssueYear + 3}-${pad(1 + Math.floor(rng() * 12), 2)}-${pad(1 + Math.floor(rng() * 27), 2)}`
                 : undefined,
-            ownerName: account.legalName,
             notes: '',
             city: account.city,
             stateProvince: account.state,

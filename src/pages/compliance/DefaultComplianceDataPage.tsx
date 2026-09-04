@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
     Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
@@ -11,6 +11,7 @@ import { consumePendingRecord, setMessagesFocus, type RecordRef } from '@/pages/
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, ENTITY_ORDER, isDateMonitored, RECORD_TYPE_LABEL, RECORD_TYPE_ORDER,
+    defaultVersionLabel, statusOptionsFor, recordFields, type RecordFieldDef,
     type SafetyRecord, type EntityId, type RecordTypeId,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
@@ -250,6 +251,22 @@ export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig
     return existing ? { ...base, ...existing } : base;
 }
 
+/** Default name for a NEW version, made unique against what the record already holds:
+ *  "Drug Test Result", then "Drug Test Result (2)", … The first one keeps the plain name. */
+function nextVersionLabel(record: SafetyRecord, entry: RecordDataEntry): string {
+    const base = defaultVersionLabel(record);
+    const taken = new Set([
+        ...(entry.versions ?? []),
+        ...(entry.instances ?? []).flatMap(i => i.versions ?? []),
+    ].map(v => v.label.trim().toLowerCase()));
+    if (!taken.has(base.toLowerCase())) return base;
+    for (let n = 2; n < 500; n++) {
+        const next = `${base} (${n})`;
+        if (!taken.has(next.toLowerCase())) return next;
+    }
+    return base;
+}
+
 // ── Sample data ("Load sample data" button — populate the list to preview every row state) ──
 const SAMPLE_EXPIRIES = ['2026-02-28', '2026-05-31', '2026-08-15', '2026-11-30', '2027-01-31', '2027-04-30', '2025-12-31', '2026-09-30'];
 const SAMPLE_ISSUES = ['2023-08-10', '2024-01-15', '2024-04-01', '2024-07-22', '2023-11-05', '2024-10-18'];
@@ -262,8 +279,37 @@ function recordHash(record: SafetyRecord): number {
 function sampleExpiry(record: SafetyRecord): string {
     return record.configuredDate ?? SAMPLE_EXPIRIES[recordHash(record) % SAMPLE_EXPIRIES.length];
 }
-function sampleStatus(record: SafetyRecord): string {
-    return SAMPLE_STATUSES[recordHash(record) % SAMPLE_STATUSES.length];
+function sampleStatus(record: SafetyRecord, seed = 0): string {
+    // A record that defines its own status values (e.g. a drug test's Negative / Positive)
+    // is sampled from THOSE — the generic Active / On File list would be nonsense there.
+    // Weighted so the realistic value dominates: only every 4th version takes the 2nd option.
+    const own = record.statusOptions;
+    if (own && own.length) return own[seed % 4 === 3 ? Math.min(1, own.length - 1) : 0];
+    return SAMPLE_STATUSES[(recordHash(record) + seed) % SAMPLE_STATUSES.length];
+}
+/** Hash of a version's label — every dated label has the SAME length, so seeding demo values
+ *  off the length alone would give a whole history one repeated value. */
+function labelSeed(label: string): number {
+    let h = 0;
+    for (const c of label) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return h;
+}
+/** Demo values for a record's extra fields — spread across the options so history varies. */
+function sampleFields(record: SafetyRecord, seed = 0): Record<string, string> | undefined {
+    const defs = recordFields(record);
+    if (!defs.length) return undefined;
+    const out: Record<string, string> = {};
+    for (const f of defs) {
+        const pool = f.kind === 'select' ? f.options : (f.demoValues ?? []);
+        if (pool.length) out[f.key] = pool[(recordHash(record) + seed) % pool.length] ?? '';
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+/** Jurisdiction demo values, honouring the record's hideCountry / hideState flags. */
+function sampleJurisdiction(record: SafetyRecord): { country: string; stateProv: string } {
+    if (record.hideCountry) return { country: '', stateProv: '' };
+    const country = record.allCountries ? 'United States' : 'Canada';
+    return { country, stateProv: record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '') };
 }
 // Static demo PDFs (public/demo-docs/*.pdf). Real file URLs open reliably in the browser's PDF viewer —
 // unlike inline data: URLs, which browsers block from top-level navigation. Regenerate: `node scripts/generate-demo-docs.mjs`.
@@ -315,21 +361,24 @@ function withDemoPdf(record: SafetyRecord, f: DataDocFile): DataDocFile {
 }
 function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVersion> = {}): DocVersion {
     const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
-    const country = record.allCountries ? 'United States' : 'Canada';
-    const stateProv = record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '');
+    const { country, stateProv } = sampleJurisdiction(record);
+    const seed = label.length;
     const v: DocVersion = {
         ...newVersion(label),
         numberValue: record.numberName ? sampleNumber(record) : '',
         country, stateProv,
         issueDate: record.tracksIssueDate ? SAMPLE_ISSUES[recordHash(record) % SAMPLE_ISSUES.length] : '',
         expiryDate: isDateMonitored(record) ? sampleExpiry(record) : '',
-        status: !isDateMonitored(record) ? sampleStatus(record) : '',
+        status: !isDateMonitored(record) ? sampleStatus(record, seed) : '',
+        fields: sampleFields(record, labelSeed(label)),
         files: [],
         monitoring: { ...seedMonitoring(record), enabled: true },
         uploadedBy: SAMPLE_UPLOADERS[(recordHash(record) + label.length) % SAMPLE_UPLOADERS.length],
         ...over,
     };
     if (hasDoc && v.files.length === 0) v.files = sampleDocFiles(record);
+    // A record with no monitoring block must never come back with monitoring switched on.
+    if (record.hideMonitoring) v.monitoring = { ...v.monitoring, enabled: false };
     return v;
 }
 /** Deterministic sample entry for a record at list position `i` — spread across every row state. */
@@ -338,7 +387,7 @@ export function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEnt
     if (record.multiInstance) {
         // Insurance policies carry no record-level tags — each document is tagged individually.
         const insPolicy = (name: string, over: Partial<DocVersion>, docTag: string): DocInstance => {
-            const ver = sampleVersion(record, 'Record 2026', { ...over, tags: [] });
+            const ver = sampleVersion(record, defaultVersionLabel(record, 2026), { ...over, tags: [] });
             if (ver.files.length) ver.files = ver.files.map((f, idx) => (idx === 0 ? { ...f, tag: docTag } : f));
             return { ...newInstance(name), versions: [ver] };
         };
@@ -352,15 +401,15 @@ export function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEnt
     }
     const mode = i % 6;
     if (mode === 5) return null;                                                                        // leave empty → Missing / Optional
-    if (mode === 4) return { versions: [sampleVersion(record, 'Record 2026', { monitoring: { ...seedMonitoring(record), enabled: false } })] }; // filled, monitoring off, no tags
+    if (mode === 4) return { versions: [sampleVersion(record, defaultVersionLabel(record, 2026), { monitoring: { ...seedMonitoring(record), enabled: false } })] }; // filled, monitoring off, no tags
     const tags = mode === 0 ? ['Verified', 'Primary'] : mode === 1 ? ['Renewed'] : mode === 2 ? ['Pending Review'] : [];
-    const current = sampleVersion(record, 'Record 2026', { tags });
+    const current = sampleVersion(record, defaultVersionLabel(record, 2026), { tags });
     // Every 3rd record keeps an older version too → an expandable multi-version row.
     if (mode === 3) {
         return {
             versions: [
                 current,
-                sampleVersion(record, 'Record 2025', {
+                sampleVersion(record, defaultVersionLabel(record, 2025), {
                     expiryDate: isDateMonitored(record) ? '2025-12-31' : '',
                     issueDate: record.tracksIssueDate ? '2023-01-10' : '',
                     monitoring: { ...seedMonitoring(record), enabled: false },
@@ -388,7 +437,7 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
         const policy = (name: string, num: string, years: number[], pi: number): DocInstance => ({
             ...newInstance(name),
             versions: years.map((y, i) => {
-                const ver = sampleVersion(record, `Record ${y}`, {
+                const ver = sampleVersion(record, defaultVersionLabel(record, y), {
                     numberValue: num, expiryDate: `${y}-12-31`,
                     insurer: name.split('—')[1]?.trim() || name, producer: PRODUCERS[pi % PRODUCERS.length], policyLimit: LIMITS[pi % LIMITS.length],
                     // Insurance carries NO record-level tags — every tag lives on an individual document (below).
@@ -422,10 +471,10 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
     const years = [2026, 2025, 2024, 2023, 2022, 2021];
     return {
         versions: years.map((y, i) => {
-            const v = sampleVersion(record, `Record ${y}`, {
+            const v = sampleVersion(record, defaultVersionLabel(record, y), {
                 expiryDate: dated ? `${y}-12-31` : '',
                 issueDate: record.tracksIssueDate ? `${y - 2}-01-10` : '',
-                status: !dated ? (i === 0 ? 'Active' : 'On File') : '',
+                status: !dated ? (record.statusOptions ? sampleStatus(record, i) : (i === 0 ? 'Active' : 'On File')) : '',
                 tags: i === 0 ? ['Verified', 'Primary'] : i === 1 ? ['Renewed'] : [],
                 monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
             });
@@ -1138,6 +1187,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     onBack={() => setDetailRecord(null)}
                     detailExtra={detailExtraFor ? detailExtraFor(detailRecord) : detailExtra}
                     onNavigate={onNavigate}
+                    showSubject={!embedded}
                 />
             ) : (
             <>
@@ -1746,9 +1796,15 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
                             ) : (
                                 <div className="flex items-start gap-1.5 leading-snug text-slate-600">
                                     <CircleDashed size={12} className="mt-0.5 shrink-0 text-slate-400" />
-                                    <span><span className="text-slate-400">{r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.status || '—'}</span></span>
+                                    <span><span className="text-slate-400">{r.statusLabel ?? r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.status || '—'}</span></span>
                                 </div>
                             )}
+                            {(r.selectFields ?? []).map(f => (
+                                <div key={f.key} className="leading-snug text-slate-700">
+                                    <span className="text-slate-400">{f.label}: </span>
+                                    <span className="font-semibold">{cur?.fields?.[f.key] || '—'}</span>
+                                </div>
+                            ))}
                             {(monitoringOn || isMulti || versionCount > 1) && (
                                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                                     {monitoringOn && (
@@ -1867,6 +1923,13 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
 
 // ── Record detail page (MOTUS-style: header band + info block + tabs + document table) ──
 const MONITOR_BASIS_LABEL: Record<MonitorBasis, string> = { issue: 'Issue date', expiry: 'Expiry date', custom: 'Custom date', status: 'Status' };
+/**
+ * What to call the monitored date FOR THIS RECORD. The generic "Expiry date" is wrong for
+ * anything that is reviewed or renewed rather than expiring — an MVR is monitored on its
+ * next renew date, a CDL on its licence expiry — so the record's own `monitorType` names it.
+ */
+const basisLabel = (record: SafetyRecord, b: MonitorBasis): string =>
+    (b === 'expiry' ? (record.monitorType || MONITOR_BASIS_LABEL.expiry) : MONITOR_BASIS_LABEL[b]);
 function recurrenceLabel(id: string): string { return RECURRENCE_OPTIONS.find(o => o.id === id)?.label ?? id; }
 /** Recurrence cadence → interval in months (0 = does not recur). */
 function recurrenceMonths(id: string): number {
@@ -2107,39 +2170,41 @@ function MonitoringCalendarTab({ record, cfg, monitoredDate, monitoringOn }: {
 interface DocRow { key: string; instanceName?: string; instanceId?: string; version: DocVersion; isCurrent: boolean; }
 function buildDocRows(record: SafetyRecord, entry: RecordDataEntry): DocRow[] {
     const rows: DocRow[] = [];
+    // The current one is whichever version is pinned; with none pinned it is the newest.
+    const currentIn = (list: DocVersion[]) => (list.find(v => v.isCurrent) ?? list[0])?.id;
     if (record.multiInstance) {
-        for (const inst of instancesOf(entry))
-            inst.versions.forEach((v, i) => rows.push({ key: `${inst.id}-${v.id}`, instanceName: inst.name, instanceId: inst.id, version: v, isCurrent: i === 0 }));
+        for (const inst of instancesOf(entry)) {
+            const curId = currentIn(inst.versions);
+            inst.versions.forEach(v => rows.push({ key: `${inst.id}-${v.id}`, instanceName: inst.name, instanceId: inst.id, version: v, isCurrent: v.id === curId }));
+        }
     } else {
-        entry.versions.forEach((v, i) => rows.push({ key: v.id, version: v, isCurrent: i === 0 }));
+        const curId = currentIn(entry.versions);
+        entry.versions.forEach(v => rows.push({ key: v.id, version: v, isCurrent: v.id === curId }));
     }
     return rows;
 }
 
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+const Dash = () => <span className="font-normal text-slate-400">—</span>;
+
+function Fact({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
     return (
-        <div className="flex items-start justify-between gap-4 px-5 py-3">
-            <span className="text-[13px] font-semibold text-slate-500 shrink-0">{label}</span>
-            <span className="text-[13px] text-slate-800 text-right min-w-0 break-words">{children}</span>
+        <div className={cn('min-w-0', className ?? 'min-w-[8rem]')}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+            <div className="mt-0.5 text-[13px] font-semibold text-slate-800">{children}</div>
         </div>
     );
 }
 
-// ── Version lifecycle state (user-controllable: Current / Historical / Superseded / Cancelled / Expired / Pending) ──
-type DocState = 'current' | 'historical' | 'superseded' | 'cancelled' | 'expired' | 'pending';
+// ── A record is either THE current one or history ──
+// There is nothing to pick from a list: the newest record is current, unless another one is
+// explicitly pinned (DocVersion.isCurrent). Both values below are derived from that.
+type DocState = 'current' | 'historical';
 const DOC_STATE_META: Record<DocState, { label: string; tone: string; dot: string }> = {
     current: { label: 'Current', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
     historical: { label: 'Historical', tone: 'border-slate-200 bg-slate-50 text-slate-500', dot: 'bg-slate-400' },
-    superseded: { label: 'Superseded', tone: 'border-slate-200 bg-slate-50 text-slate-500', dot: 'bg-slate-400' },
-    cancelled: { label: 'Cancelled', tone: 'border-rose-200 bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
-    expired: { label: 'Expired', tone: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-    pending: { label: 'Pending', tone: 'border-blue-200 bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
 };
-const DOC_STATE_ORDER: DocState[] = ['current', 'historical', 'superseded', 'cancelled', 'expired', 'pending'];
-/** Effective state for a version — the explicit `state` if set, else derived from position (index 0 → current). */
-function effectiveState(v: DocVersion, isCurrent: boolean): DocState {
-    return (v.state && DOC_STATE_META[v.state as DocState] ? v.state : (isCurrent ? 'current' : 'historical')) as DocState;
-}
+const DOC_STATE_ORDER: DocState[] = ['current', 'historical'];
+const effectiveState = (isCurrent: boolean): DocState => (isCurrent ? 'current' : 'historical');
 /** State pill for a document row — reflects the version's controllable lifecycle state. */
 function StateBadge({ state, multi }: { state: DocState; multi: boolean }) {
     const meta = DOC_STATE_META[state] ?? DOC_STATE_META.historical;
@@ -2167,19 +2232,34 @@ function UploaderCell({ name, at }: { name?: string; at: string }) {
 }
 
 // ── Detail document-table controls (search / filter / sort / column-select / pagination) ──
-type DocColId = 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
-type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded';
-const DOC_COLS_ALL: DocColId[] = ['insurer', 'producer', 'limit', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
-// Columns shown by default (Notes is available in the Columns menu but off until enabled).
-const DOC_DEFAULT_COLS: DocColId[] = DOC_COLS_ALL.filter(c => c !== 'notes');
+type DocStaticColId = 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
+/** A record's own select fields get a column each, addressed as `sel:<field key>`. */
+type DocColId = DocStaticColId | `sel:${string}`;
+type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded' | `sel:${string}`;
+const DOC_STATIC_COLS: DocStaticColId[] = ['insurer', 'producer', 'limit', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
 // Core columns that are always shown — cannot be toggled off (locked in the Columns menu).
 const DOC_LOCKED_COLS: DocColId[] = ['state', 'document'];
 // Insurance-only columns (shown only for multi-instance records).
 const DOC_INSURANCE_COLS: DocColId[] = ['insurer', 'producer', 'limit'];
-const DOC_COL_LABEL: Record<DocColId, string> = {
+const DOC_COL_LABEL: Record<DocStaticColId, string> = {
     insurer: 'Insurer', producer: 'Producer', limit: 'Policy Limit',
     state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
 };
+const selKey = (id: DocColId) => (id.startsWith('sel:') ? id.slice(4) : '');
+/** Every column this record can show — the select-field columns sit next to the status they qualify. */
+function docColsFor(record: SafetyRecord): DocColId[] {
+    const sel = recordFields(record).map(f => `sel:${f.key}` as DocColId);
+    const at = DOC_STATIC_COLS.indexOf('status') + 1;
+    return [...DOC_STATIC_COLS.slice(0, at), ...sel, ...DOC_STATIC_COLS.slice(at)];
+}
+/** Default visibility — everything except Notes, which stays available in the Columns menu. */
+const docDefaultColsFor = (record: SafetyRecord): DocColId[] => docColsFor(record).filter(c => c !== 'notes');
+/** Column header, following the record's own wording (a drug test's status IS its "Test result"). */
+function docColLabel(record: SafetyRecord, id: DocColId): string {
+    if (id.startsWith('sel:')) return recordFields(record).find(f => f.key === selKey(id))?.label ?? 'Field';
+    if (id === 'status') return record.statusLabel ?? DOC_COL_LABEL.status;
+    return DOC_COL_LABEL[id as DocStaticColId];
+}
 const DOC_TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
 function docSortValue(col: DocSortCol, row: DocRow): string {
     const v = row.version;
@@ -2187,7 +2267,7 @@ function docSortValue(col: DocSortCol, row: DocRow): string {
         case 'number': return (v.numberValue || '').toLowerCase();
         case 'policy': return (row.instanceName || '').toLowerCase();
         case 'version': return (v.label || '').toLowerCase();
-        case 'state': return String(DOC_STATE_ORDER.indexOf(effectiveState(v, row.isCurrent))).padStart(2, '0');
+        case 'state': return String(DOC_STATE_ORDER.indexOf(effectiveState(row.isCurrent))).padStart(2, '0');
         case 'issue': return v.issueDate || '';
         case 'expiry': return v.expiryDate || '';
         case 'status': return (v.status || '').toLowerCase();
@@ -2195,12 +2275,13 @@ function docSortValue(col: DocSortCol, row: DocRow): string {
         case 'producer': return (v.producer || '').toLowerCase();
         case 'limit': return (v.policyLimit || '').toLowerCase();
         case 'uploaded': return `${v.uploadedBy || ''} ${v.uploadedAt || ''}`.toLowerCase();
-        default: return '';
+        default: return col.startsWith('sel:') ? (v.fields?.[selKey(col)] || '').toLowerCase() : '';
     }
 }
 function docSearchBlob(row: DocRow): string {
     const v = row.version;
-    return [v.numberValue, v.label, row.instanceName, v.insurer, v.producer, v.policyLimit, v.status, DOC_STATE_META[effectiveState(v, row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
+    return [v.numberValue, v.label, row.instanceName, v.insurer, v.producer, v.policyLimit, v.status, DOC_STATE_META[effectiveState(row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
+        Object.values(v.fields ?? {}).join(' '),
         v.tags.join(' '), v.files.map(f => f.name).join(' '), v.files.map(f => f.tag ?? '').join(' ')]
         .filter(Boolean).join(' ').toLowerCase();
 }
@@ -2225,7 +2306,7 @@ function DocTh({ col, label, sortable, sort, onSort, className }: {
     );
 }
 /** Column-visibility dropdown for the detail document table (lists only the columns that apply to this record). */
-function DocColumnsDropdown({ cols, visible, onToggle }: { cols: DocColId[]; visible: Set<DocColId>; onToggle: (id: DocColId) => void }) {
+function DocColumnsDropdown({ record, cols, visible, onToggle }: { record: SafetyRecord; cols: DocColId[]; visible: Set<DocColId>; onToggle: (id: DocColId) => void }) {
     const [open, setOpen] = useState(false);
     return (
         <div className="relative">
@@ -2243,7 +2324,7 @@ function DocColumnsDropdown({ cols, visible, onToggle }: { cols: DocColId[]; vis
                             return (
                                 <label key={id} className={cn('flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-slate-700', locked ? 'cursor-default opacity-80' : 'hover:bg-slate-50 cursor-pointer')}>
                                     <input type="checkbox" checked={locked || visible.has(id)} disabled={locked} onChange={() => !locked && onToggle(id)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-100" />
-                                    <span className="flex-1">{DOC_COL_LABEL[id]}</span>
+                                    <span className="flex-1">{docColLabel(record, id)}</span>
                                     {locked && <Lock size={11} className="text-slate-400" />}
                                 </label>
                             );
@@ -2262,9 +2343,11 @@ function DocColumnsDropdown({ cols, visible, onToggle }: { cols: DocColId[]; vis
  * Rendered in TWO places: the record detail page's Documents tab, and INLINE inside the list's
  * expandable row. Reads `entry` live from the store, so Load-sample / Fill-demo data reflect here.
  */
-function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate }: {
+function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate, showTitle = true }: {
     record: SafetyRecord; entry: RecordDataEntry; subjectId: string; setEntry: EntrySetter;
     compact?: boolean; subjectLabel?: string; entity?: EntityId; onNavigate?: (path: string) => void;
+    /** False when a tab strip above already names this section. */
+    showTitle?: boolean;
 }) {
     const [includeHistory, setIncludeHistory] = useState(false);
     const [shareOpen, setShareOpen] = useState(false); // "Share to chat" (record-link) dialog
@@ -2280,13 +2363,17 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const [docSearch, setDocSearch] = useState('');
     const [tagFilter, setTagFilter] = useState('all');
     const [docSort, setDocSort] = useState<{ col: DocSortCol; dir: 'asc' | 'desc' } | null>(null);
-    const [visibleDocCols, setVisibleDocCols] = useState<Set<DocColId>>(() => new Set(DOC_DEFAULT_COLS));
+    const [visibleDocCols, setVisibleDocCols] = useState<Set<DocColId>>(() => new Set(docDefaultColsFor(record)));
+    // Value filters over the record's own fields — the monitored status (e.g. Test result)
+    // and each select field (e.g. Test type). Keyed 'status' + the field keys.
+    const [valueFilters, setValueFilters] = useState<Record<string, string>>({});
+    const setValueFilter = (k: string, val: string) => setValueFilters(prev => ({ ...prev, [k]: val }));
     const [docPageSize, setDocPageSize] = useState(25);
     const [docPage, setDocPage] = useState(1);
     const [pendingDelete, setPendingDelete] = useState<DocRow | null>(null); // → ConfirmDialog "are you sure?"
     const toggleDocSort = (col: DocSortCol) => setDocSort(prev => (prev && prev.col === col ? (prev.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }));
     const toggleDocCol = (id: DocColId) => { if (DOC_LOCKED_COLS.includes(id)) return; setVisibleDocCols(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
-    useEffect(() => { setDocPage(1); }, [docSearch, tagFilter, docSort, docPageSize, includeHistory]);
+    useEffect(() => { setDocPage(1); }, [docSearch, tagFilter, valueFilters, docSort, docPageSize, includeHistory]);
     // Remove one version (or, for multi-instance, one policy's version — dropping the policy if it empties). Confirmed via ConfirmDialog.
     const doRemove = (row: DocRow) => {
         if (row.instanceId) {
@@ -2313,13 +2400,16 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         emitToast('Document removed', 'success');
     };
     // Scoped single-version add / edit (opens VersionEditModal — "each row edit only shows that data").
-    const freshVersion = () => ({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
+    const freshVersion = () => ({ ...newVersion(nextVersionLabel(record, entry)), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
     const startEdit = (row: DocRow) => setEditing({ version: row.version, mode: 'edit', instanceId: row.instanceId });
     const startAdd = () => setEditing({ version: freshVersion(), mode: 'add' });
     const startAddPolicy = () => setEditing({ version: freshVersion(), mode: 'add', newPolicy: true });
     const startAddToPolicy = (instanceId: string) => setEditing({ version: freshVersion(), mode: 'add', instanceId });
     const saveVersion = (saved: DocVersion, policyName?: string) => {
         if (!editing) return;
+        // Exactly one record can be the pinned current one — pinning this one releases the rest.
+        const onlyCurrent = (list: DocVersion[]): DocVersion[] =>
+            (saved.isCurrent ? list.map(x => (x.id === saved.id || !x.isCurrent ? x : { ...x, isCurrent: undefined })) : list);
         if (editing.newPolicy) {
             // New insurance policy → a fresh instance holding this version as its current.
             const inst = { ...newInstance((policyName || '').trim() || `Policy ${(entry.instances?.length ?? 0) + 1}`), versions: [saved] };
@@ -2327,7 +2417,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         } else if (editing.instanceId && editing.mode === 'add') {
             // Add-to-policy → prepend as that policy's new current.
             const instances = (entry.instances ?? []).map(inst => (inst.id === editing.instanceId
-                ? { ...inst, versions: [saved, ...inst.versions] } : inst));
+                ? { ...inst, versions: onlyCurrent([saved, ...inst.versions]) } : inst));
             setEntry(subjectId, record.id, { ...entry, instances });
         } else if (editing.instanceId) {
             // Edit an insurance version → update in place, or REASSIGN to another policy if the Policy field changed.
@@ -2336,7 +2426,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             const samePolicy = !targetName || targetName.toLowerCase() === (curInst?.name ?? '').toLowerCase();
             if (samePolicy) {
                 const instances = (entry.instances ?? []).map(inst => inst.id === editing.instanceId
-                    ? { ...inst, name: targetName || inst.name, versions: inst.versions.map(x => (x.id === saved.id ? saved : x)) }
+                    ? { ...inst, name: targetName || inst.name, versions: onlyCurrent(inst.versions.map(x => (x.id === saved.id ? saved : x))) }
                     : inst);
                 setEntry(subjectId, record.id, { ...entry, instances });
             } else {
@@ -2345,15 +2435,15 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     ? { ...inst, versions: inst.versions.filter(x => x.id !== saved.id) } : inst);
                 const target = instances.find(i => i.name.toLowerCase() === targetName!.toLowerCase());
                 instances = target
-                    ? instances.map(i => (i.id === target.id ? { ...i, versions: [saved, ...i.versions] } : i))
+                    ? instances.map(i => (i.id === target.id ? { ...i, versions: onlyCurrent([saved, ...i.versions]) } : i))
                     : [...instances, { ...newInstance(targetName!), versions: [saved] }];
                 instances = instances.filter(i => i.versions.length > 0);
                 setEntry(subjectId, record.id, { ...entry, instances });
             }
         } else if (editing.mode === 'add') {
-            setEntry(subjectId, record.id, { ...entry, versions: [saved, ...entry.versions] });
+            setEntry(subjectId, record.id, { ...entry, versions: onlyCurrent([saved, ...entry.versions]) });
         } else {
-            setEntry(subjectId, record.id, { ...entry, versions: entry.versions.map(x => (x.id === saved.id ? saved : x)) });
+            setEntry(subjectId, record.id, { ...entry, versions: onlyCurrent(entry.versions.map(x => (x.id === saved.id ? saved : x))) });
         }
         emitToast(editing.mode === 'add' ? 'Record added' : 'Changes saved');
         setEditing(null);
@@ -2370,9 +2460,14 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const showIssue = !!record.tracksIssueDate;
     const showDate = dated;
     const showStatus = !dated;
+    const extraFieldDefs = recordFields(record);
+    const selectFieldDefs = record.selectFields ?? [];
     const showCol = (id: DocColId) => (DOC_INSURANCE_COLS.includes(id) ? isInsurance : true) && (DOC_LOCKED_COLS.includes(id) || visibleDocCols.has(id));
-    const applicableDocCols = DOC_COLS_ALL.filter(id =>
+    const applicableDocCols = docColsFor(record).filter(id =>
         DOC_INSURANCE_COLS.includes(id) ? isInsurance : id === 'issue' ? showIssue : id === 'expiry' ? showDate : id === 'status' ? showStatus : true);
+    /** Values actually present in the data for one filter, so the dropdown never offers an empty result. */
+    const presentValues = (get: (v: DocVersion) => string) =>
+        Array.from(new Set(allRows.map(r => get(r.version)).filter(Boolean))).sort();
 
     const allRows = buildDocRows(record, entry);
     // Files across every version → attachments offered in the Share dialog (pdf / image / video).
@@ -2385,6 +2480,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const q = docSearch.trim().toLowerCase();
     const filteredRows = baseRows.filter(r => {
         if (tagFilter !== 'all' && !rowAllTags(r).some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
+        if (valueFilters.status && r.version.status !== valueFilters.status) return false;
+        for (const f of selectFieldDefs) {
+            const want = valueFilters[f.key];
+            if (want && (r.version.fields?.[f.key] ?? '') !== want) return false;
+        }
         if (q && !docSearchBlob(r).includes(q)) return false;
         return true;
     });
@@ -2401,7 +2501,12 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         <>
             {/* Header — title + Show-history toggle + Add (opens the record form popup) */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 flex-wrap">
-                <h3 className="text-[13px] font-bold text-slate-700">{isMulti ? 'Active filings' : 'Documents & records'}</h3>
+                {showTitle ? (
+                    <h3 className="flex items-center gap-2 text-[13px] font-bold text-slate-700">
+                        {isMulti ? 'Active filings' : 'Records'}
+                        <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{allRows.length}</span>
+                    </h3>
+                ) : <span />}
                 <div className="flex items-center gap-3 flex-wrap">
                     {/* Persistent "Show history" toggle — reveals older/historical versions; disabled when there are none yet. */}
                     <button type="button" disabled={historyCount === 0} onClick={() => setIncludeHistory(v => !v)}
@@ -2426,7 +2531,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             {allRows.length === 0 ? (
                 <div className="px-5 py-14 text-center">
                     <div className="mx-auto mb-3 h-11 w-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><FileText size={20} /></div>
-                    <p className="text-sm font-semibold text-slate-700">No documents captured yet</p>
+                    <p className="text-sm font-semibold text-slate-700">No records captured yet</p>
                     <p className="mt-1 text-[13px] text-slate-500">Use <span className="font-semibold text-slate-700">Add</span> to upload a document or record a number / date.</p>
                     <button type="button" onClick={isMulti ? startAddPolicy : startAdd} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"><UploadCloud size={15} /> Add record</button>
                 </div>
@@ -2440,17 +2545,35 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                             <input value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="Search records, numbers, tags, files…"
                                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                         </div>
-                        {tagOptions.length > 0 && (
-                            <>
-                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
-                                <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} title="Filter by tag"
-                                    className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                    <option value="all">All tags</option>
-                                    {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </>
+                        {(tagOptions.length > 0 || showStatus || selectFieldDefs.length > 0) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
                         )}
-                        <div className="hidden md:block"><DocColumnsDropdown cols={applicableDocCols} visible={visibleDocCols} onToggle={toggleDocCol} /></div>
+                        {showStatus && (() => {
+                            const opts = record.statusOptions ?? presentValues(v => v.status);
+                            const label = record.statusLabel ?? 'Status';
+                            return opts.length > 0 && (
+                                <select value={valueFilters.status ?? ''} onChange={e => setValueFilter('status', e.target.value)} title={`Filter by ${label.toLowerCase()}`}
+                                    className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                    <option value="">All {label.toLowerCase()}s</option>
+                                    {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                            );
+                        })()}
+                        {selectFieldDefs.map(f => (
+                            <select key={f.key} value={valueFilters[f.key] ?? ''} onChange={e => setValueFilter(f.key, e.target.value)} title={`Filter by ${f.label.toLowerCase()}`}
+                                className="h-9 max-w-[13rem] rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                <option value="">All {f.label.toLowerCase()}s</option>
+                                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        ))}
+                        {tagOptions.length > 0 && (
+                            <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} title="Filter by tag"
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                <option value="all">All tags</option>
+                                {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        )}
+                        <div className="hidden md:block"><DocColumnsDropdown record={record} cols={applicableDocCols} visible={visibleDocCols} onToggle={toggleDocCol} /></div>
                     </div>
                     )}
                     {pageRows.length === 0 ? (
@@ -2458,7 +2581,10 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     ) : (
                         <>
                         <div className="hidden md:block overflow-x-auto">
-                            <table className={cn('w-full', isMulti ? 'min-w-[1400px]' : 'min-w-[1160px]')}>
+                            <table className={cn('w-full', isMulti ? 'min-w-[1400px]'
+                                : extraFieldDefs.length >= 3 ? 'min-w-[1520px]'
+                                : extraFieldDefs.length === 2 ? 'min-w-[1400px]'
+                                : extraFieldDefs.length === 1 ? 'min-w-[1280px]' : 'min-w-[1160px]')}>
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr>
                                         {showNumber && <DocTh col="number" label={record.numberName} sortable sort={docSort} onSort={toggleDocSort} className="pl-5" />}
@@ -2470,7 +2596,10 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         {showCol('state') && <DocTh col="state" label="State" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showIssue && showCol('issue') && <DocTh col="issue" label="Issue date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showDate && showCol('expiry') && <DocTh col="expiry" label="Expiry date" sortable sort={docSort} onSort={toggleDocSort} />}
-                                        {showStatus && showCol('status') && <DocTh col="status" label="Status" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showStatus && showCol('status') && <DocTh col="status" label={docColLabel(record, 'status')} sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && (
+                                            <DocTh key={f.key} col={`sel:${f.key}`} label={f.label} sortable sort={docSort} onSort={toggleDocSort} />
+                                        ))}
                                         {showCol('tags') && <DocTh label="Tags" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('notes') && <DocTh label="Notes" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('document') && <DocTh label="Document" sort={docSort} onSort={toggleDocSort} />}
@@ -2481,7 +2610,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                 <tbody>
                                     {pageRows.flatMap(row => {
                                         const v = row.version;
-                                        const st = effectiveState(v, row.isCurrent);
+                                        const st = effectiveState(row.isCurrent);
                                         // Insurance policies with several documents → one row per document (primary row + "extra" rows).
                                         const splitDocs = isMulti && showCol('document') && v.files.length > 1;
                                         const trs: ReactNode[] = [];
@@ -2499,6 +2628,13 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 {showIssue && showCol('issue') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.issueDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showDate && showCol('expiry') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.expiryDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showStatus && showCol('status') && <td className="px-4 py-3 whitespace-nowrap">{v.status ? <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{v.status}</span> : <span className="text-[13px] text-slate-400">—</span>}</td>}
+                                                {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && (
+                                                    <td key={f.key} className="px-4 py-3 text-[13px] text-slate-700">
+                                                        {v.fields?.[f.key]
+                                                            ? <span className="block max-w-[15rem] truncate" title={v.fields[f.key]}>{v.fields[f.key]}</span>
+                                                            : <span className="text-slate-400">—</span>}
+                                                    </td>
+                                                ))}
                                                 {showCol('tags') && (
                                                     <td className="px-4 py-3">
                                                         {/* Insurance is tagged per document — never show record-level tags on its rows. */}
@@ -2550,6 +2686,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                         {showIssue && showCol('issue') && <td className={cellPad} />}
                                                         {showDate && showCol('expiry') && <td className={cellPad} />}
                                                         {showStatus && showCol('status') && <td className={cellPad} />}
+                                                        {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && <td key={f.key} className={cellPad} />)}
                                                         {showCol('tags') && <td className={cellPad}><DocTagsCell recordTags={[]} docTag={f.tag} /></td>}
                                                         {showCol('notes') && <td className={cellPad} />}
                                                         {showCol('document') && (
@@ -2577,7 +2714,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                         <div className="md:hidden divide-y divide-slate-100">
                             {pageRows.map(row => {
                                 const v = row.version;
-                                const st = effectiveState(v, row.isCurrent);
+                                const st = effectiveState(row.isCurrent);
                                 return (
                                     <div key={row.key} className={cn('p-4 space-y-3', st === 'current' ? 'bg-emerald-50/40' : '')}>
                                         <div className="flex items-start justify-between gap-2">
@@ -2607,7 +2744,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                             {isInsurance && <MobileFact label="Policy Limit" value={v.policyLimit} />}
                                             {showIssue && <MobileFact label="Issue date" value={v.issueDate} />}
                                             {showDate && <MobileFact label="Expiry date" value={v.expiryDate} />}
-                                            {showStatus && <MobileFact label="Status" value={v.status} />}
+                                            {showStatus && <MobileFact label={record.statusLabel ?? 'Status'} value={v.status} />}
+                                            {extraFieldDefs.map(f => <MobileFact key={f.key} label={f.label} value={v.fields?.[f.key]} />)}
                                             <MobileFact label="Uploaded by" value={v.uploadedBy} />
                                         </div>
                                         {v.tags.length > 0 && (
@@ -2703,14 +2841,36 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
 }
 
 type DetailTab = 'documents' | 'monitoring';
-function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate }: {
+function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate, showSubject = true }: {
     record: SafetyRecord; entry: RecordDataEntry; entity: EntityId; subjectLabel: string;
     subjectId: string; setEntry: EntrySetter;
     onBack: () => void;
     detailExtra?: ReactNode;
     onNavigate?: (path: string) => void;
+    /** Embedded in a driver / asset profile the subject is already named in the page header. */
+    showSubject?: boolean;
 }) {
     const [tab, setTab] = useState<DetailTab>('documents');
+    // ── Pinned identity bar ──
+    // The title bar sticks to the top of whatever container scrolls this page (this view is
+    // embedded in the driver / asset profile as often as it is standalone), so "Back to list"
+    // and the record's identity stay reachable while the document list scrolls past. The bar's
+    // HEIGHT never changes — only its shadow and bottom corners. That matters: collapsing a
+    // header shortens the content, which on a short page drops the scroll maximum below where
+    // the user already is, the browser clamps scrollTop, the header re-expands, and the page
+    // fights every scroll. A purely cosmetic change can't do that. The facts below the bar are
+    // an ordinary block that simply scrolls away.
+    const topSentinel = useRef<HTMLDivElement>(null);
+    const [stuck, setStuck] = useState(false);
+    useEffect(() => {
+        const el = topSentinel.current;
+        if (!el) return;
+        const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { threshold: 0 });
+        io.observe(el);
+        return () => io.disconnect();
+    }, []);
+    // Records with nothing to alert on carry no monitoring anywhere — no tab, no summary row.
+    const showMonitoring = !record.hideMonitoring;
     const status = entryStatus(record, entry);
     const isMulti = !!record.multiInstance;
     const cur = isMulti ? (instancesOf(entry)[0]?.versions[0] ?? null) : currentVersion(entry);
@@ -2724,65 +2884,120 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
     const docCount = buildDocRows(record, entry).length;
 
     return (
-        <div className="space-y-4">
-            {/* Back link */}
-            <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-[13px] font-semibold text-slate-500 hover:text-blue-600">
-                <ChevronLeft size={15} /> Back to list
-            </button>
-            {/* Header card + info block (app theme) */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex items-start justify-between gap-4 p-5 flex-wrap">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                            <FileText size={22} />
-                        </span>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-xl font-bold leading-tight text-slate-900">{record.recordName}</h2>
-                                {record.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={10} /> Custom</span>}
-                            </div>
-                            {record.description && <p className="mt-0.5 text-[13px] text-slate-500">{record.description}</p>}
-                        </div>
+        // No `space-y` here: the identity bar and the current-record block must sit flush as
+        // ONE card, and the bar has to stay a direct child of this element — wrapping the two
+        // in a sub-div would make that wrapper the sticky containing block, un-pinning the bar
+        // as soon as the block scrolled past. Spacing is therefore set per child.
+        <div>
+            {/* Scroll sentinel — tells the bar below when it has become pinned. */}
+            <div ref={topSentinel} aria-hidden className="h-px" />
+            {/* Identity bar — pinned, fixed height. Back to list and the record's name stay
+                reachable for the whole page. */}
+            <div className={cn('sticky top-0 z-20 flex items-center gap-3 rounded-t-xl border border-slate-200 bg-white px-4 py-2.5 transition-shadow duration-200',
+                // Pinned, it is a card floating over the list, so it closes on all four corners.
+                // The block below rounds its own top in the same breath — rounding only the bar
+                // would leave the block's square corners poking out of the notch.
+                stuck ? 'rounded-b-xl shadow-md' : 'shadow-sm')}>
+                <button type="button" onClick={onBack} title="Back to list"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white pl-1.5 pr-2.5 text-[12px] font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900">
+                    <ChevronLeft size={15} /> <span className="hidden sm:inline">Back to list</span>
+                </button>
+                <span aria-hidden className="h-6 w-px shrink-0 bg-slate-200" />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <FileText size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                        <h2 className="truncate text-[15px] font-bold leading-tight text-slate-900">{record.recordName}</h2>
+                        {record.custom && <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={10} /> Custom</span>}
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', RECORD_TYPE_TONE[record.type])}>{RECORD_TYPE_LABEL[record.type]}</span>
-                        <StatusPill status={status} />
+                    {record.description && <p className="truncate text-[12px] text-slate-500">{record.description}</p>}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                    <StatusPill status={status} />
+                </div>
+            </div>
+            {/* Current record — the values actually captured on the newest version, joined
+                flush to the bar above. The facts flow instead of sitting on a fixed grid: the
+                field set varies per record, and a grid left dead cells on every odd count. */}
+            <div className={cn('overflow-hidden rounded-b-xl border border-slate-200 bg-white shadow-sm',
+                // At rest it is the bottom half of the bar's card — no top edge of its own.
+                // Once the bar detaches, it becomes a card in its own right and closes its top.
+                stuck ? 'rounded-t-xl border-t' : 'border-t-0')}>
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">{isMulti ? 'Current filing' : 'Current record'}</span>
+                        {cur && <span className="truncate rounded-md bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">{cur.label}</span>}
                     </div>
+                    <p className="hidden min-w-0 truncate text-[11px] text-slate-400 md:block" title={`${RECORD_TYPE_LABEL[record.type]} · ${CATEGORY_SHORT[record.category] ?? record.category} · ${record.jurisdiction}`}>
+                        {RECORD_TYPE_LABEL[record.type]} · {CATEGORY_SHORT[record.category] ?? record.category} · {record.jurisdiction}
+                    </p>
                 </div>
-                <div className="border-t border-slate-100 divide-y divide-slate-100 sm:grid sm:grid-cols-2 sm:divide-y-0 sm:[&>*]:border-b sm:[&>*]:border-slate-100 sm:[&>*:nth-child(odd)]:border-r">
-                    <InfoRow label="Subject"><span className="inline-flex items-center gap-1.5"><EntityIcon size={13} className="text-slate-400" /> {subjectLabel} <span className="text-slate-400">· {entity}</span></span></InfoRow>
-                    <InfoRow label="Category">{CATEGORY_SHORT[record.category] ?? record.category}</InfoRow>
-                    {showNumber && <InfoRow label={record.numberName}>{cur?.numberValue ? <span className="font-semibold">{cur.numberValue}</span> : <span className="text-slate-400">—</span>}</InfoRow>}
-                    <InfoRow label={record.monitorType || (dated ? 'Monitored date' : 'Status')}>
-                        {dated ? (monitoredDate ? <span className="font-semibold">{monitoredDate}</span> : <span className="text-slate-400">—</span>) : (cur?.status || <span className="text-slate-400">—</span>)}
-                    </InfoRow>
-                    <InfoRow label="Monitoring">
-                        {monitoringOn && cfg
-                            ? <span className="inline-flex items-center gap-1 font-semibold text-blue-600"><Bell size={12} /> On · {MONITOR_BASIS_LABEL[cfg.basis]}{cfg.assignee ? ` · ${cfg.assignee.name}` : ''}</span>
-                            : <span className="text-slate-400">Off</span>}
-                    </InfoRow>
-                    <InfoRow label="Jurisdiction">{record.jurisdiction || <span className="text-slate-400">—</span>}</InfoRow>
-                </div>
+                {cur ? (
+                    <div className="flex flex-wrap gap-x-8 gap-y-3 px-4 py-3">
+                        {showSubject && (
+                            <Fact label="Subject"><span className="flex items-center gap-1.5"><EntityIcon size={13} className="shrink-0 text-slate-400" /> <span className="truncate">{subjectLabel}</span></span></Fact>
+                        )}
+                        {showNumber && <Fact label={record.numberName}>{cur.numberValue || <Dash />}</Fact>}
+                        {recordFields(record).map(f => (
+                            <Fact key={f.key} label={f.label} className="min-w-[10rem] max-w-[16rem]">
+                                {cur.fields?.[f.key]
+                                    ? <span className="block truncate" title={cur.fields[f.key]}>{cur.fields[f.key]}</span>
+                                    : <Dash />}
+                            </Fact>
+                        ))}
+                        <Fact label={(dated ? record.monitorType : record.statusLabel ?? record.monitorType) || (dated ? 'Monitored date' : 'Status')}>
+                            {dated ? (monitoredDate || <Dash />) : (cur.status || <Dash />)}
+                        </Fact>
+                        {record.tracksIssueDate && <Fact label="Issue date">{cur.issueDate || <Dash />}</Fact>}
+                        <Fact label="Document" className="min-w-[12rem] max-w-[20rem]">
+                            {cur.files.length === 0
+                                ? <span className="font-normal text-amber-600">No document</span>
+                                : <span className="block truncate" title={cur.files.map(f => f.name).join(', ')}>{cur.files[0].name}{cur.files.length > 1 ? ` +${cur.files.length - 1}` : ''}</span>}
+                        </Fact>
+                        {showMonitoring && (
+                            <Fact label="Monitoring">
+                                {monitoringOn && cfg
+                                    ? <span className="inline-flex items-center gap-1 text-blue-600"><Bell size={12} /> On · {basisLabel(record, cfg.basis)}</span>
+                                    : <span className="font-normal text-slate-400">Off</span>}
+                            </Fact>
+                        )}
+                        <Fact label="Last updated" className="min-w-[11rem]">
+                            <span className="block truncate">
+                                {cur.uploadedBy || 'Unknown'}
+                                <span className="font-normal text-slate-400"> · {fmtDateTime(cur.uploadedAt)}</span>
+                            </span>
+                        </Fact>
+                    </div>
+                ) : (
+                    <div className="px-4 py-5 text-center">
+                        <p className="text-[13px] font-semibold text-slate-600">Nothing captured yet</p>
+                        <p className="mt-0.5 text-[12px] text-slate-400">Add a record below to fill in this record’s details.</p>
+                    </div>
+                )}
             </div>
 
             {/* Optional extra section (e.g. DQ "Fill out the form" card) */}
-            {detailExtra}
+            {detailExtra && <div className="mt-4">{detailExtra}</div>}
 
-            {/* Tabs + content */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="flex items-center gap-1 border-b border-slate-100 px-4 pt-3">
-                    {([['documents', isMulti ? `${noun.charAt(0).toUpperCase() + noun.slice(1)} filings` : 'Documents'], ['monitoring', 'Monitoring']] as [DetailTab, string][]).map(([id, label]) => (
-                        <button key={id} type="button" onClick={() => setTab(id)}
-                            className={cn('inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-                                tab === id ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
-                            {label}
-                            {id === 'documents' && <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-500">{docCount}</span>}
-                        </button>
-                    ))}
-                </div>
+            {/* Records + (optional) Monitoring. With monitoring off there is only one
+                section, so the table's own header IS the heading — no one-item tab strip. */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                {showMonitoring && (
+                    <div className="flex items-center gap-1 border-b border-slate-100 px-4 pt-3">
+                        {(([['documents', isMulti ? `${noun.charAt(0).toUpperCase() + noun.slice(1)} filings` : 'Records'], ['monitoring', 'Monitoring']] as [DetailTab, string][])).map(([id, label]) => (
+                            <button key={id} type="button" onClick={() => setTab(id)}
+                                className={cn('inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+                                    tab === id ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
+                                {label}
+                                {id === 'documents' && <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-500">{docCount}</span>}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
-                {tab === 'documents' ? (
-                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} />
+                {tab === 'documents' || !showMonitoring ? (
+                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showMonitoring} />
                 ) : (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
                 )}
@@ -2814,17 +3029,17 @@ function KpiTile({ label, value, Icon, accent }: { label: string; value: string 
 
 /** Deterministic demo fill for a SINGLE version (mirrors Load-sample / ManageModal's fillV). */
 export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion {
-    const country = record.allCountries ? 'United States' : 'Canada';
-    const stateProv = record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '');
+    const { country, stateProv } = sampleJurisdiction(record);
     const merged: DocVersion = {
         ...v,
         numberValue: record.numberName ? sampleNumber(record) : v.numberValue,
         country, stateProv,
         issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
         expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
-        status: !isDateMonitored(record) ? (v.status || 'Active') : v.status,
+        status: !isDateMonitored(record) ? (v.status || sampleStatus(record)) : v.status,
+        fields: { ...sampleFields(record), ...v.fields },
         tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
-        monitoring: { ...v.monitoring, enabled: true },
+        monitoring: { ...v.monitoring, enabled: !record.hideMonitoring },
     };
     if (record.multiInstance) {
         merged.insurer = v.insurer || 'State Farm';
@@ -2850,9 +3065,9 @@ function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, o
     // Switching basis: seed the custom date from the current monitored date so it's never blank.
     const pickBasis = (b: MonitorBasis) => onChange({ ...cfg, basis: b, customDate: b === 'custom' && !cfg.customDate ? (expiryDate || issueDate || '') : cfg.customDate });
     const basisOptions: { id: MonitorBasis; label: string }[] = [
-        ...(record.tracksIssueDate ? [{ id: 'issue' as MonitorBasis, label: 'Issue date' }] : []),
-        { id: 'expiry', label: 'Expiry date' },
-        { id: 'custom', label: 'Custom date' },
+        ...(record.tracksIssueDate ? [{ id: 'issue' as MonitorBasis, label: MONITOR_BASIS_LABEL.issue }] : []),
+        { id: 'expiry', label: basisLabel(record, 'expiry') },
+        { id: 'custom', label: MONITOR_BASIS_LABEL.custom },
     ];
     const selCls = 'w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
     // Projected schedule summary line.
@@ -2863,8 +3078,11 @@ function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, o
         ? `Reminders ${dayParts.join(', ')} days before` + (onTheDate ? ' + on the date' : '')
         : (onTheDate ? 'Reminder on the date' : 'No reminders set');
     const channelText = [cfg.channels.email && 'Email', cfg.channels.inApp && 'In-App'].filter(Boolean).join(', ') || 'no channels';
+    // Recurrence is how far past the ISSUE date the next one falls due. Monitoring an expiry
+    // or a custom date needs no cadence — that date is already the deadline.
+    const showRecurrence = cfg.basis === 'issue';
     const scheduleText = dated
-        ? `Monitor ${MONITOR_BASIS_LABEL[cfg.basis].toLowerCase()}${monitored ? ` (${monitored})` : ''}. ${reminderText} · repeats ${recurrenceLabel(cfg.recurrence)} · via ${channelText}.`
+        ? `Monitor ${basisLabel(record, cfg.basis).toLowerCase()}${monitored ? ` (${monitored})` : ''}. ${reminderText}${showRecurrence ? ` · repeats ${recurrenceLabel(cfg.recurrence)}` : ''} · via ${channelText}.`
         : `Notify whenever the status${status ? ` (${status})` : ''} changes · via ${channelText}.`;
 
     return (
@@ -2908,15 +3126,17 @@ function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, o
                                             <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[13px] font-semibold text-emerald-700"><CalendarClock size={14} /> {monitored || '—'}</div>
                                         )}
                                         {cfg.basis !== 'custom' && (
-                                            <p className="mt-1 text-[10px] text-slate-400">Pulled from the {MONITOR_BASIS_LABEL[cfg.basis].toLowerCase()} above — pick “Custom date” to enter your own.</p>
+                                            <p className="mt-1 text-[10px] text-slate-400">Pulled from the {basisLabel(record, cfg.basis).toLowerCase()} above — pick “Custom date” to enter your own.</p>
                                         )}
                                     </div>
-                                    <div>
-                                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Renewal recurrence</div>
-                                        <select value={cfg.recurrence} onChange={e => onChange({ ...cfg, recurrence: e.target.value })} className={selCls}>
-                                            {RECURRENCE_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                                        </select>
-                                    </div>
+                                    {showRecurrence && (
+                                        <div>
+                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Renewal recurrence</div>
+                                            <select value={cfg.recurrence} onChange={e => onChange({ ...cfg, recurrence: e.target.value })} className={selCls}>
+                                                {RECURRENCE_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
                                 </>
                             ) : (
                                 <div>
@@ -2967,6 +3187,54 @@ function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, o
     );
 }
 
+/** The control for one of a record's extra fields — a dropdown, a text area, or a single line. */
+function ExtraFieldInput({ def, value, onChange, inputCls }: {
+    def: RecordFieldDef; value: string; onChange: (v: string) => void; inputCls: string;
+}) {
+    if (def.kind === 'select') {
+        return (
+            <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
+                <option value="">{def.placeholder ?? `Select ${def.label.toLowerCase()}`}</option>
+                {def.options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+        );
+    }
+    if (def.multiline) {
+        return (
+            <textarea value={value} onChange={e => onChange(e.target.value)} rows={2}
+                placeholder={def.placeholder ?? `Enter ${def.label.toLowerCase()}`}
+                className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+        );
+    }
+    return (
+        <input value={value} onChange={e => onChange(e.target.value)}
+            placeholder={def.placeholder ?? `Enter ${def.label.toLowerCase()}`} className={inputCls} />
+    );
+}
+
+/** Radio group for a short, mutually exclusive value set (e.g. a drug test's Negative / Positive) —
+ *  every option is visible at once, so there is nothing to open and nothing to scan. */
+function RadioChoice({ name, value, options, onChange }: {
+    name: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            {options.map(o => {
+                const on = value === o;
+                return (
+                    <label key={o}
+                        className={cn('inline-flex h-9 min-w-[7rem] flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors',
+                            on ? 'border-blue-400 bg-blue-50 text-blue-700 ring-2 ring-blue-500/20' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>
+                        <input type="radio" name={name} value={o} checked={on} onChange={() => onChange(o)}
+                            className="h-3.5 w-3.5 shrink-0 border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                        <span className="truncate">{o}</span>
+                    </label>
+                );
+            })}
+        </div>
+    );
+}
+
 // ── Version fields (Details / Document / Monitoring / Tags / Notes) for ONE version — shared by VersionSet + VersionEditModal ──
 /** Max documents that can hang off ONE insurance policy record (bulk drag-drop up to this many). */
 const MAX_POLICY_DOCS = 10;
@@ -2986,7 +3254,7 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const isMultiDoc = cf ? (cf.upload.enabled && cf.upload.multi) : !!record.multiInstance;
     const showNumber = cf ? cf.numberField.enabled && !!record.numberName : !!record.numberName;
     const numberRequired = cf ? cf.numberField.required : (record.type === 'C' || record.type === 'DC');
-    const showCountry = cf ? cf.country.enabled : true;
+    const showCountry = cf ? cf.country.enabled : !record.hideCountry;
     const countryRequired = cf ? cf.country.required : false;
     const showState = cf ? cf.state.enabled : !record.hideState;
     const stateRequired = cf ? cf.state.required : false;
@@ -2996,8 +3264,19 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const expiryRequired = cf ? cf.expiryDate.required : true;
     const showStatus = cf ? cf.status.enabled : !isDateMonitored(record);
     const statusRequired = cf ? cf.status.required : true;
+    // A record can rename its monitored status and supply its own values — e.g. a drug test
+    // captures a "Test result" of Negative / Positive, not a generic Active / On File.
+    const statusLabel = record.statusLabel ?? 'Status';
+    const statusChoices = statusOptionsFor(record, STATUS_OPTIONS);
+    // Extra fields declared on the record (a drug test's Test type, a licence's class …).
+    // Single-line ones join the paired grid next to the number; the multiline ones come after
+    // the dates, still paired — a taller box each, not a full-width band each.
+    const extraFields = recordFields(record);
+    const inlineFields = extraFields.filter(f => !(f.kind === 'text' && f.multiline));
+    const blockFields = extraFields.filter(f => f.kind === 'text' && f.multiline);
+    const setExtra = (key: string, val: string) => patch({ fields: { ...(v.fields ?? {}), [key]: val } });
     const showUpload = cf ? cf.upload.enabled : hasDoc;
-    const showMonitoring = cf ? cf.monitoring.enabled : true;
+    const showMonitoring = cf ? cf.monitoring.enabled : !record.hideMonitoring;
     const showNotes = cf ? cf.notes.enabled : true;
     // Tags ↔ upload are interlinked: a single/no-upload record gets ONE record-level tag field;
     // a multi-document record tags each uploaded document individually. Both are governed by the
@@ -3038,11 +3317,11 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {editableLabel && (
-                    <Field label="Record name" required>
+                    <Field label="Record name" required className="sm:col-span-2">
                         <div className="relative">
                             <input value={v.label} maxLength={MAX_RECORD_NAME}
                                 onChange={e => patch({ label: e.target.value })}
-                                placeholder="e.g. Record 2026" className={cn(inputCls, 'pr-14')} />
+                                placeholder={`e.g. ${defaultVersionLabel(record)}`} className={cn(inputCls, 'pr-14')} />
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-slate-400">{v.label.length}/{MAX_RECORD_NAME}</span>
                         </div>
                     </Field>
@@ -3052,6 +3331,11 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                         <input value={v.numberValue} onChange={e => patch({ numberValue: e.target.value })} placeholder={`Enter ${record.numberName.toLowerCase()}`} className={inputCls} />
                     </Field>
                 )}
+                {inlineFields.map(f => (
+                    <Field key={f.key} label={f.label} required={!!f.required} optional={!f.required}>
+                        <ExtraFieldInput def={f} value={v.fields?.[f.key] ?? ''} onChange={val => setExtra(f.key, val)} inputCls={inputCls} />
+                    </Field>
+                ))}
                 {isMultiDoc && !cf && (
                     <Field label="Insurer">
                         <input value={v.insurer ?? ''} onChange={e => patch({ insurer: e.target.value })} placeholder="Insurance carrier — e.g. State Farm" className={inputCls} />
@@ -3083,6 +3367,22 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                         </select>
                     </Field>
                 )}
+                {/* What the record IS comes before WHEN it happened — a status-only record
+                    (a test result, an authority status) reads better with its value next to the
+                    fields that identify it. Date-monitored records show no status field at all,
+                    so their ordering is unchanged. */}
+                {showStatus && (
+                    <Field label={statusLabel} required={statusRequired} optional={cf ? !statusRequired : undefined}>
+                        {record.statusControl === 'radio' ? (
+                            <RadioChoice name={`${v.id}-status`} value={v.status ?? ''} options={statusChoices} onChange={val => patch({ status: val })} />
+                        ) : (
+                            <select value={v.status ?? ''} onChange={e => patch({ status: e.target.value })} className={inputCls}>
+                                <option value="">{`Select ${statusLabel.toLowerCase()}`}</option>
+                                {statusChoices.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        )}
+                    </Field>
+                )}
                 {showIssue && (
                     <Field label="Issue date" required={issueRequired} optional={!issueRequired}>
                         <input type="date" value={v.issueDate} onChange={e => patch({ issueDate: e.target.value })} className={inputCls} />
@@ -3093,20 +3393,21 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                         <input type="date" value={v.expiryDate} onChange={e => patch({ expiryDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}
-                {showStatus && (
-                    <Field label="Status" required={statusRequired} optional={cf ? !statusRequired : undefined}>
-                        <select value={v.status ?? ''} onChange={e => patch({ status: e.target.value })} className={inputCls}>
-                            <option value="">Select status</option>
-                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                {blockFields.map(f => (
+                    <Field key={f.key} label={f.label} required={!!f.required} optional={!f.required}>
+                        <ExtraFieldInput def={f} value={v.fields?.[f.key] ?? ''} onChange={val => setExtra(f.key, val)} inputCls={inputCls} />
                     </Field>
-                )}
-                <Field label="State">
-                    <select value={v.state ?? ''} onChange={e => patch({ state: e.target.value || undefined })} className={inputCls}>
-                        <option value="">Automatic (Current / Historical by order)</option>
-                        {DOC_STATE_ORDER.map(s => <option key={s} value={s}>{DOC_STATE_META[s].label}</option>)}
-                    </select>
-                </Field>
+                ))}
+                {/* Which record counts as THE current one. Newest wins by default; tick this to
+                    keep an older record current — that is the one monitoring reads. */}
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 transition-colors hover:bg-slate-50 sm:col-span-2">
+                    <input type="checkbox" checked={!!v.isCurrent} onChange={e => patch({ isCurrent: e.target.checked || undefined })}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                    <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold text-slate-700">Set as the current record</span>
+                        <span className="block text-[11px] leading-snug text-slate-500">The most recent record is the current one by default, and the one monitored. Tick this to keep an older record current instead.</span>
+                    </span>
+                </label>
             </div>
             {/* UPLOADED DOCUMENT(S) */}
             {showUpload && (
@@ -3373,16 +3674,19 @@ function VersionSet({ record, versions, onChange, versioned, tagCatalog, addToCa
     const [renameDraft, setRenameDraft] = useState('');
     const [infoId, setInfoId] = useState<string | null>(null);
 
-    const patchVersion = (id: string, patch: Partial<DocVersion>) =>
-        onChange(versions.map(v => (v.id === id ? { ...v, ...patch } : v)));
+    const patchVersion = (id: string, patch: Partial<DocVersion>) => {
+        const next = versions.map(v => (v.id === id ? { ...v, ...patch } : v));
+        // Pinning one record as current releases whichever one held it before.
+        onChange(patch.isCurrent ? next.map(v => (v.id === id || !v.isCurrent ? v : { ...v, isCurrent: undefined })) : next);
+    };
     const addVersion = () =>
-        onChange([{ ...newVersion(`Record ${versions.length + 1}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...newVersion(nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
     const addVersionWithFiles = async (list: FileList | null) => {
         if (!list || list.length === 0) return;
         const docs: DataDocFile[] = await Promise.all(Array.from(list).map(async f => ({
             name: f.name, size: f.size, url: await readAsDataUrl(f), uploadedAt: new Date().toISOString(),
         })));
-        onChange([{ ...newVersion(`Record ${versions.length + 1}`), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...newVersion(nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
     };
     const removeVersion = (id: string) => onChange(versions.filter(v => v.id !== id));
 
@@ -3537,8 +3841,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
     }, []);
 
     // "Fill demo data" — mirrors Load sample data: attaches a real demo PDF (public/demo-docs/*.pdf) so View works.
-    const country = record.allCountries ? 'United States' : 'Canada';
-    const stateProv = record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '');
+    const { country, stateProv } = sampleJurisdiction(record);
     const fillV = (v: DocVersion, over: Partial<DocVersion> = {}): DocVersion => {
         const merged: DocVersion = {
             ...v,
@@ -3546,10 +3849,11 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
             country, stateProv,
             issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
             expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
-            status: !isDateMonitored(record) ? (v.status || 'Active') : v.status,
+            status: !isDateMonitored(record) ? (v.status || sampleStatus(record)) : v.status,
+            fields: { ...sampleFields(record), ...v.fields },
             tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
             files: v.files,
-            monitoring: { ...v.monitoring, enabled: true },
+            monitoring: { ...v.monitoring, enabled: !record.hideMonitoring },
             ...over,
         };
         if (hasDoc && merged.files.length === 0) merged.files = sampleDocFiles(record);
@@ -3561,7 +3865,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
         if (isMulti) {
             const mk = (name: string, num: string, exp: string): DocInstance => ({
                 ...newInstance(name),
-                versions: [fillV({ ...newVersion('Record 2026'), monitoring: seedMonitoring(record) }, { numberValue: num, expiryDate: exp })],
+                versions: [fillV({ ...newVersion(defaultVersionLabel(record, 2026)), monitoring: seedMonitoring(record) }, { numberValue: num, expiryDate: exp })],
             });
             setInstances([mk('Liability — State Farm', 'POL-100', '2026-12-31'), mk('Cargo — Progressive', 'POL-200', '2027-03-15')]);
         } else {
@@ -3795,9 +4099,9 @@ function FileChip({ f, onRemove }: { f: DataDocFile; onRemove: () => void }) {
     );
 }
 
-function Field({ label, required, optional, children }: { label: string; required?: boolean; optional?: boolean; children: React.ReactNode }) {
+function Field({ label, required, optional, children, className }: { label: string; required?: boolean; optional?: boolean; children: React.ReactNode; className?: string }) {
     return (
-        <label className="block">
+        <label className={cn('block', className)}>
             <span className="mb-1 flex items-center gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
                 {required && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}

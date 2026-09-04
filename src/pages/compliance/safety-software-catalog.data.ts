@@ -40,6 +40,61 @@ export type UploadMode = 'single' | 'recurring' | 'event';
  * of those are required. `undefined` on a record means "system default" — the built-in
  * field rules apply and the form looks exactly as it always has.
  */
+/**
+ * An extra single-select field on a record's data-entry form, captured per version in
+ * `DocVersion.fields[key]`. Declared on the catalog record so the office form
+ * (`VersionFields`), the Settings preview and the driver-side chat request all render
+ * the same field set from one definition.
+ */
+export interface RecordSelectField {
+    /** Stable key under `DocVersion.fields`. */
+    key: string;
+    label: string;
+    options: string[];
+    required?: boolean;
+    placeholder?: string;
+}
+
+/**
+ * A free-text field on a record's data-entry form, captured per version in
+ * `DocVersion.fields[key]` exactly like a select field.
+ */
+export interface RecordTextField {
+    key: string;
+    label: string;
+    placeholder?: string;
+    required?: boolean;
+    /** Render a text AREA rather than a single line — for values that run to a list or a note. */
+    multiline?: boolean;
+    /** Values the demo / sample generators cycle through. Prototype data only. */
+    demoValues?: string[];
+}
+
+/** One extra field on a record's form, tagged with how it is entered. */
+export type RecordFieldDef =
+    | ({ kind: 'select' } & RecordSelectField)
+    | ({ kind: 'text' } & RecordTextField);
+
+/** Every extra field a record captures, selects first, in form / column order. */
+export function recordFields(r: SafetyRecord): RecordFieldDef[] {
+    return [
+        ...(r.selectFields ?? []).map(f => ({ kind: 'select' as const, ...f })),
+        ...(r.textFields ?? []).map(f => ({ kind: 'text' as const, ...f })),
+    ];
+}
+
+/** DOT / non-DOT testing reasons offered on a Drug Test Result record. */
+export const DRUG_TEST_TYPES = [
+    'Pre-Employment DOT',
+    'Pre-Employment Non-DOT',
+    'Return on Duty',
+    'Follow-Up',
+    'Post-Accident Drug & Alcohol',
+];
+
+/** A drug & alcohol test has one of two outcomes — this replaces the generic status list. */
+export const DRUG_TEST_RESULTS = ['Negative', 'Positive'];
+
 export interface CustomFieldConfig {
     /** Show this field on the data-entry form. */
     enabled: boolean;
@@ -114,6 +169,23 @@ export interface SafetyRecord {
     isLicense?: boolean;
     /** Hide the State/Province selector — the record is not state/province-scoped (federal / country-level). */
     hideState?: boolean;
+    /** Hide the Country selector — the record captures no jurisdiction at all. */
+    hideCountry?: boolean;
+    /** Extra single-select fields the data-entry form captures (e.g. a drug test's Test type). */
+    selectFields?: RecordSelectField[];
+    /** Extra free-text fields the data-entry form captures (e.g. a licence's class / endorsements). */
+    textFields?: RecordTextField[];
+    /** Label for the monitored-status field (defaults to "Status"). */
+    statusLabel?: string;
+    /** Allowed values for the monitored-status field (defaults to the generic status list). */
+    statusOptions?: string[];
+    /** How the monitored-status field is picked — a dropdown (default) or radio buttons for a
+     *  short, mutually exclusive set (e.g. a test result). */
+    statusControl?: 'select' | 'radio';
+    /** No monitoring / notifications on this record — there is no date or status change to alert on. */
+    hideMonitoring?: boolean;
+    /** A new version defaults its display name to the RECORD's name rather than "Record <year>". */
+    nameFromRecord?: boolean;
     /** Offer the full world country list (vs. the default US/Canada/Mexico) — e.g. Passport. */
     allCountries?: boolean;
     /**
@@ -161,9 +233,17 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'DOT', description: 'USDOT Registration', numberName: 'USDOT Number', documentName: '',
       recurring: 'Number does not expire', monitorType: 'Active/inactive status', jurisdiction: 'United States, federal',
       monitor: 'Active/inactive status and linked next biennial filing due date.' },
+    // A test is an event, not a credential: it captures WHY the driver was tested and the
+    // outcome, plus the date it was taken. No jurisdiction fields — the test is federal
+    // (or company) policy, not state-issued.
     { id: 'drug-test', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
-      recordName: 'Drug Test', description: 'Drug and Alcohol Testing Record', numberName: '', documentName: 'Drug & Alcohol Test Result / Employer Testing Record',
-      recurring: 'Per test', monitorType: 'On file', jurisdiction: 'Applicable DOT testing jurisdiction',
+      recordName: 'Drug Test Result', description: 'Drug and Alcohol Testing Record', numberName: '', documentName: 'Drug & Alcohol Test Result / Employer Testing Record',
+      recurring: 'Per test', monitorType: 'On file', tracksIssueDate: true, hideCountry: true, hideState: true, nameFromRecord: true,
+      // A result is final the day it is issued — nothing to monitor.
+      hideMonitoring: true,
+      selectFields: [{ key: 'testType', label: 'Test type', options: DRUG_TEST_TYPES, required: true, placeholder: 'Select test type' }],
+      statusLabel: 'Test result', statusOptions: DRUG_TEST_RESULTS, statusControl: 'radio',
+      jurisdiction: 'Applicable DOT testing jurisdiction',
       monitor: 'Point-in-time drug & alcohol test result; no document expiry. Retained on file.' },
     { id: 'hazmat', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'HAZMAT', description: 'PHMSA Hazardous Materials Registration', numberName: 'HAZMAT Registration Number', documentName: 'HAZMAT Certificate of Registration',
@@ -173,9 +253,14 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'MCS-90', description: 'Motor Carrier Public Liability Endorsement', numberName: '', documentName: 'MCS-90 Endorsement',
       recurring: 'No independent expiry', monitorType: 'Linked to insurance policy', jurisdiction: 'United States, federal',
       monitor: 'Linked to the insurance policy — monitor policy effective/expiry dates & replacement/cancellation status.' },
+    // A federal credential: card number + issuing country + the expiry it is monitored on.
+    // No state/province (it is federal) and no issue date — only the card's own expiry drives
+    // the alerts, which also means monitoring never offers a renewal cadence.
     { id: 'twic', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'TWIC Card', description: 'Transportation Worker Identification Credential', numberName: 'TWIC Card Number', documentName: 'TWIC Card Copy',
-      recurring: 'Variable expiry', monitorType: 'Card expiry date', jurisdiction: 'United States, federal',
+      recurring: 'Variable expiry', monitorType: 'Card expiry date',
+      hideState: true, nameFromRecord: true,
+      jurisdiction: 'United States, federal',
       monitor: 'Card expiry date.' },
 
     // ── 2. Tax and Business Identification Numbers ────────────────────
@@ -324,15 +409,27 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // touches (prior-employer USDOT, insurance policy) are already covered by `usdot` / `insurance`.
     { id: 'cdl', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', isLicense: true,
       recordName: 'CDL', description: "Commercial Driver's License (CDL)", numberName: 'CDL Number', documentName: "Driver's License / CDL", slotLabels: ['Front of License', 'Back of License'],
-      recurring: 'Per licence term', monitorType: 'Licence expiry date', tracksIssueDate: true, jurisdiction: 'Issuing state / province',
+      recurring: 'Per licence term', monitorType: 'Licence expiry date', tracksIssueDate: true, nameFromRecord: true,
+      jurisdiction: 'Issuing state / province',
+      textFields: [
+          { key: 'licenseClass', label: 'License class', placeholder: 'e.g. A', demoValues: ['A', 'B', 'A', 'C'] },
+          // Endorsements and restrictions are lists, often written out in full — they need room.
+          { key: 'endorsements', label: 'Endorsements', placeholder: 'e.g. H — Hazmat, N — Tank vehicle', multiline: true,
+            demoValues: ['H — Hazmat, N — Tank vehicle', 'T — Double/triple trailers', 'N — Tank vehicle, T — Double/triple trailers', 'H — Hazmat'] },
+          { key: 'restrictions', label: 'Restrictions', placeholder: 'e.g. L — No air brakes, Z — No full air brakes', multiline: true,
+            demoValues: ['L — No air brakes', 'Z — No full air brakes', 'L — No air brakes, Z — No full air brakes', 'E — No manual transmission'] },
+      ],
       monitor: 'Licence expiry date. Store class, endorsements, restrictions and issue date.' },
     { id: 'medical-cert', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'Medical Certificate', description: "Medical Examiner's Certificate (DOT Medical Card, MCSA-5876)", numberName: 'National Registry Number', documentName: "Medical Examiner's Certificate",
       recurring: 'Per medical term (≤ 24 months)', monitorType: 'Medical card expiry', tracksIssueDate: true, jurisdiction: 'United States, federal (FMCSA)',
       monitor: 'Medical certificate expiry date (max 24-month term, 49 CFR 391.41).' },
+    // An MVR does not expire — it is pulled, reviewed, and pulled again. The date tracked is
+    // when the next one falls due, so that is what the form and the monitoring both call it.
     { id: 'mvr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'MVR', description: 'Motor Vehicle Record (MVR)', numberName: 'MVR Order / Reference Number', documentName: 'Motor Vehicle Record (MVR)',
-      recurring: 'Annual', monitorType: 'Next annual review due', jurisdiction: 'Driver licensing state / province',
+      recurring: 'Annual', monitorType: 'Next renew date', nameFromRecord: true,
+      jurisdiction: 'Driver licensing state / province',
       monitor: 'Reviewed at least every 12 months (§391.25).' },
     { id: 'driver-cvdr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', tracksIssueDate: true,
       recordName: 'Driver CVDR / CDR / CDA', description: 'Driver Commercial Vehicle Driving Record (CVDR / CDR / CDA)', numberName: 'CVDR / CDR / CDA Reference Number', documentName: 'Driver CVDR / CDR / CDA',
@@ -491,3 +588,17 @@ const STATUS_ONLY = new Set([
 
 /** True when the record monitors a real date (vs. a status). */
 export const isDateMonitored = (r: SafetyRecord): boolean => !STATUS_ONLY.has(r.monitorType);
+
+/**
+ * Display name for a NEW version of a record. Most records are named by the year they
+ * cover ("Record 2026"); records flagged `nameFromRecord` are named after the record
+ * itself, because every version IS one of that thing (a drug test result, not a
+ * yearly renewal of one). `year` is passed when seeding dated demo history.
+ */
+export function defaultVersionLabel(r: SafetyRecord, year?: number | string): string {
+    if (r.nameFromRecord) return year ? `${r.recordName} ${year}` : r.recordName;
+    return `Record ${year ?? new Date().getFullYear()}`;
+}
+
+/** The values the monitored-status field offers for a record. */
+export const statusOptionsFor = (r: SafetyRecord, fallback: string[]): string[] => r.statusOptions ?? fallback;

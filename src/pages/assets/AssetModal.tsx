@@ -3,7 +3,7 @@ import {
     Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2, Gauge, Zap, Check
+    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -124,7 +124,8 @@ const assetSchema = z.object({
     transponderDocument: z.any().optional(),
 
     plateNumber: z.string().optional(),
-    plateType: z.string().optional(),
+    /** IRP = apportioned plate for interjurisdictional running; Local = base-state only. */
+    plateType: z.enum(['IRP', 'Local']).optional(),
     plateCountry: z.enum(['USA', 'Canada']).default('USA'),
     plateJurisdiction: z.string().optional(),
     registrationIssueDate: z.string().optional(),
@@ -147,6 +148,12 @@ const assetSchema = z.object({
     rentalAgencyName: z.string().optional(),
     lienHolderBusiness: z.string().optional(),
 
+    // Lease / finance term — only captured when the asset is Leased or Financed.
+    agreementStartDate: z.string().optional(),
+    agreementEndDate: z.string().optional(),
+    monthlyPayment: z.number().min(0).optional(),
+    monthlyPaymentCurrency: z.enum(['USD', 'CAD']).default('USD'),
+
     streetAddress: z.string().optional(),
     city: z.string().optional(),
     country: z.enum(['USA', 'Canada']).default('USA'),
@@ -154,6 +161,12 @@ const assetSchema = z.object({
     zipCode: z.string().optional(),
 
     permits: z.array(z.any()).default([]),
+}).superRefine((v, ctx) => {
+    // A lease / finance agreement can't end before it starts.
+    if (v.agreementStartDate && v.agreementEndDate
+        && Date.parse(v.agreementEndDate) < Date.parse(v.agreementStartDate)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['agreementEndDate'], message: 'End date is before the start date.' });
+    }
 });
 
 // --- Helper Form Components ---
@@ -171,13 +184,14 @@ const AssetSection = ({ id, title, subtitle, icon, right, children }: { id: stri
     </WizardSection>
 );
 
-const FormInput = ({ label, error, children, className, required }: { label: string; error?: string; children: React.ReactNode; className?: string; required?: boolean }) => (
+const FormInput = ({ label, error, hint, children, className, required }: { label: string; error?: string; hint?: string; children: React.ReactNode; className?: string; required?: boolean }) => (
     <div className={cn("flex flex-col gap-1.5", className)}>
         <label className="text-[11px] font-semibold text-slate-700 tracking-tight uppercase flex items-center gap-1">
             {label}
             {required && <span className="text-red-500">*</span>}
         </label>
         {children}
+        {hint && !error && <span className="text-[10px] text-slate-400 leading-snug">{hint}</span>}
         {error && <span className="text-[10px] text-red-500 font-semibold flex items-center gap-1 mt-1"><AlertCircle size={10} /> {error}</span>}
     </div>
 );
@@ -431,6 +445,32 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
     const grossWeightValue = watch('grossWeight');
     const grossWeightUnit = watch('grossWeightUnit');
 
+    // ── Lease / finance term ──
+    // The agreement window drives the term length and the total over the term, and
+    // an end date before the start date is caught here rather than at save.
+    const agreementStart = watch('agreementStartDate');
+    const agreementEnd = watch('agreementEndDate');
+    const monthlyPayment = watch('monthlyPayment');
+    const monthlyCurrency = watch('monthlyPaymentCurrency');
+
+    const termError = useMemo(() => {
+        if (!agreementStart || !agreementEnd) return undefined;
+        return Date.parse(agreementEnd) < Date.parse(agreementStart) ? 'End date is before the start date.' : undefined;
+    }, [agreementStart, agreementEnd]);
+
+    const termMonths = useMemo(() => {
+        if (!agreementStart || !agreementEnd) return 0;
+        const a = new Date(agreementStart), b = new Date(agreementEnd);
+        if (Number.isNaN(+a) || Number.isNaN(+b) || b < a) return 0;
+        return Math.max(0, (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()));
+    }, [agreementStart, agreementEnd]);
+
+    const termTotal = useMemo(() => {
+        if (!termMonths || !monthlyPayment || monthlyPayment <= 0) return '';
+        const total = termMonths * monthlyPayment;
+        return `${monthlyCurrency === 'CAD' ? 'CA$' : '$'}${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    }, [termMonths, monthlyPayment, monthlyCurrency]);
+
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
         if (assetType === 'Trailer') return ['Dry Van', 'Flatbed', 'Reefer'];
@@ -482,7 +522,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
             const current = (watch('plateNumber') || '').toString().trim();
             // Simulated registry response.
             setValue('plateNumber', current || 'TX-4821RC', { shouldDirty: true });
-            setValue('plateType', 'Commercial', { shouldDirty: true });
+            setValue('plateType', 'IRP', { shouldDirty: true });
             setValue('plateCountry', 'USA', { shouldDirty: true });
             setValue('plateJurisdiction', 'Texas', { shouldDirty: true });
             setValue('registrationIssueDate', '2025-04-01', { shouldDirty: true });
@@ -502,7 +542,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
             case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
-            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness);
+            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment);
             case 'notes': return filledCount(allValues.notes);
             case 'insurance': return filledCount(allValues.operationalStatus, allValues.dateAdded, allValues.insuranceAddedDate, allValues.odometer, allValues.dateRemoved);
             default: return 0;
@@ -635,7 +675,13 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             }
                         >
                             <FormInput label="Plate Number"><Input {...register('plateNumber')} placeholder="ABC-1234" /></FormInput>
-                            <FormInput label="Plate Type"><Input {...register('plateType')} placeholder="Commercial" /></FormInput>
+                            <FormInput label="Plate Type" hint="IRP for interjurisdictional running; Local stays in the base state/province.">
+                                <select {...register('plateType')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
+                                    <option value="">Select plate type…</option>
+                                    <option value="IRP">IRP (Apportioned)</option>
+                                    <option value="Local">Local</option>
+                                </select>
+                            </FormInput>
                             <FormInput label="Plate Country"><select {...register('plateCountry')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white"><option value="USA">USA</option><option value="Canada">Canada</option></select></FormInput>
                             <FormInput label="Plate State/Province"><select {...register('plateJurisdiction')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">{(plateCountry === 'USA' ? USA_STATES : CANADA_PROVINCES).map(s => <option key={s} value={s}>{s}</option>)}</select></FormInput>
                             <FormInput label="Issue Date"><Input type="date" {...register('registrationIssueDate')} /></FormInput>
@@ -744,28 +790,90 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 </div>
                             </FormInput>
 
-                            <div className="col-span-full border-t border-slate-100 pt-6 mt-2">
-                                {financial === 'Leased' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
-                                        <AddressSection register={register} watch={watch} />
+                            {/* Counterparty → term → address, in that order.
+                                Leased and Financed carry an agreement term; Rented carries a
+                                monthly rent with no fixed end; Owned carries neither. */}
+                            <div className="col-span-full border-t border-slate-100 pt-6 mt-2 space-y-6">
+                                {financial === 'Owned' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <FormInput label="Owner Name"><Input {...register('ownerName')} placeholder="Company Legal Name" /></FormInput>
                                     </div>
                                 )}
-                                {financial === 'Rented' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
-                                        <AddressSection register={register} watch={watch} />
+
+                                {financial === 'Leased' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
                                     </div>
                                 )}
                                 {financial === 'Financed' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} /></FormInput>
-                                        <AddressSection register={register} watch={watch} />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} placeholder="e.g. Fleet Finance LLC" /></FormInput>
                                     </div>
                                 )}
-                                {financial === 'Owned' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <FormInput label="Owner Name"><Input {...register('ownerName')} placeholder="Company Legal Name" /></FormInput>
+                                {financial === 'Rented' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
+                                        <FormInput label="Monthly Rent" hint="Open-ended rental — no fixed end date.">
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                                    <Input type="number" step="0.01" min="0" {...register('monthlyPayment', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
+                                                </div>
+                                                <select {...register('monthlyPaymentCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                    <option value="USD">USD</option>
+                                                    <option value="CAD">CAD</option>
+                                                </select>
+                                            </div>
+                                        </FormInput>
+                                    </div>
+                                )}
+
+                                {/* The agreement window and what it costs per month. */}
+                                {(financial === 'Leased' || financial === 'Financed') && (
+                                    <div className="border-t border-slate-100 pt-6">
+                                        <div className="mb-4 flex items-center gap-2">
+                                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><CalendarClock size={15} /></span>
+                                            <div>
+                                                <p className="text-[12.5px] font-bold text-slate-800">{financial === 'Leased' ? 'Lease Term' : 'Finance Term'}</p>
+                                                <p className="text-[11px] text-slate-500">Agreement dates and the monthly payment.</p>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                            <FormInput label="Start Date" error={errors.agreementStartDate?.message as string | undefined}>
+                                                <Input type="date" {...register('agreementStartDate')} />
+                                            </FormInput>
+                                            <FormInput
+                                                label="End Date"
+                                                error={termError}
+                                                hint={!termError && termMonths ? `${termMonths} month term` : undefined}
+                                            >
+                                                <Input type="date" {...register('agreementEndDate')} />
+                                            </FormInput>
+                                            <FormInput
+                                                label={financial === 'Leased' ? 'Monthly Lease Payment' : 'Monthly Finance Payment'}
+                                                hint={termTotal ? `≈ ${termTotal} over the term` : undefined}
+                                            >
+                                                <div className="flex gap-2">
+                                                    <div className="relative flex-1">
+                                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                                        <Input type="number" step="0.01" min="0" {...register('monthlyPayment', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
+                                                    </div>
+                                                    <select {...register('monthlyPaymentCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                        <option value="USD">USD</option>
+                                                        <option value="CAD">CAD</option>
+                                                    </select>
+                                                </div>
+                                            </FormInput>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Counterparty address — everything except a self-owned asset. */}
+                                {financial !== 'Owned' && (
+                                    <div className="border-t border-slate-100 pt-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                            <AddressSection register={register} watch={watch} />
+                                        </div>
                                     </div>
                                 )}
                             </div>

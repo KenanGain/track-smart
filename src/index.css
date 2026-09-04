@@ -132,12 +132,19 @@
 }
 
 @layer utilities {
-    .scrollbar-hide {
+    /* `.no-scrollbar` is the name used across the tab strips and horizontal
+       rails (driver + asset detail, SubTabs, inventory, paystubs, compliance).
+       It was never defined, so those strips were showing the app scrollbar
+       under the tabs. Same rule as `.scrollbar-hide`, kept as an alias so both
+       names work rather than renaming nine call sites. */
+    .scrollbar-hide,
+    .no-scrollbar {
         -ms-overflow-style: none;
         scrollbar-width: none;
     }
 
-    .scrollbar-hide::-webkit-scrollbar {
+    .scrollbar-hide::-webkit-scrollbar,
+    .no-scrollbar::-webkit-scrollbar {
         display: none;
     }
 }

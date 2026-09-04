@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
     Columns,
@@ -48,6 +48,7 @@ import {
     ArrowDown,
     ArrowUpDown,
     ListChecks,
+    type LucideIcon,
 } from 'lucide-react';
 import { StatusSelect } from '@/pages/accounts/AddAccountPage';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
@@ -59,6 +60,7 @@ import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
+import { cn } from '@/lib/utils';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
@@ -168,6 +170,28 @@ const Card = ({ title, icon, editable, children, rightAction, fullWidth = false,
     );
 };
 
+/** Read-only display for a "check all that apply" operations field. Renders each
+ *  selection as a chip; tolerates the legacy single-string value. */
+const OPS_CHIP_TONE: Record<string, string> = {
+    blue: "bg-blue-50 text-blue-700 ring-blue-200",
+    amber: "bg-amber-50 text-amber-700 ring-amber-200",
+    emerald: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    violet: "bg-violet-50 text-violet-700 ring-violet-200",
+};
+const OpsChips = ({ values, icon: Icon, tone }: { values: unknown; icon: LucideIcon; tone: keyof typeof OPS_CHIP_TONE }) => {
+    const list: string[] = Array.isArray(values) ? values : values ? [String(values)] : [];
+    if (!list.length) return <span className="text-sm text-slate-400">Not set</span>;
+    return (
+        <div className="flex flex-wrap gap-1.5">
+            {list.map(v => (
+                <span key={v} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${OPS_CHIP_TONE[tone]}`}>
+                    <Icon className="w-3.5 h-3.5" /> {v}
+                </span>
+            ))}
+        </div>
+    );
+};
+
 const Toast = ({ message, visible, onClose }: { message: string; visible: boolean; onClose: () => void }) => {
     if (!visible) return null;
     return (
@@ -230,7 +254,10 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
         const newErrors: Record<string, boolean> = {};
         let hasError = false;
         config.fields.forEach((field: any) => {
-            if (field.required && !formData[field.key]) {
+            const v = formData[field.key];
+            // A multi-select (checkCards / checkboxList) is empty when its array is empty.
+            const filled = Array.isArray(v) ? v.length > 0 : Boolean(v);
+            if (field.required && !filled) {
                 newErrors[field.key] = true;
                 hasError = true;
             }
@@ -357,6 +384,40 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
                                                         </label>
                                                     ))}
                                                 </div>
+                                            ) : field.type === 'checkCards' || field.type === 'checkboxList' ? (
+                                                /* Check-all-that-apply — the value is an ARRAY (carrier operation,
+                                                   hazmat classification, FMCSA authority types). */
+                                                (() => {
+                                                    const picked: string[] = Array.isArray(formData[fieldKey]) ? formData[fieldKey] : formData[fieldKey] ? [String(formData[fieldKey])] : [];
+                                                    const opts: string[] = (field.options ?? []).map((o: any) => (typeof o === 'string' ? o : o.value));
+                                                    const toggle = (opt: string) => handleChange(fieldKey, picked.includes(opt) ? picked.filter(v => v !== opt) : [...picked, opt]);
+                                                    return field.type === 'checkCards' ? (
+                                                        <div className="space-y-3">
+                                                            {opts.map(opt => {
+                                                                const on = picked.includes(opt);
+                                                                return (
+                                                                    <div key={opt} onClick={() => toggle(opt)} className={`p-3 border rounded-lg cursor-pointer flex items-center gap-3 transition-all ${on ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'}`}>
+                                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${on ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'}`}>
+                                                                            {on && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                                                                        </div>
+                                                                        <span className="text-sm font-medium text-slate-700">{opt}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {field.helperText && <p className="text-xs text-slate-500">{field.helperText}</p>}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {opts.map(opt => (
+                                                                <label key={opt} className="flex items-start gap-3 p-2 rounded hover:bg-slate-50 cursor-pointer">
+                                                                    <input type="checkbox" className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={picked.includes(opt)} onChange={() => toggle(opt)} />
+                                                                    <span className="text-sm text-slate-700">{opt}</span>
+                                                                </label>
+                                                            ))}
+                                                            {field.helperText && <p className="text-xs text-slate-500 pt-0.5">{field.helperText}</p>}
+                                                        </div>
+                                                    );
+                                                })()
                                             ) : null}
                                             {errors[fieldKey] && <p className="text-xs text-red-500 mt-1">This field is required.</p>}
                                         </div>
@@ -921,6 +982,25 @@ export function CarrierProfilePage({
     // --- DRIVER LIST LOGIC ---
     const [drivers, setDrivers] = useState(profileBundle?.drivers ?? MOCK_DRIVERS);
 
+    // ── Condensing header ──
+    // The body scrolls in its own container so the header band never scrolls away;
+    // past the threshold the breadcrumb and the title/subtitle collapse and only the
+    // tabs remain. Two thresholds give it hysteresis — collapsing the band shortens
+    // the content, which nudges scrollTop, and a single threshold would then flip it
+    // straight back.
+    const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+    const [condensed, setCondensed] = useState(false);
+    const onBodyScroll = useCallback(() => {
+        const top = bodyScrollRef.current?.scrollTop ?? 0;
+        setCondensed(prev => (prev ? top > 16 : top > 48));
+    }, []);
+    useEffect(() => {
+        const el = bodyScrollRef.current;
+        if (el) el.scrollTop = 0;
+        setCondensed(false);
+    }, [activeTab]);
+
+
     // Return path captured from the Beta Safety Analysis deep-link. When set,
     // the driver-view Back button navigates back there instead of clearing
     // local state.
@@ -1143,7 +1223,14 @@ export function CarrierProfilePage({
     ];
 
     return (
-        <div className={`bg-slate-50 ${isAssetFormActive ? 'h-full flex flex-col overflow-hidden' : 'flex-1 overflow-x-hidden min-h-screen'}`}>
+        <div className={cn(
+            'bg-slate-50',
+            // The asset wizard and the asset detail page bring their own full-height
+            // shells; every other tab uses the condensing header + inner-scroll body.
+            isAssetFormActive || isAssetDetailActive
+                ? 'h-full flex flex-col overflow-hidden'
+                : 'flex h-full min-h-0 flex-col overflow-hidden',
+        )}>
             {/* Header — white edge-to-edge bar with breadcrumb, page title +
                 subtitle and underline tabs, mirroring the New Compliance &
                 Documents catalog header. Hidden while reading a single asset
@@ -1151,8 +1238,14 @@ export function CarrierProfilePage({
                 element on screen. The carrier-switcher in the top navbar is
                 the single carrier-pick surface. */}
             {!isAssetDetailActive && !isAssetFormActive && (
-                <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
-                    <div className="flex items-center gap-3 flex-wrap min-h-[18px]">
+                <div className={cn(
+                    'relative z-20 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-8 transition-all duration-300 ease-out',
+                    condensed ? 'pt-3 pb-0 shadow-md' : 'py-5 shadow-none',
+                )}>
+                    <div className={cn(
+                        'flex items-center gap-3 flex-wrap overflow-hidden transition-all duration-300 ease-out',
+                        condensed ? 'max-h-0 opacity-0' : 'max-h-10 min-h-[18px] opacity-100',
+                    )}>
                         {backTarget && (
                             <>
                                 <button
@@ -1174,9 +1267,15 @@ export function CarrierProfilePage({
                         </div>
                     </div>
 
-                    <div className="mt-3 min-w-0">
-                        <h1 className="text-2xl font-bold text-slate-900">Carrier Profile</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">
+                    <div className={cn('min-w-0 transition-all duration-300 ease-out', condensed ? 'mt-0 flex items-baseline gap-2.5' : 'mt-3')}>
+                        <h1 className={cn(
+                            'font-bold text-slate-900 tracking-tight transition-all duration-300 ease-out',
+                            condensed ? 'text-base shrink-0' : 'text-2xl',
+                        )}>Carrier Profile</h1>
+                        <p className={cn(
+                            'text-slate-500 truncate transition-all duration-300 ease-out',
+                            condensed ? 'text-xs mt-0' : 'text-sm mt-0.5',
+                        )}>
                             {viewData.page.carrierHeader.name} — {profileBundle?.assets?.length ?? INITIAL_ASSETS.length} assets · {drivers.length} drivers
                         </p>
                     </div>
@@ -1188,7 +1287,7 @@ export function CarrierProfilePage({
                         onChange={setActiveTab}
                         variant="underline"
                         bordered={false}
-                        className="mt-4 -mb-5"
+                        className={cn('transition-all duration-300 ease-out', condensed ? 'mt-2' : 'mt-4 -mb-5')}
                     />
                 </div>
             )}
@@ -1196,7 +1295,16 @@ export function CarrierProfilePage({
             {/* Tab Content — edge-to-edge (no body padding) while reading an asset
                 detail; a bounded full-height flex column while the Add/Edit wizard
                 is open so it can inner-scroll like the Add Accident page. */}
-            <div className={isAssetFormActive ? "flex-1 min-h-0" : (isAssetDetailActive ? "" : "px-4 sm:px-8 py-6")}>
+            <div
+                ref={bodyScrollRef}
+                onScroll={onBodyScroll}
+                className={cn(
+                    'min-h-0 flex-1',
+                    isAssetFormActive || isAssetDetailActive
+                        ? 'overflow-hidden'
+                        : 'overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6',
+                )}
+            >
 
 
                 {activeTab === 'fleet' && (
@@ -1300,27 +1408,22 @@ export function CarrierProfilePage({
                                         <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider flex items-center gap-2">
                                             <ShieldCheck className="w-4 h-4 text-slate-400" /> Operations & Authority
                                         </h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                                             <div>
                                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Operation Classification</div>
-                                                <div className="flex items-center gap-2 text-slate-700">
-                                                    <BadgeCheck className="w-4 h-4 text-blue-500" />
-                                                    <span className="text-sm font-medium">{opsData.operationClassification}</span>
-                                                </div>
+                                                <OpsChips values={opsData.operationClassification} icon={BadgeCheck} tone="violet" />
                                             </div>
                                             <div>
                                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Carrier Operation</div>
-                                                <div className="flex items-center gap-2 text-slate-700">
-                                                    <Globe className="w-4 h-4 text-blue-500" />
-                                                    <span className="text-sm font-medium">{opsData.carrierOperation}</span>
-                                                </div>
+                                                <OpsChips values={opsData.carrierOperation} icon={Globe} tone="blue" />
                                             </div>
                                             <div>
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Authority Type</div>
-                                                <div className="flex items-center gap-2 text-slate-700">
-                                                    <Truck className="w-4 h-4 text-green-500" />
-                                                    <span className="text-sm font-medium">{opsData.fmcsaAuthorityType}</span>
-                                                </div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Hazardous Materials</div>
+                                                <OpsChips values={opsData.hazmatOperation} icon={ShieldCheck} tone="amber" />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Authority Types</div>
+                                                <OpsChips values={opsData.fmcsaAuthorityType} icon={Truck} tone="emerald" />
                                             </div>
                                         </div>
                                     </div>

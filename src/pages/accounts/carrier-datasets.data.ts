@@ -107,14 +107,100 @@ interface CarrierSeed {
         nonCmv: number;
     };
     operations: {
-        operationClassification: 'Authorized for Hire' | 'Private Carrier' | 'Exempt For Hire';
-        carrierOperation: 'Interstate' | 'Intrastate Only (Hazmat)' | 'Intrastate Only (Non-Hazmat)';
-        fmcsaAuthorityType: 'Motor Carrier of Property' | 'Motor Carrier of Household Goods' | 'Broker of Property';
+        operationClassification: ('Authorized for Hire' | 'Private Carrier' | 'Exempt For Hire')[];
+        /** Check-all-that-apply — a carrier can run interstate AND cross-border. */
+        carrierOperation: ('Interstate' | 'Intrastate' | 'Cross-Border')[];
+        hazmatOperation: ('Hazmat' | 'Non-Hazmat')[];
+        fmcsaAuthorityType: ('Motor Carrier of Property' | 'Motor Carrier of Household Goods' | 'Broker of Property')[];
     };
     directors: DirectorSeed[];
     offices: OfficeSeed[];
     drivers: DriverSeed[];
     assets: AssetSeed[];
+}
+
+// ─── Operations & Authority per carrier ──────────────────────────────────────
+// The four "check all that apply" groups on the Add Carrier form. Each row is
+// derived from that carrier's real profile in this file — its geography (Canadian
+// and border carriers run Cross-Border), its commodities in CARRIER_CARGO
+// (chemicals / liquids / oilfield ⇒ Hazmat; household goods / furniture ⇒ the
+// Household Goods authority; grain / livestock ⇒ Exempt For Hire, which is how
+// agricultural commodity hauling is actually classified), and its size (a handful
+// of trucks in one state ⇒ Intrastate only).
+
+export type CarrierOperations = CarrierSeed['operations'];
+
+const OPERATIONS_BY_ACCOUNT: Record<string, CarrierOperations> = {
+    // Acme — mixed freight incl. household goods, US + Canada lanes
+    'acct-001': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property', 'Motor Carrier of Household Goods'] },
+    // Cascade — Pacific NW freight + produce
+    'acct-002': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Northern Lights — Ontario, extra-provincial, hauls household goods
+    'acct-003': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property', 'Motor Carrier of Household Goods'] },
+    // Sunbelt — Texas construction hauling, stays in state
+    'acct-004': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Great Lakes — industrial midwest, Ontario lanes
+    'acct-005': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Evergreen — small private grocery fleet
+    'acct-006': { operationClassification: ['Private Carrier'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Maple Ridge — Alberta lumber & ag, extra-provincial
+    'acct-007': { operationClassification: ['Authorized for Hire', 'Exempt For Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Lone Star — Texas oilfield: chemicals and liquids/gases
+    'acct-008': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Intrastate'], hazmatOperation: ['Hazmat', 'Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Rocky Mountain — inactive, general freight only
+    'acct-009': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Atlantic Coastal — Florida reefer / seafood
+    'acct-010': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Prairie Express — Manitoba grain, feed and livestock
+    'acct-011': { operationClassification: ['Exempt For Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Heartland — grocery and meat out of Kansas City
+    'acct-012': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Bay Area Logistics — port drayage and electronics, also brokers freight
+    'acct-013': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property', 'Broker of Property'] },
+    // Summit Peak — chemicals and building materials through the Rockies
+    'acct-014': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Hazmat', 'Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // St. Lawrence — Québec freight and paper, New England lanes
+    'acct-015': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Blue Ridge — North Carolina furniture and household goods
+    'acct-016': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Household Goods', 'Motor Carrier of Property'] },
+    // Desert Wind — dedicated chemical / liquid tank work
+    'acct-017': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Intrastate'], hazmatOperation: ['Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Pacific Crown — BC intermodal and lumber, brokers overflow
+    'acct-018': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property', 'Broker of Property'] },
+    // Liberty Bell — Philadelphia pharmaceutical and paper
+    'acct-019': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Midwest Anchor — auto parts and appliances
+    'acct-020': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Greenfield — 8 trucks, mostly brokered freight
+    'acct-021': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Broker of Property'] },
+    // Silver Creek — Idaho grain and lumber
+    'acct-022': { operationClassification: ['Exempt For Hire'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Gateway — St. Louis freight and beverages
+    'acct-023': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Harborline — New England seafood and reefer
+    'acct-024': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Thunder Bay — 6 trucks hauling lumber, inactive
+    'acct-025': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Iron Horse — Nebraska grain and livestock, brokers loads
+    'acct-026': { operationClassification: ['Exempt For Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property', 'Broker of Property'] },
+    // Coastal Edge — Savannah port paper and containers
+    'acct-027': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Crescent City — Gulf seafood plus chemical work
+    'acct-028': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Intrastate'], hazmatOperation: ['Hazmat', 'Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Polar Star — Alberta oilfield chemicals into the US
+    'acct-029': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Cross-Border'], hazmatOperation: ['Hazmat', 'Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+    // Redwood — California produce and beverages
+    'acct-030': { operationClassification: ['Authorized for Hire'], carrierOperation: ['Interstate', 'Intrastate'], hazmatOperation: ['Non-Hazmat'], fmcsaAuthorityType: ['Motor Carrier of Property'] },
+};
+
+/** A carrier's Operations & Authority, falling back to plain interstate freight. */
+export function operationsFor(accountId: string): CarrierOperations {
+    return OPERATIONS_BY_ACCOUNT[accountId] ?? {
+        operationClassification: ['Authorized for Hire'],
+        carrierOperation: ['Interstate'],
+        hazmatOperation: ['Non-Hazmat'],
+        fmcsaAuthorityType: ['Motor Carrier of Property'],
+    };
 }
 
 // ─── Carrier seeds (keyed by account id) ─────────────────────────────────────
@@ -127,7 +213,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '1200 North Dupont Hwy', apt: '', city: 'Wilmington', state: 'DE' as any, zip: '19801' },
         mailingAddress: { streetOrPo: 'PO Box 8890', city: 'Wilmington', state: 'DE' as any, zip: '19899', country: 'United States' },
         fleet: { powerUnits: 18, drivers: 22, nonCmv: 0 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-001'),
         directors: [
             { name: 'Johnathan Doe', role: 'Director of Operations', isPrimary: true, stockClass: 'Class A Common Stock', ownershipPct: 65, email: 'j.doe@acmetrucking.com', phone: '+1 (555) 123-4567', since: 'Jan 2019', dateAppointed: '2019-01-15' },
             { name: 'Sarah Smith', role: 'VP of Operations', isPrimary: false, stockClass: 'Class B Common Stock', ownershipPct: 35, email: 's.smith@acmetrucking.com', phone: '+1 (555) 987-6543', since: 'Mar 2020', dateAppointed: '2020-03-10' },
@@ -145,7 +231,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '4200 SE Powell Blvd', apt: '', city: 'Portland', state: 'OR' as any, zip: '97206' },
         mailingAddress: { streetOrPo: 'PO Box 17290', city: 'Portland', state: 'OR' as any, zip: '97217', country: 'United States' },
         fleet: { powerUnits: 52, drivers: 86, nonCmv: 2 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-002'),
         directors: [
             { name: 'Michael Park', role: 'President / CEO', isPrimary: true, stockClass: 'Class A Common', ownershipPct: 70, email: 'm.park@cascadefreight.com', phone: '+1 (503) 555-0101', since: 'Jun 2020', dateAppointed: '2020-06-04' },
             { name: 'Ana Torres', role: 'COO', isPrimary: false, stockClass: 'Class B Common', ownershipPct: 30, email: 'a.torres@cascadefreight.com', phone: '+1 (503) 555-0102', since: 'Aug 2020', dateAppointed: '2020-08-15' },
@@ -172,7 +258,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'Canada', street: '2500 Meadowvale Blvd', apt: '', city: 'Mississauga', state: 'ON' as any, zip: 'L5N 6C2' },
         mailingAddress: { streetOrPo: 'PO Box 5501 STN A', city: 'Mississauga', state: 'ON' as any, zip: 'L5A 4M4', country: 'Canada' },
         fleet: { powerUnits: 128, drivers: 212, nonCmv: 10 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-003'),
         directors: [
             { name: 'Margaret Chen', role: 'President / CEO', isPrimary: true, stockClass: 'Common', ownershipPct: 55, email: 'm.chen@nltransport.ca', phone: '+1 (905) 555-0201', since: 'Sep 2017', dateAppointed: '2017-09-22' },
             { name: 'Ravi Patel', role: 'Director of Safety', isPrimary: false, stockClass: 'Preferred', ownershipPct: 45, email: 'r.patel@nltransport.ca', phone: '+1 (905) 555-0202', since: 'Oct 2017', dateAppointed: '2017-10-30' },
@@ -201,7 +287,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '4455 E Broadway Rd', apt: 'Suite 210', city: 'Phoenix', state: 'TX' as any, zip: '85040' },
         mailingAddress: { streetOrPo: 'PO Box 29310', city: 'Phoenix', state: 'TX' as any, zip: '85038', country: 'United States' },
         fleet: { powerUnits: 36, drivers: 64, nonCmv: 2 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Intrastate Only (Non-Hazmat)', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-004'),
         directors: [
             { name: 'Victor Alvarez', role: 'Founder / CEO', isPrimary: true, stockClass: 'Class A Common', ownershipPct: 80, email: 'v.alvarez@sunbelthaulers.com', phone: '+1 (602) 555-0301', since: 'Mar 2021', dateAppointed: '2021-03-18' },
             { name: 'Karen Whitlock', role: 'Director of Compliance', isPrimary: false, stockClass: 'Class B Common', ownershipPct: 20, email: 'k.whitlock@sunbelthaulers.com', phone: '+1 (602) 555-0302', since: 'May 2021', dateAppointed: '2021-05-03' },
@@ -223,7 +309,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '8820 W Chicago Ave', apt: '', city: 'Chicago', state: 'NY' as any, zip: '60651' },
         mailingAddress: { streetOrPo: 'PO Box 1120', city: 'Chicago', state: 'NY' as any, zip: '60690', country: 'United States' },
         fleet: { powerUnits: 198, drivers: 305, nonCmv: 16 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-005'),
         directors: [
             { name: 'Evelyn Carter', role: 'Chairwoman', isPrimary: true, stockClass: 'Preferred', ownershipPct: 45, email: 'e.carter@glcg.com', phone: '+1 (312) 555-0401', since: 'Nov 2015', dateAppointed: '2015-11-02' },
             { name: 'Dimitri Volkov', role: 'CFO', isPrimary: false, stockClass: 'Common', ownershipPct: 55, email: 'd.volkov@glcg.com', phone: '+1 (312) 555-0402', since: 'Jan 2016', dateAppointed: '2016-01-05' },
@@ -253,7 +339,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '2201 Alaskan Way', apt: '', city: 'Seattle', state: 'CA' as any, zip: '98121' },
         mailingAddress: { streetOrPo: 'PO Box 22101', city: 'Seattle', state: 'CA' as any, zip: '98111', country: 'United States' },
         fleet: { powerUnits: 10, drivers: 22, nonCmv: 2 },
-        operations: { operationClassification: 'Private Carrier', carrierOperation: 'Intrastate Only (Non-Hazmat)', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-006'),
         directors: [
             { name: 'Natalie Brooks', role: 'Founder / CEO', isPrimary: true, stockClass: 'Class A Common', ownershipPct: 100, email: 'n.brooks@evergreenlog.com', phone: '+1 (206) 555-0501', since: 'Aug 2024', dateAppointed: '2024-08-29' },
         ],
@@ -270,7 +356,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'Canada', street: '5040 16 Ave SE', apt: '', city: 'Calgary', state: 'NY' as any, zip: 'T2A 0J8' },
         mailingAddress: { streetOrPo: 'PO Box 5050 STN M', city: 'Calgary', state: 'NY' as any, zip: 'T2P 4L8', country: 'Canada' },
         fleet: { powerUnits: 68, drivers: 97, nonCmv: 3 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-007'),
         directors: [
             { name: 'Ethan Mackenzie', role: 'CEO', isPrimary: true, stockClass: 'Common', ownershipPct: 60, email: 'e.mackenzie@mapleridgetransport.ca', phone: '+1 (403) 555-0701', since: 'Feb 2018', dateAppointed: '2018-02-14' },
             { name: 'Isla Gagnon', role: 'VP Operations', isPrimary: false, stockClass: 'Common', ownershipPct: 40, email: 'i.gagnon@mapleridgetransport.ca', phone: '+1 (403) 555-0702', since: 'Apr 2018', dateAppointed: '2018-04-02' },
@@ -292,7 +378,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '6600 Stemmons Fwy', apt: '', city: 'Dallas', state: 'TX' as any, zip: '75247' },
         mailingAddress: { streetOrPo: 'PO Box 660022', city: 'Dallas', state: 'TX' as any, zip: '75266', country: 'United States' },
         fleet: { powerUnits: 112, drivers: 178, nonCmv: 5 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-008'),
         directors: [
             { name: 'Buck Matthews', role: 'Managing Member', isPrimary: true, stockClass: 'Member Units A', ownershipPct: 65, email: 'b.matthews@lonestarfw.com', phone: '+1 (214) 555-0801', since: 'May 2016', dateAppointed: '2016-05-30' },
             { name: 'Renee Harper', role: 'Director of Safety', isPrimary: false, stockClass: 'Member Units B', ownershipPct: 35, email: 'r.harper@lonestarfw.com', phone: '+1 (214) 555-0802', since: 'Jul 2016', dateAppointed: '2016-07-11' },
@@ -319,7 +405,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '17500 E 40th Ave', apt: '', city: 'Denver', state: 'NY' as any, zip: '80011' },
         mailingAddress: { streetOrPo: 'PO Box 17500', city: 'Denver', state: 'NY' as any, zip: '80217', country: 'United States' },
         fleet: { powerUnits: 4, drivers: 0, nonCmv: 1 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-009'),
         directors: [
             { name: 'George Wheeler', role: 'CEO (inactive)', isPrimary: true, stockClass: 'Common', ownershipPct: 100, email: 'g.wheeler@rmhauling.com', phone: '+1 (303) 555-0901', since: 'Jul 2019', dateAppointed: '2019-07-11' },
         ],
@@ -335,7 +421,7 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
         legalAddress: { country: 'United States', street: '5400 Phillips Hwy', apt: '', city: 'Jacksonville', state: 'TX' as any, zip: '32207' },
         mailingAddress: { streetOrPo: 'PO Box 54000', city: 'Jacksonville', state: 'TX' as any, zip: '32247', country: 'United States' },
         fleet: { powerUnits: 84, drivers: 134, nonCmv: 3 },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor('acct-010'),
         directors: [
             { name: 'Catalina Ruiz', role: 'Managing Member', isPrimary: true, stockClass: 'Member Units A', ownershipPct: 55, email: 'c.ruiz@actllc.com', phone: '+1 (904) 555-1001', since: 'Oct 2018', dateAppointed: '2018-10-05' },
             { name: 'Wesley Grant', role: 'CFO', isPrimary: false, stockClass: 'Member Units B', ownershipPct: 45, email: 'w.grant@actllc.com', phone: '+1 (904) 555-1002', since: 'Nov 2018', dateAppointed: '2018-11-12' },
@@ -353,26 +439,26 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
     },
 
     // Compact entries for remaining carriers — identity + 2 directors + 1 office + 2 drivers + 2 assets each.
-    'acct-011': genericSeed('Prairie Express Carriers', 'Prairie Express', '', 'NSC-MB-29011', 'Winnipeg', 'MB' as any, 'Canada', 27, 41, 'Owen Kowalski', 'Lindsay Trent', '+1 (204) 555-1101', '204'),
-    'acct-012': genericSeed('Heartland Trucking Partners', 'Heartland', '2554109', '', 'Kansas City', 'MO' as any, 'United States', 44, 58, 'Paul Sinclair', 'Denise Holbrook', '+1 (816) 555-1201', '816'),
-    'acct-013': genericSeed('Bay Area Logistics Inc.', 'BAL', '3887221', '', 'Oakland', 'CA' as any, 'United States', 145, 201, 'Lena Ishikawa', 'Marcus Chen', '+1 (510) 555-1301', '510'),
-    'acct-014': genericSeed('Summit Peak Transport Corp.', 'Summit Peak', '4221078', '', 'Salt Lake City', 'UT' as any, 'United States', 52, 73, 'Colton Briggs', 'Amelia Doyle', '+1 (801) 555-1401', '801'),
-    'acct-015': genericSeed('St. Lawrence Cartage Ltd.', 'St. Lawrence', '', 'NSC-QC-77819', 'Montreal', 'QC' as any, 'Canada', 88, 119, 'Phillipe Gagnon', 'Celine Bouchard', '+1 (514) 555-1501', '514'),
-    'acct-016': genericSeed('Blue Ridge Freight Services', 'Blue Ridge', '1665328', '', 'Charlotte', 'NC' as any, 'United States', 68, 92, 'Heath Calloway', 'Renata Simmons', '+1 (704) 555-1601', '704'),
-    'acct-017': genericSeed('Desert Wind Transport LLC', 'Desert Wind', '3101877', '', 'Albuquerque', 'NM' as any, 'United States', 30, 45, 'Ramon Silva', 'Gloria Ortega', '+1 (505) 555-1701', '505'),
-    'acct-018': genericSeed('Pacific Crown Logistics Inc.', 'Pacific Crown', '', 'NSC-BC-44210', 'Vancouver', 'BC' as any, 'Canada', 102, 156, 'Declan Moore', 'Iris Woo', '+1 (604) 555-1801', '604'),
-    'acct-019': genericSeed('Liberty Bell Carriers Corp.', 'Liberty Bell', '2998012', '', 'Philadelphia', 'PA' as any, 'United States', 77, 110, 'Francis OConnell', 'Yvonne Chase', '+1 (215) 555-1901', '215'),
-    'acct-020': genericSeed('Midwest Anchor Trucking', 'Midwest Anchor', '2330917', '', 'Indianapolis', 'IN' as any, 'United States', 61, 88, 'Dwight Foster', 'Monica Brand', '+1 (317) 555-2001', '317'),
-    'acct-021': genericSeed('Greenfield Transport Solutions', 'Greenfield', '4487621', '', 'Columbus', 'OH' as any, 'United States', 8, 12, 'Savannah Knight', 'Todd Parrish', '+1 (614) 555-2101', '614'),
-    'acct-022': genericSeed('Silver Creek Hauling Inc.', 'Silver Creek', '2110445', '', 'Boise', 'ID' as any, 'United States', 24, 36, 'Quincy Blake', 'Paige Hamlin', '+1 (208) 555-2201', '208'),
-    'acct-023': genericSeed('Gateway Carriers LLC', 'Gateway', '1899332', '', 'St. Louis', 'MO' as any, 'United States', 94, 127, 'Byron Fletcher', 'Rhonda Meadows', '+1 (314) 555-2301', '314'),
-    'acct-024': genericSeed('Harborline Transport Co.', 'Harborline', '3377004', '', 'Boston', 'MA' as any, 'United States', 49, 74, 'Rory Finnegan', 'Alyssa Lowell', '+1 (617) 555-2401', '617'),
-    'acct-025': genericSeed('Thunder Bay Freight Ltd.', 'Thunder Bay Freight', '', 'NSC-ON-33087', 'Thunder Bay', 'ON' as any, 'Canada', 6, 0, 'Vincent Hawke', 'Susan Marlowe', '+1 (807) 555-2501', '807'),
-    'acct-026': genericSeed('Iron Horse Logistics LLC', 'Iron Horse', '2668210', '', 'Omaha', 'NE' as any, 'United States', 37, 52, 'Hugo Lambert', 'Theresa Wyatt', '+1 (402) 555-2601', '402'),
-    'acct-027': genericSeed('Coastal Edge Trucking Corp.', 'Coastal Edge', '3229914', '', 'Savannah', 'GA' as any, 'United States', 67, 98, 'Orlando Pierce', 'Whitney Lang', '+1 (912) 555-2701', '912'),
-    'acct-028': genericSeed('Crescent City Cartage', 'Crescent City', '2881077', '', 'New Orleans', 'LA' as any, 'United States', 42, 61, 'Beau Thibodeaux', 'Evangeline Roux', '+1 (504) 555-2801', '504'),
-    'acct-029': genericSeed('Polar Star Transport Inc.', 'Polar Star', '', 'NSC-AB-66190', 'Edmonton', 'AB' as any, 'Canada', 96, 143, 'Sterling Howe', 'Natasha Vasilieva', '+1 (780) 555-2901', '780'),
-    'acct-030': genericSeed('Redwood Freight Partners', 'Redwood', '3998021', '', 'Sacramento', 'CA' as any, 'United States', 80, 115, 'Mason Kerr', 'Juliana Ortega', '+1 (916) 555-3001', '916'),
+    'acct-011': genericSeed('acct-011', 'Prairie Express Carriers', 'Prairie Express', '', 'NSC-MB-29011', 'Winnipeg', 'MB' as any, 'Canada', 27, 41, 'Owen Kowalski', 'Lindsay Trent', '+1 (204) 555-1101', '204'),
+    'acct-012': genericSeed('acct-012', 'Heartland Trucking Partners', 'Heartland', '2554109', '', 'Kansas City', 'MO' as any, 'United States', 44, 58, 'Paul Sinclair', 'Denise Holbrook', '+1 (816) 555-1201', '816'),
+    'acct-013': genericSeed('acct-013', 'Bay Area Logistics Inc.', 'BAL', '3887221', '', 'Oakland', 'CA' as any, 'United States', 145, 201, 'Lena Ishikawa', 'Marcus Chen', '+1 (510) 555-1301', '510'),
+    'acct-014': genericSeed('acct-014', 'Summit Peak Transport Corp.', 'Summit Peak', '4221078', '', 'Salt Lake City', 'UT' as any, 'United States', 52, 73, 'Colton Briggs', 'Amelia Doyle', '+1 (801) 555-1401', '801'),
+    'acct-015': genericSeed('acct-015', 'St. Lawrence Cartage Ltd.', 'St. Lawrence', '', 'NSC-QC-77819', 'Montreal', 'QC' as any, 'Canada', 88, 119, 'Phillipe Gagnon', 'Celine Bouchard', '+1 (514) 555-1501', '514'),
+    'acct-016': genericSeed('acct-016', 'Blue Ridge Freight Services', 'Blue Ridge', '1665328', '', 'Charlotte', 'NC' as any, 'United States', 68, 92, 'Heath Calloway', 'Renata Simmons', '+1 (704) 555-1601', '704'),
+    'acct-017': genericSeed('acct-017', 'Desert Wind Transport LLC', 'Desert Wind', '3101877', '', 'Albuquerque', 'NM' as any, 'United States', 30, 45, 'Ramon Silva', 'Gloria Ortega', '+1 (505) 555-1701', '505'),
+    'acct-018': genericSeed('acct-018', 'Pacific Crown Logistics Inc.', 'Pacific Crown', '', 'NSC-BC-44210', 'Vancouver', 'BC' as any, 'Canada', 102, 156, 'Declan Moore', 'Iris Woo', '+1 (604) 555-1801', '604'),
+    'acct-019': genericSeed('acct-019', 'Liberty Bell Carriers Corp.', 'Liberty Bell', '2998012', '', 'Philadelphia', 'PA' as any, 'United States', 77, 110, 'Francis OConnell', 'Yvonne Chase', '+1 (215) 555-1901', '215'),
+    'acct-020': genericSeed('acct-020', 'Midwest Anchor Trucking', 'Midwest Anchor', '2330917', '', 'Indianapolis', 'IN' as any, 'United States', 61, 88, 'Dwight Foster', 'Monica Brand', '+1 (317) 555-2001', '317'),
+    'acct-021': genericSeed('acct-021', 'Greenfield Transport Solutions', 'Greenfield', '4487621', '', 'Columbus', 'OH' as any, 'United States', 8, 12, 'Savannah Knight', 'Todd Parrish', '+1 (614) 555-2101', '614'),
+    'acct-022': genericSeed('acct-022', 'Silver Creek Hauling Inc.', 'Silver Creek', '2110445', '', 'Boise', 'ID' as any, 'United States', 24, 36, 'Quincy Blake', 'Paige Hamlin', '+1 (208) 555-2201', '208'),
+    'acct-023': genericSeed('acct-023', 'Gateway Carriers LLC', 'Gateway', '1899332', '', 'St. Louis', 'MO' as any, 'United States', 94, 127, 'Byron Fletcher', 'Rhonda Meadows', '+1 (314) 555-2301', '314'),
+    'acct-024': genericSeed('acct-024', 'Harborline Transport Co.', 'Harborline', '3377004', '', 'Boston', 'MA' as any, 'United States', 49, 74, 'Rory Finnegan', 'Alyssa Lowell', '+1 (617) 555-2401', '617'),
+    'acct-025': genericSeed('acct-025', 'Thunder Bay Freight Ltd.', 'Thunder Bay Freight', '', 'NSC-ON-33087', 'Thunder Bay', 'ON' as any, 'Canada', 6, 0, 'Vincent Hawke', 'Susan Marlowe', '+1 (807) 555-2501', '807'),
+    'acct-026': genericSeed('acct-026', 'Iron Horse Logistics LLC', 'Iron Horse', '2668210', '', 'Omaha', 'NE' as any, 'United States', 37, 52, 'Hugo Lambert', 'Theresa Wyatt', '+1 (402) 555-2601', '402'),
+    'acct-027': genericSeed('acct-027', 'Coastal Edge Trucking Corp.', 'Coastal Edge', '3229914', '', 'Savannah', 'GA' as any, 'United States', 67, 98, 'Orlando Pierce', 'Whitney Lang', '+1 (912) 555-2701', '912'),
+    'acct-028': genericSeed('acct-028', 'Crescent City Cartage', 'Crescent City', '2881077', '', 'New Orleans', 'LA' as any, 'United States', 42, 61, 'Beau Thibodeaux', 'Evangeline Roux', '+1 (504) 555-2801', '504'),
+    'acct-029': genericSeed('acct-029', 'Polar Star Transport Inc.', 'Polar Star', '', 'NSC-AB-66190', 'Edmonton', 'AB' as any, 'Canada', 96, 143, 'Sterling Howe', 'Natasha Vasilieva', '+1 (780) 555-2901', '780'),
+    'acct-030': genericSeed('acct-030', 'Redwood Freight Partners', 'Redwood', '3998021', '', 'Sacramento', 'CA' as any, 'United States', 80, 115, 'Mason Kerr', 'Juliana Ortega', '+1 (916) 555-3001', '916'),
 };
 
 // ─── Generic seed factory for carriers where the individual flavor is less
@@ -460,6 +546,7 @@ export function generateAssetSeeds(
 }
 
 function genericSeed(
+    accountId: string,
     legalName: string,
     dbaName: string,
     dotNumber: string,
@@ -503,7 +590,7 @@ function genericSeed(
         legalAddress: { country, street: `${100 + legalName.length * 7} Main St`, apt: '', city, state, zip },
         mailingAddress: { streetOrPo: `PO Box ${1000 + legalName.length}`, city, state, zip, country },
         fleet: { powerUnits: trucks, drivers: driversCount, nonCmv: vans },
-        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        operations: operationsFor(accountId),
         directors: [
             { name: primaryDirector, role: 'President / CEO', isPrimary: true, stockClass: 'Class A Common', ownershipPct: 60, email: `${primaryDirector.split(' ')[0].toLowerCase()}@${domain}`, phone, since: '2018', dateAppointed: '2018-01-01' },
             { name: secondaryDirector, role: 'VP Operations', isPrimary: false, stockClass: 'Class B Common', ownershipPct: 40, email: `${secondaryDirector.split(' ')[0].toLowerCase()}@${domain}`, phone: phone.slice(0, -1) + '2', since: '2019', dateAppointed: '2019-01-01' },

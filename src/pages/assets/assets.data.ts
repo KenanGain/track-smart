@@ -22,7 +22,8 @@ export interface Asset {
     financialStructure: "Owned" | "Leased" | "Rented" | "Financed";
     plateNumber: string;
     plateJurisdiction: string;
-    plateType?: string;
+    /** IRP = apportioned plate for interjurisdictional running; Local = base-jurisdiction only. */
+    plateType?: 'IRP' | 'Local';
     plateCountry?: "USA" | "Canada";
     registrationIssueDate?: string;
     registrationExpiryDate: string;
@@ -70,6 +71,15 @@ export interface Asset {
     rentalAgencyName?: string;
     lienHolderBusiness?: string;
     lienHolderName?: string;
+
+    // Lease / finance term — only set when financialStructure is Leased or Financed.
+    /** First day of the lease / finance agreement (YYYY-MM-DD). */
+    agreementStartDate?: string;
+    /** Last day of the agreement (YYYY-MM-DD). */
+    agreementEndDate?: string;
+    /** Recurring monthly payment under the agreement. */
+    monthlyPayment?: number;
+    monthlyPaymentCurrency?: 'USD' | 'CAD';
 
     // Address
     streetAddress?: string;
@@ -135,7 +145,9 @@ export const INITIAL_ASSETS: Asset[] = [
         model: "Cascadia",
         color: "White",
         financialStructure: "Owned",
+        ownerName: "TrackSmart Logistics Inc.",
         plateNumber: "P-7762",
+        plateType: "IRP",
         plateJurisdiction: "Texas",
         plateCountry: "USA",
         registrationExpiryDate: "2026-05-12",
@@ -170,12 +182,17 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "Blue",
         financialStructure: "Leased",
         plateNumber: "ABC-1234",
+        plateType: "Local",
         plateJurisdiction: "Ontario",
         plateCountry: "Canada",
         registrationExpiryDate: "2025-11-20",
         insuranceAddedDate: "2023-01-10",
         leasingName: "TruckLease Pro",
         lessorCompanyName: "Fleet Leasing Corp",
+        agreementStartDate: "2026-06-01",
+        agreementEndDate: "2031-05-31",
+        monthlyPayment: 2150,
+        monthlyPaymentCurrency: "USD",
         plateMonitoringEnabled: true,
         plateMonitorBasedOn: "expiry_date",
         plateReminderSchedule: [90, 60, 30],
@@ -205,12 +222,17 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "Red",
         financialStructure: "Financed",
         plateNumber: "HAUL-55",
+        plateType: "IRP",
         plateJurisdiction: "Nevada",
         plateCountry: "USA",
         registrationExpiryDate: "2024-11-01",
         insuranceAddedDate: "2020-03-15",
         lienHolderBusiness: "Fleet Finance LLC",
         lienHolderName: "James Peterson",
+        agreementStartDate: "2025-03-01",
+        agreementEndDate: "2030-02-28",
+        monthlyPayment: 1685,
+        monthlyPaymentCurrency: "USD",
         plateMonitoringEnabled: true,
         plateMonitorBasedOn: "expiry_date",
         plateReminderSchedule: [90, 60, 30],
@@ -240,6 +262,7 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "Black",
         financialStructure: "Owned",
         plateNumber: "WRK-4422",
+        plateType: "Local",
         plateJurisdiction: "Arizona",
         plateCountry: "USA",
         registrationExpiryDate: "2024-08-20",
@@ -274,11 +297,14 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "White",
         financialStructure: "Rented",
         plateNumber: "COLD-88",
+        plateType: "Local",
         plateJurisdiction: "California",
         plateCountry: "USA",
         registrationExpiryDate: "2025-03-15",
         insuranceAddedDate: "2022-06-01",
         rentalAgencyName: "National Trailer Rentals",
+        monthlyPayment: 1150,
+        monthlyPaymentCurrency: "USD",
         plateMonitoringEnabled: true,
         plateMonitorBasedOn: "expiry_date",
         plateReminderSchedule: [90, 60, 30],
@@ -308,6 +334,7 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "Silver",
         financialStructure: "Owned",
         plateNumber: "TANK-01",
+        plateType: "IRP",
         plateJurisdiction: "Florida",
         plateCountry: "USA",
         registrationExpiryDate: "2024-01-10",
@@ -340,12 +367,17 @@ export const INITIAL_ASSETS: Asset[] = [
         color: "Dark Blue",
         financialStructure: "Leased",
         plateNumber: "BXR-4409",
+        plateType: "IRP",
         plateJurisdiction: "Ontario",
         plateCountry: "Canada",
         registrationExpiryDate: "2027-04-30",
         insuranceAddedDate: "2024-04-20",
         leasingName: "Volvo Financial Services",
         lessorCompanyName: "Volvo Trucks NA",
+        agreementStartDate: "2024-04-15",
+        agreementEndDate: "2029-04-14",
+        monthlyPayment: 2480,
+        monthlyPaymentCurrency: "USD",
         plateMonitoringEnabled: true,
         plateMonitorBasedOn: "expiry_date",
         plateReminderSchedule: [90, 60, 30],

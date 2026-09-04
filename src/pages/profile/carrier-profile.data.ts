@@ -159,12 +159,13 @@ export const UI_DATA = {
             icon: "ShieldCheck",
             saveLabel: "Save Changes",
             fields: [
-                { key: "operationClassification", label: "Operation Classification", type: "select", required: false, options: ["Authorized for Hire", "Private Carrier", "Exempt For Hire"] },
-                { key: "carrierOperation", label: "Carrier Operation", type: "radioCards", required: false, options: [{ value: "Interstate" }, { value: "Intrastate Only (Hazmat)" }, { value: "Intrastate Only (Non-Hazmat)" }] },
-                { key: "fmcsaAuthorityType", label: "FMCSA Operating Authority Types", type: "radioList", required: false, options: ["Motor Carrier of Property", "Motor Carrier of Household Goods", "Broker of Property"] }
+                { key: "operationClassification", label: "Operation Classification", type: "checkboxList", required: false, helperText: "Check every classification this carrier operates under.", options: ["Authorized for Hire", "Private Carrier", "Exempt For Hire"] },
+                { key: "carrierOperation", label: "Carrier Operation", type: "checkCards", required: false, helperText: "Select every operation this carrier runs.", options: [{ value: "Interstate" }, { value: "Intrastate" }, { value: "Cross-Border" }] },
+                { key: "hazmatOperation", label: "Hazardous Materials", type: "checkCards", required: false, helperText: "Cargo classification carried.", options: [{ value: "Hazmat" }, { value: "Non-Hazmat" }] },
+                { key: "fmcsaAuthorityType", label: "FMCSA Operating Authority Types", type: "checkboxList", required: false, helperText: "A carrier can hold more than one authority.", options: ["Motor Carrier of Property", "Motor Carrier of Household Goods", "Broker of Property"] }
             ],
-            layout: [["operationClassification"], ["carrierOperation"], ["fmcsaAuthorityType"]],
-            values: { operationClassification: "Authorized for Hire", carrierOperation: "Intrastate Only (Non-Hazmat)", fmcsaAuthorityType: "Motor Carrier of Property" }
+            layout: [["operationClassification"], ["carrierOperation", "hazmatOperation"], ["fmcsaAuthorityType"]],
+            values: { operationClassification: ["Authorized for Hire"], carrierOperation: ["Intrastate"], hazmatOperation: ["Non-Hazmat"], fmcsaAuthorityType: ["Motor Carrier of Property"] }
         },
         addOfficeLocation: {
             id: "addOfficeLocation",

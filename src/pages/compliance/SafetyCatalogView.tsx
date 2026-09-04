@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, RECORD_TYPE_ORDER, RECORD_TYPE_LABEL,
-    ENTITY_ORDER, isDateMonitored, UPLOAD_MODE_LABEL, DEFAULT_CUSTOM_FORM,
+    ENTITY_ORDER, isDateMonitored, UPLOAD_MODE_LABEL, DEFAULT_CUSTOM_FORM, defaultVersionLabel, recordFields,
     type SafetyRecord, type RecordTypeId, type EntityId, type UploadMode, type CustomFormConfig,
 } from '@/pages/compliance/safety-software-catalog.data';
 import { useCustomSafetyRecords, newCustomRecordId } from '@/pages/compliance/safety-custom-records.data';
@@ -361,13 +361,13 @@ function initFormConfig(initial?: SafetyRecord): CustomFormConfig {
     const dated = isDateMonitored(initial);
     return {
         numberField: { enabled: hasNumber, required: hasNumber },
-        country: { enabled: true, required: false },
+        country: { enabled: !initial.hideCountry, required: false },
         state: { enabled: !initial.hideState, required: false },
         issueDate: { enabled: !!initial.tracksIssueDate, required: false },
         expiryDate: { enabled: dated, required: dated },
         status: { enabled: !dated, required: !dated },
         upload: { enabled: hasUpload, required: initial.docRequirement === 'required', multi: !!initial.multiInstance },
-        monitoring: { enabled: true },
+        monitoring: { enabled: !initial.hideMonitoring },
         tags: { enabled: true },
         notes: { enabled: true },
     };
@@ -432,6 +432,7 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
             monitorType,
             tracksIssueDate: cf.issueDate.enabled,
             hideState: !cf.state.enabled,
+            hideCountry: !cf.country.enabled,
             jurisdiction: '—',
             monitor: `Custom record — ${cf.expiryDate.enabled ? 'monitored on the expiry date' : cf.status.enabled ? 'monitored by status' : 'kept on file'}.`,
             uploadMode: hasUpload ? 'recurring' : undefined,
@@ -444,7 +445,7 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
 
     const previewRecord = makeRecord(initial?.id ?? 'preview');
     const showForm = () => {
-        if (!pv) setPv({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(previewRecord) });
+        if (!pv) setPv({ ...newVersion(defaultVersionLabel(previewRecord)), monitoring: seedMonitoring(previewRecord) });
         setView('form');
     };
 
@@ -1026,7 +1027,7 @@ function RecordDetailModal({ record, tab, mode, onTab, onClose }: {
  *  form is rendered read-only via a disabled fieldset. */
 function DefaultFormPreview({ r, editable }: { r: SafetyRecord; editable: boolean }) {
     const { tags: tagCatalog, add: addToCatalog } = useSafetyTags();
-    const seed = (): DocVersion => ({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(r) });
+    const seed = (): DocVersion => ({ ...newVersion(defaultVersionLabel(r)), monitoring: seedMonitoring(r) });
     const [v, setV] = useState<DocVersion>(seed);
     // Re-seed when the modal is pointed at a different record.
     useEffect(() => { setV(seed()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [r.id]);
@@ -1109,6 +1110,9 @@ function DataView({ r }: { r: SafetyRecord }) {
         ['Monitored Date', r.monitorType],
         ['Configured Date', r.configuredDate || '—'],
         ['Tracks Issue Date', r.tracksIssueDate ? 'Yes' : 'No'],
+        // Record-specific form fields — the extra selects / text fields and any custom status set.
+        ...recordFields(r).map(f => [f.label, f.kind === 'select' ? f.options.join(' · ') : 'Free text'] as [string, string]),
+        ...(r.statusOptions ? [[r.statusLabel ?? 'Status', r.statusOptions.join(' · ')] as [string, string]] : []),
         ['Jurisdiction', r.jurisdiction],
         ['Monitoring Guidance', r.monitor],
         ['Note', r.note || '—'],
