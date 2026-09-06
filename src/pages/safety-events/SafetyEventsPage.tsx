@@ -18,6 +18,7 @@ import {
 } from '@/pages/hos/hos-violations.data';
 import { ActivityTimeline } from '@/components/ui/ActivityTimeline';
 import { ReviewResolutionTab, toActivityEntries } from '@/components/ui/ReviewResolution';
+import { issueWarningLetter } from '@/pages/compliance/warning-letters';
 import { ACTIVITY_BADGE_TONE } from '@/components/ui/activity-kinds';
 
 // ===== RAW DATA =====
@@ -616,7 +617,7 @@ function SafetyEventModal({ record, riskFor, onClose, onAddNote, onDispose, onAs
   );
 }
 
-export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigate }: { currentUserName?: string; onNavigate?: (path: string) => void } = {}) {
+export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigate, accountId }: { currentUserName?: string; onNavigate?: (path: string) => void; accountId?: string } = {}) {
   // Local copy so review / delete actions can mutate without touching the shared
   // SAFETY_EVENTS_RESULTS export (other pages read it). Each raw event is
   // decorated with a trailer id, review status and a seeded activity trail.
@@ -673,6 +674,26 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
       status: 'pending', record: sevRef(e),
     }, `You've been assigned training: ${name}.`);
   };
+  // A warning letter is a DOCUMENT as well as a notice, so issuing one also writes the
+  // driver's Warning Letter compliance record, carrying the event that caused it. The
+  // telematics driver id is the provider's, not the roster's, so the driver is matched by
+  // name (see `resolveDriverId`).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fileWarningLetter = (e: any) => {
+    const when = fmtWhen(e.startedAt);
+    issueWarningLetter(accountId, {
+      kind: 'safety-event',
+      driverId: e.driver ?? '',
+      driverName: e.driverName,
+      eventType: getEventTypeLabel(e.type),
+      reference: e.id,
+      sourceId: e.id,
+      eventDate: e.startedAt,
+      summary: [e.severity ? `${e.severity} severity` : null, e.vehiclePlate ? `Unit ${e.vehiclePlate}` : null,
+        when.date].filter(Boolean).join(' · '),
+    }, currentUserName);
+  };
+
   // Close an event with a chosen resolution (disposition). Works on one or many.
   const closeWith = (ids: string[], disp: HosDisposition) => {
     const targets = allEvents.filter(e => ids.includes(e.id));
@@ -685,6 +706,7 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
       }, meta.kind, `Closed — ${meta.label}`);
     });
     targets.forEach(e => dispatchDisposition(e, disp));
+    if (disp === 'warning') targets.forEach(fileWarningLetter);
   };
   const assignTraining = (ids: string[], name: string) => {
     const targets = allEvents.filter(e => ids.includes(e.id));

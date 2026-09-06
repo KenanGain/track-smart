@@ -39,7 +39,7 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: config.idLabel, sample: "***-**-4471", full: true },
                 { label: `Legal right to work in ${country === "Canada" ? "Canada" : "the U.S."}`, sample: "Yes" },
                 { label: "Position Type", sample: "Company Driver" },
-                { label: "TWIC Card Number", sample: "8821940", full: true },
+                { label: "Will this driver operate in or cross into the United States?", sample: "Yes", full: true },
             ],
         },
         {
@@ -77,6 +77,18 @@ function buildSchema(config: FormConfig): PSection[] {
             ],
         },
         {
+            title: "Travel Documents",
+            fields: [
+                { label: "Which country are they a citizen of?", sample: country, full: true },
+                { label: "Work authorization in " + (country === "Canada" ? "the United States" : "Canada"), sample: "Work Permit", full: true },
+                { label: "Passport Number", sample: "X1234567" },
+                { label: "Passport expiry", sample: "08-15-2030" },
+                { label: "Do they have a Visa?", sample: "Yes" },
+                { label: "Do they have a TWIC Card?", sample: "No" },
+                { label: "Do they have a FAST Card?", sample: "Yes", full: true },
+            ],
+        },
+        {
             title: "License Disqualification",
             fields: [
                 { label: "License ever denied / suspended / revoked?", sample: "No", full: true },
@@ -85,6 +97,46 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: "Illegal substance possession / sale?", sample: "No", full: true },
                 { label: "Reckless / careless driving conviction?", sample: "No", full: true },
                 { label: "Failed / refused a DOT drug or alcohol test?", sample: "No", full: true },
+            ],
+        },
+        {
+            title: "Driving Experience", repeat: true,
+            fields: [
+                { label: "Equipment Class", sample: "Tractor-trailer" },
+                { label: "Freight Types", sample: "Van, Reefer" },
+                { label: "Regions Driven", sample: "USA, Border" },
+                { label: "Dates", sample: "01-2021 - 03-2024" },
+                { label: "Approximate Miles", sample: "250,000" },
+                { label: "Owner-operator?", sample: "No" },
+            ],
+        },
+        {
+            title: "Employment Details", repeat: true,
+            fields: [
+                { label: "Company Name", sample: "Roadrunner Freight" },
+                { label: "Dates", sample: "01-2021 - 03-2024" },
+                { label: "Position Held", sample: "OTR Driver" },
+                { label: "Location", sample: `Springfield, ${stAbbr}` },
+                { label: "Reason for leaving", sample: "Career advancement", full: true },
+                { label: "Current employer?", sample: "No" },
+                { label: "Operated CMV?", sample: "Yes" },
+            ],
+        },
+        {
+            title: "Employment Gaps", repeat: true,
+            fields: [
+                { label: "Dates", sample: "04-2020 - 08-2020" },
+                { label: "Comments", sample: "Between roles during COVID-19.", full: true },
+            ],
+        },
+        {
+            title: "Education Details", repeat: true,
+            fields: [
+                { label: "School name", sample: "Lincoln Technical Institute" },
+                { label: "Dates", sample: "09-2019 - 06-2020" },
+                { label: "Location", sample: `Springfield, ${stAbbr}` },
+                { label: "Studied", sample: "Diesel Mechanics" },
+                { label: "Graduation", sample: "06-2020" },
             ],
         },
         {
@@ -111,38 +163,9 @@ function buildSchema(config: FormConfig): PSection[] {
             ],
         },
         {
-            title: "Employment Details", repeat: true,
-            fields: [
-                { label: "Company Name", sample: "Roadrunner Freight" },
-                { label: "Dates", sample: "01-2021 - 03-2024" },
-                { label: "Position Held", sample: "OTR Driver" },
-                { label: "Location", sample: `Springfield, ${stAbbr}` },
-                { label: "Reason for leaving", sample: "Career advancement", full: true },
-                { label: "Current employer?", sample: "No" },
-                { label: "Operated CMV?", sample: "Yes" },
-            ],
-        },
-        {
-            title: "Education Details", repeat: true,
-            fields: [
-                { label: "School name", sample: "Lincoln Technical Institute" },
-                { label: "Dates", sample: "09-2019 - 06-2020" },
-                { label: "Location", sample: `Springfield, ${stAbbr}` },
-                { label: "Studied", sample: "Diesel Mechanics" },
-                { label: "Graduation", sample: "06-2020" },
-            ],
-        },
-        {
             title: "Military Service",
             fields: [
                 { label: "Were you ever in the military?", sample: "No", full: true },
-            ],
-        },
-        {
-            title: "Unemployment", repeat: true,
-            fields: [
-                { label: "Dates", sample: "04-2020 - 08-2020" },
-                { label: "Comments", sample: "Between roles during COVID-19.", full: true },
             ],
         },
         {

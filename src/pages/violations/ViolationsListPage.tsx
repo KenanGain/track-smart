@@ -12,6 +12,9 @@ import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { ViolationEditForm } from './ViolationEditForm';
+import { useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
+import { TabScroller } from '@/components/ui/TabScroller';
+import { KpiChipStrip } from '@/components/ui/KpiChipStrip';
 import { getViolationsForCarrier, type CarrierViolationRecord } from './carrier-violations.data';
 import {
   getExternalViolationsForCarrier,
@@ -127,7 +130,6 @@ function toUnified(rec: CarrierViolationRecord, accountId: string): UnifiedViola
     notes: '',
   };
 }
-
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -673,17 +675,15 @@ const BASIC_TABS: Array<{
   key: 'all' | 'vehicle_maintenance' | 'unsafe_driving' | 'hos' | 'driver_fitness' | 'hazmat' | 'controlled_substances' | 'other';
   label: string;
   match: (category: string) => boolean;
-  /** Tone palette used by the sub-category cards when this tab is active. */
-  tone: 'slate' | 'blue' | 'rose' | 'amber' | 'violet' | 'orange' | 'red' | 'teal';
 }> = [
-  { key: 'all',                   label: 'All Violations',          match: () => true,                                                                          tone: 'slate'  },
-  { key: 'vehicle_maintenance',   label: 'Vehicle Maintenance',     match: c => /vehicle\s*maintenance/i.test(c),                                                tone: 'blue'   },
-  { key: 'unsafe_driving',        label: 'Unsafe Driving',          match: c => /unsafe\s*driving|speeding|reckless|texting|cell\s*phone|seat\s*belt/i.test(c),  tone: 'rose'   },
-  { key: 'hos',                   label: 'Hours-of-service',        match: c => /hours[-\s]?of[-\s]?service|hos/i.test(c),                                       tone: 'amber'  },
-  { key: 'driver_fitness',        label: 'Driver Fitness',          match: c => /driver\s*fitness|fitness/i.test(c),                                             tone: 'violet' },
-  { key: 'hazmat',                label: 'Hazmat Compliance',       match: c => /hazmat|hazardous/i.test(c),                                                     tone: 'orange' },
-  { key: 'controlled_substances', label: 'Controlled Substances',   match: c => /controlled\s*substance|alcohol|drug/i.test(c),                                 tone: 'red'    },
-  { key: 'other',                 label: 'Other',                   match: c => !BASIC_CATEGORY_RE.test(c),                                                       tone: 'teal'   },
+  { key: 'all',                   label: 'All Violations',          match: () => true },
+  { key: 'vehicle_maintenance',   label: 'Vehicle Maintenance',     match: c => /vehicle\s*maintenance/i.test(c) },
+  { key: 'unsafe_driving',        label: 'Unsafe Driving',          match: c => /unsafe\s*driving|speeding|reckless|texting|cell\s*phone|seat\s*belt/i.test(c) },
+  { key: 'hos',                   label: 'Hours-of-service',        match: c => /hours[-\s]?of[-\s]?service|hos/i.test(c) },
+  { key: 'driver_fitness',        label: 'Driver Fitness',          match: c => /driver\s*fitness|fitness/i.test(c) },
+  { key: 'hazmat',                label: 'Hazmat Compliance',       match: c => /hazmat|hazardous/i.test(c) },
+  { key: 'controlled_substances', label: 'Controlled Substances',   match: c => /controlled\s*substance|alcohol|drug/i.test(c) },
+  { key: 'other',                 label: 'Other',                   match: c => !BASIC_CATEGORY_RE.test(c) },
 ];
 
 interface ViolationsListPageProps {
@@ -776,6 +776,9 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
   const [missingPerPage, setMissingPerPage] = useState(10);
   const [pageView, setPageView]           = useState<'all' | 'drivers' | 'assets'>('all');
   const [basicTab, setBasicTab]           = useState<(typeof BASIC_TABS)[number]['key']>('all');
+  // The header shrinks as the ledger scrolls and returns when you scroll back up;
+  // switching category or view leaves the scroll position where it was.
+  const { scrollRef, condensed, onScroll } = useCondensingHeader(`${pageView}:${basicTab}`);
   const [subCatFilter, setSubCatFilter]   = useState<string | null>(null);
   const [sourceFilter, setSourceFilter]   = useState<'all' | 'SMS' | 'NSC' | 'CVOR'>('all');
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string>('all');
@@ -808,6 +811,16 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
     return { total, oos, highRisk, citations, openCases, totalFines };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageView]);
+
+  // The same figures the KPI cards show, for the compact form the header keeps once
+  // the cards themselves have scrolled away. One array so the two cannot disagree.
+  const kpiChips = useMemo(() => [
+    { id: 'total',     label: 'Total',     value: kpi.total.toLocaleString(), tone: 'text-blue-700' },
+    { id: 'oos',       label: 'OOS',       value: kpi.oos.toLocaleString(), tone: 'text-red-700' },
+    { id: 'highrisk',  label: 'High risk', value: kpi.highRisk.toLocaleString(), tone: 'text-rose-700' },
+    { id: 'citations', label: 'Citations', value: kpi.citations.toLocaleString(), tone: 'text-amber-700' },
+    { id: 'open',      label: 'Open',      value: kpi.openCases.toLocaleString(), tone: 'text-orange-700' },
+  ], [kpi]);
 
   // Per-source counts — drives which Source filter pills appear so a US
   // carrier never sees a "CVOR (0)" pill it can't usefully click.
@@ -985,54 +998,64 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 shrink-0">
-        <div className="px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-          <nav className="flex items-center gap-2 mb-1 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
-            <span>Safety</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-900">Violations</span>
-          </nav>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Violations</h1>
-          <p className="mt-1 text-xs text-slate-500">
-            {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
-            {activeDataset.length.toLocaleString()} records · {availableSources.filter(s => s !== 'all').join(' · ') || 'No regulator feeds'}
-          </p>
-        </div>
-        <div className="ml-auto flex flex-col items-end gap-4">
-          {/* Driver / Assets toggle */}
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
-            {([
-              { key: 'all',     label: 'All',     Icon: List },
-              { key: 'drivers', label: 'Drivers', Icon: Users },
-              { key: 'assets',  label: 'Assets',  Icon: Truck },
-            ] as const).map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => { setPageView(key); setPage(1); setExpandedId(null); }}
-                className={cn(
-                  'flex items-center gap-2 text-xs font-medium px-4 py-1.5 rounded-md transition-all',
-                  pageView === key
-                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
+      {/* Header — stays put and SHRINKS as the ledger scrolls; returns when you
+          scroll back up. Nothing is removed on the way down: the view switch and both
+          buttons stay in place and keep working throughout.
+
+          The All / Drivers / Assets switch used to sit in a right-hand COLUMN stacked
+          above the buttons, which made the band two rows tall and put the page's main
+          control in its least reachable corner. It sits on the title row now. */}
+      <header className={cn('shrink-0 border-b border-slate-200 bg-white z-30', HEADER_TRANSITION, condensed ? 'shadow-md' : 'shadow-sm')}>
+        <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 sm:px-6', HEADER_TRANSITION, condensed ? 'py-2' : 'py-4')}>
+          <div className="min-w-0">
+            <nav className={cn('flex items-center gap-2 overflow-hidden text-sm font-medium text-slate-500', HEADER_TRANSITION,
+              condensed ? 'mb-0 max-h-0 opacity-0' : 'mb-1 max-h-6 opacity-100')} aria-label="Breadcrumb">
+              <span>Safety</span>
+              <span className="text-slate-300">/</span>
+              <span className="text-slate-900">Violations</span>
+            </nav>
+            <h1 className={cn('truncate font-bold tracking-tight text-slate-900', HEADER_TRANSITION, condensed ? 'text-base' : 'text-2xl')}>Violations</h1>
+            <p className={cn('overflow-hidden whitespace-nowrap text-xs text-slate-500', HEADER_TRANSITION,
+              condensed ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-6 opacity-100')}>
+              {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
+              {activeDataset.length.toLocaleString()} records · {availableSources.filter(s => s !== 'all').join(' · ') || 'No regulator feeds'}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {/* Scope switch — which ledger you are looking at, so it stays whatever the
+                header's height, on the same row as the actions it belongs beside. */}
+            <div className={cn('flex rounded-lg border border-slate-200/50 bg-slate-100 p-1', HEADER_TRANSITION)}>
+              {([
+                { key: 'all',     label: 'All',     Icon: List },
+                { key: 'drivers', label: 'Drivers', Icon: Users },
+                { key: 'assets',  label: 'Assets',  Icon: Truck },
+              ] as const).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => { setPageView(key); setPage(1); setExpandedId(null); }}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-3 text-xs font-medium transition-all',
+                    condensed ? 'h-6' : 'h-7',
+                    pageView === key
+                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                      : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-700',
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+              className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
               onClick={() => {}}
             >
               <Download className="w-4 h-4" />
               Export
             </button>
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all"
+              className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
               onClick={() => { setEditingRecord(null); setEditModalOpen(true); }}
             >
               <Plus className="w-4 h-4" />
@@ -1040,11 +1063,55 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
             </button>
           </div>
         </div>
+
+        {/* The KPI numbers, small — they fade in exactly as the cards below scroll
+            out of reach, so the figures framing the ledger never leave. */}
+        <div className="px-4 sm:px-6">
+          <KpiChipStrip items={kpiChips} condensed={condensed} />
+        </div>
+
+        {/* BASIC category strip — part of the HEADER, not the list, so nothing scrolls
+            underneath it and it is reachable from anywhere in 497 rows. It does NOT
+            condense with the title: navigation that disappears on scroll is not
+            navigation. On the shared rail, so the scrollbar is hidden and a strip wider
+            than the column gets edge chevrons instead of ending without warning. */}
+        <div className="w-full border-t border-slate-100 px-4 sm:px-6">
+          <TabScroller ariaLabel="Violation categories" activeKey={basicTab}>
+            {BASIC_TABS.map(t => {
+              const active = basicTab === t.key;
+              const count = basicCounts[t.key] ?? 0;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => { setBasicTab(t.key); setSubCatFilter(null); setPage(1); }}
+                  data-tab-active={active || undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    // Selection is BLUE, as on every other tab bar in the app.
+                    'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
+                    active
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
+                  )}
+                >
+                  {t.label}
+                  <span className={cn(
+                    'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
+                  )}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </TabScroller>
         </div>
       </header>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      {/* Scrollable content — its own scroller, so the header band above shrinks
+          instead of scrolling away. */}
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto min-h-0">
         <div className="p-4 space-y-4">
 
           {/* KPI Cards */}
@@ -1431,51 +1498,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
               ledger by BASIC, and a grid of coloured KPI cards underneath
               narrows the table to a specific sub-category. */}
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            {/* Tab strip */}
-            <div className="flex items-center gap-0.5 px-2 pt-2 overflow-x-auto border-b border-slate-200">
-              {BASIC_TABS.map(t => {
-                const active = basicTab === t.key;
-                const count = basicCounts[t.key] ?? 0;
-                const toneActive: Record<typeof t.tone, string> = {
-                  slate:  'border-slate-900 text-slate-900',
-                  blue:   'border-blue-600 text-blue-700',
-                  rose:   'border-rose-600 text-rose-700',
-                  amber:  'border-amber-600 text-amber-700',
-                  violet: 'border-violet-600 text-violet-700',
-                  orange: 'border-orange-600 text-orange-700',
-                  red:    'border-red-600 text-red-700',
-                  teal:   'border-teal-600 text-teal-700',
-                };
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => {
-                      setBasicTab(t.key);
-                      setSubCatFilter(null);
-                      setPage(1);
-                    }}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px',
-                      active
-                        ? toneActive[t.tone]
-                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50',
-                    )}
-                  >
-                    {t.label}
-                    <span className={cn(
-                      'inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-bold tabular-nums',
-                      active
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600',
-                    )}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
             {/* Sub-category KPI cards */}
             {(() => {
               if (subCategoryBreakdown.length === 0) {

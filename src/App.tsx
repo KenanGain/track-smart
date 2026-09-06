@@ -720,11 +720,12 @@ function App() {
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <TicketsPage accountId={account?.id} onNavigate={handleNavigate} />
         }
-        if (path === "/safety-events") {
-            return <SafetyEventsPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
-        }
-        if (path === "/safety-event/telematics-video") {
-            return <SafetyEventsPage currentUserName={currentUser?.name} onNavigate={handleNavigate} />
+        if (path === "/safety-events" || path === "/safety-event/telematics-video") {
+            // The carrier scope is passed so a warning letter issued from a review is filed
+            // against the right account’s driver.
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SafetyEventsPage currentUserName={currentUser?.name} onNavigate={handleNavigate} accountId={account?.id} />
         }
         if (path === "/safety-event/hours-of-service-violations") {
             const account = selectedAccount

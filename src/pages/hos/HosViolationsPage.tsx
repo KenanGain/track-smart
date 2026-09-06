@@ -19,6 +19,7 @@ import { HosLogsView } from './HosLogsView';
 import { COMPANY_TONE, HOS_COMPANIES } from '@/data/eld-providers.data';
 import { ActivityTimeline } from '@/components/ui/ActivityTimeline';
 import { ReviewResolutionTab, toActivityEntries } from '@/components/ui/ReviewResolution';
+import { issueWarningLetter } from '@/pages/compliance/warning-letters';
 import { ACTIVITY_BADGE_TONE, type ActivityKind } from '@/components/ui/activity-kinds';
 import { sendWidgetToDriver, consumePendingRecord, type RecordRef, type ChatWidget } from '@/pages/messages/messages-store';
 
@@ -382,6 +383,24 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
     }, `You've been assigned training: ${name}.`);
   };
 
+  // A warning letter is a DOCUMENT as well as a notice: it belongs in the driver's file.
+  // Issuing one therefore writes their Warning Letter compliance record, carrying the
+  // violation that caused it — the rule broken, the violation id, the date it happened.
+  const fileWarningLetter = (r: HosViolationRecord) => {
+    if (!r.driverId) return;
+    issueWarningLetter(accountId, {
+      kind: 'hos',
+      driverId: r.driverId,
+      driverName: r.driverName,
+      eventType: HOS_TYPE_BY_ID[r.typeId]?.label ?? 'Hours-of-service violation',
+      reference: r.id,
+      sourceId: r.id,
+      eventDate: r.dateTime,
+      summary: [HOS_TYPE_BY_ID[r.typeId]?.description, r.truckId ? `Unit ${r.truckId}` : null,
+        `${r.severity} severity`].filter(Boolean).join(' · '),
+    }, currentUserName);
+  };
+
   // Close a violation with a chosen resolution (disposition). Works on one or many.
   const closeWith = (ids: string[], disp: HosDisposition) => {
     const targets = records.filter(r => ids.includes(r.id));
@@ -395,6 +414,7 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
       return withAct(base, meta.kind, `Closed — ${meta.label}`);
     });
     targets.forEach(r => dispatchDisposition(r, disp));
+    if (disp === 'warning') targets.forEach(fileWarningLetter);
   };
   // Assigning training closes the violation with the "training" resolution.
   const assignTraining = (ids: string[], name: string) => {

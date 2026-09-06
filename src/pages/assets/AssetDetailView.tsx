@@ -3906,6 +3906,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
             {activeTab === 'Documents' && (
               <div className="animate-in fade-in">
                 <SubjectDocuments
+                  accountId={accountId}
                   embedded
                   entity="Asset"
                   subjectId={currentVehicle.id}

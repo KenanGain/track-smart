@@ -99,7 +99,9 @@ export function buildPrefill(a: Applicant): ApplicantPrefill {
         };
     }).filter((e) => e.employer);
 
-    const unempSec = section(sub, "Unemployment History");
+    // "Unemployment History" is what applications submitted before the rename carry, so both
+    // titles are read — an existing applicant's gaps must not vanish from the hiring file.
+    const unempSec = section(sub, "Employment Gaps") ?? section(sub, "Unemployment History");
     const unemployment: PrefillUnemployment[] = (unempSec?.groups ?? []).map((g) => {
         const dates = fieldIn(g, "dates");
         return { dates, ...splitDates(dates), comments: fieldIn(g, "comment") };

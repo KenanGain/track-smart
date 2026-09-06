@@ -1,10 +1,15 @@
 /**
  * Ticket Detail — a dedicated full page (not a modal), modelled on the Accident
- * detail page: a fixed summary header + a tab bar (Overview · Documents ·
+ * detail page: a fixed summary header + a tab bar (Overview · Documents · Review ·
  * Activity) over a scrollable body. Read-only; "Edit" opens the ticket form.
+ *
+ * The REVIEW tab is the same lifecycle a safety event or an HOS violation carries: verify
+ * what happened, then close it by choosing what to do about the driver. Choosing "Issue
+ * warning letter" files the letter as that driver's compliance record, carrying this
+ * ticket's own details — see `record-review` and `warning-letters`.
  */
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import {
     ChevronLeft, Pencil, FileText, User, MapPin, Ticket as TicketIcon, Hash,
     DollarSign, Clock, FileCheck, Paperclip, List, Share2, MoreVertical, Trash2,
@@ -16,6 +21,9 @@ import { ActivityTimeline, type ActivityEntry } from '@/components/ui/ActivityTi
 import { activityMeta, ACTIVITY_BADGE_TONE } from '@/components/ui/activity-kinds';
 import { ShareToChat, type ShareItem } from '@/components/share/ShareToChat';
 import { setMessagesFocus } from '@/pages/messages/messages-store';
+import { ReviewResolutionTab, toActivityEntries } from '@/components/ui/ReviewResolution';
+import { TrainingAssignDialog } from '@/components/ui/TrainingAssignDialog';
+import { useRecordReview } from '@/components/ui/record-review';
 import type { TicketRecord } from './tickets.data';
 
 const STATUS_TONE: Record<string, { chip: string; dot: string }> = {
@@ -154,10 +162,12 @@ function HeaderMenu({ items }: { items: { label: string; icon: LucideIcon; onCli
     );
 }
 
-export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate }: {
+export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate, accountId, currentUserName = 'Safety Manager' }: {
     ticket: TicketRecord; onBack: () => void; onEdit: () => void; onDelete?: () => void; onNavigate?: (path: string) => void;
+    accountId?: string; currentUserName?: string;
 }) {
-    const [tab, setTab] = useState<'overview' | 'documents' | 'activity'>('overview');
+    const [tab, setTab] = useState<'overview' | 'documents' | 'review' | 'activity'>('overview');
+    const [trainingOpen, setTrainingOpen] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
     const overviewRef = useRef<HTMLDivElement>(null);
     const { documents: allDocTypes } = useAppData();
@@ -210,10 +220,27 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate 
         { id: 'status', icon: CheckCircle2, iconTone: st.dot, title: `Status — ${ticket.status}`, by: clerk, detail: `Fine ${money}`, at: ticket.date, badge: officeBadge },
     ];
 
+    // A warning letter issued from a ticket must SAY it came from a ticket, and carry the
+    // citation with it — the charge, the offense number, the date. A file of letters that
+    // all read "Warning Letter" is unusable.
+    const warningSource = useMemo(() => ({
+        kind: 'ticket' as const,
+        driverId: ticket.driverId || '',
+        driverName: ticket.driverName,
+        eventType: ticket.violationType || 'Traffic violation',
+        reference: ticket.offenseNumber || ticket.id,
+        // The offense number is what a person reads; the row id is what opens the ticket.
+        sourceId: ticket.id,
+        eventDate: ticket.date,
+        summary: [ticket.violationType, ticket.location, money].filter(Boolean).join(' · '),
+    }), [ticket.driverId, ticket.driverName, ticket.violationType, ticket.offenseNumber, ticket.id, ticket.date, ticket.location, money]);
+    const rv = useRecordReview({ kind: 'ticket', id: ticket.id, accountId, currentUser: currentUserName, source: warningSource });
+
     const TABS: { id: typeof tab; label: string; count?: number }[] = [
         { id: 'overview', label: 'Overview' },
         { id: 'documents', label: 'Documents', count: docs.length || undefined },
-        { id: 'activity', label: 'Activity', count: activity.length },
+        { id: 'review', label: 'Review' },
+        { id: 'activity', label: 'Activity', count: activity.length + rv.activityCount },
     ];
 
     return (
@@ -479,12 +506,65 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate 
                         </div>
                     )}
 
+                    {tab === 'review' && (
+                        <div className="lg:flex lg:gap-6">
+                            <div className="min-w-0 flex-1 space-y-5">
+                                {/* What the resolution is about — repeated here so a reviewer
+                                    deciding on the driver is not reading the Overview tab from
+                                    memory, and so the warning letter's contents are visible
+                                    before it is issued. */}
+                                <InfoCard title="Citation under review" icon={TicketIcon}>
+                                    <Grid>
+                                        <Field label="Driver" value={ticket.driverName} />
+                                        <Field label="Offense #" value={ticket.offenseNumber} mono />
+                                        <Field label="Violation" value={ticket.violationType} />
+                                        <Field label="Date" value={ticket.date} />
+                                        <Field label="Location" value={ticket.location} />
+                                        <Field label="Fine" value={money} />
+                                    </Grid>
+                                </InfoCard>
+                                {rv.filedLetter && (
+                                    <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                                        <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                        <p className="text-[13px] leading-snug text-amber-800">
+                                            <span className="font-semibold">{rv.filedLetter}</span> filed to {ticket.driverName || 'the driver'}&rsquo;s
+                                            compliance records, carrying this citation&rsquo;s violation, offense number and date.
+                                        </p>
+                                    </div>
+                                )}
+                                <ReviewResolutionTab
+                                    status={rv.review.status}
+                                    subjectName={ticket.driverName || 'this driver'}
+                                    disposition={rv.review.disposition}
+                                    trainingName={rv.review.trainingName}
+                                    reviewedBy={rv.review.reviewedBy}
+                                    reviewNotes={rv.review.notes}
+                                    verified={rv.review.verified}
+                                    verifiedBy={rv.review.verifiedBy}
+                                    onDispose={(d) => rv.dispose(d)}
+                                    onAssignTraining={() => setTrainingOpen(true)}
+                                    onReopen={rv.reopen}
+                                    onAddNote={rv.addNote}
+                                    onVerify={rv.verify}
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     {tab === 'activity' && (
-                        <ActivityTimeline heading="Activity" entries={activity} />
+                        <ActivityTimeline heading="Activity" entries={[...activity, ...toActivityEntries(rv.review.activity, (at) => ({ date: at.slice(0, 10), time: at.slice(11) }))]} />
                     )}
 
                 </div>
             </div>
+
+            {trainingOpen && (
+                <TrainingAssignDialog
+                    count={1}
+                    onClose={() => setTrainingOpen(false)}
+                    onAssign={(name) => { rv.assignTraining(name); setTrainingOpen(false); }}
+                />
+            )}
 
             {shareOpen && (
                 <ShareToChat

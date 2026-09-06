@@ -23,6 +23,9 @@ import {
 } from '@/data/accident-records.data';
 
 import { ActivityTimeline, type ActivityEntry } from '@/components/ui/ActivityTimeline';
+import { ReviewResolutionTab } from '@/components/ui/ReviewResolution';
+import { TrainingAssignDialog } from '@/components/ui/TrainingAssignDialog';
+import { useRecordReview } from '@/components/ui/record-review';
 import { ShareToChat } from '@/components/share/ShareToChat';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -595,7 +598,7 @@ function DocListSection({ title, groups, onSeedSample, defaultAt, signable, driv
     );
 }
 
-type TabId = 'overview' | 'documents' | 'evidence' | 'case' | 'activity';
+type TabId = 'overview' | 'documents' | 'evidence' | 'review' | 'case' | 'activity';
 
 export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete, accountId }: {
     record: AccidentRecord;
@@ -606,6 +609,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     accountId?: string;
 }) {
     const [tab, setTab] = useState<TabId>('overview');
+    const [trainingOpen, setTrainingOpen] = useState(false);
     const [showReport, setShowReport] = useState(false);
     const [pendingCompose, setPendingCompose] = useState(false);   // top "Send to adjuster" → open the Communication composer
     const st = ACCIDENT_STATUS_META[record.status];
@@ -650,10 +654,31 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     const evidenceCount = (record.photoFiles?.length ?? 0) + (record.videoFiles?.length ?? 0)
         + (record.vehicleDamageFiles?.length ?? 0) + (record.dashcamFiles?.length ?? 0);
 
+    // A warning letter issued from an accident carries the accident with it — what type it
+    // was, its reference number, the date, and the severity that made it worth a letter.
+    const warningSource = useMemo(() => ({
+        kind: 'accident' as const,
+        driverId: record.driverId || '',
+        driverName: record.driverName,
+        eventType: title,
+        reference: record.accidentNumber || record.id,
+        // The accident number is what a person reads; the row id is what opens the accident.
+        sourceId: record.id,
+        eventDate: record.dateTime || record.reportedAt,
+        summary: [
+            record.numInjuries && record.numInjuries !== '0' ? `${record.numInjuries} injured` : (record.injuries ? 'injuries reported' : null),
+            record.numFatalities && record.numFatalities !== '0' ? `${record.numFatalities} fatality(ies)` : null,
+            record.towAway ? 'tow-away' : null,
+            record.location,
+        ].filter(Boolean).join(' · '),
+    }), [record.driverId, record.driverName, record.accidentNumber, record.id, record.dateTime, record.reportedAt, record.injuries, record.numInjuries, record.numFatalities, record.towAway, record.location, title]);
+    const rv = useRecordReview({ kind: 'accident', id: record.id, accountId, currentUser: record.verifiedBy || 'Safety Manager', source: warningSource });
+
     const TABS: { id: TabId; label: string; count?: number }[] = [
         { id: 'overview', label: 'Overview' },
         { id: 'documents', label: 'Documents', count: docCount },
         { id: 'evidence', label: 'Evidence', count: evidenceCount },
+        { id: 'review', label: 'Review' },
         { id: 'activity', label: 'Activity', count: activity.length },
     ];
 
@@ -735,10 +760,58 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
                     {tab === 'overview' && <OverviewTab record={record} />}
                     {tab === 'documents' && <DocumentsTab record={record} onUpdate={onUpdate} accountId={accountId} />}
                     {tab === 'evidence' && <EvidenceTab record={record} onUpdate={onUpdate} />}
+                    {tab === 'review' && (
+                        <div className="space-y-5">
+                            {/* The accident, restated — a reviewer deciding what to do about the
+                                driver should see what they are deciding on, and this is exactly
+                                what a warning letter issued here would carry. */}
+                            <InfoCard title="Accident under review" icon={AlertTriangle}>
+                                <Grid>
+                                    <Field label="Driver" value={record.driverName} />
+                                    <Field label="Accident #" value={record.accidentNumber} />
+                                    <Field label="Type" value={title} wide />
+                                    <Field label="When" value={fmtDateTime(record.dateTime)} />
+                                    <Field label="Injuries / fatalities" value={`${record.numInjuries ?? (record.injuries ? '—' : '0')} / ${record.numFatalities ?? '0'}`} />
+                                    <Field label="Location" value={record.location} wide />
+                                </Grid>
+                            </InfoCard>
+                            {rv.filedLetter && (
+                                <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                    <p className="text-[13px] leading-snug text-amber-800">
+                                        <span className="font-semibold">{rv.filedLetter}</span> filed to {record.driverName || 'the driver'}&rsquo;s
+                                        compliance records, carrying this accident&rsquo;s type, reference and date.
+                                    </p>
+                                </div>
+                            )}
+                            <ReviewResolutionTab
+                                status={rv.review.status}
+                                subjectName={record.driverName || 'this driver'}
+                                disposition={rv.review.disposition}
+                                trainingName={rv.review.trainingName}
+                                reviewedBy={rv.review.reviewedBy}
+                                reviewNotes={rv.review.notes}
+                                verified={rv.review.verified}
+                                verifiedBy={rv.review.verifiedBy}
+                                onDispose={(d) => rv.dispose(d)}
+                                onAssignTraining={() => setTrainingOpen(true)}
+                                onReopen={rv.reopen}
+                                onAddNote={rv.addNote}
+                                onVerify={rv.verify}
+                            />
+                        </div>
+                    )}
                     {tab === 'case' && <CaseTab record={record} onUpdate={onUpdate} onEdit={onEdit} autoCompose={pendingCompose} onAutoComposeHandled={() => setPendingCompose(false)} />}
                     {tab === 'activity' && <ActivityTab activity={activity} />}
                 </div>
             </div>
+            {trainingOpen && (
+                <TrainingAssignDialog
+                    count={1}
+                    onClose={() => setTrainingOpen(false)}
+                    onAssign={(name) => { rv.assignTraining(name); setTrainingOpen(false); }}
+                />
+            )}
         </div>
     );
 }

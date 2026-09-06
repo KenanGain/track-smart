@@ -750,8 +750,8 @@ const ProfileTab = ({ data, onEdit, scrollRootRef }: any) => {
         </TableWrap>
       </Section>
 
-      {/* 9. Unemployment */}
-      <Section icon={CalendarX} title="Unemployment">
+      {/* 9. Employment gaps */}
+      <Section icon={CalendarX} title="Employment Gaps">
         <TableWrap>
           <THead cols={['Dates', 'Comments']} />
           <tbody className="divide-y divide-slate-50">
@@ -761,7 +761,7 @@ const ProfileTab = ({ data, onEdit, scrollRootRef }: any) => {
                 <td className="px-5 py-3.5 text-slate-600">{u.comments || '—'}</td>
               </tr>
             ))}
-            {(!app.unemployment || app.unemployment.length === 0) && <EmptyRow cols={2} label="No unemployment periods reported." />}
+            {(!app.unemployment || app.unemployment.length === 0) && <EmptyRow cols={2} label="No employment gaps reported." />}
           </tbody>
         </TableWrap>
       </Section>
@@ -1115,7 +1115,16 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   const [driverData, setDriverData] = useState(initialDriverData);
   const [shareOpen, setShareOpen] = useState(false);
 
-  // ── Condensing header ──
+  /** How far above the top a tab switch glides in from — anything further is skipped. */
+const SETTLE_FROM = 560;
+
+// Every property the condensing header animates, named explicitly. `transition-all` would
+// have the browser diff and interpolate EVERY animatable property on all twelve of these
+// elements each time the band flips, which is most of the cost of the transition.
+const HEADER_TRANSITION =
+  'transition-[height,max-height,width,max-width,padding,margin,gap,opacity,font-size,border-width] duration-300 ease-out';
+
+// ── Condensing header ──
   // The body scrolls inside its own container, so the header band never scrolls
   // away — it just shrinks. Two thresholds (condense past 56px, expand back under
   // 16px) give it hysteresis so a header that changes height can't oscillate:
@@ -1123,23 +1132,76 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   // otherwise cross a single threshold back the other way and flip it forever.
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
   const [condensed, setCondensed] = useState(false);
-  const onBodyScroll = useCallback(() => {
-    const top = bodyScrollRef.current?.scrollTop ?? 0;
-    setCondensed(prev => (prev ? top > 16 : top > 56));
+  const condensedRef = useRef(false);
+  // Scrolling down is what condenses the header and scrolling back to the top is what
+  // expands it — nothing else should. A tab switch glides the body back to the top itself,
+  // and every frame of that glide fires a scroll event; none of them are the user, so the
+  // header ignores the whole run. `settling` holds until the glide lands, with a backstop
+  // in case the user grabs the scroller mid-glide and it never arrives.
+  const settling = useRef(false);
+  const settleTimer = useRef<number | undefined>(undefined);
+  const stopSettling = useCallback(() => {
+    settling.current = false;
+    if (settleTimer.current !== undefined) { clearTimeout(settleTimer.current); settleTimer.current = undefined; }
   }, []);
+  // Scroll events outrun paint several times over, and each one re-rendered this whole
+  // view. One read per frame is all the header can actually show, and the flip is
+  // committed only when it changes — so scrolling within a state now costs nothing.
+  const scrollRaf = useRef<number | undefined>(undefined);
+  const onBodyScroll = useCallback(() => {
+    if (scrollRaf.current !== undefined) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = undefined;
+      const el = bodyScrollRef.current;
+      if (!el) return;
+      const top = el.scrollTop;
+      if (settling.current) { if (top <= 0) stopSettling(); return; }
+      const next = condensedRef.current ? top > 16 : top > 56;
+      if (next === condensedRef.current) return;
+      condensedRef.current = next;
+      setCondensed(next);
+    });
+  }, [stopSettling]);
 
-  // A tab switch resets the body to the top, so expand the header with it.
+  // A tab switch shows the new tab from ITS top, but leaves the header exactly as the
+  // user left it — switching tabs is not scrolling. The one exception is a tab too short
+  // to scroll: there is no gesture available to expand the header again, so it would be
+  // stuck condensed. Measured after paint, since it depends on the new tab's height.
   useEffect(() => {
     const el = bodyScrollRef.current;
-    if (el) el.scrollTop = 0;
-    setCondensed(false);
-  }, [activeTab]);
+    if (!el) return;
+    if (el.scrollTop > 0) {
+      settling.current = true;
+      if (settleTimer.current !== undefined) clearTimeout(settleTimer.current);
+      settleTimer.current = window.setTimeout(stopSettling, 700);
+      if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { el.scrollTop = 0; stopSettling(); }
+      else {
+        // Capped first: from far down the page the glide would be a long blur of content
+        // nobody asked to see. The skipped part is invisible either way — the tab's content
+        // has just been replaced — so what is left is the same short, consistent settle
+        // however far down the previous tab was.
+        if (el.scrollTop > SETTLE_FROM) el.scrollTop = SETTLE_FROM;
+        el.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+    const raf = requestAnimationFrame(() => {
+      const body = bodyScrollRef.current;
+      if (body && body.scrollHeight <= body.clientHeight + 1) { condensedRef.current = false; setCondensed(false); }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeTab, stopSettling]);
+
+  // Nothing scheduled may outlive the view.
+  useEffect(() => () => {
+    if (scrollRaf.current !== undefined) cancelAnimationFrame(scrollRaf.current);
+    if (settleTimer.current !== undefined) clearTimeout(settleTimer.current);
+  }, []);
   const { keyNumbers, documents, tagSections, getDocumentTypeById } = useAppData();
 
   // Sync state if initialData changes
   useEffect(() => { setDriverData(initialDriverData); }, [initialDriverData]);
 
-  // Default Compliances & Documents data for THIS driver (embedded in the Compliances / Monitoring tabs).
+  // Default Compliances & Documents data for THIS driver (embedded in the Records / Monitoring tabs).
   const { all: cdAll, getEntry: cdGetEntry, setEntry: cdSetEntry, setEntries: cdSetEntries } = useComplianceData(accountId);
   const { records: cdCustomRecords } = useCustomSafetyRecords(accountId);
   const cdRecords = React.useMemo(() => [...cdCustomRecords, ...SAFETY_RECORDS], [cdCustomRecords]);
@@ -1791,8 +1853,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Profile',        label: 'Profile',          icon: User,            group: 'identity' },
         { id: 'Compliance',     label: 'Monitoring',       icon: ShieldCheck,     group: 'identity' },
         // Records
-        { id: 'Documents',      label: 'Compliances',      icon: FileText,        group: 'records' },
-        { id: 'Application',    label: 'Forms',            icon: ClipboardList,   group: 'records' },
+        { id: 'Documents',      label: 'Records',          icon: FileText,        group: 'records' },
+        { id: 'Application',    label: 'Consent Forms',    icon: ClipboardList,   group: 'records' },
         { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
         // Operations
         { id: 'HoursOfService', label: 'Hours of Service', icon: Clock,           group: 'operations' },
@@ -1949,7 +2011,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             Thin h-11 strip on slate-50 with a single bottom border. */}
         <header className={cn(
           'px-4 sm:px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60 overflow-hidden',
-          'transition-all duration-300 ease-out',
+          HEADER_TRANSITION,
           condensed ? 'h-0 opacity-0 border-b-0' : 'h-11 opacity-100',
         )}>
           <button
@@ -1970,14 +2032,14 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         </header>
 
         {/* Profile Header */}
-        <div className={cn('w-full px-4 sm:px-8 transition-all duration-300 ease-out', condensed ? 'py-2.5' : 'py-5')}>
+        <div className={cn('w-full px-4 sm:px-8', HEADER_TRANSITION, condensed ? 'py-2.5' : 'py-5')}>
           <div className={cn(
             'flex gap-4',
             condensed
               ? 'flex-row items-center justify-between gap-3'
               : 'flex-col lg:flex-row lg:items-start lg:justify-between',
           )}>
-            <div className={cn('flex items-center min-w-0 transition-all duration-300 ease-out', condensed ? 'gap-3' : 'gap-5')}>
+            <div className={cn('flex items-center min-w-0', HEADER_TRANSITION, condensed ? 'gap-3' : 'gap-5')}>
               {/* Back arrow — takes over from the collapsed breadcrumb */}
               <button
                 type="button"
@@ -1985,7 +2047,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 title="Back to Drivers"
                 className={cn(
                   'shrink-0 inline-flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 overflow-hidden',
-                  'transition-all duration-300 ease-out',
+                  HEADER_TRANSITION,
                   condensed ? 'h-8 w-8 opacity-100' : 'h-8 w-0 opacity-0 pointer-events-none',
                 )}
               >
@@ -1996,7 +2058,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               <div className="relative flex-shrink-0">
                 <div className={cn(
                   'rounded-full bg-gradient-to-br from-slate-100 to-slate-200 border-white shadow-md flex items-center justify-center font-bold text-slate-600 overflow-hidden ring-1 ring-slate-200/60',
-                  'transition-all duration-300 ease-out',
+                  HEADER_TRANSITION,
                   condensed ? 'w-10 h-10 border-2 text-sm' : 'w-[72px] h-[72px] border-[3px] text-xl',
                 )}>
                   {driverData.photo
@@ -2005,7 +2067,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                   }
                 </div>
                 <div className={cn(
-                  'absolute bottom-0 right-0 rounded-full border-2 border-white shadow-sm transition-all duration-300 ease-out',
+                  'absolute bottom-0 right-0 rounded-full border-2 border-white shadow-sm', HEADER_TRANSITION,
                   condensed ? 'w-3 h-3' : 'w-4 h-4',
                   driverData.status === 'Active' ? 'bg-emerald-500' : driverData.status === 'On Leave' ? 'bg-amber-400' : 'bg-slate-400',
                 )} title={driverData.status} />
@@ -2013,9 +2075,9 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
               {/* Name & Meta */}
               <div className="min-w-0">
-                <div className={cn('flex items-center gap-3 transition-all duration-300 ease-out', condensed ? 'mb-0' : 'mb-1')}>
+                <div className={cn('flex items-center gap-3', HEADER_TRANSITION, condensed ? 'mb-0' : 'mb-1')}>
                   <h1 className={cn(
-                    'font-bold text-slate-900 tracking-tight truncate transition-all duration-300 ease-out',
+                    'font-bold text-slate-900 tracking-tight truncate', HEADER_TRANSITION,
                     condensed ? 'text-base' : 'text-2xl',
                   )}>{driverData.firstName} {driverData.lastName}</h1>
                   <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded border border-blue-200 uppercase tracking-wider whitespace-nowrap">
@@ -2023,7 +2085,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                   </span>
                   {/* Condensed-only: the identifiers the collapsed meta line would lose */}
                   <span className={cn(
-                    'hidden items-center gap-2 text-[11px] text-slate-500 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out lg:flex',
+                    'hidden items-center gap-2 text-[11px] text-slate-500 overflow-hidden whitespace-nowrap lg:flex', HEADER_TRANSITION,
                     condensed ? 'max-w-[24rem] opacity-100' : 'max-w-0 opacity-0',
                   )}>
                     <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">{driverData.id}</span>
@@ -2031,7 +2093,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                   </span>
                 </div>
                 <div className={cn(
-                  'flex items-center gap-2.5 text-xs text-slate-500 flex-wrap overflow-hidden transition-all duration-300 ease-out',
+                  'flex items-center gap-2.5 text-xs text-slate-500 flex-wrap overflow-hidden', HEADER_TRANSITION,
                   condensed ? 'max-h-0 opacity-0 mt-0' : 'max-h-12 opacity-100 mt-1',
                 )}>
                   <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200 text-[11px]">{driverData.id}</span>
@@ -2057,7 +2119,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
             {/* Actions — uniform height, consistent icon sizing, mobile-friendly */}
             <div className={cn(
-              'flex items-center gap-2 flex-shrink-0 flex-wrap transition-all duration-300 ease-out',
+              'flex items-center gap-2 flex-shrink-0 flex-wrap', HEADER_TRANSITION,
               condensed ? 'pt-0 self-center [&>button]:h-8' : 'pt-1 self-start lg:self-auto',
             )}>
               <button
@@ -2113,7 +2175,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         {/* Header stat cards — persistent across all tabs, mirrors the
             MyProfilePage layout (4 cards: Status, Tenure, CDL, Terminal). */}
         <div className={cn(
-          'w-full px-4 sm:px-8 overflow-hidden transition-all duration-300 ease-out',
+          'w-full px-4 sm:px-8 overflow-hidden', HEADER_TRANSITION,
           condensed ? 'max-h-0 pb-0 opacity-0' : 'max-h-64 pb-5 opacity-100',
         )}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2754,6 +2816,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             {activeTab === 'Documents' && (
                 <div className="animate-in fade-in">
                     <SubjectDocuments
+                        accountId={accountId}
                         embedded
                         entity="Driver"
                         subjectId={driverData.id}
@@ -2764,6 +2827,9 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                         setEntry={cdSetEntry}
                         setEntries={cdSetEntries}
                         all={cdAll}
+                        // A record filed from elsewhere links back to it — a warning letter to the
+                        // ticket or accident it was issued on. That needs somewhere to navigate.
+                        onNavigate={onNavigate}
                     />
                 </div>
             )}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SAFETY_RECORDS, recordFields, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { SAFETY_RECORDS, recordFields, fieldPool, defaultVersionLabel, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
@@ -75,6 +75,13 @@ export interface DocVersion {
     /** Pinned as THE current record. Unset on every version → the newest one is current.
      *  Only one version in a list carries it; the save paths clear it from the others. */
     isCurrent?: boolean;
+    /**
+     * The id of the record on ANOTHER page that this version came from — the ticket, accident,
+     * HOS violation or safety event a warning letter was issued on. Set when a review files
+     * the record; a version typed in by hand has none. Read by fields that declare a
+     * `sourceLink`, which turn their value into a link that opens exactly that record.
+     */
+    sourceRecordId?: string;
     // Insurance-only fields (multi-instance records).
     producer?: string;    // broker / producer of record
     insurer?: string;     // insurance carrier
@@ -210,6 +217,15 @@ export function newVersion(label: string): DocVersion {
     };
 }
 
+/** A blank version with the record's own catalog defaults applied — today only the
+ *  pre-selected country of a jurisdiction-fixed record (a US-federal report), but this is
+ *  where any future per-record default belongs. */
+export function blankVersion(record: SafetyRecord, label: string): DocVersion {
+    const v = newVersion(label);
+    if (record.defaultCountry) v.country = record.defaultCountry;
+    return v;
+}
+
 type Store = Record<string, RecordDataEntry>; // `${accountId}::${subjectId}::${recordId}` -> entry
 
 const KEY = 'compliance-data-v3';
@@ -239,7 +255,7 @@ function persist(all: Store) {
 // future rule change without another migration.
 // Bump this (not KEY) whenever the catalog's field rules change again — bumping KEY would
 // discard every record the user has captured.
-const MIGRATION_KEY = 'compliance-data-catalog-v7';
+const MIGRATION_KEY = 'compliance-data-catalog-v24';
 
 /** Deterministic pick so a migrated version keeps the same value on every reload. */
 function pickFor(seed: string, options: string[]): string {
@@ -263,26 +279,40 @@ function migrateVersion(r: SafetyRecord | undefined, v: DocVersion): DocVersion 
     // Jurisdiction fields the record no longer shows would otherwise stay in the data.
     if (r.hideCountry && ((next ?? v).country || (next ?? v).stateProv)) patch({ country: '', stateProv: '' });
     else if (r.hideState && (next ?? v).stateProv) patch({ stateProv: '' });
+    // A record with a fixed jurisdiction fills its country in rather than leaving it blank.
+    if (r.defaultCountry && !(next ?? v).country) patch({ country: r.defaultCountry });
+    // A status the record no longer captures would keep showing in the list column.
+    if (r.hideStatus && (next ?? v).status) patch({ status: '' });
     // A status value from the old generic list is meaningless under the record's own set.
     if (r.statusOptions?.length) {
         const cur = (next ?? v).status;
         if (cur && !r.statusOptions.includes(cur)) patch({ status: r.statusOptions[0] });
     }
     // Fields added to a record after the fact start unanswered — give stored history a
-    // plausible value so the new columns don't read as an empty grid.
+    // plausible value so the new columns don't read as an empty grid. Date fields are seeded
+    // off the version id ALONE, never the field key: every date field on the record then picks
+    // the same entry of its matched pool, so a start date lands before its end date. Derived
+    // fields have no pool — they are computed from those dates, never stored.
     for (const f of recordFields(r)) {
-        const pool = f.kind === 'select' ? f.options : (f.demoValues ?? []);
+        const pool = fieldPool(f);
         if (pool.length && !(next ?? v).fields?.[f.key]) {
-            patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: pickFor(v.id + f.key, pool) } });
+            patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: pickFor(f.kind === 'date' ? v.id : v.id + f.key, pool) } });
         }
     }
     // Monitoring the record no longer offers must not stay switched on — it would keep
     // firing alerts from a config the form can no longer reach.
     if (r.hideMonitoring && (next ?? v).monitoring?.enabled) patch({ monitoring: { ...(next ?? v).monitoring, enabled: false } });
-    // "Record 2026" → "CDL 2026" for records now named after themselves.
-    if (r.nameFromRecord) {
-        const m = /^Record\s*(\d{4})?$/.exec((next ?? v).label.trim());
-        if (m) patch({ label: m[1] ? `${r.recordName} ${m[1]}` : r.recordName });
+    // "Record 2026" → "Driver License 2026" for records now named after themselves, and the
+    // same for records already named after a PREVIOUS name of the record (a rename would
+    // otherwise leave a list mixing both). Built from defaultVersionLabel so the migrated
+    // name is exactly what a new record would be given today.
+    if (r.nameFromRecord || r.versionName) {
+        const label = (next ?? v).label.trim();
+        const stale = ['Record', r.versionRenamedFrom].filter(Boolean) as string[];
+        for (const from of stale) {
+            const m = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d{4})?$`, 'i').exec(label);
+            if (m) { patch({ label: defaultVersionLabel(r, m[1]) }); break; }
+        }
     }
     return next;
 }

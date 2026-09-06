@@ -15,7 +15,7 @@ import {
 import { useCustomSafetyRecords, newCustomRecordId } from '@/pages/compliance/safety-custom-records.data';
 import { useSafetyTags } from '@/pages/compliance/safety-tags.data';
 import { VersionFields, fillVersionDemo, seedMonitoring } from '@/pages/compliance/DefaultComplianceDataPage';
-import { newVersion, type DocVersion } from '@/pages/compliance/compliance-data-store';
+import { blankVersion, type DocVersion } from '@/pages/compliance/compliance-data-store';
 
 /**
  * Settings → New Compliance & Documents — read-only classification catalog.
@@ -445,7 +445,7 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
 
     const previewRecord = makeRecord(initial?.id ?? 'preview');
     const showForm = () => {
-        if (!pv) setPv({ ...newVersion(defaultVersionLabel(previewRecord)), monitoring: seedMonitoring(previewRecord) });
+        if (!pv) setPv({ ...blankVersion(previewRecord, defaultVersionLabel(previewRecord)), monitoring: seedMonitoring(previewRecord) });
         setView('form');
     };
 
@@ -1027,7 +1027,7 @@ function RecordDetailModal({ record, tab, mode, onTab, onClose }: {
  *  form is rendered read-only via a disabled fieldset. */
 function DefaultFormPreview({ r, editable }: { r: SafetyRecord; editable: boolean }) {
     const { tags: tagCatalog, add: addToCatalog } = useSafetyTags();
-    const seed = (): DocVersion => ({ ...newVersion(defaultVersionLabel(r)), monitoring: seedMonitoring(r) });
+    const seed = (): DocVersion => ({ ...blankVersion(r, defaultVersionLabel(r)), monitoring: seedMonitoring(r) });
     const [v, setV] = useState<DocVersion>(seed);
     // Re-seed when the modal is pointed at a different record.
     useEffect(() => { setV(seed()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [r.id]);
@@ -1111,7 +1111,11 @@ function DataView({ r }: { r: SafetyRecord }) {
         ['Configured Date', r.configuredDate || '—'],
         ['Tracks Issue Date', r.tracksIssueDate ? 'Yes' : 'No'],
         // Record-specific form fields — the extra selects / text fields and any custom status set.
-        ...recordFields(r).map(f => [f.label, f.kind === 'select' ? f.options.join(' · ') : 'Free text'] as [string, string]),
+        ...recordFields(r).map(f => [f.label,
+            f.kind === 'select' ? f.options.join(' · ')
+            : f.kind === 'date' ? 'Date'
+            : f.kind === 'derived' ? 'Calculated automatically'
+            : 'Free text'] as [string, string]),
         ...(r.statusOptions ? [[r.statusLabel ?? 'Status', r.statusOptions.join(' · ')] as [string, string]] : []),
         ['Jurisdiction', r.jurisdiction],
         ['Monitoring Guidance', r.monitor],

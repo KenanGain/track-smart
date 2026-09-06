@@ -213,7 +213,6 @@ const custom = (label: string, req: DqRequirement, mon: MonToken, extra: Partial
 
 const SEED_SECTIONS: SeedSection[] = [
     { title: "DQ File", items: [
-        doc("Annual Record of Violations Review", "cert-violations", "must", "annual", { list: true }),
         custom("Application for Employment", "must", "status"),
         doc("Certificate of Road Test or Equivalent Evaluation", "road-test", "must", "status"),
         doc("Clearing House Query", "clearinghouse-query", "optional", "status", { note: "If going to USA" }),
@@ -246,8 +245,7 @@ const SEED_SECTIONS: SeedSection[] = [
     { title: "Driver Personal & Commercial Abstracts", items: [
         doc("Driver Abstracts / MVR", "mvr", "must", "annual", { list: true }),
         doc("Driver PSP", "psp-report", "optional", "status", { note: "If going to USA" }),
-        doc("Driver CVDR / CDR / CDA", "driver-cvdr", "must", "annual", { list: true }),
-        doc("Proof of Citizenship", "birth-certificate", "must", "status"),
+        doc("Driver Commercial Abstract", "driver-cvdr", "must", "annual", { list: true }),
         doc("US Visa", "visa", "optional", "expiry", { note: "If going to USA" }),
         custom("Copy of Work Permit", "optional", "expiry", { note: "If applicable" }),
     ] },

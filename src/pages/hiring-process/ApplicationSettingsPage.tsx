@@ -1,6 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical, User, Phone, CreditCard, ShieldAlert, Briefcase, CalendarClock, GraduationCap, Car, Ban, Award, BellRing } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical, User, Phone, CreditCard, ShieldAlert, Briefcase, CalendarClock, GraduationCap, Car, Ban, Award } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MonitoringToggle } from "@/pages/compliance/MonitoringToggle";
+import { ALL_COUNTRIES } from "@/pages/compliance/jurisdiction.data";
+import { UploadZone } from "@/components/ui/UploadZone";
+import { defaultVersionLabel, MAX_RECORD_NAME, type SafetyRecord } from "@/pages/compliance/safety-software-catalog.data";
+import {
+    travelDocFields, travelDocsFromApplication, legacyTravelShape,
+    travelQuestionGroups, isQuestionRecord, QUESTION_RECORD_IDS,
+    requiredTravelRecords, travelStatusOptions, countriesNeedingAuthorization,
+    emptyTravelProfile, isoDate, fromIsoDate,
+    type TravelDocs, type TravelDocCapture, type TravelProfile,
+} from "@/pages/compliance/travel-docs-bridge";
 import { WizardStepNav, type WizardStep } from "@/components/ui/WizardEditor";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -10,7 +21,6 @@ import { Label } from "@/components/ui/label";
 import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { ConsentPhase } from "./ApplicationConsents";
 import { consentsForType, consentRegion, consentForms } from "./policy-forms.data";
@@ -24,7 +34,7 @@ import type { TicketViolation } from "@/pages/tickets/tickets.data";
  * The Application Form an applicant completes when they apply. Renders the
  * entire form top-to-bottom: Personal Information, Address (with a 3-year
  * residence-history collector), Contact, Licenses (multiple), Military Service
- * (gated), and Employment / Education / Unemployment history - each gated by a
+ * (gated), and Employment / Education history and employment gaps - each gated by a
  * Yes/No and each supporting multiple entries via an overview list + modal.
  */
 
@@ -51,8 +61,6 @@ export const CA_PROVINCES = [
 ];
 export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
 const POSITIONS = ["Company Driver", "Owner Operator", "Lease Operator", "Driver Trainee", "Other"];
-const VISA_TYPES = ["B1/B2", "TN", "H-2B", "L-1", "Other"];
-const WORK_PERMIT_TYPES = ["Open Work Permit", "Employer-Specific (LMIA)", "Post-Graduation (PGWP)", "Other"];
 const CONTACT_METHODS = ["Primary Phone", "Cell Phone", "Email Address"];
 const CONTACT_TIMES = ["Any", "Morning", "Afternoon", "Evening"];
 export const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
@@ -250,54 +258,6 @@ function FormSection({ title, children }: { title: string; children: React.React
     );
 }
 
-// App-side expiry-monitoring block for a travel document (visa / work permit).
-// Only rendered on the office-facing form (Add Driver, page mode) — never on the
-// driver-facing application. Toggling it on seeds an expiry alert for the driver.
-const REMINDER_DAY_OPTIONS = [90, 60, 30, 14, 7];
-function TravelDocMonitoring({ label, enabled, onToggle, reminderDays, onReminders }: {
-    label: string;
-    enabled: boolean;
-    onToggle: (v: boolean) => void;
-    reminderDays: number[];
-    onReminders: (days: number[]) => void;
-}) {
-    return (
-        <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                        <BellRing className="h-4 w-4 text-blue-600" /> Monitor {label} expiry
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">App-side only — seeds an expiry alert for this driver. Not shown to the driver.</p>
-                </div>
-                <Switch checked={enabled} onCheckedChange={onToggle} />
-            </div>
-            {enabled && (
-                <div className="mt-3">
-                    <p className="mb-1.5 text-[11px] font-semibold text-slate-500">Remind before expiry</p>
-                    <div className="flex flex-wrap gap-2">
-                        {REMINDER_DAY_OPTIONS.map((d) => {
-                            const on = reminderDays.includes(d);
-                            return (
-                                <button
-                                    key={d}
-                                    type="button"
-                                    onClick={() => onReminders(on ? reminderDays.filter((x) => x !== d) : [...reminderDays, d].sort((a, b) => b - a))}
-                                    className={cn(
-                                        "rounded-full border px-3 py-1 text-xs font-medium transition",
-                                        on ? "border-blue-500 bg-blue-100 text-blue-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                                    )}
-                                >
-                                    {d} days
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
 
 // Single labelled image/PDF upload box (prototype — stores the chosen file name).
 function ImageUpload({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (name: string) => void }) {
@@ -572,71 +532,6 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
     );
 }
 
-function Modal({ title, children, onClose, onSave, saveLabel = "Save" }: {
-    title: string; children: React.ReactNode; onClose: () => void; onSave: () => void; saveLabel?: string;
-}) {
-    return (
-        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col p-0">
-                <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
-                    <DialogTitle>{title}</DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">{children}</div>
-                <DialogFooter className="mt-0 gap-3 border-t border-slate-200 px-6 py-4">
-                    <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={onSave}>{saveLabel}</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-// Reusable list of entries with overview cards + add/edit/delete + modal editor.
-function MultiEntry<T,>({ items, setItems, factory, addLabel, modalTitle, cardTitle, renderCard, renderForm }: {
-    items: T[];
-    setItems: React.Dispatch<React.SetStateAction<T[]>>;
-    factory: () => T;
-    addLabel: string;
-    modalTitle: string;
-    cardTitle: (item: T) => React.ReactNode;
-    renderCard: (item: T) => React.ReactNode;
-    renderForm: (draft: T, set: (patch: Partial<T>) => void) => React.ReactNode;
-}) {
-    const [editing, setEditing] = useState<{ idx: number; draft: T } | null>(null);
-    const set = (patch: Partial<T>) => setEditing((e) => (e ? { ...e, draft: { ...e.draft, ...patch } } : e));
-    const save = () => {
-        if (!editing) return;
-        setItems((prev) => (editing.idx === -1 ? [...prev, editing.draft] : prev.map((it, i) => (i === editing.idx ? editing.draft : it))));
-        setEditing(null);
-    };
-    return (
-        <div className="space-y-4">
-            {items.length > 0 && (
-                <div className="space-y-3">
-                    {items.map((item, i) => (
-                        <div key={i} className="relative rounded-lg bg-slate-100/80 p-4 pr-12">
-                            <div className="mb-2 text-sm font-semibold text-blue-600">{cardTitle(item)}</div>
-                            <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">{renderCard(item)}</div>
-                            <div className="absolute right-3 top-4 flex flex-col gap-2.5">
-                                <button type="button" onClick={() => setEditing({ idx: i, draft: item })} className="text-slate-400 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                                <button type="button" onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-            <Button type="button" onClick={() => setEditing({ idx: -1, draft: factory() })}>
-                <Plus className="h-4 w-4" /> {addLabel}
-            </Button>
-            {editing && (
-                <Modal title={modalTitle} onClose={() => setEditing(null)} onSave={save}>
-                    {renderForm(editing.draft, set)}
-                </Modal>
-            )}
-        </div>
-    );
-}
-
 // Inline record list: each record edits in place with a Save button, then
 // collapses to a summary card (Edit / Delete). New records open in edit mode.
 export function InlineCollector<T,>({ items, setItems, factory, addLabel, cardTitle, renderCard, renderForm }: {
@@ -756,63 +651,6 @@ export function AccidentFields({ d, set }: { d: Accident; set: (patch: Partial<A
 }
 export const accidentCard = (d: Accident) => (<><KV k="Date" v={fmtMY(d.date)} /><KV k="State / Prov" v={d.state ? abbr(d.state) : "-"} /><KV k="At Fault" v={d.atFault || "-"} /><KV k="Ticketed" v={d.ticketed || "-"} /></>);
 
-// ----------------------------- residence history modal -----------------------------
-function ResidenceModal({ rows, onClose, onSave }: {
-    rows: ResidenceRow[]; onClose: () => void; onSave: (rows: ResidenceRow[]) => void;
-}) {
-    const [draft, setDraft] = useState<ResidenceRow[]>(rows.length ? rows : [newResidenceRow()]);
-    const update = (i: number, patch: Partial<ResidenceRow>) =>
-        setDraft((d) => d.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-
-    return (
-        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col p-0">
-                <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
-                    <DialogTitle className="text-base font-semibold">Residence History</DialogTitle>
-                    <p className="text-sm font-normal text-slate-600">
-                        We need to collect the previous 3 year(s) of residence history.
-                        Please fill out all the information below to the best of your ability.
-                    </p>
-                </DialogHeader>
-                <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-6 py-5">
-                    {draft.map((row, i) => (
-                        <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-                                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
-                                    Residence {i + 1}{i === 0 && <span className="ml-1 text-xs font-normal text-slate-400">(most recent)</span>}
-                                </span>
-                                {draft.length > 1 && (
-                                    <Button type="button" variant="ghost" size="sm" onClick={() => setDraft((d) => d.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
-                                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                                    </Button>
-                                )}
-                            </div>
-                            <Grid>
-                                <Field className="sm:col-span-2" label="Street Address" required><TextInput value={row.address} placeholder="Street number and name" onChange={(e) => update(i, { address: e.target.value })} /></Field>
-                                <Field label="Unit / Suite / Apt #"><TextInput value={row.unit} placeholder="e.g. 4B" onChange={(e) => update(i, { unit: e.target.value })} /></Field>
-                                <Field label="Country" required><SearchSelect value={row.country} items={COUNTRIES} onChange={(v) => update(i, { country: v, state: "" })} /></Field>
-                                <Field label="City" required><TextInput value={row.city} onChange={(e) => update(i, { city: e.target.value })} /></Field>
-                                <Field label={row.country === "Canada" ? "Province" : "State"} required><SearchSelect value={row.state} placeholder="Please Choose" items={row.country === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => update(i, { state: v })} /></Field>
-                                <Field label={row.country === "Canada" ? "Postal Code" : "Zip Code"}><TextInput value={row.zip} onChange={(e) => update(i, { zip: e.target.value })} /></Field>
-                                <Field label="Lived here from" required><DateTriple value={row.start} years={DOB_YEARS} onChange={(v) => update(i, { start: v })} /></Field>
-                                <Field label="Lived here to" required><DateTriple value={row.end} years={DOB_YEARS} onChange={(v) => update(i, { end: v })} /></Field>
-                            </Grid>
-                        </div>
-                    ))}
-                    <Button type="button" variant="outline" onClick={() => setDraft((d) => [...d, newResidenceRow()])} className="w-full border-dashed">
-                        <Plus className="h-4 w-4" /> Add previous residence
-                    </Button>
-                </div>
-                <DialogFooter className="mt-0 gap-3 border-t border-slate-200 px-6 py-4">
-                    <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={() => onSave(draft)}>Update Residence History</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
 // Shared "End Date" hint used across history sections.
 const endDateHint = (what: string) => `(If you are currently ${what}, please enter the current month and year as the End Date)`;
 
@@ -876,6 +714,14 @@ export type ApplicationData = {
     wasUnemployed: string; unemployment: Unemployment[];
     attendedSchool: string; education: Education[];
     militaryEver: string; military: Military;
+    /**
+     * Every travel document the compliance catalog asks about, keyed by record id. This is
+     * the source of truth; `passport` / `visa` / `workPermit` below are derived from it and
+     * kept because the driver record and its mappers still read them.
+     */
+    /** Which country, whose citizen, what status — the answers that decide the rest. */
+    travelProfile?: TravelProfile;
+    travelDocs?: TravelDocs;
     passport: { number: string; country: string; expiry: DateVal; doc: string };
     // `monitor` + `reminderDays` are the app-side expiry-monitoring config for the
     // document (seeded when the office adds the driver; hidden on the driver-facing form).
@@ -926,7 +772,6 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [zip, setZip] = useState(d0?.address?.zip ?? "");
     const [resided3yr, setResided3yr] = useState(d0?.resided3yr ?? "");
     const [residenceRows, setResidenceRows] = useState<ResidenceRow[]>(d0?.residenceRows ?? []);
-    const [showResidence, setShowResidence] = useState(false);
 
     // Contact
     const [primaryPhone, setPrimaryPhone] = useState(d0?.phone ?? "");
@@ -967,27 +812,142 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [hadAccidents, setHadAccidents] = useState(d0?.hadAccidents ?? "");
     const [accidents, setAccidents] = useState<Accident[]>(d0?.accidents ?? []);
 
-    // Travel Documents — passport + visa (identity docs; used for cross-border travel).
-    const [passportNumber, setPassportNumber] = useState(d0?.passport?.number ?? "");
-    const [passportCountry, setPassportCountry] = useState(d0?.passport?.country ?? config.defaultCountry);
-    const [passportExpiry, setPassportExpiry] = useState<DateVal>(d0?.passport?.expiry ?? { ...emptyDate });
-    const [passportDoc, setPassportDoc] = useState(d0?.passport?.doc ?? "");
-    const [hasVisa, setHasVisa] = useState(d0?.visa?.has ?? "");
-    const [visaType, setVisaType] = useState(d0?.visa?.type ?? "");
-    const [visaNumber, setVisaNumber] = useState(d0?.visa?.number ?? "");
-    const [visaExpiry, setVisaExpiry] = useState<DateVal>(d0?.visa?.expiry ?? { ...emptyDate });
-    const [visaDoc, setVisaDoc] = useState(d0?.visa?.doc ?? "");
-    // App-side expiry monitoring for the visa (seeded on Add Driver; hidden on the driver form).
-    const [visaMonitor, setVisaMonitor] = useState(d0?.visa?.monitor ?? true);
-    const [visaReminderDays, setVisaReminderDays] = useState<number[]>(d0?.visa?.reminderDays ?? [90, 60, 30]);
-    // Work Permit — a separate document from the visa (its own expiry, monitored on the app side).
-    const [hasWorkPermit, setHasWorkPermit] = useState(d0?.workPermit?.has ?? "");
-    const [workPermitType, setWorkPermitType] = useState(d0?.workPermit?.type ?? "");
-    const [workPermitNumber, setWorkPermitNumber] = useState(d0?.workPermit?.number ?? "");
-    const [workPermitExpiry, setWorkPermitExpiry] = useState<DateVal>(d0?.workPermit?.expiry ?? { ...emptyDate });
-    const [workPermitDoc, setWorkPermitDoc] = useState(d0?.workPermit?.doc ?? "");
-    const [workPermitMonitor, setWorkPermitMonitor] = useState(d0?.workPermit?.monitor ?? true);
-    const [workPermitReminderDays, setWorkPermitReminderDays] = useState<number[]>(d0?.workPermit?.reminderDays ?? [90, 60, 30]);
+    // Travel Documents — driven by the COMPLIANCE CATALOG, not by fields hardcoded here:
+    // each travel record asks its own question, for its own fields, and what is answered is
+    // filed as that record for the driver (see `travel-docs-bridge`). A record added to the
+    // catalog appears here on its own.
+    const [travelProfile, setTravelProfile] = useState<TravelProfile>(() =>
+        d0?.travelProfile ?? emptyTravelProfile());
+    // Every country this driver is not a citizen of, so one authorization question each.
+    const needsAuth = useMemo(() => countriesNeedingAuthorization(travelProfile), [travelProfile]);
+    const [travelDocs, setTravelDocs] = useState<TravelDocs>(() =>
+        travelDocsFromApplication(d0, config.defaultCountry));
+    const setTravelDoc = (id: string, patch: Partial<TravelDocCapture>) =>
+        setTravelDocs(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    const setTravelField = (id: string, key: string, value: string) =>
+        setTravelDocs(prev => ({ ...prev, [id]: { ...prev[id], fields: { ...prev[id].fields, [key]: value } } }));
+    // The documents actually called for: the passport always, the right-to-work document the
+    // status names, and the visa if that question was answered Yes.
+    const travelRecords = useMemo(() => requiredTravelRecords(travelProfile, travelDocs), [travelProfile, travelDocs]);
+    // One travel document's fields, rendered from what its catalog record declares. Named so
+    // the passport can be placed before the visa question and the rest after it.
+    const renderTravelDoc = (record: SafetyRecord) => {
+                        const doc = travelDocs[record.id];
+                        if (!doc) return null;
+                        const f = travelDocFields(record);
+                        const label = doc.label ?? "";
+                        return (
+                            <FormSection key={record.id} title={record.recordName}>
+                                <Grid>
+                                    {/* What the filed record is called — the same field, and the same
+                                        40-character limit, as the office-side record form, prefilled
+                                        with the catalog's default name. On its own row so the pairs
+                                        below it (number/country, issue/expiry) stay together. */}
+                                    <div className="grid grid-cols-1 gap-x-6 sm:col-span-2 sm:grid-cols-2">
+                                        <Field label="Record name" required>
+                                            <div className="relative">
+                                                <TextInput value={label} maxLength={MAX_RECORD_NAME} className="pr-14"
+                                                    placeholder={`e.g. ${defaultVersionLabel(record)}`}
+                                                    onChange={(e) => setTravelDoc(record.id, { label: e.target.value })} />
+                                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-slate-400">{label.length}/{MAX_RECORD_NAME}</span>
+                                            </div>
+                                        </Field>
+                                    </div>
+                                    {f.extras.map((x) => (
+                                        <Field key={x.key} label={x.label}>
+                                            {x.kind === "select" ? (
+                                                <Select value={doc.fields[x.key] ?? ""} placeholder="Please Choose"
+                                                    onChange={(v) => setTravelField(record.id, x.key, v)}>
+                                                    <Options items={x.options} />
+                                                </Select>
+                                            ) : (
+                                                <TextInput value={doc.fields[x.key] ?? ""}
+                                                    onChange={(e) => setTravelField(record.id, x.key, e.target.value)} />
+                                            )}
+                                        </Field>
+                                    ))}
+                                    {f.number && (
+                                        <Field label={f.numberLabel}>
+                                            <TextInput value={doc.number} onChange={(e) => setTravelDoc(record.id, { number: e.target.value })} />
+                                        </Field>
+                                    )}
+                                    {f.country && (
+                                        <Field label="Issuing Country">
+                                            <SearchSelect value={doc.country} items={ALL_COUNTRIES} onChange={(v) => setTravelDoc(record.id, { country: v })} />
+                                        </Field>
+                                    )}
+                                    {f.issue && (
+                                        <Field label="Issue Date">
+                                            <DateInput value={isoDate(doc.issue)}
+                                                onChange={(e) => setTravelDoc(record.id, { issue: fromIsoDate(e.target.value) })} />
+                                        </Field>
+                                    )}
+                                    {f.expiry && (
+                                        <Field label={f.expiryLabel}>
+                                            <DateInput value={isoDate(doc.expiry)}
+                                                onChange={(e) => setTravelDoc(record.id, { expiry: fromIsoDate(e.target.value) })} />
+                                        </Field>
+                                    )}
+                                    {f.upload && (
+                                        <div className="sm:col-span-2">
+                                            <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{f.uploadLabel}</p>
+                                            {doc.doc ? (
+                                                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
+                                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm"><FileText className="h-4 w-4" /></div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-[13px] font-semibold text-slate-800">{doc.doc}</div>
+                                                        <div className="text-[11px] text-emerald-600">✓ Attached — filed with the record</div>
+                                                    </div>
+                                                    <button type="button" title="Remove" onClick={() => setTravelDoc(record.id, { doc: "" })}
+                                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+                                                </div>
+                                            ) : (
+                                                <UploadZone label="Drag a file here — or click — to upload the document"
+                                                    hint="Captures the document for this record; PDF, image or file"
+                                                    onFiles={(files) => { const n = files?.[0]?.name; if (n) setTravelDoc(record.id, { doc: n }); }} />
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Shown in BOTH modes: Add Driver and the hiring application file
+                                        the same record, so they must capture the same alert — a
+                                        document captured one way cannot arrive monitored differently
+                                        from the same document captured the other. */}
+                                    {f.monitoring && (
+                                        <div className="sm:col-span-2">
+                                            <MonitoringToggle record={record} monitoring={doc.monitoring}
+                                                issueDate={isoDate(doc.issue)} expiryDate={isoDate(doc.expiry)} status=""
+                                                onChange={(m) => setTravelDoc(record.id, { monitoring: m })} />
+                                        </div>
+                                    )}
+                                </Grid>
+                            </FormSection>
+                        );
+    };
+
+    // The question groups — "Do they have a …?", and the record's own form once answered Yes.
+    // Driven by the bridge so the form never has to know which records are asked this way.
+    const questionGroups = useMemo(() => travelQuestionGroups(), []);
+    const renderTravelQuestions = (group: { id: string; title: string; note?: string; records: SafetyRecord[] }) => (
+        <div key={group.id} className="space-y-6">
+            <FormSection title={group.title}>
+                {group.note && <p className="-mt-2 mb-3 text-[12px] italic text-slate-500">{group.note}</p>}
+                <Grid>
+                    {group.records.map((record) => {
+                        const doc = travelDocs[record.id];
+                        if (!doc) return null;
+                        return (
+                            <Field key={record.id} label={`Do they have a ${record.recordName}?`}>
+                                <YesNo value={doc.has} onChange={(v) => setTravelDoc(record.id, { has: v })} />
+                            </Field>
+                        );
+                    })}
+                </Grid>
+            </FormSection>
+            {/* Yes opens that record's own form — the same fields, upload and monitoring the
+                office sees on the record itself. */}
+            {group.records.filter((r) => travelDocs[r.id]?.has === "Yes").map(renderTravelDoc)}
+        </div>
+    );
 
     // Signed application document — page mode (Add Driver) uploads the signed
     // application/declaration instead of collecting a live e-signature.
@@ -1039,12 +999,34 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         setWasUnemployed("Yes");
         setUnemployment([{ start: { m: "04", y: "2020" }, end: { m: "08", y: "2020" }, comments: "Between roles during COVID-19." }]);
         setCopyEmail("kenan.gain@example.com");
-        // Travel documents — passport always; visa + work permit for cross-border drivers.
-        setPassportNumber("X1234567"); setPassportCountry(config.defaultCountry); setPassportExpiry({ m: "08", d: "15", y: "2030" }); setPassportDoc("passport.pdf");
-        if (isCross) {
-            setHasVisa("Yes"); setVisaType("TN"); setVisaNumber("V-99120"); setVisaExpiry({ m: "08", d: "15", y: "2029" }); setVisaDoc("visa.pdf");
-            setHasWorkPermit("Yes"); setWorkPermitType("Employer-Specific (LMIA)"); setWorkPermitNumber("WP-40877"); setWorkPermitExpiry({ m: "06", d: "30", y: "2028" }); setWorkPermitDoc("work-permit.pdf");
-        } else { setHasVisa("No"); setHasWorkPermit("No"); }
+        // Travel documents — everyone has a passport; the cross-border permissions only
+        // apply to cross-border drivers, and answering "No" is as real an answer as "Yes".
+        const sample: Record<string, Partial<TravelDocCapture>> = {
+            passport: { has: "Yes", number: "X1234567", country: config.defaultCountry, doc: "passport.pdf",
+                issue: { m: "08", d: "15", y: "2020" }, expiry: { m: "08", d: "15", y: "2030" } },
+            visa: isCross
+                ? { has: "Yes", number: "V-99120", fields: { visaType: "TN" }, doc: "visa.pdf",
+                    issue: { m: "08", d: "15", y: "2024" }, expiry: { m: "08", d: "15", y: "2029" } }
+                : { has: "No" },
+            "work-permit": isCross
+                ? { has: "Yes", number: "WP-40877", fields: { permitType: "Employer-Specific (LMIA)" }, doc: "work-permit.pdf",
+                    issue: { m: "07", d: "01", y: "2024" }, expiry: { m: "06", d: "30", y: "2028" } }
+                : { has: "No" },
+            "green-card": { has: "No" },
+            "pr-documents": { has: "No" },
+            // Border cards: asked of everyone, so both are answered. The FAST card is a
+            // cross-border credential, so only a cross-border driver carries one.
+            twic: { has: "No" },
+            "fast-card": isCross
+                ? { has: "Yes", number: "FC-3391842", country: config.defaultCountry, doc: "fast-card.pdf",
+                    expiry: { m: "11", d: "30", y: "2029" } }
+                : { has: "No" },
+        };
+        setTravelDocs(prev => {
+            const next: TravelDocs = { ...prev };
+            for (const [id, patch] of Object.entries(sample)) if (next[id]) next[id] = { ...next[id], ...patch };
+            return next;
+        });
         setSignedDoc("signed-application.pdf");
     };
 
@@ -1194,10 +1176,12 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                         <ToggleField label={`Do you have legal right to work in ${isCanada ? "Canada" : "the United States"}?`} checked={isCanada ? legalRightCA : legalRight} onChange={isCanada ? setLegalRightCA : setLegalRight} />
                     )}
                     <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
-                    {/* Consent-gating question — only relevant to the hiring wizard's consent step, not the Add Driver page. */}
-                    {mode !== "page" && (
-                        <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?" hint="If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step." required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
-                    )}
+                    {/* Asked in BOTH forms: it is part of the driver's record either way, and
+                        defaulting it on Add Driver left the same field holding an answer nobody
+                        gave. Only the consent-step consequence is wizard-specific. */}
+                    <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?"
+                        hint={mode === "page" ? "Drives which US-federal authorizations (FCRA, MVR, PSP, FMCSA Clearinghouse) apply to this driver." : "If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step."}
+                        required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
                 </Grid>
             ),
         },
@@ -1217,18 +1201,47 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                     </FormSection>
 
                     <FormSection title="Residence History">
-                        <div className="space-y-3">
-                            <Field label="Have you lived at this address for 3 or more years?" required><YesNo value={resided3yr} onChange={setResided3yr} /></Field>
+                        <div className="space-y-4">
+                            <Field label="Have you lived at this address for 3 or more years?" required>
+                                <YesNo value={resided3yr} onChange={(v) => { setResided3yr(v); if (v === "No" && residenceRows.length === 0) setResidenceRows([newResidenceRow()]); }} />
+                            </Field>
                             {resided3yr === "No" && (
-                                <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3.5">
-                                    <p className="text-sm text-amber-800">Because you've lived here for less than 3 years, please add your previous addresses to cover the last 3 years.</p>
-                                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                                        <button type="button" onClick={() => setShowResidence(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                                            <MapPin className="h-4 w-4" /> {residenceRows.length > 0 ? "Edit residence history" : "Add residence history"}
-                                        </button>
-                                        {residenceRows.length > 0 && <span className="text-xs font-medium text-emerald-600">{residenceRows.length} previous address{residenceRows.length === 1 ? "" : "es"} saved</span>}
+                                <>
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3.5">
+                                        <p className="text-sm text-amber-800">Because you've lived here for less than 3 years, please add your previous addresses to cover the last 3 years.</p>
                                     </div>
-                                </div>
+                                    {residenceRows.map((row, i) => {
+                                        const update = (patch: Partial<ResidenceRow>) => setResidenceRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+                                        return (
+                                            <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                                <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                                        {row.address || `Residence ${i + 1}`}{i === 0 && <span className="ml-1 text-xs font-normal text-slate-400">(most recent)</span>}
+                                                    </span>
+                                                    {residenceRows.length > 1 && (
+                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setResidenceRows((rows) => rows.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
+                                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <Grid>
+                                                    <Field className="sm:col-span-2" label="Street Address" required><TextInput value={row.address} placeholder="Street number and name" onChange={(e) => update({ address: e.target.value })} /></Field>
+                                                    <Field label="Unit / Suite / Apt #"><TextInput value={row.unit} placeholder="e.g. 4B" onChange={(e) => update({ unit: e.target.value })} /></Field>
+                                                    <Field label="Country" required><SearchSelect value={row.country} items={COUNTRIES} onChange={(v) => update({ country: v, state: "" })} /></Field>
+                                                    <Field label="City" required><TextInput value={row.city} onChange={(e) => update({ city: e.target.value })} /></Field>
+                                                    <Field label={row.country === "Canada" ? "Province" : "State"} required><SearchSelect value={row.state} placeholder="Please Choose" items={row.country === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => update({ state: v })} /></Field>
+                                                    <Field label={row.country === "Canada" ? "Postal Code" : "Zip Code"}><TextInput value={row.zip} onChange={(e) => update({ zip: e.target.value })} /></Field>
+                                                    <Field label="Lived here from" required><DateTriple value={row.start} years={DOB_YEARS} onChange={(v) => update({ start: v })} /></Field>
+                                                    <Field label="Lived here to" required><DateTriple value={row.end} years={DOB_YEARS} onChange={(v) => update({ end: v })} /></Field>
+                                                </Grid>
+                                            </div>
+                                        );
+                                    })}
+                                    <Button type="button" variant="outline" onClick={() => setResidenceRows((rows) => [...rows, newResidenceRow()])} className="w-full border-dashed">
+                                        <Plus className="h-4 w-4" /> Add previous residence
+                                    </Button>
+                                </>
                             )}
                         </div>
                     </FormSection>
@@ -1276,54 +1289,62 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             ),
         },
         {
-            key: "travel-documents", title: "Travel Documents", fields: 8, render: () => (
+            key: "travel-documents", title: "Travel Documents",
+            fields: 1 + needsAuth.length + QUESTION_RECORD_IDS.length + travelRecords.length * 4, render: () => {
+                return (
                 <div className="space-y-6">
-                    <InfoAlert>Passport, visa and work permit details — used for identity verification and cross-border travel.</InfoAlert>
-                    <FormSection title="Passport">
+                    <InfoAlert>
+                        The <strong>passport</strong> is asked of everyone. The{" "}
+                        <strong>right to work</strong> is asked per country: citizenship covers one
+                        at most, so a Canadian is asked about the US, an American about Canada, and
+                        anyone else about both. The <strong>visa</strong> and the{" "}
+                        <strong>border cards</strong> follow from nothing but the driver&rsquo;s own
+                        answer, so each is asked outright. Every document is filed as that
+                        driver&rsquo;s compliance record.
+                    </InfoAlert>
+
+                    <FormSection title="Right to work">
                         <Grid>
-                            <Field label="Passport Number"><TextInput value={passportNumber} onChange={(e) => setPassportNumber(e.target.value)} /></Field>
-                            <Field label="Issuing Country"><SearchSelect value={passportCountry} items={COUNTRIES} onChange={setPassportCountry} /></Field>
-                            <Field label="Expiration Date"><DateTriple value={passportExpiry} years={EXP_YEARS} onChange={setPassportExpiry} /></Field>
-                            <div className="hidden sm:block" />
-                            <div className="sm:col-span-2"><ImageUpload label="Passport document" hint="PNG, JPG or PDF · max 10MB" value={passportDoc} onChange={setPassportDoc} /></div>
+                            {/* Every country, not the two the carrier runs in: a driver can be a
+                                citizen of anywhere, and typing one that was missing came back
+                                "No matches". */}
+                            <Field className="sm:col-span-2" label="Which country are they a citizen of?" required>
+                                <SearchSelect value={travelProfile.citizenship} items={ALL_COUNTRIES}
+                                    onChange={(v) => setTravelProfile((p) => ({ ...p, citizenship: v }))} />
+                            </Field>
+                            {/* One question per country they are NOT a citizen of. */}
+                            {needsAuth.map((country) => (
+                                <Field key={country} label={`Work authorization in ${country}`} required>
+                                    <Select value={travelProfile.authorization?.[country] ?? ""} placeholder="Please Choose"
+                                        onChange={(v) => setTravelProfile((p) => ({ ...p, authorization: { ...p.authorization, [country]: v } }))}>
+                                        <Options items={travelStatusOptions(country).map((o) => o.label)} />
+                                    </Select>
+                                </Field>
+                            ))}
                         </Grid>
                     </FormSection>
-                    <FormSection title="Visa">
-                        <Grid>
-                            <Field className="sm:col-span-2" label="Do you have a visa?"><YesNo value={hasVisa} onChange={setHasVisa} /></Field>
-                            {hasVisa === "Yes" && (
-                                <>
-                                    <Field label="Visa Type"><Select value={visaType} placeholder="Please Choose" onChange={setVisaType}><Options items={VISA_TYPES} /></Select></Field>
-                                    <Field label="Visa Number"><TextInput value={visaNumber} onChange={(e) => setVisaNumber(e.target.value)} /></Field>
-                                    <Field label="Expiration Date"><DateTriple value={visaExpiry} years={EXP_YEARS} onChange={setVisaExpiry} /></Field>
-                                    <div className="hidden sm:block" />
-                                    <div className="sm:col-span-2"><ImageUpload label="Visa document" hint="PNG, JPG or PDF · max 10MB" value={visaDoc} onChange={setVisaDoc} /></div>
-                                    {mode === "page" && (
-                                        <TravelDocMonitoring label="visa" enabled={visaMonitor} onToggle={setVisaMonitor} reminderDays={visaReminderDays} onReminders={setVisaReminderDays} />
-                                    )}
-                                </>
-                            )}
-                        </Grid>
-                    </FormSection>
-                    <FormSection title="Work Permit">
-                        <Grid>
-                            <Field className="sm:col-span-2" label="Do you have a work permit?"><YesNo value={hasWorkPermit} onChange={setHasWorkPermit} /></Field>
-                            {hasWorkPermit === "Yes" && (
-                                <>
-                                    <Field label="Work Permit Type"><Select value={workPermitType} placeholder="Please Choose" onChange={setWorkPermitType}><Options items={WORK_PERMIT_TYPES} /></Select></Field>
-                                    <Field label="Work Permit Number"><TextInput value={workPermitNumber} onChange={(e) => setWorkPermitNumber(e.target.value)} /></Field>
-                                    <Field label="Expiration Date"><DateTriple value={workPermitExpiry} years={EXP_YEARS} onChange={setWorkPermitExpiry} /></Field>
-                                    <div className="hidden sm:block" />
-                                    <div className="sm:col-span-2"><ImageUpload label="Work permit document" hint="PNG, JPG or PDF · max 10MB" value={workPermitDoc} onChange={setWorkPermitDoc} /></div>
-                                    {mode === "page" && (
-                                        <TravelDocMonitoring label="work permit" enabled={workPermitMonitor} onToggle={setWorkPermitMonitor} reminderDays={workPermitReminderDays} onReminders={setWorkPermitReminderDays} />
-                                    )}
-                                </>
-                            )}
-                        </Grid>
-                    </FormSection>
+
+                    {!!travelProfile.citizenship && needsAuth.length === 0 && (
+                        <InfoAlert>
+                            A citizen of {travelProfile.citizenship} needs no work authorization on
+                            either side of the border — only the passport below.
+                        </InfoAlert>
+                    )}
+
+                    {/* Order: the passport (asked of everyone), then the visa question — it is
+                        asked AFTER the passport because it lives in one — then whatever the
+                        right-to-work status called for, and last the border cards, which follow
+                        from nothing but the driver's own answer. */}
+                    {travelRecords.filter((r) => r.id === "passport").map(renderTravelDoc)}
+
+                    {questionGroups.filter((g) => g.placement === "after-passport").map(renderTravelQuestions)}
+
+                    {travelRecords.filter((r) => r.id !== "passport" && !isQuestionRecord(r.id)).map(renderTravelDoc)}
+
+                    {questionGroups.filter((g) => g.placement === "after-status").map(renderTravelQuestions)}
                 </div>
-            ),
+                );
+            },
         },
         {
             key: "disqualification", title: "License Disqualification", fields: MVR_QUESTIONS.filter((q) => !q.showWhen).length, render: () => (
@@ -1431,24 +1452,23 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             ),
         },
         {
-            key: "unemployment", title: "Unemployment", fields: 3, render: () => (
+            key: "unemployment", title: "Employment Gaps", fields: 3, render: () => (
                 <div className="space-y-5">
-                    <Field label="Have you been unemployed at any time within the last 3 years?" required><YesNo value={wasUnemployed} onChange={setWasUnemployed} /></Field>
+                    <Field label="Were there any gaps in your employment during the last 3 years?" required><YesNo value={wasUnemployed} onChange={setWasUnemployed} /></Field>
                     {wasUnemployed === "Yes" && (
-                        <MultiEntry
+                        <InlineCollector
                             items={unemployment}
                             setItems={setUnemployment}
                             factory={newUnemployment}
-                            addLabel="Add Another Period"
-                            modalTitle="Unemployment Information"
-                            cardTitle={(u) => `${fmtMY(u.start)} - ${fmtMY(u.end)}`}
+                            addLabel="Add Another Gap"
+                            cardTitle={(u) => (u.start.m && u.start.y ? `${fmtMY(u.start)} - ${fmtMY(u.end)}` : "New Gap")}
                             renderCard={(u) => <KV k="Comments" v={u.comments || "-"} />}
                             renderForm={(d, set) => (
-                                <>
+                                <Grid>
                                     <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
-                                    <Field label="End Date" required hint={endDateHint("unemployed")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
-                                    <Field label="Comments"><Textarea value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
-                                </>
+                                    <Field label="End Date" required hint={endDateHint("between jobs")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
+                                    <Field className="sm:col-span-2" label="Comments"><Textarea rows={2} value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
+                                </Grid>
                             )}
                         />
                     )}
@@ -1460,12 +1480,11 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                 <div className="space-y-5">
                     <Field label="Have you attended a school (not related to truck driving) in the last 3 years?" required><YesNo value={attendedSchool} onChange={setAttendedSchool} /></Field>
                     {attendedSchool === "Yes" && (
-                        <MultiEntry
+                        <InlineCollector
                             items={education}
                             setItems={setEducation}
                             factory={newEducation}
                             addLabel="Add Another School"
-                            modalTitle="Education Information"
                             cardTitle={(s) => s.school || "New School"}
                             renderCard={(s) => (
                                 <>
@@ -1476,17 +1495,29 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                 </>
                             )}
                             renderForm={(d, set) => (
-                                <>
-                                    <Field label="School name" required><TextInput value={d.school} onChange={(e) => set({ school: e.target.value })} /></Field>
-                                    <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
-                                    <Field label="End Date" required hint={endDateHint("in school")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
-                                    <Field label="City" required><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
-                                    <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
-                                    <Field label="Country" required><SearchSelect value={d.country} items={COUNTRIES} onChange={(v) => set({ country: v })} /></Field>
-                                    <Field label="Telephone"><TextInput value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></Field>
-                                    <Field label="What did you study? (accounting, mechanic, etc.)" required><TextInput value={d.study} onChange={(e) => set({ study: e.target.value })} /></Field>
-                                    <Field label="Graduation Date (leave blank if no graduation)"><DateDuo value={d.graduation} years={HIST_YEARS} onChange={(v) => set({ graduation: v })} /></Field>
-                                </>
+                                <div className="space-y-6">
+                                    <FormSection title="School">
+                                        <Grid>
+                                            <Field className="sm:col-span-2" label="School name" required><TextInput value={d.school} onChange={(e) => set({ school: e.target.value })} /></Field>
+                                            <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
+                                            <Field label="End Date" required hint={endDateHint("in school")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
+                                        </Grid>
+                                    </FormSection>
+                                    <FormSection title="Location">
+                                        <Grid>
+                                            <Field label="City" required><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
+                                            <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                                            <Field label="Country" required><SearchSelect value={d.country} items={COUNTRIES} onChange={(v) => set({ country: v })} /></Field>
+                                            <Field label="Telephone"><TextInput value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></Field>
+                                        </Grid>
+                                    </FormSection>
+                                    <FormSection title="Study">
+                                        <Grid>
+                                            <Field label="What did you study? (accounting, mechanic, etc.)" required><TextInput value={d.study} onChange={(e) => set({ study: e.target.value })} /></Field>
+                                            <Field label="Graduation Date (leave blank if no graduation)"><DateDuo value={d.graduation} years={HIST_YEARS} onChange={(v) => set({ graduation: v })} /></Field>
+                                        </Grid>
+                                    </FormSection>
+                                </div>
                             )}
                         />
                     )}
@@ -1641,9 +1672,11 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         hadAccidents, accidents, hadViolations, incidents,
         employedRecently, employers, wasUnemployed, unemployment, attendedSchool, education,
         militaryEver, military,
-        passport: { number: passportNumber, country: passportCountry, expiry: passportExpiry, doc: passportDoc },
-        visa: { has: hasVisa, number: visaNumber, type: visaType, expiry: visaExpiry, doc: visaDoc, monitor: visaMonitor, reminderDays: visaReminderDays },
-        workPermit: { has: hasWorkPermit, number: workPermitNumber, type: workPermitType, expiry: workPermitExpiry, doc: workPermitDoc, monitor: workPermitMonitor, reminderDays: workPermitReminderDays },
+        // The catalog-driven captures are the source of truth; these three keep their old
+        // shape because the driver record and its mappers still read them.
+        ...legacyTravelShape(travelDocs),
+        travelProfile,
+        travelDocs,
         signedDoc,
     });
 
@@ -1687,7 +1720,12 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             case "accident": return sectionFilled(dd.hadAccidents) + (dd.accidents?.length ?? 0);
             case "violation": return sectionFilled(dd.hadViolations) + (dd.incidents?.length ?? 0);
             case "military": return sectionFilled(dd.militaryEver) + sectionFilled(...Object.values((dd.military ?? {}) as Record<string, unknown>));
-            case "travel-documents": return sectionFilled(dd.passport.number, dd.passport.doc, dd.visa.has, dd.workPermit.has);
+            // Complete once the questions are answered and every document they called for
+            // has something in it — for a citizen, the questions alone are the whole section.
+            case "travel-documents": return sectionFilled(
+                dd.travelProfile?.citizenship ?? "",
+                ...needsAuth.map(c => dd.travelProfile?.authorization?.[c] ?? ""),
+                ...travelRecords.map(r => dd.travelDocs?.[r.id]?.doc ?? dd.travelDocs?.[r.id]?.number ?? ""));
             case "signature": return sectionFilled(dd.signedDoc);
             default: return 0;
         }
@@ -1741,8 +1779,11 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                             </div>
 
                             <div className="space-y-6">
+                                {/* The section card carries no `overflow-hidden`: it clipped every open
+                                    dropdown at the card's edge, and the card has no fill of its own to
+                                    spill past the rounded corners, so there is nothing to clip. */}
                                 {steps.map((s, i) => (
-                                    <section key={s.key} id={`section-${s.key}`} data-step={s.key} className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    <section key={s.key} id={`section-${s.key}`} data-step={s.key} className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
                                         <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4">
                                             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
                                             <h2 className="text-base font-bold text-slate-900">{s.title}</h2>
@@ -1758,10 +1799,6 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                         </div>
                     </div>
                 </div>
-
-                {showResidence && (
-                    <ResidenceModal rows={residenceRows} onClose={() => setShowResidence(false)} onSave={(rows) => { setResidenceRows(rows); setShowResidence(false); }} />
-                )}
             </div>
         );
     }
@@ -1881,10 +1918,6 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                     </div>
                 </main>
             </div>
-
-            {showResidence && (
-                <ResidenceModal rows={residenceRows} onClose={() => setShowResidence(false)} onSave={(rows) => { setResidenceRows(rows); setShowResidence(false); }} />
-            )}
         </div>
     );
 }

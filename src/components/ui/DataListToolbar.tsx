@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Columns } from 'lucide-react';
 
 export interface ColumnDef {
   id: string;
@@ -104,6 +104,44 @@ export function DataListToolbar({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * The list-view "Columns" control — the toggle menu that sits in a data table's toolbar.
+ *
+ * The same markup had been written out inside eight different list pages; this is that
+ * control, extracted, so a roster can have a working one without a ninth copy.
+ */
+export function ColumnsDropdown({ columns, visible, onToggle, width = 'w-52' }: {
+  columns: { id: string; label: string }[];
+  visible: Set<string>;
+  onToggle: (id: string) => void;
+  width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+        <Columns size={14} /> Columns <ChevronDown size={13} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className={`absolute right-0 z-20 mt-1 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg ${width}`}>
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</div>
+            {columns.map(c => (
+              <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-700 hover:bg-slate-50">
+                <input type="checkbox" checked={visible.has(c.id)} onChange={() => onToggle(c.id)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

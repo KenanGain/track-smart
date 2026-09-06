@@ -36,6 +36,9 @@ import { type TicketStatus, type ViolationType, type TicketRecord } from './tick
 import { useCarrierTickets, addTicket, updateTicket, removeTicket, buildTicketFromViolation, type ViolationLike } from './tickets.store';
 import { TicketEditForm, type TicketFormDraft } from './TicketEditForm';
 import { TicketDetailPage } from './TicketDetailPage';
+import { useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
+import { TabScroller } from '@/components/ui/TabScroller';
+import { KpiChipStrip } from '@/components/ui/KpiChipStrip';
 import { CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 import {
     getMissingTicketsForCarrier,
@@ -103,39 +106,31 @@ const DOC_TYPE_OPTIONS: Array<{ id: string; label: string }> = [
 
 // ── BASIC category tabs — mirrors the violations / accidents pattern ──────
 // Each tab declares a regex that decides whether a ticket's
-// violationCategory or narrow violationType falls into that BASIC. Tones
-// match the colour palette used by the Violations page so the two pages
-// read as a single product.
+// violationCategory or narrow violationType falls into that BASIC. There is no
+// per-tab colour: the selected tab is blue, as on every other tab bar in the
+// app — seven active colours read as seven controls, not one with a value.
 const BASIC_TABS: Array<{
     key: 'all' | 'unsafe_driving' | 'vehicle_maintenance' | 'hos' | 'driver_fitness' | 'controlled_substances' | 'other';
     label: string;
     match: (ticket: TicketRecord) => boolean;
-    tone: 'slate' | 'rose' | 'blue' | 'amber' | 'violet' | 'red' | 'teal';
 }> = [
-    { key: 'all',                   label: 'All Tickets',           match: () => true, tone: 'slate' },
+    { key: 'all',                   label: 'All Tickets',           match: () => true },
     { key: 'unsafe_driving',        label: 'Unsafe Driving',
-      match: t => /unsafe\s*driving|speeding|red\s*light|parking|reckless/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`),
-      tone: 'rose' },
+      match: t => /unsafe\s*driving|speeding|red\s*light|parking|reckless/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`) },
     { key: 'vehicle_maintenance',   label: 'Vehicle Maintenance',
-      match: t => /vehicle\s*maintenance|equipment\s*defect|overweight/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`),
-      tone: 'blue' },
+      match: t => /vehicle\s*maintenance|equipment\s*defect|overweight/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`) },
     { key: 'hos',                   label: 'Hours-of-Service',
-      match: t => /hours[-\s]?of[-\s]?service|hos|logbook/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`),
-      tone: 'amber' },
+      match: t => /hours[-\s]?of[-\s]?service|hos|logbook/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`) },
     { key: 'driver_fitness',        label: 'Driver Fitness',
-      match: t => /driver\s*fitness|insurance/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`),
-      tone: 'violet' },
+      match: t => /driver\s*fitness|insurance/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`) },
     { key: 'controlled_substances', label: 'Controlled Substances',
-      match: t => /controlled\s*substance|alcohol|drug/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`),
-      tone: 'red' },
+      match: t => /controlled\s*substance|alcohol|drug/i.test(`${t.violationCategory ?? ''} ${t.violationType ?? ''}`) },
     { key: 'other',                 label: 'Other',
       match: t => {
           const hay = `${t.violationCategory ?? ''} ${t.violationType ?? ''}`;
           return !/unsafe\s*driving|vehicle\s*maintenance|hours[-\s]?of[-\s]?service|hos|driver\s*fitness|insurance|controlled\s*substance|alcohol|speeding|red\s*light|parking|reckless|equipment\s*defect|overweight|logbook|drug/i.test(hay);
-      },
-      tone: 'teal' },
+      } },
 ];
-
 
 export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onNavigate?: (path: string) => void } = {}) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -152,6 +147,9 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(20);
     const [basicTab, setBasicTab] = useState<(typeof BASIC_TABS)[number]['key']>('all');
+    // The header shrinks as the list scrolls and comes back at the top; switching
+    // category returns the body to its top without disturbing the header.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(basicTab);
     const [subCatFilter, setSubCatFilter] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     // Ticket awaiting a Remove confirmation. Null when the dialog is closed.
@@ -302,6 +300,17 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
             .slice(0, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tickets, basicTab]);
+
+    // The same figures the KPI cards show, for the compact form the header keeps once
+    // the cards themselves have scrolled away. One array so the two cannot disagree.
+    const kpiChips = useMemo(() => [
+        { id: 'total',       label: 'Total',       value: stats.total.toLocaleString(), tone: 'text-blue-700' },
+        { id: 'outstanding', label: 'Outstanding', value: `$${stats.outstandingFines.toLocaleString()}`, tone: 'text-rose-700' },
+        { id: 'open',        label: 'Open',        value: stats.openOffenses, tone: 'text-amber-700' },
+        { id: 'court',       label: 'In court',    value: stats.inCourt, tone: 'text-indigo-700' },
+        { id: 'paid',        label: 'Paid',        value: stats.paidThisMonth, tone: 'text-emerald-700' },
+        { id: 'electronic',  label: 'eTickets',    value: stats.electronic, tone: 'text-violet-700' },
+    ], [stats]);
 
     const filteredTickets = tickets.filter(ticket => {
         if (!activeBasic.match(ticket)) return false;
@@ -527,6 +536,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                     onEdit={() => { setExpandedId(null); handleEdit(ticket); }}
                     onDelete={() => { setExpandedId(null); setRemoveCandidate(ticket); }}
                     onNavigate={onNavigate}
+                    accountId={accountId}
                 />
             );
         }
@@ -542,24 +552,37 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
 
     return (
         <div className="flex flex-col h-full bg-slate-50">
-            {/* Header — full-page shell mirroring ViolationsListPage */}
-            <header className="bg-white border-b border-slate-200 shrink-0">
-                <div className="px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-                    <div>
-                        <nav className="flex items-center gap-2 mb-1 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
+            {/* Header — stays put and SHRINKS as the list scrolls; restores at the top.
+                The breadcrumb and the record line fold away, the title steps down, the
+                padding tightens and the buttons lose a little height. Nothing is removed:
+                Export and Add Ticket stay in place and keep working throughout. */}
+            <header className={cn('shrink-0 border-b border-slate-200 bg-white z-30', HEADER_TRANSITION, condensed ? 'shadow-md' : 'shadow-sm')}>
+                <div className={cn('flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6', HEADER_TRANSITION, condensed ? 'py-2' : 'py-4')}>
+                    <div className="min-w-0">
+                        <nav className={cn('flex items-center gap-2 overflow-hidden text-sm font-medium text-slate-500', HEADER_TRANSITION,
+                            condensed ? 'mb-0 max-h-0 opacity-0' : 'mb-1 max-h-6 opacity-100')} aria-label="Breadcrumb">
                             <span>Safety</span>
                             <span className="text-slate-300">/</span>
                             <span className="text-slate-900">Tickets</span>
                         </nav>
-                        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tickets &amp; Offenses</h1>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <h1 className={cn('truncate font-bold tracking-tight text-slate-900', HEADER_TRANSITION, condensed ? 'text-base' : 'text-2xl')}>
+                            Tickets &amp; Offenses
+                        </h1>
+                        {/* Condensed, the record count moves onto one line beside the title
+                            rather than vanishing — it is the page's only sense of scale. */}
+                        <p className={cn('overflow-hidden whitespace-nowrap text-xs text-slate-500', HEADER_TRANSITION,
+                            condensed ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-6 opacity-100')}>
                             {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
                             {tickets.length.toLocaleString()} records · Paper &amp; Electronic citations
                         </p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
+                        <span className={cn('hidden items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs font-semibold text-slate-500 sm:flex', HEADER_TRANSITION,
+                            condensed ? 'max-w-[16rem] opacity-100' : 'max-w-0 opacity-0')}>
+                            {tickets.length.toLocaleString()} records
+                        </span>
                         <button
-                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+                            className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
                             onClick={() => { /* CSV export hook lands later */ }}
                         >
                             <Download className="w-4 h-4" />
@@ -567,17 +590,70 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                         </button>
                         <button
                             onClick={handleAdd}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all"
+                            className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
                         >
                             <Plus className="w-4 h-4" />
                             Add Ticket
                         </button>
                     </div>
                 </div>
+
+                {/* The KPI numbers, small — they fade in exactly as the cards below
+                    scroll out of reach, so the figures framing the list never leave. */}
+                <div className="px-4 sm:px-6">
+                    <KpiChipStrip items={kpiChips} condensed={condensed} />
+                </div>
+
+                {/* BASIC category strip — part of the HEADER, not the list.
+
+                    It was sticky inside the list card, which meant it floated over the
+                    sub-category cards as they scrolled past: they slid under it half-cut,
+                    and the rail's own scrollbar drew a grey line across the page. Here it
+                    is simply always present, with nothing passing beneath it — and it does
+                    NOT condense with the title above, because it is the page's navigation.
+
+                    TabScroller hides the scrollbar and adds edge chevrons + fades, so a
+                    strip wider than the column reads as cut off rather than finished. */}
+                <div className="w-full border-t border-slate-100 px-4 sm:px-6">
+                    <TabScroller ariaLabel="Ticket categories" activeKey={basicTab}>
+                        {BASIC_TABS.map(t => {
+                            const active = basicTab === t.key;
+                            const count = basicCounts[t.key] ?? 0;
+                            return (
+                                <button
+                                    key={t.key}
+                                    type="button"
+                                    onClick={() => { setBasicTab(t.key); setSubCatFilter(null); setPage(1); setExpandedId(null); }}
+                                    data-tab-active={active || undefined}
+                                    aria-current={active ? 'page' : undefined}
+                                    className={cn(
+                                        // Selection is BLUE here as it is on every other tab
+                                        // bar in the app. Seven different active colours made
+                                        // the strip read as seven unrelated controls rather
+                                        // than one control with a current value.
+                                        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
+                                        active
+                                            ? 'border-blue-600 text-blue-600'
+                                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
+                                    )}
+                                >
+                                    {t.label}
+                                    <span className={cn(
+                                        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                                        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
+                                    )}>
+                                        {count}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </TabScroller>
+                </div>
             </header>
 
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto min-h-0">
+            {/* Scrollable content — its own scroller, so the header band above shrinks
+                instead of scrolling away, and the tab strip inside can stick to its top. */}
+            <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto min-h-0">
                 <div className="p-4 space-y-4">
 
                 {/* KPI Cards — vertical color bar, matches ViolationsListPage */}
@@ -1087,44 +1163,6 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                 {/* Filters + Table — one rounded container so they read as a
                     single component, mirroring ViolationsListPage. */}
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                    {/* BASIC category tab strip — mirrors the Violations page. */}
-                    <div className="flex items-center gap-0.5 px-2 pt-2 overflow-x-auto border-b border-slate-200">
-                        {BASIC_TABS.map(t => {
-                            const active = basicTab === t.key;
-                            const count = basicCounts[t.key] ?? 0;
-                            const toneActive: Record<typeof t.tone, string> = {
-                                slate:  'border-slate-900 text-slate-900',
-                                blue:   'border-blue-600 text-blue-700',
-                                rose:   'border-rose-600 text-rose-700',
-                                amber:  'border-amber-600 text-amber-700',
-                                violet: 'border-violet-600 text-violet-700',
-                                red:    'border-red-600 text-red-700',
-                                teal:   'border-teal-600 text-teal-700',
-                            };
-                            return (
-                                <button
-                                    key={t.key}
-                                    type="button"
-                                    onClick={() => { setBasicTab(t.key); setSubCatFilter(null); setPage(1); setExpandedId(null); }}
-                                    className={cn(
-                                        'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px',
-                                        active
-                                            ? toneActive[t.tone]
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50',
-                                    )}
-                                >
-                                    {t.label}
-                                    <span className={cn(
-                                        'inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-bold tabular-nums',
-                                        active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600',
-                                    )}>
-                                        {count}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-
                     {/* Sub-category breakdown — coloured KPI cards. Click a
                         card to narrow the table to that violation group. */}
                     {(() => {

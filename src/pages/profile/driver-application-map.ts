@@ -115,6 +115,19 @@ export function applicationFromDriver(driver: any): ApplicationData {
     const vs = travel.find((t) => /visa/i.test(t.type ?? ""));
     const wp = travel.find((t) => /work\s*permit/i.test(t.type ?? ""));
 
+    // The three legacy blocks, built once so both the application object and the
+    // catalog-driven captures derived from it read exactly the same values.
+    const travelBlocks = {
+        passport: pp
+            ? { number: pp.number ?? "", country: pp.country ?? country, expiry: toDateVal(pp.expiryDate), doc: pp.number ? "passport.pdf" : "" }
+            : base.passport,
+        visa: vs
+            ? { has: "Yes", number: vs.number ?? "", type: vs.visaType ?? "", expiry: toDateVal(vs.expiryDate), doc: vs.number ? "visa.pdf" : "", monitor: vs.monitor ?? true, reminderDays: vs.reminderDays ?? [90, 60, 30] }
+            : { ...base.visa, has: "No" },
+        workPermit: wp
+            ? { has: "Yes", number: wp.number ?? "", type: wp.visaType ?? wp.permitType ?? "", expiry: toDateVal(wp.expiryDate), doc: wp.number ? "work-permit.pdf" : "", monitor: wp.monitor ?? true, reminderDays: wp.reminderDays ?? [90, 60, 30] }
+            : { ...base.workPermit, has: "No" },
+    };
     return {
         ...base,
         firstName: d.firstName ?? "",
@@ -137,14 +150,9 @@ export function applicationFromDriver(driver: any): ApplicationData {
         licenses,
         employedRecently: employers.length ? "Yes" : "No",
         employers,
-        passport: pp
-            ? { number: pp.number ?? "", country: pp.country ?? country, expiry: toDateVal(pp.expiryDate), doc: pp.number ? "passport.pdf" : "" }
-            : base.passport,
-        visa: vs
-            ? { has: "Yes", number: vs.number ?? "", type: vs.visaType ?? "", expiry: toDateVal(vs.expiryDate), doc: vs.number ? "visa.pdf" : "", monitor: vs.monitor ?? true, reminderDays: vs.reminderDays ?? [90, 60, 30] }
-            : { ...base.visa, has: "No" },
-        workPermit: wp
-            ? { has: "Yes", number: wp.number ?? "", type: wp.visaType ?? wp.permitType ?? "", expiry: toDateVal(wp.expiryDate), doc: wp.number ? "work-permit.pdf" : "", monitor: wp.monitor ?? true, reminderDays: wp.reminderDays ?? [90, 60, 30] }
-            : { ...base.workPermit, has: "No" },
+        // `travelDocs` is deliberately absent: the Travel Documents section derives its
+        // captures from these three blocks when it loads. Producing them here would pull the
+        // bridge into a module the compliance store already imports, at startup.
+        ...travelBlocks,
     };
 }

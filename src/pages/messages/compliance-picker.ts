@@ -3,7 +3,7 @@
 // the real Compliances & Documents catalog.
 //
 // Typing "/" in an agent chat lists every compliance / document record the carrier
-// tracks (the 37-record default catalog plus that carrier's custom records). Picking
+// tracks (the default catalog plus that carrier's custom records). Picking
 // one resolves the record's CAPTURE RULES — which fields the recipient must fill and
 // whether a document is uploaded — into a plain `ComplianceAsk`, so the widget
 // delivered into a driver's chat renders exactly the same field set as the office-side
@@ -42,7 +42,9 @@ export function buildComplianceAsk(r: SafetyRecord): ComplianceAsk {
         allCountries: !!r.allCountries,
         needsIssueDate: cf ? cf.issueDate.enabled : !!r.tracksIssueDate,
         needsExpiryDate: cf ? cf.expiryDate.enabled : isDateMonitored(r),
-        needsStatus: cf ? cf.status.enabled : !isDateMonitored(r),
+        // A record can opt out of the status field entirely — the chat request must not ask
+        // the driver for a value the office form no longer has anywhere to put.
+        needsStatus: cf ? cf.status.enabled : (!isDateMonitored(r) && !r.hideStatus),
         needsUpload: cf ? cf.upload.enabled : hasDoc,
         multi: cf ? (cf.upload.enabled && cf.upload.multi) : !!r.multiInstance,
         slotLabels: r.slotLabels,

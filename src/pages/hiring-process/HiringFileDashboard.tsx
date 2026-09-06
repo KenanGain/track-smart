@@ -1763,8 +1763,9 @@ function ApplicationFormView({ title, subtitle, badge, sections, fileName, focus
                     }
 
                     // Employment — per-employer card with From → To header + verification documents.
-                    // Note: must NOT match "Unemployment History" (which has no verification docs).
-                    if (/^employment/i.test(sec.title) && employment && employment.length > 0) {
+                    // Matched on the full title, not a "employment" prefix: "Employment Gaps" is a
+                    // section of its own and has no employer or verification documents behind it.
+                    if (/^employment history/i.test(sec.title) && employment && employment.length > 0) {
                         return (
                             <div key={si} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                                 {header}
@@ -3296,13 +3297,13 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
     const [mailFor, setMailFor] = useState<EmpCheck | null>(null);
     const [docMailFor, setDocMailFor] = useState<{ id: string; label: string } | null>(null);   // verification doc being asked of the employer
     const [docView, setDocView] = useState<string | null>(null);   // verification doc being viewed
-    const [gapView, setGapView] = useState<PrefillUnemployment | null>(null);   // unemployment gap being viewed
-    const [gapReview, setGapReview] = useState<{ u: PrefillUnemployment; idx: number } | null>(null);   // unemployment gap being reviewed (inline sign-off)
+    const [gapView, setGapView] = useState<PrefillUnemployment | null>(null);   // employment gap being viewed
+    const [gapReview, setGapReview] = useState<{ u: PrefillUnemployment; idx: number } | null>(null);   // employment gap being reviewed (inline sign-off)
     const [viewFormId, setViewFormId] = useState<string | null>(null);   // consent / form viewed as a filled, locked document
     const base: EmpCheck[] = employment.map((e, i) => ({ id: `emp-${i}`, employer: e.employer, position: e.position, dates: e.dates, email: "", attempts: [], status: "pending" }));
     const checks = base.map((b) => (a.empChecks ?? []).find((c) => c.id === b.id) ?? b);
     const yearOf = (d: string) => { const m = (d || "").match(/\d{4}/g); return m ? Math.max(...m.map(Number)) : 0; };
-    // Build one timeline interleaving employers and unemployment gaps, newest first.
+    // Build one timeline interleaving employers and employment gaps, newest first.
     type TL = { kind: "emp"; check: EmpCheck; year: number } | { kind: "gap"; u: PrefillUnemployment; gapIdx: number; year: number };
     const timeline: TL[] = [
         ...checks.map((c) => ({ kind: "emp" as const, check: c, year: yearOf(c.dates) })),
@@ -3323,10 +3324,10 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
             events: [{ id: `ev-${Date.now()}`, type: "request", text: `Sent employment verification to ${check.employer} (attempt ${check.attempts.length + 1}/${EMP_MAX_ATTEMPTS}) via ${req.channel}`, at: Date.now(), author: ACTOR }, ...prev.events],
         }));
     };
-    // Review an unemployment gap inline — sign off right here on the timeline.
+    // Review an employment gap inline — sign off right here on the timeline.
     const reviewGap = (idx: number, u: PrefillUnemployment, r: { sig: string; by: string; role: string; date: string }) => updateOne(a.id, (prev) => ({
         reviews: { ...(prev.reviews ?? {}), [`employment:gap:${idx}`]: { ...r, at: Date.now() } },
-        events: [{ id: `ev-${Date.now()}`, type: "review" as const, text: `Reviewed the unemployment gap (${u.from || "—"} to ${u.to || "—"}) — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+        events: [{ id: `ev-${Date.now()}`, type: "review" as const, text: `Reviewed the employment gap (${u.from || "—"} to ${u.to || "—"}) — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
     }));
     // Verification documents — the driver uploads them, or we ask the employer (per builder config).
     const setDocStatus = (docId: string, to: DocStatus, verb: string, label: string) => updateOne(a.id, (prev) => ({ docs: { ...(prev.docs ?? {}), [docId]: to }, events: [{ id: `ev-${Date.now()}`, type: "doc", text: `${verb} — ${label}`, at: Date.now(), author: ACTOR }, ...prev.events] }));
@@ -3367,7 +3368,7 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                                     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/40 p-3.5">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
-                                                <p className="font-semibold text-slate-700">Unemployment / Gap</p>
+                                                <p className="font-semibold text-slate-700">Employment Gap</p>
                                                 <p className="truncate text-xs text-slate-500">{item.u.comments || "No employment during this period"}</p>
                                             </div>
                                             <div className="flex shrink-0 items-center gap-1.5">
@@ -3466,12 +3467,12 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                 </Dialog>
             )}
 
-            {/* Unemployment / gap details */}
+            {/* Employment gap details */}
             {gapView && (
                 <Dialog open onOpenChange={(o) => { if (!o) setGapView(null); }}>
                     <DialogContent className="max-w-md p-0">
                         <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
-                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-600 text-white"><Eye className="h-4 w-4" /></span> Unemployment / Gap</DialogTitle>
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-600 text-white"><Eye className="h-4 w-4" /></span> Employment Gap</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-3 p-6">
                             <div className="grid grid-cols-2 gap-2">
@@ -3484,12 +3485,12 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                 </Dialog>
             )}
 
-            {/* Unemployment / gap review — sign off inline, right here on the timeline */}
+            {/* Employment gap review — sign off inline, right here on the timeline */}
             {gapReview && (
                 <Dialog open onOpenChange={(o) => { if (!o) setGapReview(null); }}>
                     <DialogContent className="max-w-lg p-0">
                         <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
-                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><BadgeCheck className="h-4 w-4" /></span> Review Unemployment Gap</DialogTitle>
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><BadgeCheck className="h-4 w-4" /></span> Review Employment Gap</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4 px-6 py-5">
                             <div className="grid grid-cols-2 gap-2">
@@ -3498,7 +3499,7 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                             </div>
                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Explanation</p><p className="text-sm text-slate-600">{gapReview.u.comments || "—"}</p></div>
                             <ReviewSignOff
-                                label="I have reviewed this unemployment / gap period."
+                                label="I have reviewed this employment gap."
                                 signedNote="Gap reviewed & signed"
                                 existing={reviews?.[`employment:gap:${gapReview.idx}`]}
                                 onConfirm={(r) => { reviewGap(gapReview.idx, gapReview.u, r); setGapReview(null); }}

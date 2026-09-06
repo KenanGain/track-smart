@@ -255,13 +255,13 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
                 ...(e.verifications ? [{ label: "Verification (ask at hiring)", value: e.verifications }] : []),
             ],
         })) : [naGroup("Employment")] },
-        { title: "Unemployment History", groups: p.unemployment?.length ? p.unemployment.map((u, i) => ({
-            label: p.unemployment!.length > 1 ? `Period ${i + 1}` : undefined,
+        { title: "Employment Gaps", groups: p.unemployment?.length ? p.unemployment.map((u, i) => ({
+            label: p.unemployment!.length > 1 ? `Gap ${i + 1}` : undefined,
             fields: [
                 { label: "Dates", value: u.dates },
                 { label: "Comments", value: u.comments },
             ],
-        })) : [{ fields: [{ label: "Unemployment", value: "None reported" }] }] },
+        })) : [{ fields: [{ label: "Employment gaps", value: "None reported" }] }] },
         { title: "Education", groups: p.education.length ? p.education.map((s, i) => ({
             label: p.education.length > 1 ? `School ${i + 1}` : undefined,
             fields: [
@@ -509,7 +509,14 @@ function read(): Applicant[] {
     try {
         const raw = window.localStorage.getItem(KEY);
         if (!raw) return SEED;
-        return JSON.parse(raw) as Applicant[];
+        const list = JSON.parse(raw) as Applicant[];
+        // "Unemployment History" was renamed to "Employment Gaps". Applications submitted
+        // before the rename carry the old heading in their stored submission, so it is
+        // retitled on read — retitling rather than reseeding keeps every applicant.
+        for (const a of list) {
+            for (const s of a.submission ?? []) if (s.title === "Unemployment History") s.title = "Employment Gaps";
+        }
+        return list;
     } catch {
         return SEED;
     }

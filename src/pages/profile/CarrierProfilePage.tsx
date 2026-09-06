@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
-    Columns,
+    ChevronUp,
+    ChevronsUpDown,
+    ChevronRight,
+    Filter,
     MapPin,
     CheckSquare,
     Bell,
@@ -44,9 +47,6 @@ import {
     UserMinus,
     UserX,
     Download,
-    ArrowUp,
-    ArrowDown,
-    ArrowUpDown,
     ListChecks,
     type LucideIcon,
 } from 'lucide-react';
@@ -65,6 +65,7 @@ import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { addCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
+import { commitTravelDocs } from '@/pages/compliance/travel-docs-bridge';
 import { AddDriverApplication } from './AddDriverApplication';
 import { addTicket } from '@/pages/tickets/tickets.store';
 import { ticketsFromApplicationIncidents } from '@/pages/tickets/ticket-from-application';
@@ -76,7 +77,7 @@ import { DriverImportModal } from './DriverImportModal';
 import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
-import { PaginationBar } from '@/components/ui/DataListToolbar';
+import { PaginationBar, ColumnsDropdown } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 
 
@@ -102,6 +103,16 @@ const DriverFilterChip = ({ label, onClear }: { label: string; onClear: () => vo
     </span>
 );
 
+/** The roster's toggleable columns, in the order they appear. */
+const DRIVER_COLUMNS = [
+    { id: 'id', label: 'ID / Details' },
+    { id: 'status', label: 'Status' },
+    { id: 'compliance', label: 'Compliance' },
+    { id: 'dq', label: 'DQ File' },
+    { id: 'license', label: 'License' },
+    { id: 'contact', label: 'Contact' },
+];
+
 const DriverSortTH = ({
     id, label, current, dir, onClick, className,
 }: {
@@ -112,22 +123,20 @@ const DriverSortTH = ({
     onClick: (id: string) => void;
     className?: string;
 }) => {
+    // Same header treatment as every other list in the app: 10px bold uppercase, the sort
+    // affordance on a button rather than the whole cell, and the chevron set shared with
+    // the Default Compliance tables.
     const active = current === id;
+    const Ic = active ? (dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
     return (
-        <th
-            onClick={() => onClick(id)}
-            className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'} ${className ?? ''}`}
-        >
-            <span className="inline-flex items-center gap-1.5">
-                {label}
-                {active ? (
-                    dir === 'asc'
-                        ? <ArrowUp size={11} className="text-blue-600" />
-                        : <ArrowDown size={11} className="text-blue-600" />
-                ) : (
-                    <ArrowUpDown size={11} className="text-slate-300" />
-                )}
-            </span>
+        <th className={`px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap ${className ?? ''}`}>
+            <button
+                type="button"
+                onClick={() => onClick(id)}
+                className={`inline-flex items-center gap-1 transition-colors hover:text-slate-700 ${active ? 'text-blue-600' : ''}`}
+            >
+                {label} <Ic size={12} className={active ? '' : 'text-slate-300'} />
+            </button>
         </th>
     );
 };
@@ -725,6 +734,14 @@ export function CarrierProfilePage({
         if (driverSortKey === k) setDriverSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
         else { setDriverSortKey(k); setDriverSortDir('asc'); }
     };
+    // Which columns the roster shows. The driver and the row actions are not in the list:
+    // one is what the row IS, the other is how you act on it, so neither can be turned off.
+    const [visibleDriverCols, setVisibleDriverCols] = useState<Set<string>>(
+        () => new Set(DRIVER_COLUMNS.map((c) => c.id)),
+    );
+    const toggleDriverCol = (id: string) =>
+        setVisibleDriverCols((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    const driverColShown = (id: string) => visibleDriverCols.has(id);
 
     const showToast = (msg: string) => {
         setToast({ visible: true, message: msg });
@@ -982,6 +999,9 @@ export function CarrierProfilePage({
     // --- DRIVER LIST LOGIC ---
     const [drivers, setDrivers] = useState(profileBundle?.drivers ?? MOCK_DRIVERS);
 
+    /** How far above the top a tab switch glides in from — anything further is skipped. */
+    const CARRIER_SETTLE_FROM = 560;
+
     // ── Condensing header ──
     // The body scrolls in its own container so the header band never scrolls away;
     // past the threshold the breadcrumb and the title/subtitle collapse and only the
@@ -990,15 +1010,67 @@ export function CarrierProfilePage({
     // straight back.
     const bodyScrollRef = useRef<HTMLDivElement | null>(null);
     const [condensed, setCondensed] = useState(false);
-    const onBodyScroll = useCallback(() => {
-        const top = bodyScrollRef.current?.scrollTop ?? 0;
-        setCondensed(prev => (prev ? top > 16 : top > 48));
+    // Only scrolling changes the header: down condenses it, back to the top expands it.
+    // The tab switch below scrolls the body to the top itself, and that scroll event would
+    // otherwise read as the user returning to the top and undo the compact chrome.
+    const condensedRef = useRef(false);
+    // The tab switch below glides the body to the top itself, and every frame of that
+    // glide fires a scroll event that would otherwise read as the user returning to the
+    // top. `settling` ignores the run until it lands, with a backstop in case the user
+    // grabs the scroller mid-glide and it never arrives.
+    const settling = useRef(false);
+    const settleTimer = useRef<number | undefined>(undefined);
+    const stopSettling = useCallback(() => {
+        settling.current = false;
+        if (settleTimer.current !== undefined) { clearTimeout(settleTimer.current); settleTimer.current = undefined; }
     }, []);
+    // One read per frame, committed only when the state actually flips — scroll events
+    // outrun paint, and each one otherwise re-rendered this whole view.
+    const scrollRaf = useRef<number | undefined>(undefined);
+    const onBodyScroll = useCallback(() => {
+        if (scrollRaf.current !== undefined) return;
+        scrollRaf.current = requestAnimationFrame(() => {
+            scrollRaf.current = undefined;
+            const el = bodyScrollRef.current;
+            if (!el) return;
+            const top = el.scrollTop;
+            if (settling.current) { if (top <= 0) stopSettling(); return; }
+            const next = condensedRef.current ? top > 16 : top > 48;
+            if (next === condensedRef.current) return;
+            condensedRef.current = next;
+            setCondensed(next);
+        });
+    }, [stopSettling]);
+    // Show the new tab from its top, but leave the header as the user left it — unless the
+    // new tab is too short to scroll, where no gesture could expand it again.
     useEffect(() => {
         const el = bodyScrollRef.current;
-        if (el) el.scrollTop = 0;
-        setCondensed(false);
-    }, [activeTab]);
+        if (!el) return;
+        if (el.scrollTop > 0) {
+            settling.current = true;
+            if (settleTimer.current !== undefined) clearTimeout(settleTimer.current);
+            settleTimer.current = window.setTimeout(stopSettling, 700);
+            if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { el.scrollTop = 0; stopSettling(); }
+            else {
+                // Capped, so the glide is the same short settle however far down the page
+                // the previous tab was; the skipped part is invisible either way, since
+                // the tab's content has just been replaced.
+                if (el.scrollTop > CARRIER_SETTLE_FROM) el.scrollTop = CARRIER_SETTLE_FROM;
+                el.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+        const raf = requestAnimationFrame(() => {
+            const body = bodyScrollRef.current;
+            if (body && body.scrollHeight <= body.clientHeight + 1) { condensedRef.current = false; setCondensed(false); }
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [activeTab, stopSettling]);
+
+    // Nothing scheduled may outlive the view.
+    useEffect(() => () => {
+        if (scrollRaf.current !== undefined) cancelAnimationFrame(scrollRaf.current);
+        if (settleTimer.current !== undefined) clearTimeout(settleTimer.current);
+    }, []);
 
 
     // Return path captured from the Beta Safety Analysis deep-link. When set,
@@ -1183,11 +1255,21 @@ export function CarrierProfilePage({
         };
 
         const handleDriverSave = (data: any) => {
+            // Travel documents answered on the application ARE the driver's compliance
+            // records — file them under the driver's id, which for a new driver only exists
+            // once the roster below assigns one.
+            const fileTravelDocs = (driverId: string) => {
+                const written = commitTravelDocs(accountId, driverId, data.application?.travelProfile, data.application?.travelDocs, 'Application');
+                if (written.length) {
+                    showToast(`${written.length} travel ${written.length === 1 ? 'document' : 'documents'} filed to compliance — ${written.join(', ')}`);
+                }
+            };
             if (editingDriverData) {
                 setDrivers(prev => prev.map(d => d.id === data.id ? data : d));
                 setSelectedDriverData(data);
                 syncViolationTickets(data);
                 showToast("Driver updated successfully");
+                fileTravelDocs(data.id);
             } else {
                 const newDriver = {
                     ...data,
@@ -1200,6 +1282,7 @@ export function CarrierProfilePage({
                 setDrivers(prev => [...prev, newDriver]);
                 syncViolationTickets(newDriver);
                 showToast("Driver added successfully");
+                fileTravelDocs(newDriver.id);
             }
             setIsAddingDriver(false);
             setEditingDriverData(null);
@@ -1656,9 +1739,8 @@ export function CarrierProfilePage({
 
                 {activeTab === 'drivers' && (
                     <div className="w-full space-y-5">
-                        {/* DRIVER STATUS CARDS — Default Compliance catalog KpiTile look
-                            (label + number left, icon square right); still click-to-filter. */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                        {/* KPI tiles — the Default Compliance catalog look, still click-to-filter. */}
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
                             {[
                                 { id: 'All',        label: 'Total',      value: driverStats.total,      Icon: Users,     accent: 'blue'    },
                                 { id: 'Active',     label: 'Active',     value: driverStats.active,     Icon: UserCheck, accent: 'emerald' },
@@ -1678,218 +1760,278 @@ export function CarrierProfilePage({
                             ))}
                         </div>
 
-                        {/* TOOLBAR — search (with clear) + actions, wraps cleanly on small screens */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full">
-                            <div className="relative flex-1 min-w-0">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="Search by name, ID, email, phone, license…"
-                                    value={driverSearch}
-                                    onChange={(e) => setDriverSearch(e.target.value)}
-                                    className="pl-10 pr-10 h-10 w-full rounded-lg border border-slate-200 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all shadow-sm"
-                                />
-                                {driverSearch && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setDriverSearch('')}
-                                        aria-label="Clear search"
-                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* ACTIONS */}
-                            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap sm:flex-nowrap">
-                                <button className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
-                                    <Columns size={14} className="text-slate-500" /><span className="hidden sm:inline">Columns</span> <ChevronDown size={13} className="text-slate-400" />
-                                </button>
-                                <button className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
-                                    <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
-                                </button>
-                                <button onClick={() => setIsImportOpen(true)} className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
-                                    <UploadCloud size={14} className="text-slate-500" /><span className="hidden sm:inline">Import</span>
-                                </button>
-                                <button onClick={handleAddDriver} className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
-                                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Driver</span><span className="sm:hidden">Add</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* ACTIVE FILTER CHIPS */}
-                        {driverHasActiveFilters && (
-                            <div className="flex items-center gap-2 flex-wrap text-xs">
-                                <Search size={13} className="text-slate-400 shrink-0" />
-                                <span className="text-slate-500 font-medium shrink-0">Active filters:</span>
-                                {driverStatusFilter !== 'All' && (
-                                    <DriverFilterChip
-                                        label={`Status: ${driverStatusFilter}`}
-                                        onClear={() => setDriverStatusFilter('All')}
-                                    />
-                                )}
-                                {driverSearch && (
-                                    <DriverFilterChip
-                                        label={`Search: "${driverSearch}"`}
-                                        onClear={() => setDriverSearch('')}
-                                    />
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={clearDriverFilters}
-                                    className="ml-1 text-blue-600 hover:text-blue-800 font-semibold"
-                                >
-                                    Clear all
-                                </button>
-                                <span className="text-slate-400 ml-auto">
-                                    {filteredDrivers.length} match{filteredDrivers.length === 1 ? '' : 'es'}
-                                </span>
-                            </div>
-                        )}
-
-                        {/* DRIVER TABLE */}
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm whitespace-nowrap">
-                                    <thead className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
-                                        <tr>
-                                            <DriverSortTH id="name"    label="Driver Name" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-6" />
-                                            <DriverSortTH id="id"      label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
-                                            <DriverSortTH id="status"  label="Status"      current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[220px]">DQ File</th>
-                                            <DriverSortTH id="license" label="License"     current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {filteredDrivers.length > 0 ? (
-                                            driversPaginated.map((driver) => {
-                                                const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
-                                                const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
-                                                const isCompliant = totalIssues === 0 && stats.expiring === 0;
-                                                const dqHealth = dqHealthFor(driver);
-
-                                                return (
-                                                    <tr key={driver.id} onClick={() => handleDriverClick(driver.id)} className="hover:bg-blue-50/40 transition-colors group cursor-pointer">
-                                                        <td className="px-4 py-3 pl-6">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200">
-                                                                    {driver.avatarInitials}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{driver.name}</div>
-                                                                    <div className="text-[11px] text-slate-500 flex items-center gap-1">Hired: {driver.hiredDate}</div>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <div className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded w-fit">
-                                                                {driver.id}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <Badge 
-                                                                text={driver.status} 
-                                                                tone={
-                                                                    driver.status === 'Active' ? 'success' : 
-                                                                    driver.status === 'Inactive' ? 'gray' : 
-                                                                    driver.status === 'Terminated' ? 'danger' : 'warning'
-                                                                } 
-                                                            />
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            {isCompliant ? (
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded w-fit">
-                                                                        <Check className="w-3 h-3" /> Compliant
-                                                                    </span>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex flex-col gap-1 items-start">
-                                                                    {stats.expired > 0 && (
-                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
-                                                                            {stats.expired} Expired
-                                                                        </span>
-                                                                    )}
-                                                                    {(stats.missingNumber + stats.missingExpiry + stats.missingDoc) > 0 && (
-                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
-                                                                            {stats.missingNumber + stats.missingExpiry + stats.missingDoc} Missing
-                                                                        </span>
-                                                                    )}
-                                                                    {stats.expiring > 0 && (
-                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                                                                            {stats.expiring} Expiring
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <div className="flex flex-col gap-1.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <CompletionBar h={dqHealth} />
-                                                                    <span className="text-[12px] font-bold tabular-nums text-slate-700">{dqHealth.pct}%</span>
-                                                                </div>
-                                                                <ComplianceChecklist h={dqHealth} hasChecklist={dqHealth.total > 0} />
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <div className="text-slate-900 font-medium text-xs">{driver.licenseNumber || '—'}</div>
-                                                            <div className="text-[11px] text-slate-500 mt-0.5">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <span className="flex items-center gap-1.5 text-[11px]"><Phone className="w-3 h-3 text-slate-400" /> {driver.phone}</span>
-                                                                <span className="flex items-center gap-1.5 text-[11px]"><Mail className="w-3 h-3 text-slate-400" /> {driver.email}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right pr-6">
-                                                            <div className="flex items-center justify-end gap-1">
-                                                                <button onClick={(e) => { e.stopPropagation(); onNavigate?.('/dq-files'); }} title="Open DQ Files" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors">
-                                                                    <ListChecks className="w-4 h-4" />
-                                                                </button>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} title="Edit driver" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                                                                    <Edit3 className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        ) : (
-                                            <tr>
-                                                <td colSpan={8} className="py-20 text-center bg-slate-50/30">
-                                                    <div className="flex flex-col items-center gap-3">
-                                                        <div className="p-5 bg-white rounded-full shadow-sm border border-slate-100 text-slate-300">
-                                                            <Search size={40} strokeWidth={1.25} />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-base font-bold text-slate-900 tracking-tight">No drivers found</p>
-                                                            <p className="text-sm text-slate-500 mt-1">
-                                                                {driverHasActiveFilters
-                                                                    ? 'Try clearing some filters or adjusting your search.'
-                                                                    : 'Add a driver to get started.'}
-                                                            </p>
-                                                        </div>
-                                                        {driverHasActiveFilters && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={clearDriverFilters}
-                                                                className="mt-1 text-sm font-semibold text-blue-600 hover:text-blue-800"
-                                                            >
-                                                                Clear all filters
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
+                        {/* ONE card holds the toolbar, the list and the pager — the same list-view
+                            shell as the Default Compliance & Documents tables, so this roster reads
+                            like every other list in the app instead of a stack of loose panels. */}
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                            {/* TOOLBAR */}
+                            <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center">
+                                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                                    <div className="relative min-w-[200px] flex-1 basis-full sm:basis-auto sm:max-w-sm">
+                                        <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search name, ID, email, phone, license…"
+                                            value={driverSearch}
+                                            onChange={(e) => setDriverSearch(e.target.value)}
+                                            className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-8 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                        />
+                                        {driverSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setDriverSearch('')}
+                                                aria-label="Clear search"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                            >
+                                                <X size={13} />
+                                            </button>
                                         )}
-                                    </tbody>
-                                </table>
+                                    </div>
+                                    <span className="hidden items-center text-[11px] font-semibold text-slate-400 sm:inline-flex"><Filter size={13} /></span>
+                                    {/* The KPI tiles filter by status too — this is the same filter,
+                                        reachable without hunting across the tiles. */}
+                                    <select
+                                        value={driverStatusFilter}
+                                        onChange={(e) => setDriverStatusFilter(e.target.value)}
+                                        title="Filter by status"
+                                        className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-medium text-slate-600 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    >
+                                        <option value="All">All statuses</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Inactive">Inactive</option>
+                                        <option value="On Leave">On Leave</option>
+                                        <option value="Terminated">Terminated</option>
+                                    </select>
+                                    <ColumnsDropdown columns={DRIVER_COLUMNS} visible={visibleDriverCols} onToggle={toggleDriverCol} />
+                                </div>
+
+                                <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
+                                    <button className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 lg:flex-none">
+                                        <Download size={14} className="shrink-0 text-slate-400" /> Export
+                                    </button>
+                                    <button onClick={() => setIsImportOpen(true)} className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 lg:flex-none">
+                                        <UploadCloud size={14} className="shrink-0 text-slate-400" /> Import
+                                    </button>
+                                    <button onClick={handleAddDriver} className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-[13px] font-semibold text-white shadow-sm hover:bg-blue-700 lg:flex-none">
+                                        <Plus className="h-4 w-4 shrink-0" /> Add Driver
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* ACTIVE FILTERS — inside the card, so it reads as part of the list. */}
+                            {driverHasActiveFilters && (
+                                <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50/60 px-4 py-2 text-xs">
+                                    <span className="shrink-0 font-medium text-slate-500">Active filters:</span>
+                                    {driverStatusFilter !== 'All' && (
+                                        <DriverFilterChip label={`Status: ${driverStatusFilter}`} onClear={() => setDriverStatusFilter('All')} />
+                                    )}
+                                    {driverSearch && (
+                                        <DriverFilterChip label={`Search: "${driverSearch}"`} onClear={() => setDriverSearch('')} />
+                                    )}
+                                    <button type="button" onClick={clearDriverFilters} className="font-semibold text-blue-600 hover:text-blue-800">
+                                        Clear all
+                                    </button>
+                                    <span className="ml-auto tabular-nums text-slate-400">
+                                        {filteredDrivers.length} match{filteredDrivers.length === 1 ? '' : 'es'}
+                                    </span>
+                                </div>
+                            )}
+
+                            {filteredDrivers.length === 0 ? (
+                                <div className="px-5 py-16 text-center">
+                                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-300">
+                                        <Search size={26} strokeWidth={1.5} />
+                                    </div>
+                                    <p className="mt-3 text-sm font-bold text-slate-900">No drivers found</p>
+                                    <p className="mt-1 text-[13px] text-slate-500">
+                                        {driverHasActiveFilters ? 'Try clearing a filter or adjusting your search.' : 'Add a driver to get started.'}
+                                    </p>
+                                    {driverHasActiveFilters && (
+                                        <button type="button" onClick={clearDriverFilters} className="mt-3 text-[13px] font-semibold text-blue-600 hover:text-blue-800">
+                                            Clear all filters
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Narrow screens — stacked cards. A seven-column table cannot be
+                                        read on a phone, and side-scrolling one is worse than a list. */}
+                                    <div className="divide-y divide-slate-100 lg:hidden">
+                                        {driversPaginated.map((driver) => {
+                                            const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
+                                            const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
+                                            const isCompliant = totalIssues === 0 && stats.expiring === 0;
+                                            const dqHealth = dqHealthFor(driver);
+                                            return (
+                                                <button
+                                                    key={driver.id}
+                                                    type="button"
+                                                    onClick={() => handleDriverClick(driver.id)}
+                                                    className="block w-full px-4 py-3.5 text-left transition-colors hover:bg-blue-50/40"
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-600">
+                                                            {driver.avatarInitials}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="truncate text-[14px] font-bold text-slate-900">{driver.name}</span>
+                                                                <Badge
+                                                                    text={driver.status}
+                                                                    tone={driver.status === 'Active' ? 'success' : driver.status === 'Inactive' ? 'gray' : driver.status === 'Terminated' ? 'danger' : 'warning'}
+                                                                />
+                                                            </div>
+                                                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                                                                <span className="font-mono">{driver.id}</span>
+                                                                <span className="text-slate-300">·</span>
+                                                                <span>Hired {driver.hiredDate}</span>
+                                                            </div>
+                                                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                                                {isCompliant ? (
+                                                                    <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase text-emerald-600">
+                                                                        <Check className="h-3 w-3" /> Compliant
+                                                                    </span>
+                                                                ) : (
+                                                                    <>
+                                                                        {stats.expired > 0 && <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-600">{stats.expired} Expired</span>}
+                                                                        {(stats.missingNumber + stats.missingExpiry + stats.missingDoc) > 0 && (
+                                                                            <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-600">{stats.missingNumber + stats.missingExpiry + stats.missingDoc} Missing</span>
+                                                                        )}
+                                                                        {stats.expiring > 0 && <span className="rounded bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase text-amber-600">{stats.expiring} Expiring</span>}
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                            <div className="mt-2 flex items-center gap-2">
+                                                                <CompletionBar h={dqHealth} />
+                                                                <span className="text-[11px] font-bold tabular-nums text-slate-600">DQ {dqHealth.pct}%</span>
+                                                            </div>
+                                                            <div className="mt-1.5 text-[11px] text-slate-500">
+                                                                {driver.licenseNumber || '—'} · {driver.licenseState || '—'} · Exp {driver.licenseExpiry || '—'}
+                                                            </div>
+                                                        </div>
+                                                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-slate-300" />
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Desktop — full table. Actions stay pinned to the right edge so
+                                        they are reachable however far the table is scrolled. */}
+                                    <div className="hidden overflow-x-auto lg:block">
+                                        <table className="w-full min-w-[1040px] text-left text-sm">
+                                            <thead className="border-b border-slate-200 bg-slate-50">
+                                                <tr>
+                                                    <DriverSortTH id="name" label="Driver" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-5" />
+                                                    {driverColShown('id') && <DriverSortTH id="id" label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
+                                                    {driverColShown('status') && <DriverSortTH id="status" label="Status" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
+                                                    {driverColShown('compliance') && <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Compliance</th>}
+                                                    {driverColShown('dq') && <th className="min-w-[220px] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">DQ File</th>}
+                                                    {driverColShown('license') && <DriverSortTH id="license" label="License" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
+                                                    {driverColShown('contact') && <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Contact</th>}
+                                                    <th className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 py-2.5 pl-4 pr-5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {driversPaginated.map((driver) => {
+                                                    const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
+                                                    const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
+                                                    const isCompliant = totalIssues === 0 && stats.expiring === 0;
+                                                    const dqHealth = dqHealthFor(driver);
+
+                                                    return (
+                                                        <tr key={driver.id} onClick={() => handleDriverClick(driver.id)} className="group cursor-pointer transition-colors hover:bg-blue-50/40">
+                                                            <td className="px-4 py-3 pl-5">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-600">
+                                                                        {driver.avatarInitials}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <div className="truncate font-bold text-slate-900 transition-colors group-hover:text-blue-600">{driver.name}</div>
+                                                                        <div className="text-[11px] text-slate-500">Hired: {driver.hiredDate}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            {driverColShown('id') && (
+                                                                <td className="px-4 py-3">
+                                                                    <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-medium text-slate-600">{driver.id}</span>
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('status') && (
+                                                                <td className="px-4 py-3">
+                                                                    <Badge
+                                                                        text={driver.status}
+                                                                        tone={driver.status === 'Active' ? 'success' : driver.status === 'Inactive' ? 'gray' : driver.status === 'Terminated' ? 'danger' : 'warning'}
+                                                                    />
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('compliance') && (
+                                                                <td className="px-4 py-3">
+                                                                    {isCompliant ? (
+                                                                        <span className="inline-flex w-fit items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase text-emerald-600">
+                                                                            <Check className="h-3 w-3" /> Compliant
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div className="flex flex-col items-start gap-1">
+                                                                            {stats.expired > 0 && (
+                                                                                <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-600">{stats.expired} Expired</span>
+                                                                            )}
+                                                                            {(stats.missingNumber + stats.missingExpiry + stats.missingDoc) > 0 && (
+                                                                                <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-600">{stats.missingNumber + stats.missingExpiry + stats.missingDoc} Missing</span>
+                                                                            )}
+                                                                            {stats.expiring > 0 && (
+                                                                                <span className="rounded bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase text-amber-600">{stats.expiring} Expiring</span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('dq') && (
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex flex-col gap-1.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <CompletionBar h={dqHealth} />
+                                                                            <span className="text-[12px] font-bold tabular-nums text-slate-700">{dqHealth.pct}%</span>
+                                                                        </div>
+                                                                        <ComplianceChecklist h={dqHealth} hasChecklist={dqHealth.total > 0} />
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('license') && (
+                                                                <td className="px-4 py-3">
+                                                                    <div className="text-xs font-medium text-slate-900">{driver.licenseNumber || '—'}</div>
+                                                                    <div className="mt-0.5 text-[11px] text-slate-500">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('contact') && (
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex flex-col gap-0.5 text-slate-600">
+                                                                        <span className="flex items-center gap-1.5 text-[11px]"><Phone className="h-3 w-3 text-slate-400" /> {driver.phone}</span>
+                                                                        <span className="flex items-center gap-1.5 text-[11px]"><Mail className="h-3 w-3 text-slate-400" /> {driver.email}</span>
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                            {/* Opaque, and opaque again on hover — a see-through sticky
+                                                                cell shows the scrolled columns through itself. */}
+                                                            <td className="sticky right-0 z-10 border-l border-slate-200 bg-white py-3 pl-4 pr-5 text-right group-hover:bg-blue-50/40">
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    <button onClick={(e) => { e.stopPropagation(); onNavigate?.('/dq-files'); }} title="Open DQ Files" className="rounded p-1.5 text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-600">
+                                                                        <ListChecks className="h-4 w-4" />
+                                                                    </button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} title="Edit driver" className="rounded p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600">
+                                                                        <Edit3 className="h-4 w-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
+
                             <PaginationBar
                                 totalItems={filteredDrivers.length}
                                 currentPage={driverPage}

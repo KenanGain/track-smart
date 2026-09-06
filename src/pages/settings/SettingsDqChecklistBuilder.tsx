@@ -1300,6 +1300,7 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
                                rows = the file's forms as synthesized driver records; click a form → its record
                                detail with a per-form "Fill out the form" card + Add-record / upload. Same per-driver data. */
                             <SubjectDocuments
+                                accountId={accountId}
                                 embedded
                                 hideCategoryTabs
                                 entity="Driver"
@@ -1464,6 +1465,7 @@ function DocRecordDetail({ record, accountId, subjectId, subjectLabel, detailExt
     }, []);
     return (
         <SubjectDocuments
+            accountId={accountId}
             entity={record.entity}
             subjectId={subjectId}
             subjectLabel={subjectLabel}

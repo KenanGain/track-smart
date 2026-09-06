@@ -3,21 +3,30 @@ import {
     Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
     ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock, CornerDownRight, Share2,
+    ToggleLeft, ToggleRight, RotateCcw, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KebabMenu } from '@/components/ui/KebabMenu';
+import { UploadZone } from '@/components/ui/UploadZone';
 import { ShareToChat } from '@/components/share/ShareToChat';
-import { consumePendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
+import { consumePendingRecord, setPendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
+import { useRecordEnablement } from '@/pages/compliance/record-enablement';
+// The Monitoring & Notifications block lives on its own so the driver application can
+// render the SAME control — what it captures becomes a record here.
+import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
+import {
+    basisLabel, recurrenceLabel, reminderLabel, monitoredDateFor,
+} from '@/pages/compliance/monitoring-schedule';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, ENTITY_ORDER, isDateMonitored, RECORD_TYPE_LABEL, RECORD_TYPE_ORDER,
-    defaultVersionLabel, statusOptionsFor, recordFields, type RecordFieldDef,
+    defaultVersionLabel, MAX_RECORD_NAME, statusOptionsFor, recordFields, fieldPool, fieldValue, type RecordFieldDef,
     type SafetyRecord, type EntityId, type RecordTypeId,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
-    useComplianceData, computeStats, entryStatus, currentVersion, newVersion, newInstance, instancesOf, emptyEntry,
+    useComplianceData, computeStats, entryStatus, currentVersion, newVersion, blankVersion, newInstance, instancesOf, emptyEntry,
     defaultMonitoring, CARRIER_SUBJECT,
-    type RecordDataEntry, type DocVersion, type DocInstance, type DataDocFile, type DataStatus, type MonitoringConfig, type MonitorBasis,
+    type RecordDataEntry, type DocVersion, type DocInstance, type DataDocFile, type DataStatus, type MonitoringConfig,
 } from '@/pages/compliance/compliance-data-store';
 import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
 import { useSafetyTags, tagColor, smartTagMatch, MAX_DOC_TAGS } from '@/pages/compliance/safety-tags.data';
@@ -213,22 +222,9 @@ const DATA_COLUMNS: { id: DataColId; label: string }[] = [
 const ALL_DATA_COLS: DataColId[] = DATA_COLUMNS.map(c => c.id);
 const STATUS_RANK: Record<DataStatus, number> = { complete: 0, missing: 1, optional: 2 };
 const PAGE_SIZES = [10, 25, 50, 100];
-const REMINDER_DAYS = [90, 60, 30, 15, 7, 0]; // 0 = "On the date"
-const reminderLabel = (d: number) => (d === 0 ? 'On the date' : `${d} Days Before`);
 // Status values for status-based records (the monitored value captured in the form).
 const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
 
-// Renewal cadence options (mirror the settings-catalog MonitoringSettings).
-const RECURRENCE_OPTIONS: { id: string; label: string }[] = [
-    { id: 'none', label: 'Does not recur' },
-    { id: 'monthly', label: 'Monthly' },
-    { id: 'quarterly', label: 'Quarterly (Every 3 Months)' },
-    { id: 'semiannually', label: 'Semi-Annually (Every 6 Months)' },
-    { id: 'annually', label: 'Annually (Every 1 Year)' },
-    { id: 'biennially', label: 'Every 2 Years' },
-    { id: 'triennially', label: 'Every 3 Years' },
-    { id: 'fiveyearly', label: 'Every 5 Years' },
-];
 /** Map the record's free-text `recurring` note onto a recurrence option. */
 function recurrenceFromRecord(r: SafetyRecord): string {
     const s = (r.recurring || '').toLowerCase();
@@ -237,15 +233,24 @@ function recurrenceFromRecord(r: SafetyRecord): string {
     if (s.includes('quarter')) return 'quarterly';
     if (s.includes('semi')) return 'semiannually';
     if (s.includes('bienn') || s.includes('every 2') || s.includes('2 year')) return 'biennially';
+    // Before the catch-all `year`, which would otherwise swallow "Every 3 years" as annual.
+    // Matched on "3 year" rather than "every 3" so a "3 month" cadence can never land here.
+    if (s.includes('trienn') || s.includes('3 year')) return 'triennially';
     if (s.includes('annual') || s.includes('yearly') || s.includes('year')) return 'annually';
     return 'annually';
 }
 /** Build a monitoring config seeded from the record (recurrence), merging any stored value on top. */
+/** True when the record captures a monitored STATUS value (no date to track, and not opted out). */
+const capturesStatus = (r: SafetyRecord): boolean => !isDateMonitored(r) && !r.hideStatus;
+
 export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig): MonitoringConfig {
     const base = defaultMonitoring();
     base.recurrence = recurrenceFromRecord(record);
-    // Status-only records default to status-based monitoring (no date reminders).
-    base.basis = isDateMonitored(record) ? 'expiry' : 'status';
+    // Status-only records default to status-based monitoring (no date reminders). A record on
+    // a review cycle starts from its issue date, so the recurrence sets the next due date.
+    base.basis = !isDateMonitored(record) ? 'status'
+        : (record.defaultMonitorBasis === 'issue' && record.tracksIssueDate) ? 'issue'
+        : 'expiry';
     if (base.basis === 'status') base.reminders = [];
     else if (record.defaultReminders) base.reminders = [...record.defaultReminders]; // per-record reminder default
     return existing ? { ...base, ...existing } : base;
@@ -300,7 +305,7 @@ function sampleFields(record: SafetyRecord, seed = 0): Record<string, string> | 
     if (!defs.length) return undefined;
     const out: Record<string, string> = {};
     for (const f of defs) {
-        const pool = f.kind === 'select' ? f.options : (f.demoValues ?? []);
+        const pool = fieldPool(f);
         if (pool.length) out[f.key] = pool[(recordHash(record) + seed) % pool.length] ?? '';
     }
     return Object.keys(out).length ? out : undefined;
@@ -308,7 +313,7 @@ function sampleFields(record: SafetyRecord, seed = 0): Record<string, string> | 
 /** Jurisdiction demo values, honouring the record's hideCountry / hideState flags. */
 function sampleJurisdiction(record: SafetyRecord): { country: string; stateProv: string } {
     if (record.hideCountry) return { country: '', stateProv: '' };
-    const country = record.allCountries ? 'United States' : 'Canada';
+    const country = record.defaultCountry ?? (record.allCountries ? 'United States' : 'Canada');
     return { country, stateProv: record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '') };
 }
 // Static demo PDFs (public/demo-docs/*.pdf). Real file URLs open reliably in the browser's PDF viewer —
@@ -364,12 +369,12 @@ function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVer
     const { country, stateProv } = sampleJurisdiction(record);
     const seed = label.length;
     const v: DocVersion = {
-        ...newVersion(label),
+        ...blankVersion(record, label),
         numberValue: record.numberName ? sampleNumber(record) : '',
         country, stateProv,
         issueDate: record.tracksIssueDate ? SAMPLE_ISSUES[recordHash(record) % SAMPLE_ISSUES.length] : '',
         expiryDate: isDateMonitored(record) ? sampleExpiry(record) : '',
-        status: !isDateMonitored(record) ? sampleStatus(record, seed) : '',
+        status: capturesStatus(record) ? sampleStatus(record, seed) : '',
         fields: sampleFields(record, labelSeed(label)),
         files: [],
         monitoring: { ...seedMonitoring(record), enabled: true },
@@ -474,7 +479,7 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
             const v = sampleVersion(record, defaultVersionLabel(record, y), {
                 expiryDate: dated ? `${y}-12-31` : '',
                 issueDate: record.tracksIssueDate ? `${y - 2}-01-10` : '',
-                status: !dated ? (record.statusOptions ? sampleStatus(record, i) : (i === 0 ? 'Active' : 'On File')) : '',
+                status: capturesStatus(record) ? (record.statusOptions ? sampleStatus(record, i) : (i === 0 ? 'Active' : 'On File')) : '',
                 tags: i === 0 ? ['Verified', 'Primary'] : i === 1 ? ['Renewed'] : [],
                 monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
             });
@@ -505,10 +510,6 @@ function fmtDateTime(iso: string): string {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
     return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-function monitoredDateFor(cfg: MonitoringConfig, v: { issueDate: string; expiryDate: string }): string {
-    if (cfg.basis === 'status') return '';
-    return cfg.basis === 'issue' ? v.issueDate : cfg.basis === 'custom' ? cfg.customDate : v.expiryDate;
 }
 
 // ── Toasts (global, stacked) — any component can fire one via emitToast() ──
@@ -724,6 +725,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
             <div className="px-4 sm:px-8 py-6 space-y-5">
                 {entity === 'Carrier' && (
                     <SubjectDocuments
+                        accountId={accountId}
                         entity="Carrier"
                         subjectId={CARRIER_SUBJECT}
                         subjectLabel={carrierName}
@@ -747,6 +749,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                             const asset = assets.find(a => a.id === selectedSubject);
                             return (
                                 <SubjectDocuments
+                                    accountId={accountId}
                                     entity="Asset"
                                     subjectId={selectedSubject}
                                     subjectLabel={asset ? `${asset.unitNumber} · ${asset.make} ${asset.model}` : 'Asset'}
@@ -776,6 +779,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                             const driver = drivers.find(d => d.id === selectedSubject);
                             return (
                                 <SubjectDocuments
+                                    accountId={accountId}
                                     entity="Driver"
                                     subjectId={selectedSubject}
                                     subjectLabel={driver ? driver.name : 'Driver'}
@@ -1037,9 +1041,11 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate, accountId }: {
     entity: EntityId;
     subjectId: string;
+    /** Scopes which records this subject tracks (see `record-enablement`). */
+    accountId?: string;
     subjectLabel: string;
     carrierName: string;
     records: SafetyRecord[];
@@ -1081,6 +1087,12 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const [manage, setManage] = useState<SafetyRecord | null>(null);
     const [detailRecord, setDetailRecord] = useState<SafetyRecord | null>(null); // row → dedicated detail page
     const [confirmClear, setConfirmClear] = useState(false);                     // Clear → "are you sure?"
+    // Which records this subject tracks. `listedDisabled` is a snapshot, so flipping a row's
+    // switch marks it rather than moving it out from under the cursor; `refresh` is what
+    // actually moves rows between the two lists, exactly as reloading the page would.
+    const { disabled, listedDisabled, pending, setEnabled, refresh } = useRecordEnablement(accountId, subjectId);
+    const [enablementView, setEnablementView] = useState<'enabled' | 'disabled'>('enabled');
+    useEffect(() => { setPage(1); }, [enablementView]);
     // Tell the parent to hide its header/entity tabs while a detail page is open (and reset on unmount / subject change).
     useEffect(() => { onDetailChange?.(!!detailRecord); }, [detailRecord, onDetailChange]);
     useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
@@ -1088,13 +1100,21 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const toggleCol = (id: DataColId) => setVisibleCols(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
     const toggleSort = (col: SortCol) => setSort(prev => (prev && prev.col === col ? (prev.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }));
 
-    const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
+    const allEntityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
+    // Everything below — the stats bar, the category tabs, the filters, the table — works on
+    // the records in the list you are LOOKING at, so "23 Records" always matches what is
+    // listed and a disabled record stops counting against the driver's completion.
+    const entityRecords = useMemo(
+        () => allEntityRecords.filter(r => listedDisabled.has(r.id) === (enablementView === 'disabled')),
+        [allEntityRecords, listedDisabled, enablementView]);
+    const enabledCount = useMemo(() => allEntityRecords.filter(r => !listedDisabled.has(r.id)).length, [allEntityRecords, listedDisabled]);
+    const disabledCount = allEntityRecords.length - enabledCount;
     const entryFor = (r: SafetyRecord) => getEntry(subjectId, r.id);
 
     // Deep-link from the Monitoring page → auto-open the requested record's dedicated detail page once.
     useEffect(() => {
         if (!autoOpenRecordId) return;
-        const rec = entityRecords.find(r => r.id === autoOpenRecordId);
+        const rec = allEntityRecords.find(r => r.id === autoOpenRecordId);
         if (rec) setDetailRecord(rec);
         onFocusConsumed?.();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1104,7 +1124,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     // so the whole app (incl. monitoring) has representative data. Each doc-bearing record gets a real demo PDF.
     const loadSampleData = () => {
         const items: { subjectId: string; recordId: string; entry: RecordDataEntry }[] = [];
-        entityRecords.forEach((r, i) => items.push({ subjectId, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
+        allEntityRecords.forEach((r, i) => items.push({ subjectId, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
         for (const ex of alsoSeedSubjects ?? [])
             records.filter(r => r.entity === ex.entity).forEach((r, i) => items.push({ subjectId: ex.subjectId, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
         setEntries(items);
@@ -1113,13 +1133,13 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     };
     const clearData = () => {
         const items: { subjectId: string; recordId: string; entry: RecordDataEntry }[] = [];
-        entityRecords.forEach(r => items.push({ subjectId, recordId: r.id, entry: emptyEntry() }));
+        allEntityRecords.forEach(r => items.push({ subjectId, recordId: r.id, entry: emptyEntry() }));
         for (const ex of alsoSeedSubjects ?? [])
             records.filter(r => r.entity === ex.entity).forEach(r => items.push({ subjectId: ex.subjectId, recordId: r.id, entry: emptyEntry() }));
         setEntries(items);
         emitToast('Data cleared');
     };
-    const hasData = entityRecords.some(r => {
+    const hasData = allEntityRecords.some(r => {
         const e = getEntry(subjectId, r.id);
         return e.versions.length > 0 || (e.instances?.length ?? 0) > 0;
     });
@@ -1220,27 +1240,65 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
             </div>
             )}
 
+            {/* Enabled / Disabled — which of this subject's records the list is showing. */}
             {/* List card */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                {!hideCategoryTabs && (
-                <div className="flex items-center gap-1 px-4 pt-3 border-b border-slate-100 overflow-x-auto">
-                    {categoryTabs.map(t => {
-                        const active = category === t.id;
-                        return (
-                            <button key={String(t.id)} type="button" onClick={() => setCategory(t.id)}
-                                className={cn('inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-                                    active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
-                                {t.label}
-                                <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>{t.count}</span>
-                            </button>
-                        );
-                    })}
+                {/* Which records am I looking at — the category tabs and the Enabled / Disabled
+                    switch answer the same question, so they share the card's top row: the
+                    subsets on the left, which SIDE of the list on the right. The row survives
+                    the tabs being hidden, because the switch still belongs here.
+                    The divider lives on the wrapper and the underline overlaps it via the
+                    SCROLL BOX's own -mb-px, never the buttons': a button hanging 1px past its
+                    scroll box makes `overflow-x-auto` compute `overflow-y: auto` too, which
+                    put a stray vertical scrollbar in this row and clipped the last count. */}
+                <div className="border-b border-slate-100">
+                    <div className="flex items-end gap-3 px-4 pt-3">
+                        {!hideCategoryTabs && (
+                        <div className="-mb-px flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
+                            {categoryTabs.map(t => {
+                                const active = category === t.id;
+                                return (
+                                    <button key={String(t.id)} type="button" onClick={() => setCategory(t.id)}
+                                        title={`${t.label} — ${t.count} ${t.count === 1 ? 'record' : 'records'}`}
+                                        className={cn('inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-[13px] font-medium transition-colors',
+                                            active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
+                                        {t.label}
+                                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>{t.count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        )}
+                        <div className={cn('shrink-0 pb-2', hideCategoryTabs && 'ml-auto')}>
+                            <EnablementSwitch value={enablementView} onChange={setEnablementView}
+                                enabledCount={enabledCount} disabledCount={disabledCount} />
+                        </div>
+                    </div>
                 </div>
+
+                {/* Changes waiting on a refresh — a strip across the list they apply to. */}
+                {pending.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-[12px] text-amber-800">
+                        <Info size={13} className="shrink-0 text-amber-600" />
+                        <span>
+                            {pending.length === 1 ? '1 record moves' : `${pending.length} records move`} list on refresh.
+                        </span>
+                        <button type="button" onClick={refresh}
+                            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100">
+                            <RotateCcw size={11} /> Refresh list
+                        </button>
+                    </div>
                 )}
 
-                {/* Toolbar — search + filters + column selector */}
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
-                    <div className="relative flex-1 min-w-[220px] max-w-sm">
+                {/* Toolbar — two groups: narrowing the list on the left, acting on it at the
+                    right. Grouped rather than one long flex row so that when it wraps, the
+                    filters stay together and the buttons stay together, instead of the last
+                    control being orphaned onto a line of its own.
+                    Aligned to the TOP, not the centre: once the filter group wraps to two
+                    lines, centring floated the buttons between them, aligned with neither. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 py-3 border-b border-slate-100">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <div className="relative min-w-[200px] flex-1 basis-full sm:basis-auto sm:max-w-sm">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search records, numbers, tags, jurisdiction…"
                             className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
@@ -1261,14 +1319,16 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                         {tagCatalog.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
-                    <div className="ml-auto flex items-center gap-2">
+                    </div>
+                    <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
                         <button type="button" onClick={loadSampleData} title={alsoSeedSubjects?.length ? 'Load sample data everywhere — the carrier plus every asset & driver (with demo PDF documents), so all records, monitoring and the Records lists have data' : 'Populate this list with representative sample records (with demo PDF documents)'}
-                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100">
-                            <Sparkles size={14} /> {alsoSeedSubjects?.length ? 'Load sample data (everywhere)' : 'Load sample data'}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100 sm:flex-none sm:justify-start">
+                            <Sparkles size={14} className="shrink-0" />
+                            <span className="truncate">{alsoSeedSubjects?.length ? 'Load sample data (everywhere)' : 'Load sample data'}</span>
                         </button>
                         {hasData && (
                             <button type="button" onClick={() => setConfirmClear(true)} title="Clear all captured data for this subject"
-                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200">
+                                className="inline-flex shrink-0 items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200">
                                 <Trash2 size={14} /> Clear
                             </button>
                         )}
@@ -1276,7 +1336,11 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 </div>
 
                 {pageRows.length === 0 ? (
-                    <div className="px-5 py-12 text-center text-sm text-slate-500">No records match your search / filters.</div>
+                    <div className="px-5 py-12 text-center text-sm text-slate-500">
+                        {entityRecords.length === 0 && enablementView === 'disabled'
+                            ? 'No records are disabled — this driver tracks the whole catalog.'
+                            : 'No records match your search / filters.'}
+                    </div>
                 ) : (
                     <>
                         {/* Mobile / narrow screens — stacked cards */}
@@ -1288,16 +1352,20 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                                     entry={entryFor(r)}
                                     visibleCols={visibleCols}
                                     onOpen={() => setDetailRecord(r)}
+                                    enabled={!disabled.has(r.id)}
+                                    onEnabledChange={v => setEnabled(r.id, v)}
                                 />
                             ))}
                         </div>
                         {/* Desktop — full table */}
                         <div className="hidden lg:block overflow-x-auto">
-                            <table className="w-full min-w-[980px]">
-                                <thead className="border-b border-slate-200 bg-slate-50/50">
+                            <table className="w-full min-w-[1070px]">
+                                <thead className="border-b border-slate-200 bg-slate-50">
                                     <tr className="text-left">
                                         <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
                                         {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
+                                        {/* Always shown — not a toggleable column: it is how you get a record back. */}
+                                        <th className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 py-2.5 pl-4 pr-5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap" title="Whether this record is tracked for this driver">Tracked</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1308,6 +1376,8 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                                             entry={entryFor(r)}
                                             visibleCols={visibleCols}
                                             onOpen={() => setDetailRecord(r)}
+                                            enabled={!disabled.has(r.id)}
+                                            onEnabledChange={v => setEnabled(r.id, v)}
                                         />
                                     ))}
                                 </tbody>
@@ -1397,6 +1467,57 @@ function SubViewSwitch({ value, onChange, listLabel, ListIcon, listCount, record
                 );
             })}
         </div>
+    );
+}
+
+/**
+ * Enabled / Disabled switch for a subject's record list. Both counts are always visible, so
+ * turning something off never looks like losing it — you can see where it went.
+ */
+function EnablementSwitch({ value, onChange, enabledCount, disabledCount }: {
+    value: 'enabled' | 'disabled'; onChange: (v: 'enabled' | 'disabled') => void;
+    enabledCount: number; disabledCount: number;
+}) {
+    const opts = [
+        { id: 'enabled' as const, label: 'Enabled', Icon: ToggleRight, count: enabledCount },
+        { id: 'disabled' as const, label: 'Disabled', Icon: ToggleLeft, count: disabledCount },
+    ];
+    return (
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/70 p-0.5">
+            {opts.map(o => {
+                const active = value === o.id;
+                return (
+                    <button key={o.id} type="button" onClick={() => onChange(o.id)}
+                        title={o.id === 'enabled' ? `Enabled — ${enabledCount} records this subject tracks` : `Disabled — ${disabledCount} records this subject does not track`}
+                        aria-label={o.label}
+                        className={cn('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors',
+                            active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
+                        <o.Icon size={14} className={cn('shrink-0', active ? 'text-blue-600' : 'text-slate-400')} />
+                        <span className="hidden sm:inline">{o.label}</span>
+                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums', active ? 'bg-blue-50 text-blue-600' : 'bg-slate-200/70 text-slate-500')}>{o.count}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/** A row's on/off control. Compact enough for a table cell, and it never opens the row. */
+function RowEnableToggle({ enabled, onChange, recordName }: {
+    enabled: boolean; onChange: (v: boolean) => void; recordName: string;
+}) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            title={enabled ? `Stop tracking ${recordName} for this driver` : `Track ${recordName} for this driver`}
+            onClick={e => { e.stopPropagation(); onChange(!enabled); }}
+            className={cn('inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                enabled ? 'bg-blue-600' : 'bg-slate-300 hover:bg-slate-400')}
+        >
+            <span className={cn('block h-4 w-4 rounded-full bg-white shadow transition-transform', enabled ? 'translate-x-4' : 'translate-x-0')} />
+        </button>
     );
 }
 
@@ -1714,11 +1835,14 @@ function ColumnsDropdown({ visible, onToggle }: { visible: Set<DataColId>; onTog
 }
 
 // ── Record table row (+ expandable version sub-rows) ──────────────────
-function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
+function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnabledChange }: {
     r: SafetyRecord; entry: RecordDataEntry; visibleCols: Set<DataColId>;
     onOpen: () => void;
     /** Optional leading cell (the aggregated "Records" view passes the Asset/Driver subject here). */
     leadCell?: ReactNode;
+    /** Whether this subject tracks the record. Omitted where enablement does not apply. */
+    enabled?: boolean;
+    onEnabledChange?: (v: boolean) => void;
 }) {
     const status = entryStatus(r, entry);
     const isMulti = !!r.multiInstance;
@@ -1730,9 +1854,12 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
     const versionCount = isMulti ? insts.length : entry.versions.length;
     const monitoringOn = isMulti ? insts.some(i => !!i.versions[0]?.monitoring?.enabled) : !!cur?.monitoring?.enabled;
 
+    // Dimmed the moment the switch is flipped, so the change reads immediately even though
+    // the row keeps its place until the list is refreshed.
+    const off = enabled === false;
     return (
         <>
-            <tr className="border-b border-slate-100 hover:bg-slate-50/50 align-top">
+            <tr className={cn('group border-b border-slate-100 hover:bg-slate-50/50 align-top', off && 'bg-slate-50/40 opacity-60')}>
                 {/* Subject (aggregated Records view only) */}
                 {leadCell !== undefined && <td className="px-4 py-3.5 pl-5 align-top">{leadCell}</td>}
                 {/* Record & Fields */}
@@ -1793,16 +1920,16 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
                                     <CalendarClock size={12} className="mt-0.5 shrink-0 text-slate-400" />
                                     <span><span className="text-slate-400">{r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.expiryDate || '—'}</span></span>
                                 </div>
-                            ) : (
+                            ) : r.hideStatus ? null : (
                                 <div className="flex items-start gap-1.5 leading-snug text-slate-600">
                                     <CircleDashed size={12} className="mt-0.5 shrink-0 text-slate-400" />
                                     <span><span className="text-slate-400">{r.statusLabel ?? r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.status || '—'}</span></span>
                                 </div>
                             )}
-                            {(r.selectFields ?? []).map(f => (
+                            {recordFields(r).map(f => (
                                 <div key={f.key} className="leading-snug text-slate-700">
                                     <span className="text-slate-400">{f.label}: </span>
-                                    <span className="font-semibold">{cur?.fields?.[f.key] || '—'}</span>
+                                    <span className="font-semibold">{fieldValue(f, cur?.fields) || '—'}</span>
                                 </div>
                             ))}
                             {(monitoringOn || isMulti || versionCount > 1) && (
@@ -1824,6 +1951,14 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
                 {visibleCols.has('status') && (
                     <td className="px-4 py-3.5"><StatusPill status={status} /></td>
                 )}
+                {/* Tracked — only where enablement applies (the aggregated Records view has no
+                    single subject to enable a record FOR, so it passes no handler). */}
+                {onEnabledChange && (
+                    <td className={cn('sticky right-0 z-10 w-[92px] border-l border-slate-100 py-3.5 pl-4 pr-5 text-right align-top',
+                        off ? 'bg-slate-50' : 'bg-white group-hover:bg-slate-50')}>
+                        <RowEnableToggle enabled={enabled !== false} onChange={onEnabledChange} recordName={r.recordName} />
+                    </td>
+                )}
             </tr>
 
         </>
@@ -1832,11 +1967,14 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
 
 // ── Record card — mobile / narrow-screen counterpart of RecordTableRow ──────────────
 // Column-driven (mirrors visibleCols) so the Columns chooser affects it just like the table.
-function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
+function RecordCard({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnabledChange }: {
     r: SafetyRecord; entry: RecordDataEntry; visibleCols: Set<DataColId>;
     onOpen: () => void;
     /** Optional leading block (the aggregated "Records" view passes the Asset/Driver subject here). */
     leadCell?: ReactNode;
+    /** Whether this subject tracks the record. Omitted where enablement does not apply. */
+    enabled?: boolean;
+    onEnabledChange?: (v: boolean) => void;
 }) {
     const status = entryStatus(r, entry);
     const isMulti = !!r.multiInstance;
@@ -1853,7 +1991,8 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
             tabIndex={0}
             onClick={onOpen}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
-            className="px-4 py-3.5 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100 transition-colors"
+            className={cn('px-4 py-3.5 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100 transition-colors',
+                enabled === false && 'bg-slate-50/40 opacity-60')}
         >
             {leadCell !== undefined && <div className="mb-2.5">{leadCell}</div>}
             {/* Title + status */}
@@ -1867,6 +2006,7 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
                 </div>
                 <div className="shrink-0 flex items-center gap-1.5 pt-0.5">
                     {visibleCols.has('status') && <StatusPill status={status} />}
+                    {onEnabledChange && <RowEnableToggle enabled={enabled !== false} onChange={onEnabledChange} recordName={r.recordName} />}
                     <ChevronRight size={15} className="text-slate-300" />
                 </div>
             </div>
@@ -1922,15 +2062,6 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
 }
 
 // ── Record detail page (MOTUS-style: header band + info block + tabs + document table) ──
-const MONITOR_BASIS_LABEL: Record<MonitorBasis, string> = { issue: 'Issue date', expiry: 'Expiry date', custom: 'Custom date', status: 'Status' };
-/**
- * What to call the monitored date FOR THIS RECORD. The generic "Expiry date" is wrong for
- * anything that is reviewed or renewed rather than expiring — an MVR is monitored on its
- * next renew date, a CDL on its licence expiry — so the record's own `monitorType` names it.
- */
-const basisLabel = (record: SafetyRecord, b: MonitorBasis): string =>
-    (b === 'expiry' ? (record.monitorType || MONITOR_BASIS_LABEL.expiry) : MONITOR_BASIS_LABEL[b]);
-function recurrenceLabel(id: string): string { return RECURRENCE_OPTIONS.find(o => o.id === id)?.label ?? id; }
 /** Recurrence cadence → interval in months (0 = does not recur). */
 function recurrenceMonths(id: string): number {
     return ({ monthly: 1, quarterly: 3, semiannually: 6, annually: 12, biennially: 24, triennially: 36, fiveyearly: 60 } as Record<string, number>)[id] ?? 0;
@@ -2246,6 +2377,13 @@ const DOC_COL_LABEL: Record<DocStaticColId, string> = {
     state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
 };
 const selKey = (id: DocColId) => (id.startsWith('sel:') ? id.slice(4) : '');
+/** Plural of a filter's field name, for its "All …" option: a bare +'s' gave "All currencys"
+ *  and "All statuss". Enough of a rule for field labels, which are short noun phrases. */
+function pluralise(word: string): string {
+    if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
+    if (/(s|x|z|ch|sh)$/.test(word)) return `${word}es`;
+    return `${word}s`;
+}
 /** Every column this record can show — the select-field columns sit next to the status they qualify. */
 function docColsFor(record: SafetyRecord): DocColId[] {
     const sel = recordFields(record).map(f => `sel:${f.key}` as DocColId);
@@ -2261,7 +2399,7 @@ function docColLabel(record: SafetyRecord, id: DocColId): string {
     return DOC_COL_LABEL[id as DocStaticColId];
 }
 const DOC_TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
-function docSortValue(col: DocSortCol, row: DocRow): string {
+function docSortValue(col: DocSortCol, row: DocRow, record: SafetyRecord): string {
     const v = row.version;
     switch (col) {
         case 'number': return (v.numberValue || '').toLowerCase();
@@ -2275,13 +2413,17 @@ function docSortValue(col: DocSortCol, row: DocRow): string {
         case 'producer': return (v.producer || '').toLowerCase();
         case 'limit': return (v.policyLimit || '').toLowerCase();
         case 'uploaded': return `${v.uploadedBy || ''} ${v.uploadedAt || ''}`.toLowerCase();
-        default: return col.startsWith('sel:') ? (v.fields?.[selKey(col)] || '').toLowerCase() : '';
+        default: {
+            if (!col.startsWith('sel:')) return '';
+            const def = recordFields(record).find(f => f.key === selKey(col));
+            return (def ? fieldValue(def, v.fields) : '').toLowerCase();
+        }
     }
 }
-function docSearchBlob(row: DocRow): string {
+function docSearchBlob(row: DocRow, record: SafetyRecord): string {
     const v = row.version;
     return [v.numberValue, v.label, row.instanceName, v.insurer, v.producer, v.policyLimit, v.status, DOC_STATE_META[effectiveState(row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
-        Object.values(v.fields ?? {}).join(' '),
+        recordFields(record).map(f => fieldValue(f, v.fields)).join(' '),
         v.tags.join(' '), v.files.map(f => f.name).join(' '), v.files.map(f => f.tag ?? '').join(' ')]
         .filter(Boolean).join(' ').toLowerCase();
 }
@@ -2400,7 +2542,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         emitToast('Document removed', 'success');
     };
     // Scoped single-version add / edit (opens VersionEditModal — "each row edit only shows that data").
-    const freshVersion = () => ({ ...newVersion(nextVersionLabel(record, entry)), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
+    const freshVersion = () => ({ ...blankVersion(record, nextVersionLabel(record, entry)), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
     const startEdit = (row: DocRow) => setEditing({ version: row.version, mode: 'edit', instanceId: row.instanceId });
     const startAdd = () => setEditing({ version: freshVersion(), mode: 'add' });
     const startAddPolicy = () => setEditing({ version: freshVersion(), mode: 'add', newPolicy: true });
@@ -2459,7 +2601,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const showNumber = !!record.numberName;
     const showIssue = !!record.tracksIssueDate;
     const showDate = dated;
-    const showStatus = !dated;
+    const showStatus = !dated && !record.hideStatus;
     const extraFieldDefs = recordFields(record);
     const selectFieldDefs = record.selectFields ?? [];
     const showCol = (id: DocColId) => (DOC_INSURANCE_COLS.includes(id) ? isInsurance : true) && (DOC_LOCKED_COLS.includes(id) || visibleDocCols.has(id));
@@ -2485,11 +2627,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             const want = valueFilters[f.key];
             if (want && (r.version.fields?.[f.key] ?? '') !== want) return false;
         }
-        if (q && !docSearchBlob(r).includes(q)) return false;
+        if (q && !docSearchBlob(r, record).includes(q)) return false;
         return true;
     });
     const sortedRows = docSort
-        ? [...filteredRows].sort((a, b) => docSortValue(docSort.col, a).localeCompare(docSortValue(docSort.col, b), undefined, { numeric: true, sensitivity: 'base' }) * (docSort.dir === 'desc' ? -1 : 1))
+        ? [...filteredRows].sort((a, b) => docSortValue(docSort.col, a, record).localeCompare(docSortValue(docSort.col, b, record), undefined, { numeric: true, sensitivity: 'base' }) * (docSort.dir === 'desc' ? -1 : 1))
         : filteredRows;
     const totalDocs = sortedRows.length;
     const docTotalPages = Math.max(1, Math.ceil(totalDocs / docPageSize));
@@ -2554,7 +2696,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                             return opts.length > 0 && (
                                 <select value={valueFilters.status ?? ''} onChange={e => setValueFilter('status', e.target.value)} title={`Filter by ${label.toLowerCase()}`}
                                     className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                    <option value="">All {label.toLowerCase()}s</option>
+                                    <option value="">All {pluralise(label.toLowerCase())}</option>
                                     {opts.map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                             );
@@ -2562,7 +2704,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                         {selectFieldDefs.map(f => (
                             <select key={f.key} value={valueFilters[f.key] ?? ''} onChange={e => setValueFilter(f.key, e.target.value)} title={`Filter by ${f.label.toLowerCase()}`}
                                 className="h-9 max-w-[13rem] rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                <option value="">All {f.label.toLowerCase()}s</option>
+                                <option value="">All {pluralise(f.label.toLowerCase())}</option>
                                 {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                         ))}
@@ -2628,13 +2770,26 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 {showIssue && showCol('issue') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.issueDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showDate && showCol('expiry') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.expiryDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showStatus && showCol('status') && <td className="px-4 py-3 whitespace-nowrap">{v.status ? <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{v.status}</span> : <span className="text-[13px] text-slate-400">—</span>}</td>}
-                                                {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && (
-                                                    <td key={f.key} className="px-4 py-3 text-[13px] text-slate-700">
-                                                        {v.fields?.[f.key]
-                                                            ? <span className="block max-w-[15rem] truncate" title={v.fields[f.key]}>{v.fields[f.key]}</span>
-                                                            : <span className="text-slate-400">—</span>}
-                                                    </td>
-                                                ))}
+                                                {extraFieldDefs.map(f => {
+                                                    if (!showCol(`sel:${f.key}`)) return null;
+                                                    const text = fieldValue(f, v.fields);
+                                                    // The reference of the record this one was filed from opens it (see
+                                                    // `fieldSourceLink`); every other field is plain text, as before.
+                                                    const link = onNavigate ? fieldSourceLink(f, v) : null;
+                                                    return (
+                                                        <td key={f.key} className="px-4 py-3 text-[13px] text-slate-700">
+                                                            {!text ? <span className="text-slate-400">—</span>
+                                                                : link ? (
+                                                                    <button type="button" onClick={() => openSourceLink(link, onNavigate!)}
+                                                                        title={link.id ? `Open the ${link.source.toLowerCase()} this record was filed from` : `Open ${link.source}`}
+                                                                        className="inline-flex max-w-[15rem] items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 hover:underline">
+                                                                        <span className="truncate">{text}</span>
+                                                                        <ExternalLink size={11} className="shrink-0" />
+                                                                    </button>
+                                                                ) : <span className="block max-w-[15rem] truncate" title={text}>{text}</span>}
+                                                        </td>
+                                                    );
+                                                })}
                                                 {showCol('tags') && (
                                                     <td className="px-4 py-3">
                                                         {/* Insurance is tagged per document — never show record-level tags on its rows. */}
@@ -2745,7 +2900,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                             {showIssue && <MobileFact label="Issue date" value={v.issueDate} />}
                                             {showDate && <MobileFact label="Expiry date" value={v.expiryDate} />}
                                             {showStatus && <MobileFact label={record.statusLabel ?? 'Status'} value={v.status} />}
-                                            {extraFieldDefs.map(f => <MobileFact key={f.key} label={f.label} value={v.fields?.[f.key]} />)}
+                                            {extraFieldDefs.map(f => <MobileFact key={f.key} label={f.label} value={fieldValue(f, v.fields)} />)}
                                             <MobileFact label="Uploaded by" value={v.uploadedBy} />
                                         </div>
                                         {v.tags.length > 0 && (
@@ -2809,6 +2964,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     policyPrefills={(() => { const m: Record<string, DocVersion> = {}; for (const i of instancesOf(entry)) { const c = i.versions[0]; if (c) m[i.name] = c; } return m; })()}
                     onSave={saveVersion}
                     onClose={() => setEditing(null)}
+                    onNavigate={onNavigate}
                 />
             )}
             {pendingDelete && (
@@ -2939,16 +3095,28 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                             <Fact label="Subject"><span className="flex items-center gap-1.5"><EntityIcon size={13} className="shrink-0 text-slate-400" /> <span className="truncate">{subjectLabel}</span></span></Fact>
                         )}
                         {showNumber && <Fact label={record.numberName}>{cur.numberValue || <Dash />}</Fact>}
-                        {recordFields(record).map(f => (
-                            <Fact key={f.key} label={f.label} className="min-w-[10rem] max-w-[16rem]">
-                                {cur.fields?.[f.key]
-                                    ? <span className="block truncate" title={cur.fields[f.key]}>{cur.fields[f.key]}</span>
-                                    : <Dash />}
+                        {recordFields(record).map(f => {
+                            const text = fieldValue(f, cur.fields);
+                            const link = onNavigate ? fieldSourceLink(f, cur) : null;
+                            return (
+                                <Fact key={f.key} label={f.label} className="min-w-[10rem] max-w-[16rem]">
+                                    {!text ? <Dash />
+                                        : link ? (
+                                            <button type="button" onClick={() => openSourceLink(link, onNavigate!)}
+                                                title={link.id ? `Open the ${link.source.toLowerCase()} this record was filed from` : `Open ${link.source}`}
+                                                className="inline-flex max-w-full items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 hover:underline">
+                                                <span className="truncate">{text}</span>
+                                                <ExternalLink size={11} className="shrink-0" />
+                                            </button>
+                                        ) : <span className="block truncate" title={text}>{text}</span>}
+                                </Fact>
+                            );
+                        })}
+                        {(dated || !record.hideStatus) && (
+                            <Fact label={(dated ? record.monitorType : record.statusLabel ?? record.monitorType) || (dated ? 'Monitored date' : 'Status')}>
+                                {dated ? (monitoredDate || <Dash />) : (cur.status || <Dash />)}
                             </Fact>
-                        ))}
-                        <Fact label={(dated ? record.monitorType : record.statusLabel ?? record.monitorType) || (dated ? 'Monitored date' : 'Status')}>
-                            {dated ? (monitoredDate || <Dash />) : (cur.status || <Dash />)}
-                        </Fact>
+                        )}
                         {record.tracksIssueDate && <Fact label="Issue date">{cur.issueDate || <Dash />}</Fact>}
                         <Fact label="Document" className="min-w-[12rem] max-w-[20rem]">
                             {cur.files.length === 0
@@ -3036,7 +3204,7 @@ export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion
         country, stateProv,
         issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
         expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
-        status: !isDateMonitored(record) ? (v.status || sampleStatus(record)) : v.status,
+        status: capturesStatus(record) ? (v.status || sampleStatus(record)) : '',
         fields: { ...sampleFields(record), ...v.fields },
         tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
         monitoring: { ...v.monitoring, enabled: !record.hideMonitoring },
@@ -3053,145 +3221,28 @@ export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion
 }
 
 /** Compact monitoring on/off toggle + reminders/channels for one version (used inside the version form). */
-function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, onChange }: {
-    record: SafetyRecord; monitoring: MonitoringConfig; issueDate: string; expiryDate: string; status: string; onChange: (cfg: MonitoringConfig) => void;
+/** The control for one of a record's extra fields — a dropdown, radios, a date, a computed
+ *  read-out, a text area or a single line. `value` for a derived field is already computed. */
+function ExtraFieldInput({ def, value, onChange, inputCls, name }: {
+    def: RecordFieldDef; value: string; onChange: (v: string) => void; inputCls: string; name: string;
 }) {
-    const cfg = monitoring;
-    const [open, setOpen] = useState(true);
-    const dated = isDateMonitored(record);
-    const monitored = monitoredDateFor(cfg, { issueDate, expiryDate });
-    const toggleReminder = (d: number) => onChange({ ...cfg, reminders: cfg.reminders.includes(d) ? cfg.reminders.filter(x => x !== d) : [...cfg.reminders, d] });
-    const toggleChannel = (k: 'email' | 'inApp') => onChange({ ...cfg, channels: { ...cfg.channels, [k]: !cfg.channels[k] } });
-    // Switching basis: seed the custom date from the current monitored date so it's never blank.
-    const pickBasis = (b: MonitorBasis) => onChange({ ...cfg, basis: b, customDate: b === 'custom' && !cfg.customDate ? (expiryDate || issueDate || '') : cfg.customDate });
-    const basisOptions: { id: MonitorBasis; label: string }[] = [
-        ...(record.tracksIssueDate ? [{ id: 'issue' as MonitorBasis, label: MONITOR_BASIS_LABEL.issue }] : []),
-        { id: 'expiry', label: basisLabel(record, 'expiry') },
-        { id: 'custom', label: MONITOR_BASIS_LABEL.custom },
-    ];
-    const selCls = 'w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
-    // Projected schedule summary line.
-    const remDays = [...cfg.reminders].sort((a, b) => b - a);
-    const dayParts = remDays.filter(d => d > 0);
-    const onTheDate = remDays.includes(0);
-    const reminderText = dayParts.length
-        ? `Reminders ${dayParts.join(', ')} days before` + (onTheDate ? ' + on the date' : '')
-        : (onTheDate ? 'Reminder on the date' : 'No reminders set');
-    const channelText = [cfg.channels.email && 'Email', cfg.channels.inApp && 'In-App'].filter(Boolean).join(', ') || 'no channels';
-    // Recurrence is how far past the ISSUE date the next one falls due. Monitoring an expiry
-    // or a custom date needs no cadence — that date is already the deadline.
-    const showRecurrence = cfg.basis === 'issue';
-    const scheduleText = dated
-        ? `Monitor ${basisLabel(record, cfg.basis).toLowerCase()}${monitored ? ` (${monitored})` : ''}. ${reminderText}${showRecurrence ? ` · repeats ${recurrenceLabel(cfg.recurrence)}` : ''} · via ${channelText}.`
-        : `Notify whenever the status${status ? ` (${status})` : ''} changes · via ${channelText}.`;
-
-    return (
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
-            <div className="flex items-center justify-between border-l-2 border-blue-500 bg-slate-50/70 px-3 py-2">
-                <button type="button" onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-700">
-                    <Bell size={13} className="text-blue-500" /> Monitoring &amp; Notifications
-                    {cfg.enabled && (open ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />)}
-                </button>
-                <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-semibold text-slate-500">{cfg.enabled ? 'Enabled' : 'Off'}</span>
-                    <button type="button" onClick={() => onChange({ ...cfg, enabled: !cfg.enabled })} aria-pressed={cfg.enabled}
-                        className={cn('relative h-5 w-9 rounded-full transition-colors shrink-0', cfg.enabled ? 'bg-blue-600' : 'bg-slate-300')}>
-                        <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', cfg.enabled ? 'left-[18px]' : 'left-0.5')} />
-                    </button>
-                </div>
+    // Calculated from other fields — shown, never typed, so there is nothing to edit and
+    // nothing to store: it is recomputed from its dates on every render.
+    if (def.kind === 'derived') {
+        return (
+            <div className={cn(inputCls, 'flex items-center bg-slate-50 font-medium text-slate-600')}>
+                {value || <span className="font-normal text-slate-400">{def.hint ?? 'Calculated automatically'}</span>}
             </div>
-            {cfg.enabled && open && (
-                <div className="p-3 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                        {/* LEFT — what/when to monitor */}
-                        <div className="space-y-3">
-                            {dated ? (
-                                <>
-                                    <div>
-                                        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Monitor based on</div>
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            {basisOptions.map(o => (
-                                                <label key={o.id} className="flex items-center gap-2 text-[12px] text-slate-700 cursor-pointer">
-                                                    <input type="radio" name={`mon-basis-${record.id}`} checked={cfg.basis === o.id} onChange={() => pickBasis(o.id)} className="border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                                    {o.label}
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Date to monitor</div>
-                                        {cfg.basis === 'custom' ? (
-                                            <input type="date" value={cfg.customDate} onChange={e => onChange({ ...cfg, customDate: e.target.value })} className={selCls} />
-                                        ) : (
-                                            <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[13px] font-semibold text-emerald-700"><CalendarClock size={14} /> {monitored || '—'}</div>
-                                        )}
-                                        {cfg.basis !== 'custom' && (
-                                            <p className="mt-1 text-[10px] text-slate-400">Pulled from the {basisLabel(record, cfg.basis).toLowerCase()} above — pick “Custom date” to enter your own.</p>
-                                        )}
-                                    </div>
-                                    {showRecurrence && (
-                                        <div>
-                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Renewal recurrence</div>
-                                            <select value={cfg.recurrence} onChange={e => onChange({ ...cfg, recurrence: e.target.value })} className={selCls}>
-                                                {RECURRENCE_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <div>
-                                    <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Monitor based on</div>
-                                    <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
-                                        <ShieldCheck size={14} className="text-slate-400" /> Status changes{status ? ` · currently ${status}` : ''}
-                                    </div>
-                                    <p className="mt-1 text-[10px] text-slate-400">This record has no expiry — you’re notified whenever its status changes.</p>
-                                </div>
-                            )}
-                        </div>
-                        {/* RIGHT — reminders + channels */}
-                        <div className="space-y-3">
-                            {dated && (
-                                <div>
-                                    <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Notification reminders</div>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {REMINDER_DAYS.map(d => (
-                                            <label key={d} className="flex items-center gap-2 text-[12px] text-slate-700 cursor-pointer">
-                                                <input type="checkbox" checked={cfg.reminders.includes(d)} onChange={() => toggleReminder(d)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                                {reminderLabel(d)}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div>
-                                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Notification channels</div>
-                                <div className="flex items-center gap-4">
-                                    {(['email', 'inApp'] as const).map(k => (
-                                        <label key={k} className="flex items-center gap-2 text-[12px] text-slate-700 cursor-pointer">
-                                            <input type="checkbox" checked={cfg.channels[k]} onChange={() => toggleChannel(k)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                            {k === 'email' ? 'Email' : 'In-App'}
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {/* Projected schedule summary */}
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5">
-                        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-700"><Bell size={12} /> Projected Notification Schedule</div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-blue-700/90">{scheduleText}</p>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-/** The control for one of a record's extra fields — a dropdown, a text area, or a single line. */
-function ExtraFieldInput({ def, value, onChange, inputCls }: {
-    def: RecordFieldDef; value: string; onChange: (v: string) => void; inputCls: string;
-}) {
+        );
+    }
+    if (def.kind === 'date') {
+        return <input type="date" value={value} onChange={e => onChange(e.target.value)} className={inputCls} />;
+    }
     if (def.kind === 'select') {
+        // A short either/or set reads better fully visible than hidden behind a dropdown.
+        if (def.control === 'radio') {
+            return <RadioChoice name={name} value={value} options={def.options} onChange={onChange} />;
+        }
         return (
             <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
                 <option value="">{def.placeholder ?? `Select ${def.label.toLowerCase()}`}</option>
@@ -3235,15 +3286,46 @@ function RadioChoice({ name, value, options, onChange }: {
     );
 }
 
+// ── A record filed FROM another record: the way back to it ──────────────────
+/**
+ * The source record a field's value names, when there is one.
+ *
+ * A warning letter's Event reference is not just text — it is the number of the ticket,
+ * accident, hours-of-service violation or safety event the letter was issued on. Reading a
+ * letter and asking "what actually happened?" should not mean leaving the file and hunting
+ * for that record by hand, so the reference becomes a link.
+ *
+ * Which page it opens comes from the letter itself (its "Issued from" value), and the id —
+ * present when the letter was filed BY a review rather than typed in — opens that exact
+ * record. Without the id the link still lands on the right list, which beats nothing.
+ * Null for every ordinary text field, so nothing else on any other record changes.
+ */
+function fieldSourceLink(f: RecordFieldDef, v: DocVersion): { path: string; source: string; id?: string } | null {
+    if (f.kind !== 'text' || !f.sourceLink) return null;
+    const source = v.fields?.[f.sourceLink.from] ?? '';
+    const path = f.sourceLink.paths[source];
+    if (!path) return null;
+    // Nothing to open: no record was filed from, and no reference was written down.
+    if (!v.sourceRecordId && !(v.fields?.[f.key] ?? '').trim()) return null;
+    return { path, source, id: v.sourceRecordId };
+}
+
+/** Open a linked source record — the destination page picks the id up as it mounts. */
+function openSourceLink(link: { path: string; id?: string }, navigate: (path: string) => void) {
+    if (link.id) setPendingRecord(link.path, link.id);
+    navigate(link.path);
+}
+
 // ── Version fields (Details / Document / Monitoring / Tags / Notes) for ONE version — shared by VersionSet + VersionEditModal ──
 /** Max documents that can hang off ONE insurance policy record (bulk drag-drop up to this many). */
 const MAX_POLICY_DOCS = 10;
-/** Character limit for a record's display name. */
-const MAX_RECORD_NAME = 40;
 
-export function VersionFields({ record, version, onChange, tagCatalog, addToCatalog, editableLabel }: {
+export function VersionFields({ record, version, onChange, tagCatalog, addToCatalog, editableLabel, onNavigate }: {
     record: SafetyRecord; version: DocVersion; onChange: (next: DocVersion) => void;
     tagCatalog: string[]; addToCatalog: (t: string) => void; editableLabel?: boolean;
+    /** Needed to open a field's source record (a warning letter's ticket / accident). Without
+     *  it — the Settings preview, say — the reference is plain text, since there is nowhere to go. */
+    onNavigate?: (path: string) => void;
 }) {
     const v = version;
     const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
@@ -3261,8 +3343,20 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const showIssue = cf ? cf.issueDate.enabled : !!record.tracksIssueDate;
     const issueRequired = cf ? cf.issueDate.required : false;
     const showExpiry = cf ? cf.expiryDate.enabled : isDateMonitored(record);
+    // ── Row pairing ──
+    // The form is a two-column grid that fills in source order. Some fields read as ONE thing
+    // and must not be split across rows by whatever precedes them, so the FIRST of each such
+    // pair is forced into column 1, which starts a fresh row:
+    //   Record name + the number field   (the record's identity)
+    //   Country + State                  (one jurisdiction)
+    //   Issue date + expiry / review     (the record's dates)
+    // Only when BOTH halves are shown — a lone Country or a lone date should still flow, or it
+    // would start a row and sit beside an empty cell for no reason.
+    const ROW_START = 'sm:col-start-1';
+    const pairJurisdiction = showCountry && showState;
+    const pairDates = showIssue && showExpiry;
     const expiryRequired = cf ? cf.expiryDate.required : true;
-    const showStatus = cf ? cf.status.enabled : !isDateMonitored(record);
+    const showStatus = cf ? cf.status.enabled : (!isDateMonitored(record) && !record.hideStatus);
     const statusRequired = cf ? cf.status.required : true;
     // A record can rename its monitored status and supply its own values — e.g. a drug test
     // captures a "Test result" of Negative / Positive, not a generic Active / On File.
@@ -3273,7 +3367,21 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     // the dates, still paired — a taller box each, not a full-width band each.
     const extraFields = recordFields(record);
     const inlineFields = extraFields.filter(f => !(f.kind === 'text' && f.multiline));
-    const blockFields = extraFields.filter(f => f.kind === 'text' && f.multiline);
+    // Narrowed, not just filtered: only a text field can be multiline, and the block row
+    // reads `required` — which a derived field has no notion of.
+    const blockFields = extraFields.filter(
+        (f): f is Extract<RecordFieldDef, { kind: 'text' }> => f.kind === 'text' && !!f.multiline);
+    // Same row-pairing rule as the built-in dates: a record's OWN date pair starts a fresh
+    // row so the two never split, and a derived field starts one too — it summarises the
+    // dates above it, so it must not drift up beside an unrelated field. Radio groups start
+    // a row as well: they stand several lines tall, so one sitting beside a single-line
+    // input leaves the pair visibly unbalanced, and a run of them reads as one question set.
+    const isRadio = (f: RecordFieldDef) => f.kind === 'select' && f.control === 'radio';
+    const firstExtraDate = inlineFields.filter(f => f.kind === 'date').length > 1
+        ? inlineFields.find(f => f.kind === 'date')?.key : undefined;
+    const firstRadio = inlineFields.find(isRadio)?.key;
+    const extraRowStart = (f: RecordFieldDef) =>
+        (f.rowStart || f.key === firstExtraDate || f.key === firstRadio || f.kind === 'derived') ? ROW_START : undefined;
     const setExtra = (key: string, val: string) => patch({ fields: { ...(v.fields ?? {}), [key]: val } });
     const showUpload = cf ? cf.upload.enabled : hasDoc;
     const showMonitoring = cf ? cf.monitoring.enabled : !record.hideMonitoring;
@@ -3317,7 +3425,7 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {editableLabel && (
-                    <Field label="Record name" required className="sm:col-span-2">
+                    <Field label="Record name" required>
                         <div className="relative">
                             <input value={v.label} maxLength={MAX_RECORD_NAME}
                                 onChange={e => patch({ label: e.target.value })}
@@ -3331,11 +3439,32 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                         <input value={v.numberValue} onChange={e => patch({ numberValue: e.target.value })} placeholder={`Enter ${record.numberName.toLowerCase()}`} className={inputCls} />
                     </Field>
                 )}
-                {inlineFields.map(f => (
-                    <Field key={f.key} label={f.label} required={!!f.required} optional={!f.required}>
-                        <ExtraFieldInput def={f} value={v.fields?.[f.key] ?? ''} onChange={val => setExtra(f.key, val)} inputCls={inputCls} />
-                    </Field>
-                ))}
+                {inlineFields.map(f => {
+                    // A field that names a record elsewhere (a warning letter's Event reference)
+                    // keeps its input — the number is still editable — and gains a way to open
+                    // what it points at, which is the whole reason the number is recorded.
+                    const link = onNavigate ? fieldSourceLink(f, v) : null;
+                    return (
+                        <Field key={f.key} label={f.label} required={f.kind !== 'derived' && !!f.required}
+                            optional={f.kind !== 'derived' && !f.required} auto={f.kind === 'derived'}
+                            className={extraRowStart(f)}>
+                            {link ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="min-w-0 flex-1">
+                                        <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
+                                    </div>
+                                    <button type="button" onClick={() => openSourceLink(link, onNavigate!)}
+                                        title={link.id ? `Open the ${link.source.toLowerCase()} this record was filed from` : `Open ${link.source}`}
+                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[12px] font-semibold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100">
+                                        <ExternalLink size={13} /> View
+                                    </button>
+                                </div>
+                            ) : (
+                                <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
+                            )}
+                        </Field>
+                    );
+                })}
                 {isMultiDoc && !cf && (
                     <Field label="Insurer">
                         <input value={v.insurer ?? ''} onChange={e => patch({ insurer: e.target.value })} placeholder="Insurance carrier — e.g. State Farm" className={inputCls} />
@@ -3352,7 +3481,7 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                     </Field>
                 )}
                 {showCountry && (
-                    <Field label="Country" required={countryRequired} optional={cf ? !countryRequired : undefined}>
+                    <Field label="Country" required={countryRequired} optional={cf ? !countryRequired : undefined} className={pairJurisdiction ? ROW_START : undefined}>
                         <select value={v.country} onChange={e => setCountry(e.target.value)} className={inputCls}>
                             <option value="">Select country</option>
                             {countries.map(c => <option key={c} value={c}>{c}</option>)}
@@ -3384,7 +3513,7 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                     </Field>
                 )}
                 {showIssue && (
-                    <Field label="Issue date" required={issueRequired} optional={!issueRequired}>
+                    <Field label="Issue date" required={issueRequired} optional={!issueRequired} className={pairDates ? ROW_START : undefined}>
                         <input type="date" value={v.issueDate} onChange={e => patch({ issueDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}
@@ -3395,7 +3524,7 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                 )}
                 {blockFields.map(f => (
                     <Field key={f.key} label={f.label} required={!!f.required} optional={!f.required}>
-                        <ExtraFieldInput def={f} value={v.fields?.[f.key] ?? ''} onChange={val => setExtra(f.key, val)} inputCls={inputCls} />
+                        <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
                     </Field>
                 ))}
                 {/* Which record counts as THE current one. Newest wins by default; tick this to
@@ -3461,9 +3590,16 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                     )}
                 </div>
             )}
-            {/* MONITORING (compact toggle) */}
+            {/* MONITORING (compact toggle), preceded by the record's handling guidance — which
+                only appears once monitoring is on, since that is when it is worth acting on. */}
             {showMonitoring && (
-                <div className="border-t border-slate-200 pt-3">
+                <div className="border-t border-slate-200 pt-3 space-y-2.5">
+                    {record.practiceNote && v.monitoring.enabled && (
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                            <Info size={14} className="mt-px shrink-0 text-amber-600" />
+                            <p className="text-[12px] leading-relaxed text-amber-800">{record.practiceNote}</p>
+                        </div>
+                    )}
                     <MonitoringToggle record={record} monitoring={v.monitoring} issueDate={v.issueDate} expiryDate={v.expiryDate} status={v.status ?? ''}
                         onChange={m => patch({ monitoring: m })} />
                 </div>
@@ -3601,11 +3737,12 @@ function DocTagPicker({ value, catalog, onChange, onCreate }: {
     );
 }
 
-function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, policyOptions, policyPrefills, initialPolicyName, onSave, onClose }: {
+function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, policyOptions, policyPrefills, initialPolicyName, onSave, onClose, onNavigate }: {
     record: SafetyRecord; subjectLabel?: string;
     version: DocVersion; mode: 'add' | 'edit'; askPolicyName?: boolean; policyOptions?: string[];
     policyPrefills?: Record<string, DocVersion>; initialPolicyName?: string;
     onSave: (v: DocVersion, policyName?: string) => void; onClose: () => void;
+    onNavigate?: (path: string) => void;
 }) {
     const [v, setV] = useState<DocVersion>(version);
     const [policyName, setPolicyName] = useState(initialPolicyName ?? '');
@@ -3620,7 +3757,17 @@ function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, 
             if (pf) setV(prev => ({ ...pf, id: prev.id, uploadedAt: prev.uploadedAt, uploadedBy: prev.uploadedBy }));
         }
     };
+    // Opening the record this one was filed from LEAVES this form, and anything typed here
+    // goes with it. Following a link to check a source says nothing about wanting to throw
+    // the edit away, so a form with changes in it asks first. `v !== version` is the whole
+    // test: every edit path replaces the object rather than mutating it.
+    const dirty = v !== version || policyName !== (initialPolicyName ?? '');
+    const [leaveTo, setLeaveTo] = useState<string | null>(null);
+    const guardedNavigate = onNavigate
+        ? (path: string) => { if (dirty) setLeaveTo(path); else onNavigate(path); }
+        : undefined;
     return (
+        <>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
             <div className="relative z-10 flex w-full max-w-2xl max-h-[88vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -3647,7 +3794,7 @@ function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, 
                             {mode === 'edit' && <p className="mt-1 text-[10px] text-slate-400">Change this to move the record to another policy (or type a new policy name).</p>}
                         </Field>
                     )}
-                    <VersionFields record={record} version={v} onChange={setV} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel />
+                    <VersionFields record={record} version={v} onChange={setV} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel onNavigate={guardedNavigate} />
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400"><MapPin size={12} /> {record.jurisdiction}</div>
                 </div>
                 <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
@@ -3656,6 +3803,18 @@ function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, 
                 </div>
             </div>
         </div>
+        {leaveTo && (
+            <ConfirmDialog
+                title="Leave without saving?"
+                message="This record has changes that have not been saved. Opening the record it was filed from will discard them."
+                confirmLabel="Leave"
+                onConfirm={() => { const path = leaveTo; setLeaveTo(null); onNavigate?.(path); }}
+                // The id to open was stashed when the link was clicked; consuming it here drops
+                // it, so staying does not leave a deep-link waiting to fire on a later visit.
+                onCancel={() => { consumePendingRecord(leaveTo); setLeaveTo(null); }}
+            />
+        )}
+        </>
     );
 }
 
@@ -3680,13 +3839,13 @@ function VersionSet({ record, versions, onChange, versioned, tagCatalog, addToCa
         onChange(patch.isCurrent ? next.map(v => (v.id === id || !v.isCurrent ? v : { ...v, isCurrent: undefined })) : next);
     };
     const addVersion = () =>
-        onChange([{ ...newVersion(nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...blankVersion(record, nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
     const addVersionWithFiles = async (list: FileList | null) => {
         if (!list || list.length === 0) return;
         const docs: DataDocFile[] = await Promise.all(Array.from(list).map(async f => ({
             name: f.name, size: f.size, url: await readAsDataUrl(f), uploadedAt: new Date().toISOString(),
         })));
-        onChange([{ ...newVersion(nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...blankVersion(record, nextVersionLabel(record, { versions })), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
     };
     const removeVersion = (id: string) => onChange(versions.filter(v => v.id !== id));
 
@@ -3849,7 +4008,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
             country, stateProv,
             issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
             expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
-            status: !isDateMonitored(record) ? (v.status || sampleStatus(record)) : v.status,
+            status: capturesStatus(record) ? (v.status || sampleStatus(record)) : '',
             fields: { ...sampleFields(record), ...v.fields },
             tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
             files: v.files,
@@ -4054,31 +4213,6 @@ function TagField({ tags, catalog, onAdd, onRemove }: {
 
 // ── Monitoring & notifications modal (row "monitoring" action) ────────
 // ── Refined upload dropzone (mirrors the settings-catalog Dropzone) ───
-function UploadZone({ label, hint, compact, multiple, onFiles }: {
-    label: string; hint?: string; compact?: boolean; multiple?: boolean; onFiles: (files: FileList | null) => void;
-}) {
-    const [dragging, setDragging] = useState(false);
-    return (
-        <label
-            onDragOver={e => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={e => { e.preventDefault(); setDragging(false); onFiles(e.dataTransfer.files); }}
-            className={cn(
-                'flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed text-center transition-colors',
-                compact ? 'px-3 py-4' : 'px-4 py-7',
-                dragging
-                    ? 'cursor-copy border-blue-400 bg-blue-50 ring-2 ring-blue-200'
-                    : 'cursor-pointer border-slate-300 bg-slate-50/50 hover:border-blue-300 hover:bg-blue-50/40',
-            )}
-        >
-            <input type="file" multiple={multiple} className="hidden" onChange={e => { onFiles(e.target.files); e.target.value = ''; }} />
-            <UploadCloud size={compact ? 18 : 24} className={dragging ? 'text-blue-500' : 'text-slate-400'} />
-            <p className={cn('font-medium text-slate-600', compact ? 'text-[12px]' : 'text-sm')}>{dragging ? 'Drop file to upload' : label}</p>
-            {hint && !dragging && <span className="text-[11px] text-slate-400">{hint}</span>}
-        </label>
-    );
-}
-
 function FileChip({ f, onRemove }: { f: DataDocFile; onRemove: () => void }) {
     return (
         <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
@@ -4099,13 +4233,14 @@ function FileChip({ f, onRemove }: { f: DataDocFile; onRemove: () => void }) {
     );
 }
 
-function Field({ label, required, optional, children, className }: { label: string; required?: boolean; optional?: boolean; children: React.ReactNode; className?: string }) {
+function Field({ label, required, optional, auto, children, className }: { label: string; required?: boolean; optional?: boolean; auto?: boolean; children: React.ReactNode; className?: string }) {
     return (
         <label className={cn('block', className)}>
             <span className="mb-1 flex items-center gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
                 {required && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
                 {optional && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Optional</span>}
+                {auto && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Auto</span>}
             </span>
             {children}
         </label>
