@@ -7,7 +7,8 @@ import {
   ClipboardCheck, History, Share2, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PageHeader } from '@/pages/ats/ats-ui';
+import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
+import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 import { ShareToChat, type ShareItem } from '@/components/share/ShareToChat';
 import { setMessagesFocus, consumePendingRecord, sendWidgetToDriver, type RecordRef, type ChatWidget } from '@/pages/messages/messages-store';
@@ -381,14 +382,6 @@ function ColumnsDropdown({ visible, onToggle }: { visible: Set<ColId>; onToggle:
   );
 }
 
-const TAB_TONE: Record<string, { active: string; badge: string }> = {
-  blue: { active: 'border-blue-600 text-blue-700 bg-blue-50/40', badge: 'bg-blue-100 text-blue-700' },
-  red: { active: 'border-red-600 text-red-700 bg-red-50/40', badge: 'bg-red-100 text-red-700' },
-  violet: { active: 'border-violet-600 text-violet-700 bg-violet-50/40', badge: 'bg-violet-100 text-violet-700' },
-  rose: { active: 'border-rose-600 text-rose-700 bg-rose-50/40', badge: 'bg-rose-100 text-rose-700' },
-  amber: { active: 'border-amber-600 text-amber-700 bg-amber-50/40', badge: 'bg-amber-100 text-amber-700' },
-  sky: { active: 'border-sky-600 text-sky-700 bg-sky-50/40', badge: 'bg-sky-100 text-sky-700' },
-};
 
 const SUBCAT_PALETTE = [
   { bg: 'bg-sky-50/60', count: 'text-sky-700', chip: 'bg-sky-50 text-sky-700 ring-sky-200', bar: 'bg-sky-500', barBg: 'bg-sky-100' },
@@ -680,7 +673,6 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
   // name (see `resolveDriverId`).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fileWarningLetter = (e: any) => {
-    const when = fmtWhen(e.startedAt);
     issueWarningLetter(accountId, {
       kind: 'safety-event',
       driverId: e.driver ?? '',
@@ -689,8 +681,6 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
       reference: e.id,
       sourceId: e.id,
       eventDate: e.startedAt,
-      summary: [e.severity ? `${e.severity} severity` : null, e.vehiclePlate ? `Unit ${e.vehiclePlate}` : null,
-        when.date].filter(Boolean).join(' · '),
     }, currentUserName);
   };
 
@@ -782,6 +772,17 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
     risk: allEvents.reduce((a, e) => a + riskFor(e.type), 0),
   }), [allEvents, riskById]);
 
+  // The header stays put and shrinks as the ledger scrolls; the body below is its own scroller.
+  const { scrollRef, condensed, onScroll } = useCondensingHeader(group);
+  const kpiChips = useMemo(() => [
+    { id: 'total', label: 'Events', value: kpis.total },
+    { id: 'critical', label: 'Critical', value: kpis.critical, tone: 'text-red-700' },
+    { id: 'high', label: 'High', value: kpis.high, tone: 'text-rose-700' },
+    { id: 'review', label: 'In review', value: kpis.review, tone: 'text-amber-700' },
+    { id: 'closed', label: 'Closed', value: kpis.resolved, tone: 'text-emerald-700' },
+    { id: 'risk', label: 'Risk score', value: kpis.risk, tone: 'text-sky-700' },
+  ], [kpis]);
+
   const groupCounts = useMemo(() => {
     const c: Record<string, number> = { all: allEvents.length, harsh: 0, distraction: 0, collision: 0, compliance: 0, camera: 0 };
     for (const e of allEvents) c[groupOf(e.type)]++;
@@ -872,30 +873,41 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
   const anyFilter = sevFilter !== 'all' || statusFilter !== 'all' || providerFilter !== 'all' || group !== 'all' || typeFilter || search;
   const resetAll = () => { setSearch(''); setSevFilter('all'); setStatusFilter('all'); setProviderFilter('all'); setGroup('all'); setTypeFilter(null); };
 
-  const TABS: { id: GroupId | 'all'; label: string; tone: keyof typeof TAB_TONE; count: number }[] = [
-    { id: 'all', label: 'All Events', tone: 'blue', count: groupCounts.all },
-    { id: 'harsh', label: 'Harsh Driving', tone: 'red', count: groupCounts.harsh },
-    { id: 'distraction', label: 'Distraction', tone: 'violet', count: groupCounts.distraction },
-    { id: 'collision', label: 'Collision', tone: 'rose', count: groupCounts.collision },
-    { id: 'compliance', label: 'Compliance', tone: 'amber', count: groupCounts.compliance },
-    { id: 'camera', label: 'Camera', tone: 'sky', count: groupCounts.camera },
+  const TABS: { id: GroupId | 'all'; label: string; count: number }[] = [
+    { id: 'all', label: 'All Events', count: groupCounts.all },
+    { id: 'harsh', label: 'Harsh Driving', count: groupCounts.harsh },
+    { id: 'distraction', label: 'Distraction', count: groupCounts.distraction },
+    { id: 'collision', label: 'Collision', count: groupCounts.collision },
+    { id: 'compliance', label: 'Compliance', count: groupCounts.compliance },
+    { id: 'camera', label: 'Camera', count: groupCounts.camera },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <PageHeader
-        iconGradient="from-indigo-500 to-violet-600"
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      {/* The app's standard list header (see `ListPageHeader`). The group strip used to live
+          inside the list card, where it scrolled away with the rows it filtered. */}
+      <ListPageHeader
         Icon={Activity}
         title="Safety Events"
-        subtitle="Telemetry & video safety events from fleet devices & terminals"
+        description="Telemetry & video safety events from fleet devices & terminals"
+        count={kpis.total}
+        countTitle={`${kpis.total.toLocaleString()} events`}
+        chips={kpiChips}
+        condensed={condensed}
+        tabsLabel="Event groups"
+        showZeroCounts
+        tabs={TABS.map(t => ({ id: t.id, label: t.label, count: t.count }))}
+        activeTab={group}
+        onTabChange={id => { setGroup(id as GroupId | 'all'); setTypeFilter(null); }}
         actions={
-          <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
+          <button type="button" className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}>
             <Download size={15} /> Export
           </button>
         }
       />
 
-      <div className="space-y-5 p-4 sm:p-8">
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+      <div className={cn('space-y-4 py-4 sm:space-y-5 sm:py-6', PAGE_PAD)}>
         {/* KPI cards — click to filter */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <KpiStatCard label="Total Events" value={kpis.total} Icon={Activity} accent="blue"
@@ -913,22 +925,6 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* Group tabs */}
-          <div className="flex overflow-x-auto border-b border-slate-200">
-            {TABS.map(tab => {
-              const active = group === tab.id;
-              const tone = TAB_TONE[tab.tone];
-              return (
-                <button key={tab.id} type="button" onClick={() => { setGroup(tab.id); setTypeFilter(null); }}
-                  className={cn('group relative flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 transition-colors',
-                    active ? tone.active : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800')}>
-                  <span className="text-sm font-semibold">{tab.label}</span>
-                  <span className={cn('inline-flex h-5 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? tone.badge : 'bg-slate-100 text-slate-500')}>{tab.count}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {/* Event-type breakdown cards */}
           <div className="border-b border-slate-200 bg-slate-50/40 px-4 py-3">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -1000,7 +996,6 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
             )}
           </div>
 
-          {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 sm:px-4">
             <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1248,6 +1243,7 @@ export function SafetyEventsPage({ currentUserName = 'Safety Manager', onNavigat
             </div>
           </>)}
         </div>
+      </div>
       </div>
 
       {viewing && (

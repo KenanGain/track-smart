@@ -1567,7 +1567,7 @@ function RecommendationsPage({
         { name: "collisions",  v: a.collisions.percentage,
           play: "Conduct an after-action review on each collision in the period; identify common contributing actions / conditions and integrate findings into driver coaching." },
         { name: "convictions", v: a.convictions.percentage,
-          play: "Audit the top 10 convicted drivers' MVRs, schedule remedial training, and review dispatch routing through high-violation corridors." },
+          play: "Audit the top 10 convicted drivers' abstracts, schedule remedial training, and review dispatch routing through high-violation corridors." },
         { name: "inspections", v: a.inspections.percentage,
           play: "Tighten pre-trip inspection checks on the highest-cited equipment, accelerate brake / lighting PM intervals, and audit the last 90 days of work orders." },
     ].sort((x, y) => y.v - x.v);

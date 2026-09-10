@@ -203,7 +203,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
     },
     {
         id: "mvr-release",
-        title: "MVR Release",
+        title: "Non-Commercial Abstract Release",
         accentTitle: "Consent Form",
         theme: "blue",
         blurb: "Driver Privacy Protection Act (18 USC 2721) written consent to release Motor Vehicle Records.",
@@ -212,7 +212,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { key: "applicant", label: "Applicant name", kind: "text" },
         ],
         body: [
-            { p: "In conjunction with my potential employment at {company} (“the company”), I {applicant} (applicant) consent to the release of my Motor Vehicle Records (MVR) to the company. I understand the company will use these records to evaluate my suitability to fulfill driving duties that may be related to the position for which I am applying. I also consent to the review, evaluation, and other use of any MVR I may have provided to the company." },
+            { p: "In conjunction with my potential employment at {company} (“the company”), I {applicant} (applicant) consent to the release of my driver non-commercial abstract (motor vehicle record) to the company. I understand the company will use these records to evaluate my suitability to fulfill driving duties that may be related to the position for which I am applying. I also consent to the review, evaluation, and other use of any such record I may have provided to the company." },
             { p: "This consent is given in satisfaction of Public Law 18 USC 2721 et. Seq., “Federal Drivers Privacy Protection Act”, and is intended to constitute “written consent” as required by this Act." },
         ],
         signers: STANDARD_SIGN,
@@ -504,7 +504,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         title: "Driver's Abstract",
         accentTitle: "Driving Record Consent",
         theme: "blue",
-        blurb: "Canada — written consent to release the provincial Driver's Abstract / CVDR / CDA driving record (counterpart to the US MVR release).",
+        blurb: "Canada — written consent to release the provincial Driver's Abstract / CVDR / CDA driving record (counterpart to the US non-commercial abstract release).",
         intro: [{ key: "applicant", label: "Applicant name", kind: "text" }],
         body: [
             { p: "In conjunction with my application for employment with {company} (“the Company”), I, {applicant}, consent to the release of my provincial Driver’s Abstract / driving record to the Company. I understand the Company will use this record to evaluate my suitability to perform the driving duties related to the position for which I am applying." },
@@ -535,7 +535,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
 export const THEME_HEX: Record<PolicyTheme, string> = { teal: "#0d9488", blue: "#2563eb", orange: "#ea580c" };
 
 // ── Policy / consent sets per driver type ───────────────────────────────────
-// Only the policy forms are used. US-specific statements (FCRA, MVR release,
+// Only the policy forms are used. US-specific statements (FCRA, abstract release,
 // clearinghouse, substance) apply to US / cross-border drivers; the universal
 // certifications apply to everyone. Report access (PSP / Abstract / CVOR) is
 // collected via the hiring-template forms, not as consent signatures.
@@ -556,7 +556,7 @@ const isCanadaType = (id: string) => id === "canada" || id === "canada-owner-ope
 
 // US-federal report consents — only asked when the driver actually operates in /
 // crosses into the United States. Skipped for drivers who stay out of the US.
-// (US personal-information consent · MVR · PSP · FMCSA D&A Clearinghouse.)
+// (US personal-information consent · abstract · PSP · FMCSA D&A Clearinghouse.)
 export const US_FEDERAL_CONSENTS = [
     "fcra-disclosure", "mvr-release", "psp-disclosure-auth", "clearinghouse-consent",
 ];
@@ -569,7 +569,7 @@ export const consentForms = (): PolicyFormDef[] => POLICY_FORMS.filter((f) => f.
 
 // Ordered list of policy-form ids for a given application/driver type.
 // `operatesInUS` (default true) gates the US-federal report consents — when the
-// driver does not operate in the US, FCRA / MVR / PSP / Clearinghouse are skipped.
+// driver does not operate in the US, FCRA / abstract / PSP / Clearinghouse are skipped.
 export function consentsForType(typeId: string, operatesInUS = true): string[] {
     const ids = isCanadaType(typeId)
         ? [...UNIVERSAL_POLICY, ...CANADA_POLICY]

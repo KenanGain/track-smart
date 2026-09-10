@@ -135,7 +135,7 @@ function seedTemplates(): DriverHiringTemplate[] {
     // application itself is the first step (invite → submit) handled by the
     // Driver Application flow, so the ATS pipeline starts at screening.
     // Post-application ATS forms after the Hiring-ATS consolidation (merged forms).
-    const ATS_RECORD = 'form-ats-abstract';                 // Driver Record Review (Abstract / CVOR / MVR / Annual Review)
+    const ATS_RECORD = 'form-ats-abstract';                 // Driver Record Review (Abstract / CVOR / Non-Commercial / Annual Review)
     const ATS_LICENSE = 'form-ats-license-compliance';       // License Compliance Certification
     const ATS_EMP = 'form-ats-employment-verification';      // Previous Employer & Safety History
     const ATS_DRUG_CONSENT = 'form-ats-drug-alcohol-consent';
@@ -151,7 +151,7 @@ function seedTemplates(): DriverHiringTemplate[] {
     return [
         // ── DEFAULT (main, test this) — the complete driver hiring data set ──
         tpl('tpl-complete-hiring', 'Complete Driver Hiring',
-            "The full driver hiring pipeline — every application form, all required consents, and the back-office compliance reviews (PSP, MVR, Background, Substance, Clearinghouse, Employment). Assign this to capture a driver's entire application.",
+            "The full driver hiring pipeline — every application form, all required consents, and the back-office compliance reviews (PSP, abstract, Background, Substance, Clearinghouse, Employment). Assign this to capture a driver's entire application.",
             true,
             [...forms(APPLICATION_FORMS), ...signs(CONSENTS), ...forms(REVIEW_FORMS, false), ack()]),
 
@@ -163,7 +163,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Short pipeline for fast hiring ──
         tpl('tpl-quick-hire', 'Quick Hire',
-            "Fast onboarding — identity, address, and license, plus the three time-sensitive consents (FCRA, MVR release, background check) and a signed acknowledgment.",
+            "Fast onboarding — identity, address, and license, plus the three time-sensitive consents (FCRA, abstract release, background check) and a signed acknowledgment.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-address-details', 'form-license-details']),
@@ -179,7 +179,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Cross-border (US ↔ Canada) driver ──
         tpl('tpl-cross-border', 'Cross-Border Driver',
-            "US ↔ Canada drivers — the full application (with cross-border eligibility), all consents, and the PSP / MVR / background reviews.",
+            "US ↔ Canada drivers — the full application (with cross-border eligibility), all consents, and the PSP / abstract / background reviews.",
             false,
             [
                 ...forms(APPLICATION_FORMS),
@@ -190,7 +190,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Owner-operator leasing on ──
         tpl('tpl-owner-operator', 'Owner-Operator',
-            "Owner-operators leasing on — identity, address, license, driving history, employment, and declarations, plus FCRA, MVR, background, and pre-employment drug consents and the PSP / MVR reviews.",
+            "Owner-operators leasing on — identity, address, license, driving history, employment, and declarations, plus FCRA, abstract, background, and pre-employment drug consents and the PSP / abstract reviews.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
@@ -202,7 +202,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Local / regional day-cab driver ──
         tpl('tpl-local-regional', 'Local / Regional Driver',
-            "Day-cab local & regional drivers — identity, address, license, driving experience, and medical, with the core consents (FCRA, MVR release, background, drug) and an MVR review.",
+            "Day-cab local & regional drivers — identity, address, license, driving experience, and medical, with the core consents (FCRA, abstract release, background, drug) and an abstract review.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
@@ -214,7 +214,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Hazmat / tanker endorsement (background-heavy) ──
         tpl('tpl-hazmat-tanker', 'Hazmat / Tanker Endorsement',
-            "Endorsement-heavy onboarding — the complete application plus every consent and the full PSP, MVR, background, and clearinghouse reviews required for hazmat & tanker operations.",
+            "Endorsement-heavy onboarding — the complete application plus every consent and the full PSP, abstract, background, and clearinghouse reviews required for hazmat & tanker operations.",
             false,
             [
                 ...forms(APPLICATION_FORMS),
@@ -225,7 +225,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Non-CDL light-vehicle delivery driver ──
         tpl('tpl-non-cdl', 'Non-CDL Delivery Driver',
-            "Light-vehicle / non-CDL delivery drivers — identity, address, license, driving experience, and medical, with FCRA, MVR release, and background consents and an MVR review.",
+            "Light-vehicle / non-CDL delivery drivers — identity, address, license, driving experience, and medical, with FCRA, abstract release, and background consents and an abstract review.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
@@ -237,7 +237,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Rehire / returning driver (short refresh) ──
         tpl('tpl-rehire', 'Rehire / Returning Driver',
-            "Returning drivers we've employed before — a short refresh: identity, license, and medical, with driver certification, MVR release, and background consents plus an MVR review.",
+            "Returning drivers we've employed before — a short refresh: identity, license, and medical, with driver certification, abstract release, and background consents plus an abstract review.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-license-details', 'form-medical-details']),
@@ -248,7 +248,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Seasonal / temporary driver (minimal) ──
         tpl('tpl-seasonal', 'Seasonal / Temporary Driver',
-            "Short-term seasonal drivers — identity, address, license, and medical, with FCRA and MVR-release consents and a quick MVR review.",
+            "Short-term seasonal drivers — identity, address, license, and medical, with FCRA and abstract-release consents and a quick abstract review.",
             false,
             [
                 ...forms(['form-applicant-information', 'form-address-details', 'form-license-details', 'form-medical-details']),
@@ -272,7 +272,7 @@ function seedTemplates(): DriverHiringTemplate[] {
             'hiring-ats'),
 
         tpl('tpl-ats-canada', 'Canada Driver — Hiring ATS',
-            'Post-application ATS pipeline for Canada-based drivers — driver record review (CVOR / MVR), previous-employer & safety history, drug/alcohol screening, medical declaration, then onboarding.',
+            'Post-application ATS pipeline for Canada-based drivers — driver record review (CVOR / non-commercial abstract), previous-employer & safety history, drug/alcohol screening, medical declaration, then onboarding.',
             false,
             forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ATS_MEDICAL, ...ATS_ONBOARDING]),
             'hiring-ats'),
@@ -285,7 +285,7 @@ function seedTemplates(): DriverHiringTemplate[] {
 
         // ── Stage packages (mix & match) ──
         tpl('tpl-ats-screening', 'Screening Package — Hiring ATS',
-            'Screening stage only — driver record review (abstract / CVOR / MVR + annual review), license compliance, previous employer & safety history, and drug/alcohol consent + testing.',
+            'Screening stage only — driver record review (abstract / CVOR / non-commercial + annual review), license compliance, previous employer & safety history, and drug/alcohol consent + testing.',
             false,
             forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG]),
             'hiring-ats'),

@@ -124,14 +124,14 @@ export const CONSENT_FORMS: ConsentForm[] = [
     },
     {
         id: 'mvr_release',
-        title: 'Motor Vehicle Record (MVR) Release',
+        title: 'Driver Non-Commercial Abstract Release',
         subtitle: 'Federal Drivers Privacy Protection Act',
         citation: '18 USC § 2721 et seq. (DPPA)',
         requiresSignature: true,
         defaultStep: 'mvr',
-        producesDocumentLabel: 'Signed MVR Release',
+        producesDocumentLabel: 'Signed Non-Commercial Abstract Release',
         body: [
-            'In conjunction with my potential employment ("the company"), I (applicant) consent to the release of my Motor Vehicle Records (MVR) to the company. I understand the company will use these records to evaluate my suitability to fulfill driving duties that may be related to the position for which I am applying. I also consent to the review, evaluation, and other use of any MVR I may have provided to the company.',
+            'In conjunction with my potential employment ("the company"), I (applicant) consent to the release of my driver non-commercial abstract (motor vehicle record) to the company. I understand the company will use these records to evaluate my suitability to fulfill driving duties that may be related to the position for which I am applying. I also consent to the review, evaluation, and other use of any such record I may have provided to the company.',
             'This consent is given in satisfaction of Public Law 18 USC 2721 et. Seq., "Federal Drivers Privacy Protection Act", and is intended to constitute "written consent" as required by this Act.',
         ],
     },

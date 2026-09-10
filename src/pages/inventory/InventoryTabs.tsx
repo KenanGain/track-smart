@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 // only List and Vendors remain as top-level tabs.
 export type InventoryTab = "list" | "vendors";
 
-const TABS: { id: InventoryTab; label: string; Icon: React.ElementType; path: string }[] = [
+export const INVENTORY_TABS: { id: InventoryTab; label: string; Icon: React.ElementType; path: string }[] = [
     { id: "list", label: "List", Icon: List, path: "/inventory" },
     { id: "vendors", label: "Vendors", Icon: Store, path: "/inventory/vendors" },
 ];
@@ -19,7 +19,7 @@ export function InventoryTabs({ current, onNavigate, className }: {
 }) {
     return (
         <div className={cn("flex items-center gap-1 overflow-x-auto no-scrollbar", className)}>
-            {TABS.map((t) => {
+            {INVENTORY_TABS.map((t) => {
                 const active = current === t.id;
                 return (
                     <button

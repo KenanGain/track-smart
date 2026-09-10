@@ -16,7 +16,7 @@ import { useHiringTemplates, totalForms, driverTypeName, type HiringTemplate } f
 
 // Forms built so far. (Form builders are wired up per form as we add them.)
 const FORMS = [
-    { id: "mvr", name: "MVR — Motor Vehicle Record", desc: "US state driving record (MVR) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
+    { id: "mvr", name: "Driver Non-Commercial Abstract", desc: "US state driving record (non-commercial abstract) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
     { id: "driver-abstract", name: "Driver Abstract", desc: "Canadian province driving abstract (Ontario, Alberta 5-Year, …) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-rose-50 text-rose-600" },
     { id: "employment-verification", name: "Employment Verification", desc: "Consolidated previous-employer reference (§391.23 / §40.25) — rating, safety evaluation, signatures and completed-response upload.", Icon: FileSignature, accent: "bg-violet-50 text-violet-600" },
     { id: "safety-performance-history", name: "Request for Employment and Safety Performance History", desc: "Previous-employer safety reference — employment summary, driving experience, equipment, U/S/G/E performance evaluation, plus incidents and violations.", Icon: ShieldCheck, accent: "bg-sky-50 text-sky-600" },
@@ -28,7 +28,7 @@ const FORMS = [
     { id: "substance-testing", name: "Substance Testing", desc: "DOT / non-DOT drug & alcohol test (49 CFR Part 40) — collection, lab, result, lab-report upload and consent.", Icon: FlaskConical, accent: "bg-purple-50 text-purple-600" },
     { id: "dot-verification", name: "DOT / Employment Verification", desc: "Previous DOT employer verification — §40.25 drug & alcohol history, §391.23 accidents, signature and response upload.", Icon: BadgeCheck, accent: "bg-teal-50 text-teal-600" },
     { id: "medical-card", name: "Medical Card Renewal", desc: "DOT Medical Examiner's Certificate (MEC) — examiner & registry #, exam/expiry dates, qualification result, restrictions and card upload.", Icon: HeartPulse, accent: "bg-pink-50 text-pink-600" },
-    { id: "annual-review", name: "Annual Review (§391.25)", desc: "Carrier's annual review of the driving record — MVR obtained, violations in period, qualification determination and reviewer signature.", Icon: CalendarCheck, accent: "bg-indigo-50 text-indigo-600" },
+    { id: "annual-review", name: "Annual Review (§391.25)", desc: "Carrier's annual review of the driving record — abstract obtained, violations in period, qualification determination and reviewer signature.", Icon: CalendarCheck, accent: "bg-indigo-50 text-indigo-600" },
     { id: "clearinghouse-query", name: "Clearinghouse Query", desc: "FMCSA Drug & Alcohol Clearinghouse — annual limited query escalating to a full query if information comes back, with result upload.", Icon: DatabaseZap, accent: "bg-cyan-50 text-cyan-600" },
 ];
 

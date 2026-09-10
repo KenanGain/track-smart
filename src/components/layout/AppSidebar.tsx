@@ -49,9 +49,21 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
         return false;
     });
 
-    // Drag-to-resize width (expanded only), persisted across sessions.
+    // Drag-to-resize width, persisted across sessions.
+    //
+    // Narrow used to mean "labels, clipped": at 220px "Default Compliances & Documents" and
+    // "Default Compliance Monitoring" both read "Default Compliance", so the navigation could
+    // not be read at the very width someone chose to save space. So there is nothing between
+    // the narrowest readable sidebar and the ICON RAIL — drag past MIN_W and it snaps to the
+    // rail, where each item is its icon with its name on hover. Dragging back out restores
+    // the labels. The gap between SNAP_W and MIN_W is hysteresis: without it the sidebar
+    // would flicker between the two on every pixel of a slow drag.
     const MIN_W = 220;
     const MAX_W = 480;
+    /** The icon rail's width — icons only, names on hover. */
+    const RAIL_W = 70;
+    /** Drag narrower than this and the sidebar becomes that rail. */
+    const SNAP_W = 190;
     const [width, setWidth] = React.useState(() => {
         if (typeof window !== 'undefined') {
             const saved = Number(localStorage.getItem('sidebar_width'));
@@ -65,7 +77,14 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
 
     React.useEffect(() => {
         if (!isResizing) return;
-        const onMove = (e: MouseEvent) => setWidth(Math.min(MAX_W, Math.max(MIN_W, e.clientX)));
+        const onMove = (e: MouseEvent) => {
+            // Past the snap point the sidebar IS the rail — the flip happens under the
+            // cursor, mid-drag, so it is obvious what dragging further will do. Dragging
+            // back out the other way brings the labels straight back.
+            if (e.clientX < SNAP_W) { setIsCollapsed(true); return; }
+            setIsCollapsed(false);
+            setWidth(Math.min(MAX_W, Math.max(MIN_W, e.clientX)));
+        };
         const onUp = () => setIsResizing(false);
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
@@ -87,11 +106,11 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
         return initial;
     });
 
-    const toggleCollapse = () => {
-        const newState = !isCollapsed;
-        setIsCollapsed(newState);
-        localStorage.setItem('sidebar_collapsed', String(newState));
-    };
+    // Persisted here rather than in the toggle, so the rail comes back next session however
+    // it was reached — the button or a drag past the snap point.
+    React.useEffect(() => { localStorage.setItem('sidebar_collapsed', String(isCollapsed)); }, [isCollapsed]);
+
+    const toggleCollapse = () => setIsCollapsed(c => !c);
 
     const toggleGroup = (key: string) => {
         if (isCollapsed) return; // Don't toggle groups in collapsed mode
@@ -100,7 +119,7 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
 
     // On mobile the drawer is always expanded (labels visible) at a comfortable width.
     const effectiveCollapsed = isMobile ? false : isCollapsed;
-    const asideWidth = isMobile ? 272 : (isCollapsed ? 70 : width);
+    const asideWidth = isMobile ? 272 : (isCollapsed ? RAIL_W : width);
 
     return (
         <>
@@ -160,14 +179,15 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
                 </div>
             </ScrollArea>
 
-            {/* Drag handle to resize the sidebar (double-click to reset) — desktop only */}
-            {!isMobile && !isCollapsed && (
+            {/* Drag handle to resize the sidebar (double-click to reset) — desktop only.
+                Present on the RAIL too, so the same gesture that collapsed it opens it. */}
+            {!isMobile && (
                 <div
                     role="separator"
                     aria-orientation="vertical"
-                    title="Drag to resize · double-click to reset"
+                    title={isCollapsed ? "Drag right for labels · double-click to reset" : "Drag to resize · drag left for icons only"}
                     onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
-                    onDoubleClick={() => setWidth(260)}
+                    onDoubleClick={() => { setIsCollapsed(false); setWidth(260); }}
                     className={cn(
                         "absolute right-0 top-0 h-full w-1.5 -mr-0.5 cursor-col-resize group/resize",
                         "hover:bg-blue-200/60 transition-colors",
@@ -272,7 +292,7 @@ function SidebarNodeView(props: {
                                     (open && isChildActive) || isChildActive ? "text-blue-600" : "text-slate-400 group-hover/btn:text-slate-600"
                                 )} />
                             ) : null}
-                             <span className={cn(
+                             <span title={node.label} className={cn(
                                 "text-sm whitespace-nowrap overflow-hidden transition-all ease-in-out",
                                 isCollapsed ? "w-0 opacity-0 duration-300" : "w-auto opacity-100 duration-500 delay-75"
                              )}>
@@ -483,7 +503,10 @@ function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabl
                     disabled ? "text-slate-300" : active ? "text-blue-600" : "text-slate-400 group-hover/leaf:text-slate-600"
                 )} />
             )}
-            <span className={cn(
+            {/* Titled, because a narrow sidebar clips the longer names and two of them
+                ("Default Compliances & Documents", "Default Compliance Monitoring") clip to
+                the same words. Hover names it; drag narrower still and it becomes the rail. */}
+            <span title={label} className={cn(
                 "text-sm whitespace-nowrap overflow-hidden transition-all ease-in-out",
                 isCollapsed ? "w-0 opacity-0 duration-300 hidden" : "opacity-100 duration-500 delay-75",
                 // With a badge, let the label shrink/truncate so the tag stays visible.

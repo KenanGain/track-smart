@@ -665,13 +665,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
         // The accident number is what a person reads; the row id is what opens the accident.
         sourceId: record.id,
         eventDate: record.dateTime || record.reportedAt,
-        summary: [
-            record.numInjuries && record.numInjuries !== '0' ? `${record.numInjuries} injured` : (record.injuries ? 'injuries reported' : null),
-            record.numFatalities && record.numFatalities !== '0' ? `${record.numFatalities} fatality(ies)` : null,
-            record.towAway ? 'tow-away' : null,
-            record.location,
-        ].filter(Boolean).join(' · '),
-    }), [record.driverId, record.driverName, record.accidentNumber, record.id, record.dateTime, record.reportedAt, record.injuries, record.numInjuries, record.numFatalities, record.towAway, record.location, title]);
+    }), [record.driverId, record.driverName, record.accidentNumber, record.id, record.dateTime, record.reportedAt, title]);
     const rv = useRecordReview({ kind: 'accident', id: record.id, accountId, currentUser: record.verifiedBy || 'Safety Manager', source: warningSource });
 
     const TABS: { id: TabId; label: string; count?: number }[] = [

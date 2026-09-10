@@ -1,4 +1,4 @@
-// Province / state-specific driving-record (abstract / MVR) product types.
+// Province / state-specific driving-record (abstract) product types.
 //
 // Each jurisdiction issues its own driving-record products under different names
 // (Ontario CVOR vs Alberta 5-Year Abstract vs Quebec SAAQ record, etc.). The
@@ -6,10 +6,10 @@
 // province / state is chosen.
 
 export const US_MVR_TYPES = [
-    "Motor Vehicle Record (MVR)",
+    "Driver Non-Commercial Abstract",
     "Certified Driving Record",
-    "3-Year MVR",
-    "7-Year MVR",
+    "3-Year Non-Commercial Abstract",
+    "7-Year Non-Commercial Abstract",
     "Complete Driving History",
     "CDLIS Report",
 ];

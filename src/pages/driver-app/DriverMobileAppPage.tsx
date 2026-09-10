@@ -434,7 +434,7 @@ const DOCS: { name: string; cat: string; status: DocStatus }[] = [
     { name: "Commercial Driver's License", cat: "License", status: "expiring" },
     { name: "Application for Employment", cat: "DQ File", status: "onfile" },
     { name: "PSP Authorization", cat: "Disclosures", status: "onfile" },
-    { name: "MVR / Driver Abstract", cat: "Abstracts", status: "onfile" },
+    { name: "Driver Abstract", cat: "Abstracts", status: "onfile" },
     { name: "Road Test Certificate", cat: "Qualification", status: "onfile" },
 ];
 const DOC_STATUS: Record<DocStatus, { label: string; chip: string; Icon: React.ElementType; action: string }> = {

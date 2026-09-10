@@ -44,16 +44,16 @@ export function AnnualReviewForm({ onBack, embedded, startPreview }: { onBack: (
 
     const sections: DocSection[] = [
         { title: "Driver & Period", groups: [{ rows: [{ label: "Driver", value: driver }, { label: "CDL Number", value: cdl }, { label: "Review Date", value: reviewDate }, { label: "Review Period", value: `${periodFrom} – ${periodTo}` }] }] },
-        { title: "Driving Record (MVR)", groups: [{ rows: [{ label: "MVR Obtained", value: mvrObtained }, { label: "Issuing State / Province", value: mvrState }, { label: "License valid & current", value: licenseValid }] }] },
+        { title: "Driving Record (Abstract)", groups: [{ rows: [{ label: "Abstract Obtained", value: mvrObtained }, { label: "Issuing State / Province", value: mvrState }, { label: "License valid & current", value: licenseValid }] }] },
         { title: "Violations in Period", groups: violations.length ? violations.map((v, i) => ({ label: `Violation ${i + 1}`, rows: [{ label: "Date", value: v.date }, { label: "State / Province", value: v.state }, { label: "Offense", value: v.offense }, { label: "In a CMV", value: v.cmv }] })) : [{ rows: [{ label: "Violations", value: "None recorded" }] }] },
-        { title: "Determination", groups: [{ rows: [{ label: "Determination", value: determination }, { label: "Comments", value: comments }, { label: "Reviewer", value: reviewer ? `${reviewer}${reviewerTitle ? ` · ${reviewerTitle}` : ""}` : "" }, { label: "MVR Document", value: pdf ? "Attached" : "Not attached" }], images: sig ? [sig] : undefined }] },
+        { title: "Determination", groups: [{ rows: [{ label: "Determination", value: determination }, { label: "Comments", value: comments }, { label: "Reviewer", value: reviewer ? `${reviewer}${reviewerTitle ? ` · ${reviewerTitle}` : ""}` : "" }, { label: "Abstract Document", value: pdf ? "Attached" : "Not attached" }], images: sig ? [sig] : undefined }] },
     ];
 
     return (
         <FormScaffold
             title="Annual Review (§391.25)" Icon={CalendarCheck} onBack={onBack} onFillSample={fillSample} embedded={embedded} startPreview={startPreview}
             docTitle="Annual Review of Driving Record" docSubtitle="49 CFR §391.25" badge={determination ? determination.split(" — ")[0] : undefined} sections={sections} branding={branding} fileName="annual-review.pdf"
-            intro={<>The carrier’s annual review of the driver’s driving record (§391.25). Record the MVR obtained, list violations in the review period, and make the qualification determination with reviewer signature.</>}
+            intro={<>The carrier’s annual review of the driver’s driving record (§391.25). Record the abstract obtained, list violations in the review period, and make the qualification determination with reviewer signature.</>}
         >
             <div>
                 <SectionTitle>Driver &amp; Review Period</SectionTitle>
@@ -67,10 +67,10 @@ export function AnnualReviewForm({ onBack, embedded, startPreview }: { onBack: (
             </div>
 
             <div>
-                <SectionTitle>Driving Record (MVR)</SectionTitle>
+                <SectionTitle>Driving Record (Abstract)</SectionTitle>
                 <div className="space-y-5">
                     <Grid>
-                        <Field label="MVR Obtained Date"><Input type="date" value={mvrObtained} onChange={(e) => setMvrObtained(e.target.value)} /></Field>
+                        <Field label="Abstract Obtained Date"><Input type="date" value={mvrObtained} onChange={(e) => setMvrObtained(e.target.value)} /></Field>
                         <Field label="Issuing State / Province"><SelectBox value={mvrState} placeholder="Please choose" items={STATES_PROVINCES} onChange={setMvrState} /></Field>
                     </Grid>
                     <YesNoField label="License valid and current?" value={licenseValid} onChange={setLicenseValid} />
@@ -112,7 +112,7 @@ export function AnnualReviewForm({ onBack, embedded, startPreview }: { onBack: (
                     </Grid>
                     <SignaturePad label="Reviewer’s Signature" onChange={setSig} />
                     <div>
-                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">MVR / Abstract Document</p>
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Abstract Document</p>
                         <PdfUpload value={pdf} onChange={setPdf} />
                     </div>
                 </div>

@@ -3551,7 +3551,7 @@ function VehicleMaintenanceForecastTable({
             </div>
             <div className="overflow-x-auto max-h-[440px] overflow-y-auto">
                 <table className="w-full text-left text-[11px]">
-                    <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                    <thead className="bg-slate-50 border-b border-slate-200 sticky-head">
                         <tr>
                             {['Asset','Service','Status','Predicted Due','Days','Σ','Est. Cost','Method','Confidence'].map(h => (
                                 <th key={h} className="px-3 py-2 font-bold uppercase tracking-wider text-[9px] text-slate-500 whitespace-nowrap">{h}</th>
@@ -7042,7 +7042,7 @@ function DataTable({
                     </div>
                 ) : (
                     <table className="w-full text-left text-[11px]">
-                        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                        <thead className="bg-slate-50 border-b border-slate-200 sticky-head">
                             <tr>
                                 {head.map((h, i) => (
                                     <th key={i} className="px-3 py-2 font-bold uppercase tracking-wider text-[9px] text-slate-500 whitespace-nowrap">

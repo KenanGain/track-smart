@@ -1,4 +1,4 @@
-// Compliance review forms — the back-office hiring-pipeline forms (PSP, MVR/Abstract,
+// Compliance review forms — the back-office hiring-pipeline forms (PSP, driver abstracts,
 // Criminal Background, Substance/DOT Drug & Alcohol, FMCSA Clearinghouse, Employment
 // Safety Verification, and the final Hiring Decision). These are seeded into the
 // Docu/Form Generator alongside the applicant forms and reference the compliance PDF
@@ -68,15 +68,15 @@ export function complianceReviewForms(): ApplicationFormDef[] {
                 docf('f-psp-notes-doc', 'PSP Review Notes PDF', 'dt-psp-review-notes'),
             ]),
 
-        /* 2 — MVR / Driver Abstract Review */
-        form('form-mvr-review', 'MVR / Driver Abstract Review',
-            'US MVR, Canadian driver abstract, Ontario CVOR abstract and other provincial records. Annual review at least every 12 months for DOT.',
+        /* 2 — Driver Abstract Review (non-commercial / commercial) */
+        form('form-mvr-review', 'Driver Abstract Review',
+            'US driver non-commercial abstract, Canadian driver abstract, Ontario CVOR abstract and other provincial records. Annual review at least every 12 months for DOT.',
             'License details come from the application (captured once). Capture the ordered record and period, the record result, and the annual review outcome.',
             [
                 heading('h-mvr-status', 'Review Status'),
                 select('f-mvr-status', 'Status', ['Consent Needed', 'Ordered', 'Received', 'Reviewed', 'Passed', 'Needs Review', 'Failed', 'Annual Review Due'], H),
                 date('f-mvr-med-due', 'Medical Certificate Expiry / Due', H),
-                heading('h-mvr-order', 'MVR / Abstract Order'),
+                heading('h-mvr-order', 'Abstract Order'),
                 date('f-mvr-requested', 'Requested Date', H),
                 date('f-mvr-received', 'Report Received Date', H),
                 text('f-mvr-agency', 'Issuing Agency', H),
@@ -94,16 +94,16 @@ export function complianceReviewForms(): ApplicationFormDef[] {
                 date('f-mvr-review-date', 'Review Date', H),
                 date('f-mvr-next-review', 'Next Annual Review Due', H),
                 heading('h-mvr-docs', 'Documents'),
-                docf('f-mvr-auth-doc', 'MVR / Abstract Authorization', 'dt-mvr-auth', { required: true }),
-                docf('f-mvr-mvr-doc', 'MVR / State Driving Record', 'dt-mvr'),
+                docf('f-mvr-auth-doc', 'Abstract Authorization', 'dt-mvr-auth', { required: true }),
+                docf('f-mvr-mvr-doc', 'Non-Commercial Abstract / State Driving Record', 'dt-mvr'),
                 docf('f-mvr-abstract-doc', 'Provincial Driver Abstract', 'dt-abstract'),
                 docf('f-mvr-cvor-doc', 'CVOR Driver Abstract', 'dt-cvor'),
-                docf('f-mvr-annual-doc', 'Annual MVR Review PDF', 'dt-annual-mvr'),
+                docf('f-mvr-annual-doc', 'Annual Abstract Review PDF', 'dt-annual-mvr'),
             ]),
 
         /* 3 — Criminal Background Check */
         form('form-criminal-background', 'Criminal Background Check',
-            'Criminal record screening per company policy and jurisdiction. Contains sensitive personal information — kept separate from PSP/MVR.',
+            'Criminal record screening per company policy and jurisdiction. Contains sensitive personal information — kept separate from PSP / abstract records.',
             'Role-based access applies: applicant sees status only; recruiter sees status + missing items; safety/compliance sees the report summary; admin/legal sees the full PDF.',
             [
                 heading('h-bgc-status', 'Result & Status'),

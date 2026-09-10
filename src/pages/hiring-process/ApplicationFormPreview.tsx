@@ -37,7 +37,6 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: "Phone Number", sample: "(555) 218-4471" },
                 { label: "Date of Birth", sample: "03/14/1990" },
                 { label: config.idLabel, sample: "***-**-4471", full: true },
-                { label: `Legal right to work in ${country === "Canada" ? "Canada" : "the U.S."}`, sample: "Yes" },
                 { label: "Position Type", sample: "Company Driver" },
                 { label: "Will this driver operate in or cross into the United States?", sample: "Yes", full: true },
             ],
@@ -76,16 +75,25 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: "Endorsements", sample: "HazMat, Tanker", full: true },
             ],
         },
+        // Citizenship first: a US or Canadian citizen answers nothing else here but the
+        // passport and the optional cards. The rest is what a driver from anywhere else is
+        // asked — one right-to-work question per country this form covers, and the document
+        // each answer calls for. Every document can be given more than once.
         {
             title: "Travel Documents",
+            note: "Each document below can be added more than once — a renewed permit alongside the one it replaced, a visa for each side of the border.",
             fields: [
-                { label: "Which country are they a citizen of?", sample: country, full: true },
-                { label: "Work authorization in " + (country === "Canada" ? "the United States" : "Canada"), sample: "Work Permit", full: true },
+                { label: "Which country are they a citizen of?", sample: "Mexico", full: true },
+                { label: `Work authorization in ${country}`, sample: "Work Permit", full: true },
+                ...(config.id === "cross-border"
+                    ? [{ label: "Work authorization in the United States", sample: "Permanent Resident (Green Card)", full: true }]
+                    : []),
                 { label: "Passport Number", sample: "X1234567" },
                 { label: "Passport expiry", sample: "08-15-2030" },
-                { label: "Do they have a Visa?", sample: "Yes" },
-                { label: "Do they have a TWIC Card?", sample: "No" },
-                { label: "Do they have a FAST Card?", sample: "Yes", full: true },
+                { label: `${country} visa — held?`, sample: "Yes" },
+                { label: "Visa Number", sample: "V-99120" },
+                { label: "TWIC Card — held?", sample: "No" },
+                { label: "FAST Card — held?", sample: "Yes", full: true },
             ],
         },
         {

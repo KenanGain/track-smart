@@ -232,8 +232,7 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
         // The offense number is what a person reads; the row id is what opens the ticket.
         sourceId: ticket.id,
         eventDate: ticket.date,
-        summary: [ticket.violationType, ticket.location, money].filter(Boolean).join(' · '),
-    }), [ticket.driverId, ticket.driverName, ticket.violationType, ticket.offenseNumber, ticket.id, ticket.date, ticket.location, money]);
+    }), [ticket.driverId, ticket.driverName, ticket.violationType, ticket.offenseNumber, ticket.id, ticket.date]);
     const rv = useRecordReview({ kind: 'ticket', id: ticket.id, accountId, currentUser: currentUserName, source: warningSource });
 
     const TABS: { id: typeof tab; label: string; count?: number }[] = [

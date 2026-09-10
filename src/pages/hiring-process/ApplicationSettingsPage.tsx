@@ -4,13 +4,14 @@ import { cn } from "@/lib/utils";
 import { MonitoringToggle } from "@/pages/compliance/MonitoringToggle";
 import { ALL_COUNTRIES } from "@/pages/compliance/jurisdiction.data";
 import { UploadZone } from "@/components/ui/UploadZone";
-import { defaultVersionLabel, MAX_RECORD_NAME, type SafetyRecord } from "@/pages/compliance/safety-software-catalog.data";
+import { MAX_RECORD_NAME, type SafetyRecord } from "@/pages/compliance/safety-software-catalog.data";
 import {
     travelDocFields, travelDocsFromApplication, legacyTravelShape,
-    travelQuestionGroups, isQuestionRecord, QUESTION_RECORD_IDS,
-    requiredTravelRecords, travelStatusOptions, countriesNeedingAuthorization,
-    emptyTravelProfile, isoDate, fromIsoDate,
-    type TravelDocs, type TravelDocCapture, type TravelProfile,
+    travelStatusOptions, countriesNeedingAuthorization, travelCountriesFor,
+    visibleTravelBlocks, askedTravelBlocks, blockAsked, syncTravelDocs, travelDocsFor,
+    emptyTravelDocFor, travelRecordFor, travelDocLabel, hasRightToWork, isBorderCitizen,
+    TRAVEL_GROUP_META, isoDate, fromIsoDate,
+    type TravelDocs, type TravelDocCapture, type TravelProfile, type TravelBlock, type TravelGroup,
 } from "@/pages/compliance/travel-docs-bridge";
 import { WizardStepNav, type WizardStep } from "@/components/ui/WizardEditor";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { ConsentPhase } from "./ApplicationConsents";
 import { consentsForType, consentRegion, consentForms } from "./policy-forms.data";
@@ -304,15 +305,6 @@ function DateInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     return <Input type="date" {...props} />;
 }
 
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
-    return (
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3.5 shadow-sm sm:col-span-2">
-            <span className="pr-4 text-sm font-semibold text-slate-700">{label}</span>
-            <Switch checked={checked} onCheckedChange={onChange} />
-        </div>
-    );
-}
-
 // Thin wrapper over the shadcn Select so existing call sites keep using
 // <Select value onChange placeholder><Options items=… /></Select>.
 function Select({ value, onChange, children, className, placeholder }: {
@@ -426,6 +418,29 @@ function YesNo({ value, onChange }: { value: string; onChange: (v: string) => vo
                     >
                         {opt}
                     </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/**
+ * A short either/or answered in place — for a question with two or three answers, where a
+ * dropdown hides both of them behind a click and a search box hides them behind typing.
+ */
+function RadioRow({ name, value, options, onChange }: { name: string; value: string; options: string[]; onChange: (v: string) => void }) {
+    return (
+        <div className="flex flex-wrap gap-2">
+            {options.map((opt) => {
+                const on = value === opt;
+                return (
+                    <label key={opt}
+                        className={cn("inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                            on ? "border-blue-500 bg-blue-50/70 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}>
+                        <input type="radio" name={name} value={opt} checked={on} onChange={() => onChange(opt)}
+                            className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                        {opt}
+                    </label>
                 );
             })}
         </div>
@@ -578,7 +593,7 @@ export function InlineCollector<T,>({ items, setItems, factory, addLabel, cardTi
     );
 }
 
-// ── Reusable Violation & Accident forms (shared with the MVR / Driver Abstract form) ──
+// ── Reusable Violation & Accident forms (shared with the Driver Abstract form) ──
 export function ViolationFields({ d, set }: { d: Incident; set: (patch: Partial<Incident>) => void }) {
     return (
         <div className="space-y-6">
@@ -681,7 +696,7 @@ export type HiringFormItem = { id: string; name: string; blurb: string; group: s
 export const HIRING_FORMS: HiringFormItem[] = [
     { id: "driver-license", name: "Driver License", blurb: "License details, class, endorsements and front/back upload.", group: "License & Driving" },
     { id: "psp", name: "PSP — Pre-Employment Screening Program", blurb: "FMCSA crash and inspection history report.", group: "Reports & Screening" },
-    { id: "mvr", name: "MVR — Motor Vehicle Record", blurb: "US motor vehicle record review.", group: "Reports & Screening" },
+    { id: "mvr", name: "Driver Non-Commercial Abstract", blurb: "US driver non-commercial abstract review.", group: "Reports & Screening" },
     { id: "driver-abstract", name: "Driver Abstract", blurb: "Canadian driving record / abstract review.", group: "Reports & Screening" },
     { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", blurb: "Commercial vehicle driver record.", group: "Reports & Screening" },
     { id: "cda", name: "CDA — Commercial Driver Abstract", blurb: "Commercial driver abstract.", group: "Reports & Screening" },
@@ -759,8 +774,12 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [suffix, setSuffix] = useState(d0?.suffix ?? "");
     const [ssn, setSsn] = useState(d0?.ssn ?? "");
     const [dob, setDob] = useState(d0?.dob ?? "");
-    const [legalRight, setLegalRight] = useState(d0?.legalRightUS ?? false);       // US work eligibility
-    const [legalRightCA, setLegalRightCA] = useState(d0?.legalRightCA ?? false);   // Canada work eligibility (cross-border / Canada forms)
+    // Right to work is no longer a question of its own — it FOLLOWS from citizenship and the
+    // right-to-work status answered in Travel Documents. Kept in the saved data because the
+    // driver profile shows it; a value from an application saved while it was still a toggle
+    // stands in until those questions are answered.
+    const savedLegalRightUS = d0?.legalRightUS ?? false;
+    const savedLegalRightCA = d0?.legalRightCA ?? false;
 
     // Address
     const [addr1, setAddr1] = useState(d0?.address?.addr1 ?? "");
@@ -813,31 +832,87 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [accidents, setAccidents] = useState<Accident[]>(d0?.accidents ?? []);
 
     // Travel Documents — driven by the COMPLIANCE CATALOG, not by fields hardcoded here:
-    // each travel record asks its own question, for its own fields, and what is answered is
-    // filed as that record for the driver (see `travel-docs-bridge`). A record added to the
-    // catalog appears here on its own.
-    const [travelProfile, setTravelProfile] = useState<TravelProfile>(() =>
-        d0?.travelProfile ?? emptyTravelProfile());
-    // Every country this driver is not a citizen of, so one authorization question each.
-    const needsAuth = useMemo(() => countriesNeedingAuthorization(travelProfile), [travelProfile]);
-    const [travelDocs, setTravelDocs] = useState<TravelDocs>(() =>
-        travelDocsFromApplication(d0, config.defaultCountry));
-    const setTravelDoc = (id: string, patch: Partial<TravelDocCapture>) =>
-        setTravelDocs(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
-    const setTravelField = (id: string, key: string, value: string) =>
-        setTravelDocs(prev => ({ ...prev, [id]: { ...prev[id], fields: { ...prev[id].fields, [key]: value } } }));
-    // The documents actually called for: the passport always, the right-to-work document the
-    // status names, and the visa if that question was answered Yes.
-    const travelRecords = useMemo(() => requiredTravelRecords(travelProfile, travelDocs), [travelProfile, travelDocs]);
-    // One travel document's fields, rendered from what its catalog record declares. Named so
-    // the passport can be placed before the visa question and the rest after it.
-    const renderTravelDoc = (record: SafetyRecord) => {
-                        const doc = travelDocs[record.id];
-                        if (!doc) return null;
+    // the section asks for one BLOCK per document it needs, for exactly the fields that
+    // record declares, and every document captured is filed as that record for the driver
+    // (see `travel-docs-bridge`). Which blocks appear follows from two answers — where the
+    // driver runs, and whose citizen they are.
+    const restored = useMemo(() => travelDocsFromApplication(d0, config.defaultCountry), [d0, config.defaultCountry]);
+    const [travelProfile, setTravelProfile] = useState<TravelProfile>(() => restored.profile);
+    const [travelDocs, setTravelDocs] = useState<TravelDocs>(() => restored.docs);
+    // The countries this application covers: one for a US-only or Canada-only driver, both
+    // for a cross-border one. The driver's paperwork is the paperwork for the roads they
+    // will be on, so this is what every question below is scoped to.
+    const travelCountries = useMemo(
+        () => travelCountriesFor(config.defaultCountry, config.id === "cross-border"),
+        [config.defaultCountry, config.id]);
+    // Every country whose right-to-work question this driver has to answer — none at all for
+    // a US or Canadian citizen, whose citizenship settles both sides of the border.
+    const needsAuth = useMemo(() => countriesNeedingAuthorization(travelProfile, travelCountries), [travelProfile, travelCountries]);
+    const travelBlocks = useMemo(() => visibleTravelBlocks(travelProfile, travelCountries), [travelProfile, travelCountries]);
+    const askedBlocks = useMemo(() => askedTravelBlocks(travelProfile, travelCountries), [travelProfile, travelCountries]);
+    /**
+     * Change an answer, and take the documents it was holding with it.
+     *
+     * A green card captured under "Permanent Resident" has no business staying in the data
+     * once the answer says "Work Permit" — it would still be filed as that driver's record,
+     * from a question nobody can see any more.
+     */
+    const patchTravelProfile = (patch: (p: TravelProfile) => TravelProfile) => {
+        const next = patch(travelProfile);
+        const before = visibleTravelBlocks(travelProfile, travelCountries);
+        const after = visibleTravelBlocks(next, travelCountries);
+        setTravelProfile(next);
+        setTravelDocs(docs => syncTravelDocs(docs, before, after));
+    };
+    /** Tick / untick an optional block — unticking drops what was captured under it. */
+    const setHolds = (block: TravelBlock, on: boolean) =>
+        patchTravelProfile(p => ({
+            ...p,
+            holds: on ? [...new Set([...(p.holds ?? []), block.key])] : (p.holds ?? []).filter(k => k !== block.key),
+        }));
+    /**
+     * Write one document of one block. The list is seeded on first edit rather than up front:
+     * every block shows a card to fill in, and only a card that was actually touched becomes
+     * data — so an untouched block files nothing.
+     */
+    const setTravelDoc = (block: TravelBlock, index: number, patch: Partial<TravelDocCapture>) =>
+        setTravelDocs(prev => {
+            const list = prev[block.key]?.length ? [...prev[block.key]] : travelDocsFor(prev, block);
+            if (!list[index]) return prev;
+            list[index] = { ...list[index], ...patch };
+            return { ...prev, [block.key]: list };
+        });
+    const setTravelField = (block: TravelBlock, index: number, key: string, value: string) =>
+        setTravelDocs(prev => {
+            const list = prev[block.key]?.length ? [...prev[block.key]] : travelDocsFor(prev, block);
+            if (!list[index]) return prev;
+            list[index] = { ...list[index], fields: { ...list[index].fields, [key]: value } };
+            return { ...prev, [block.key]: list };
+        });
+    /** Another one of the same document — a renewed permit, a second visa. */
+    const addTravelDoc = (block: TravelBlock) =>
+        setTravelDocs(prev => {
+            const list = prev[block.key]?.length ? prev[block.key] : travelDocsFor(prev, block);
+            const blank = emptyTravelDocFor(block, list.length);
+            return blank ? { ...prev, [block.key]: [...list, blank] } : prev;
+        });
+    const removeTravelDoc = (block: TravelBlock, index: number) =>
+        setTravelDocs(prev => {
+            const list = (prev[block.key]?.length ? prev[block.key] : travelDocsFor(prev, block)).filter((_, i) => i !== index);
+            return { ...prev, [block.key]: list };
+        });
+    /**
+     * One captured document, rendered from what its catalog record declares — the same fields,
+     * upload and alert the office sees on the record itself.
+     *
+     * `index` is which of that block's documents this is: a driver can hand over a renewed
+     * permit alongside the one it replaces, or a visa for each side of the border, and each
+     * becomes its own compliance record.
+     */
+    const renderTravelDoc = (block: TravelBlock, record: SafetyRecord, doc: TravelDocCapture, index: number) => {
                         const f = travelDocFields(record);
                         const label = doc.label ?? "";
                         return (
-                            <FormSection key={record.id} title={record.recordName}>
                                 <Grid>
                                     {/* What the filed record is called — the same field, and the same
                                         40-character limit, as the office-side record form, prefilled
@@ -847,8 +922,8 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                         <Field label="Record name" required>
                                             <div className="relative">
                                                 <TextInput value={label} maxLength={MAX_RECORD_NAME} className="pr-14"
-                                                    placeholder={`e.g. ${defaultVersionLabel(record)}`}
-                                                    onChange={(e) => setTravelDoc(record.id, { label: e.target.value })} />
+                                                    placeholder={`e.g. ${travelDocLabel(record, block.country, index)}`}
+                                                    onChange={(e) => setTravelDoc(block, index, { label: e.target.value })} />
                                                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-slate-400">{label.length}/{MAX_RECORD_NAME}</span>
                                             </div>
                                         </Field>
@@ -857,35 +932,49 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                         <Field key={x.key} label={x.label}>
                                             {x.kind === "select" ? (
                                                 <Select value={doc.fields[x.key] ?? ""} placeholder="Please Choose"
-                                                    onChange={(v) => setTravelField(record.id, x.key, v)}>
+                                                    onChange={(v) => setTravelField(block, index, x.key, v)}>
                                                     <Options items={x.options} />
                                                 </Select>
                                             ) : (
                                                 <TextInput value={doc.fields[x.key] ?? ""}
-                                                    onChange={(e) => setTravelField(record.id, x.key, e.target.value)} />
+                                                    onChange={(e) => setTravelField(block, index, x.key, e.target.value)} />
                                             )}
                                         </Field>
                                     ))}
                                     {f.number && (
                                         <Field label={f.numberLabel}>
-                                            <TextInput value={doc.number} onChange={(e) => setTravelDoc(record.id, { number: e.target.value })} />
+                                            <TextInput value={doc.number} onChange={(e) => setTravelDoc(block, index, { number: e.target.value })} />
                                         </Field>
                                     )}
                                     {f.country && (
-                                        <Field label="Issuing Country">
-                                            <SearchSelect value={doc.country} items={ALL_COUNTRIES} onChange={(v) => setTravelDoc(record.id, { country: v })} />
+                                        // A visa is for one of two countries, so both are shown
+                                        // and one is picked — searching the world for "United
+                                        // States" to answer a two-way question is busywork. The
+                                        // record's own name follows the choice, so two visas on
+                                        // one driver are not both filed as "Visa".
+                                        <Field label={block.countryChoices ? `${record.recordName} for` : "Issuing Country"} required={!!block.countryChoices}>
+                                            {block.countryChoices ? (
+                                                <RadioRow name={`${doc.id}-country`} value={doc.country} options={block.countryChoices}
+                                                    onChange={(v) => setTravelDoc(block, index, {
+                                                        country: v,
+                                                        ...(doc.label === travelDocLabel(record, doc.country, index)
+                                                            ? { label: travelDocLabel(record, v, index) } : {}),
+                                                    })} />
+                                            ) : (
+                                                <SearchSelect value={doc.country} items={ALL_COUNTRIES} onChange={(v) => setTravelDoc(block, index, { country: v })} />
+                                            )}
                                         </Field>
                                     )}
                                     {f.issue && (
                                         <Field label="Issue Date">
                                             <DateInput value={isoDate(doc.issue)}
-                                                onChange={(e) => setTravelDoc(record.id, { issue: fromIsoDate(e.target.value) })} />
+                                                onChange={(e) => setTravelDoc(block, index, { issue: fromIsoDate(e.target.value) })} />
                                         </Field>
                                     )}
                                     {f.expiry && (
                                         <Field label={f.expiryLabel}>
                                             <DateInput value={isoDate(doc.expiry)}
-                                                onChange={(e) => setTravelDoc(record.id, { expiry: fromIsoDate(e.target.value) })} />
+                                                onChange={(e) => setTravelDoc(block, index, { expiry: fromIsoDate(e.target.value) })} />
                                         </Field>
                                     )}
                                     {f.upload && (
@@ -898,13 +987,13 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                                         <div className="truncate text-[13px] font-semibold text-slate-800">{doc.doc}</div>
                                                         <div className="text-[11px] text-emerald-600">✓ Attached — filed with the record</div>
                                                     </div>
-                                                    <button type="button" title="Remove" onClick={() => setTravelDoc(record.id, { doc: "" })}
+                                                    <button type="button" title="Remove" onClick={() => setTravelDoc(block, index, { doc: "" })}
                                                         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
                                                 </div>
                                             ) : (
                                                 <UploadZone label="Drag a file here — or click — to upload the document"
                                                     hint="Captures the document for this record; PDF, image or file"
-                                                    onFiles={(files) => { const n = files?.[0]?.name; if (n) setTravelDoc(record.id, { doc: n }); }} />
+                                                    onFiles={(files) => { const n = files?.[0]?.name; if (n) setTravelDoc(block, index, { doc: n }); }} />
                                             )}
                                         </div>
                                     )}
@@ -916,38 +1005,99 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                                         <div className="sm:col-span-2">
                                             <MonitoringToggle record={record} monitoring={doc.monitoring}
                                                 issueDate={isoDate(doc.issue)} expiryDate={isoDate(doc.expiry)} status=""
-                                                onChange={(m) => setTravelDoc(record.id, { monitoring: m })} />
+                                                onChange={(m) => setTravelDoc(block, index, { monitoring: m })} />
                                         </div>
                                     )}
                                 </Grid>
-                            </FormSection>
                         );
     };
 
-    // The question groups — "Do they have a …?", and the record's own form once answered Yes.
-    // Driven by the bridge so the form never has to know which records are asked this way.
-    const questionGroups = useMemo(() => travelQuestionGroups(), []);
-    const renderTravelQuestions = (group: { id: string; title: string; note?: string; records: SafetyRecord[] }) => (
-        <div key={group.id} className="space-y-6">
-            <FormSection title={group.title}>
-                {group.note && <p className="-mt-2 mb-3 text-[12px] italic text-slate-500">{group.note}</p>}
-                <Grid>
-                    {group.records.map((record) => {
-                        const doc = travelDocs[record.id];
-                        if (!doc) return null;
-                        return (
-                            <Field key={record.id} label={`Do they have a ${record.recordName}?`}>
-                                <YesNo value={doc.has} onChange={(v) => setTravelDoc(record.id, { has: v })} />
-                            </Field>
-                        );
-                    })}
-                </Grid>
+    /**
+     * One block: every copy of that document the driver holds, each in its own card, and a
+     * button to add another — the same shape as the licenses step, because it is the same
+     * question ("all of them, not just the current one").
+     */
+    const renderTravelBlock = (block: TravelBlock, nested = false) => {
+        const record = travelRecordFor(block.recordId);
+        if (!record) return null;
+        const list = travelDocsFor(travelDocs, block);
+        // Nested under its own switch, the block needs no heading of its own — the switch
+        // just said what this is, and repeating it reads as a second question.
+        const body = (
+                <div className={cn('space-y-5', nested && 'pl-3 border-l-2 border-blue-100')}>
+                    {list.map((doc, i) => (
+                        <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                    {doc.number || doc.label || `${record.recordName} ${i + 1}`}
+                                    {i === 0 && list.length > 1 && <span className="ml-1 text-xs font-normal text-slate-400">(current)</span>}
+                                </span>
+                                {list.length > 1 && (
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => removeTravelDoc(block, i)} className="h-7 text-rose-500 hover:text-rose-600">
+                                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                                    </Button>
+                                )}
+                            </div>
+                            {renderTravelDoc(block, record, doc, i)}
+                        </div>
+                    ))}
+                    <Button type="button" variant="outline" onClick={() => addTravelDoc(block)} className="w-full border-dashed">
+                        <Plus className="h-4 w-4" /> Add another {record.recordName.toLowerCase()}
+                    </Button>
+                </div>
+        );
+        if (nested) return body;
+        return (
+            <FormSection key={block.key} title={block.title}>
+                <p className="-mt-2 mb-3 text-[12px] italic text-slate-500">{block.reason}</p>
+                {body}
             </FormSection>
-            {/* Yes opens that record's own form — the same fields, upload and monitoring the
-                office sees on the record itself. */}
-            {group.records.filter((r) => travelDocs[r.id]?.has === "Yes").map(renderTravelDoc)}
-        </div>
-    );
+        );
+    };
+
+    /**
+     * One part of the section. A block the driver opts into is asked by a switch — an entry
+     * visa, a border card — and its documents open directly under that switch; the passport
+     * and the right-to-work documents are not optional, so they have none.
+     */
+    const renderTravelGroup = (group: TravelGroup) => {
+        const blocks = travelBlocks.filter((b) => b.group === group);
+        if (!blocks.length) return null;
+        const meta = TRAVEL_GROUP_META[group];
+        const anyGated = blocks.some((b) => b.gated);
+        return (
+            <div key={group} className="space-y-6">
+                {anyGated ? (
+                    <FormSection title={meta.title}>
+                        {meta.note && <p className="-mt-2 mb-3 text-[12px] italic text-slate-500">{meta.note}</p>}
+                        {/* Each switch keeps its own documents directly beneath it. Grouping
+                            every switch first and every form after put a driver's TWIC card
+                            under a heading two questions away from the one that asked for it. */}
+                        <div className="space-y-4">
+                            {blocks.map((b) => {
+                                const on = blockAsked(travelProfile, b);
+                                return (
+                                    <div key={b.key} className="space-y-4">
+                                        <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50/70">
+                                            <span className="min-w-0">
+                                                <span className="block text-[13px] font-semibold text-slate-700">{b.question}</span>
+                                                <span className="block text-[11px] leading-snug text-slate-500">{b.reason}</span>
+                                            </span>
+                                            <Switch checked={on} onCheckedChange={(c) => setHolds(b, c)} />
+                                        </label>
+                                        {on && renderTravelBlock(b, true)}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </FormSection>
+                ) : (
+                    blocks.map((b) => renderTravelBlock(b))
+                )}
+            </div>
+        );
+    };
 
     // Signed application document — page mode (Add Driver) uploads the signed
     // application/declaration instead of collecting a live e-signature.
@@ -967,7 +1117,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const isCross = config.id === "cross-border";
 
     // Whether this driver operates in / crosses into the US. Gates the US-federal
-    // report consents (FCRA · MVR · PSP · FMCSA Clearinghouse) in the consent step.
+    // report consents (FCRA · Abstract · PSP · FMCSA Clearinghouse) in the consent step.
     // Canada-only applications default to No; everyone else defaults to Yes.
     const [operatesInUS, setOperatesInUS] = useState(d0?.operatesInUS ?? (isCanada && !isCross ? "No" : "Yes"));
 
@@ -977,7 +1127,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         const st = config.defaultCountry === "Canada" ? "Ontario" : "Illinois";
         setFirstName("Kenan"); setMiddleName(""); setLastName("Gain"); setSuffix("");
         setEmail("kenan.gain@example.com"); setPrimaryPhone("(555) 218-4471");
-        setDob("1990-03-14"); setSsn("***-**-4471"); setLegalRight(true); setLegalRightCA(true);
+        setDob("1990-03-14"); setSsn("***-**-4471");
         setPosition("Company Driver");
         setOperatesInUS(isCanada && !isCross ? "No" : "Yes");
         setAddr1("18 Maple Ridge Rd"); setUnit("4"); setAddr2(""); setCountry(config.defaultCountry);
@@ -999,32 +1149,43 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         setWasUnemployed("Yes");
         setUnemployment([{ start: { m: "04", y: "2020" }, end: { m: "08", y: "2020" }, comments: "Between roles during COVID-19." }]);
         setCopyEmail("kenan.gain@example.com");
-        // Travel documents — everyone has a passport; the cross-border permissions only
-        // apply to cross-border drivers, and answering "No" is as real an answer as "Yes".
-        const sample: Record<string, Partial<TravelDocCapture>> = {
-            passport: { has: "Yes", number: "X1234567", country: config.defaultCountry, doc: "passport.pdf",
-                issue: { m: "08", d: "15", y: "2020" }, expiry: { m: "08", d: "15", y: "2030" } },
-            visa: isCross
-                ? { has: "Yes", number: "V-99120", fields: { visaType: "TN" }, doc: "visa.pdf",
-                    issue: { m: "08", d: "15", y: "2024" }, expiry: { m: "08", d: "15", y: "2029" } }
-                : { has: "No" },
-            "work-permit": isCross
-                ? { has: "Yes", number: "WP-40877", fields: { permitType: "Employer-Specific (LMIA)" }, doc: "work-permit.pdf",
-                    issue: { m: "07", d: "01", y: "2024" }, expiry: { m: "06", d: "30", y: "2028" } }
-                : { has: "No" },
-            "green-card": { has: "No" },
-            "pr-documents": { has: "No" },
-            // Border cards: asked of everyone, so both are answered. The FAST card is a
-            // cross-border credential, so only a cross-border driver carries one.
-            twic: { has: "No" },
-            "fast-card": isCross
-                ? { has: "Yes", number: "FC-3391842", country: config.defaultCountry, doc: "fast-card.pdf",
-                    expiry: { m: "11", d: "30", y: "2029" } }
-                : { has: "No" },
+        // Travel documents. A citizen of the country the carrier runs in is the ordinary case
+        // and the shortest one — passport only — so the sample makes this driver a citizen of
+        // somewhere else, which is the case worth being able to see: a right-to-work document
+        // per country, a visa each way, and the border cards a cross-border driver carries.
+        const citizenship = isCross || isCanada ? "India" : "Mexico";
+        const status: Record<string, string> = {
+            "United States": "Work Permit / Employment Authorization",
+            Canada: "Permanent Resident (PR)",
         };
-        setTravelDocs(prev => {
-            const next: TravelDocs = { ...prev };
-            for (const [id, patch] of Object.entries(sample)) if (next[id]) next[id] = { ...next[id], ...patch };
+        const profile: TravelProfile = { citizenship, authorization: {}, holds: [] };
+        for (const c of travelCountriesFor(config.defaultCountry, isCross)) profile.authorization[c] = status[c] ?? "Not applicable";
+        // Every optional card this application offers, so each one's form is visible.
+        const blocks = visibleTravelBlocks(profile, travelCountriesFor(config.defaultCountry, isCross));
+        profile.holds = blocks.filter(b => b.gated).map(b => b.key);
+        const sample: Record<string, Partial<TravelDocCapture>> = {
+            passport: { number: "X1234567", country: citizenship, doc: "passport.pdf",
+                issue: { m: "08", d: "15", y: "2020" }, expiry: { m: "08", d: "15", y: "2030" } },
+            visa: { number: "V-99120", fields: { visaType: "TN" }, doc: "visa.pdf",
+                issue: { m: "08", d: "15", y: "2024" }, expiry: { m: "08", d: "15", y: "2029" } },
+            "work-permit": { number: "WP-40877", fields: { permitType: "Employer-Specific (LMIA)" }, doc: "work-permit.pdf",
+                issue: { m: "07", d: "01", y: "2024" }, expiry: { m: "06", d: "30", y: "2028" } },
+            "green-card": { number: "GC-2288401", doc: "green-card.pdf",
+                issue: { m: "02", d: "01", y: "2022" }, expiry: { m: "01", d: "31", y: "2032" } },
+            "pr-documents": { number: "PR-7781204", doc: "pr-card.pdf",
+                issue: { m: "05", d: "10", y: "2021" }, expiry: { m: "05", d: "09", y: "2026" } },
+            twic: { number: "TW-5540912", doc: "twic-card.pdf", expiry: { m: "09", d: "30", y: "2029" } },
+            "fast-card": { number: "FC-3391842", country: config.defaultCountry, doc: "fast-card.pdf",
+                expiry: { m: "11", d: "30", y: "2029" } },
+        };
+        setTravelProfile(profile);
+        setTravelDocs(() => {
+            const next: TravelDocs = {};
+            for (const b of blocks) {
+                const patch = sample[b.recordId];
+                const blank = emptyTravelDocFor(b);
+                if (patch && blank) next[b.key] = [{ ...blank, ...patch }];
+            }
             return next;
         });
         setSignedDoc("signed-application.pdf");
@@ -1158,7 +1319,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     // Each step renders its own panel of fields. Order here = order in the sidebar.
     const dataSteps: { key: string; title: string; fields: number; consent?: boolean; render: () => React.ReactNode }[] = [
         {
-            key: "applicant", title: "Applicant Information", fields: isCross ? 9 : 8, render: () => (
+            key: "applicant", title: "Applicant Information", fields: 7, render: () => (
                 <Grid>
                     <Field label="First Name" required><TextInput value={firstName} onChange={(e) => setFirstName(e.target.value)} /></Field>
                     <Field label="Last Name" required><TextInput value={lastName} onChange={(e) => setLastName(e.target.value)} /></Field>
@@ -1166,21 +1327,16 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                     <Field label="Phone Number" required><TextInput type="tel" value={primaryPhone} onChange={(e) => setPrimaryPhone(e.target.value)} /></Field>
                     <Field label="Date of Birth" required><DateInput value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
                     <Field className="sm:col-span-2" label={`${config.idLabel}`} required><TextInput value={ssn} onChange={(e) => setSsn(e.target.value)} /></Field>
-                    {/* Work eligibility — country-specific. Cross-border drivers must confirm both. */}
-                    {isCross ? (
-                        <>
-                            <ToggleField label="Do you have legal right to work in the United States?" checked={legalRight} onChange={setLegalRight} />
-                            <ToggleField label="Do you have legal right to work in Canada?" checked={legalRightCA} onChange={setLegalRightCA} />
-                        </>
-                    ) : (
-                        <ToggleField label={`Do you have legal right to work in ${isCanada ? "Canada" : "the United States"}?`} checked={isCanada ? legalRightCA : legalRight} onChange={isCanada ? setLegalRightCA : setLegalRight} />
-                    )}
+                    {/* The two "legal right to work" toggles that used to sit here are gone. They
+                        asked for a fact the Travel Documents step establishes properly — whose
+                        citizen the driver is, and what their status rests on — and a toggle can
+                        contradict it. It is derived from those answers now (`hasRightToWork`). */}
                     <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
                     {/* Asked in BOTH forms: it is part of the driver's record either way, and
                         defaulting it on Add Driver left the same field holding an answer nobody
                         gave. Only the consent-step consequence is wizard-specific. */}
                     <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?"
-                        hint={mode === "page" ? "Drives which US-federal authorizations (FCRA, MVR, PSP, FMCSA Clearinghouse) apply to this driver." : "If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step."}
+                        hint={mode === "page" ? "Drives which US-federal authorizations (FCRA, abstract, PSP, FMCSA Clearinghouse) apply to this driver." : "If No, US-federal consents (Personal Information / FCRA, abstract, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step."}
                         required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
                 </Grid>
             ),
@@ -1290,58 +1446,75 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         },
         {
             key: "travel-documents", title: "Travel Documents",
-            fields: 1 + needsAuth.length + QUESTION_RECORD_IDS.length + travelRecords.length * 4, render: () => {
+            fields: 1 + needsAuth.length + askedBlocks.length * 3, render: () => {
                 return (
                 <div className="space-y-6">
                     <InfoAlert>
-                        The <strong>passport</strong> is asked of everyone. The{" "}
-                        <strong>right to work</strong> is asked per country: citizenship covers one
-                        at most, so a Canadian is asked about the US, an American about Canada, and
-                        anyone else about both. The <strong>visa</strong> and the{" "}
-                        <strong>border cards</strong> follow from nothing but the driver&rsquo;s own
-                        answer, so each is asked outright. Every document is filed as that
-                        driver&rsquo;s compliance record.
+                        Citizenship is asked first, because it settles the rest: a{" "}
+                        <strong>US or Canadian citizen</strong> needs no work authorization and no
+                        visa on either side of the border — they cross on a passport. Anyone else
+                        is asked for their right to work in{" "}
+                        {travelCountries.length > 1 ? "each country this carrier runs in" : travelCountries[0]}
+                        , and for the document that proves it. Every document captured here is
+                        filed as that driver&rsquo;s own compliance record, and more than one of
+                        the same document can be added.
                     </InfoAlert>
 
-                    <FormSection title="Right to work">
+                    <FormSection title="Citizenship">
                         <Grid>
                             {/* Every country, not the two the carrier runs in: a driver can be a
                                 citizen of anywhere, and typing one that was missing came back
                                 "No matches". */}
                             <Field className="sm:col-span-2" label="Which country are they a citizen of?" required>
                                 <SearchSelect value={travelProfile.citizenship} items={ALL_COUNTRIES}
-                                    onChange={(v) => setTravelProfile((p) => ({ ...p, citizenship: v }))} />
+                                    onChange={(v) => patchTravelProfile((p) => ({ ...p, citizenship: v }))} />
                             </Field>
-                            {/* One question per country they are NOT a citizen of. */}
-                            {needsAuth.map((country) => (
-                                <Field key={country} label={`Work authorization in ${country}`} required>
-                                    <Select value={travelProfile.authorization?.[country] ?? ""} placeholder="Please Choose"
-                                        onChange={(v) => setTravelProfile((p) => ({ ...p, authorization: { ...p.authorization, [country]: v } }))}>
-                                        <Options items={travelStatusOptions(country).map((o) => o.label)} />
-                                    </Select>
-                                </Field>
-                            ))}
                         </Grid>
                     </FormSection>
 
-                    {!!travelProfile.citizenship && needsAuth.length === 0 && (
+                    {/* The passport, asked of everyone — a citizen still crosses on one. */}
+                    {renderTravelGroup("passport")}
+
+                    {/* Right to work: only for a driver who is a citizen of neither country, and
+                        only for the countries this application covers. The document each answer
+                        calls for opens directly underneath it. */}
+                    {needsAuth.length > 0 && (
+                        <FormSection title="Right to work">
+                            <p className="-mt-2 mb-3 text-[12px] italic text-slate-500">
+                                A citizen of {travelProfile.citizenship} needs authorization to work
+                                {travelCountries.length > 1 ? " on each side of the border" : ` in ${travelCountries[0]}`}.
+                                Pick what it rests on and the document is asked for below.
+                            </p>
+                            <Grid>
+                                {needsAuth.map((country) => (
+                                    <Field key={country} label={`Work authorization in ${country}`} required>
+                                        <Select value={travelProfile.authorization?.[country] ?? ""} placeholder="Please Choose"
+                                            onChange={(v) => patchTravelProfile((p) => ({ ...p, authorization: { ...p.authorization, [country]: v } }))}>
+                                            <Options items={travelStatusOptions(country).map((o) => o.label)} />
+                                        </Select>
+                                    </Field>
+                                ))}
+                            </Grid>
+                        </FormSection>
+                    )}
+
+                    {renderTravelGroup("authorization")}
+
+                    {!!travelProfile.citizenship && isBorderCitizen(travelProfile) && (
                         <InfoAlert>
-                            A citizen of {travelProfile.citizenship} needs no work authorization on
-                            either side of the border — only the passport below.
+                            A citizen of {travelProfile.citizenship} needs neither work
+                            authorization nor a visa for the other side of the border — a driver
+                            crossing the line is not taking a job there. Only the passport above
+                            and the optional cards below apply.
                         </InfoAlert>
                     )}
 
-                    {/* Order: the passport (asked of everyone), then the visa question — it is
-                        asked AFTER the passport because it lives in one — then whatever the
-                        right-to-work status called for, and last the border cards, which follow
-                        from nothing but the driver's own answer. */}
-                    {travelRecords.filter((r) => r.id === "passport").map(renderTravelDoc)}
+                    {/* The visa lets them ENTER, which is not the right to work — asked per
+                        country, and only of a driver who needs one. */}
+                    {renderTravelGroup("visa")}
 
-                    {questionGroups.filter((g) => g.placement === "after-passport").map(renderTravelQuestions)}
-
-                    {travelRecords.filter((r) => r.id !== "passport" && !isQuestionRecord(r.id)).map(renderTravelDoc)}
-
-                    {questionGroups.filter((g) => g.placement === "after-status").map(renderTravelQuestions)}
+                    {/* Last, the cards a driver either carries or does not. */}
+                    {renderTravelGroup("credentials")}
                 </div>
                 );
             },
@@ -1665,7 +1838,10 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const collectData = (): ApplicationData => ({
         type: config.id, typeName: config.name,
         firstName, middleName, lastName, suffix, email, phone: primaryPhone, cellPhone,
-        dob, ssn, legalRightUS: legalRight, legalRightCA, position, operatesInUS,
+        dob, ssn, position, operatesInUS,
+        // Derived from the citizenship / status answers rather than asked twice.
+        legalRightUS: hasRightToWork(travelProfile, "United States") || savedLegalRightUS,
+        legalRightCA: hasRightToWork(travelProfile, "Canada") || savedLegalRightCA,
         address: { addr1, unit, addr2, country, city, state, zip },
         resided3yr, residenceRows, preferredContact, bestTime,
         licenses, drivingExp, mvr,
@@ -1725,7 +1901,8 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             case "travel-documents": return sectionFilled(
                 dd.travelProfile?.citizenship ?? "",
                 ...needsAuth.map(c => dd.travelProfile?.authorization?.[c] ?? ""),
-                ...travelRecords.map(r => dd.travelDocs?.[r.id]?.doc ?? dd.travelDocs?.[r.id]?.number ?? ""));
+                // Every document actually being asked for, counted once it holds anything.
+                ...askedBlocks.flatMap(b => (dd.travelDocs?.[b.key] ?? []).map(c => c.doc || c.number || "")));
             case "signature": return sectionFilled(dd.signedDoc);
             default: return 0;
         }

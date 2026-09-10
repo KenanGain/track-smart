@@ -221,7 +221,7 @@ const SEED_SECTIONS: SeedSection[] = [
         custom("Driver Contract", "must", "status"),
         custom("Company Policy Documents", "must", "status", { list: true, note: "List of policy documents" }),
         form("Fair Credit Reporting Act Disclosure", "consent:fcra-disclosure", "must", "status"),
-        form("MVR Release Consent", "consent:mvr-release", "must", "status"),
+        form("Non-Commercial Abstract Release Consent", "consent:mvr-release", "must", "status"),
         form("PSP Disclosure & Authorization", "consent:psp-disclosure-auth", "optional", "status", "fill", { note: "If going to USA" }),
         doc("Job Offer Letter & Employment Contract", "offer-letter", "must", "status"),
     ] },
@@ -243,7 +243,7 @@ const SEED_SECTIONS: SeedSection[] = [
         form("Safety Performance History Request", "consent:sph-records-request", "must", "status", "fill", { note: "Convictions & collisions" }),
     ] },
     { title: "Driver Personal & Commercial Abstracts", items: [
-        doc("Driver Abstracts / MVR", "mvr", "must", "annual", { list: true }),
+        doc("Driver Abstracts (Non-Commercial)", "mvr", "must", "annual", { list: true }),
         doc("Driver PSP", "psp-report", "optional", "status", { note: "If going to USA" }),
         doc("Driver Commercial Abstract", "driver-cvdr", "must", "annual", { list: true }),
         doc("US Visa", "visa", "optional", "expiry", { note: "If going to USA" }),

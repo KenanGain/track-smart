@@ -183,7 +183,7 @@ function seedDocumentTypes(): DocumentType[] {
             status: 'Active', addedDate: d,
         },
         {
-            id: 'dt-mvr', name: 'State / Province Driving Record (3-year MVR)', category: 'License',
+            id: 'dt-mvr', name: 'State / Province Driving Record (3-year abstract)', category: 'License',
             required: false, allowMultiple: false,
             expiryRequired: false, issueDateRequired: true,
             issueStateRequired: true, issueCountryRequired: false,
@@ -296,13 +296,13 @@ function seedDocumentTypes(): DocumentType[] {
             status: 'Active', addedDate: d,
         },
 
-        /* ── Compliance review PDFs (PSP / MVR / Background / Substance / Clearinghouse / Employment) ── */
+        /* ── Compliance review PDFs (PSP / Abstract / Background / Substance / Clearinghouse / Employment) ── */
         // PSP Review
         { id: 'dt-psp-auth', name: 'PSP Disclosure & Authorization Form', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
         { id: 'dt-psp-review-notes', name: 'PSP Review Notes', category: 'Background', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
-        // MVR / Abstract Review
-        { id: 'dt-mvr-auth', name: 'MVR / Abstract Authorization', category: 'License', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
-        { id: 'dt-annual-mvr', name: 'Annual MVR Review', category: 'License', required: false, allowMultiple: false, expiryRequired: true,  issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // Driver Abstract Review
+        { id: 'dt-mvr-auth', name: 'Abstract Authorization', category: 'License', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
+        { id: 'dt-annual-mvr', name: 'Annual Abstract Review', category: 'License', required: false, allowMultiple: false, expiryRequired: true,  issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
         // Criminal Background Check
         { id: 'dt-bgc-consent', name: 'Background Check Consent', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
         { id: 'dt-bgc-report', name: 'Criminal Background Report', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },

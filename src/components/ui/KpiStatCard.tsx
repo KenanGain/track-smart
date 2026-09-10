@@ -43,7 +43,7 @@ export function KpiStatCard({
 }) {
     const t = ACCENT[accent] ?? ACCENT.slate;
     const cls = cn(
-        "bg-white border rounded-xl shadow-sm px-4 py-3.5 flex items-center justify-between gap-3 text-left transition-all",
+        "bg-white border rounded-xl shadow-sm px-3 py-3 sm:px-4 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-3 text-left transition-all",
         onClick && "hover:shadow hover:border-slate-300",
         active ? cn("ring-2 border-transparent", t.ring) : "border-slate-200",
         className,
@@ -51,10 +51,14 @@ export function KpiStatCard({
     const body = (
         <>
             <div className="min-w-0">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">{label}</div>
-                <div className="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums">{value}</div>
+                {/* Wraps rather than truncates. Six of these share one row on a laptop, which
+                    leaves ~75px for the words — enough for "MAINTENANCE" over two lines and not
+                    nearly enough for it on one, so truncating turned every long label into
+                    "MAIN…". Two tight lines cost 6px of card height and say the whole word. */}
+                <div className="text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-400 sm:text-[11px] sm:tracking-wider">{label}</div>
+                <div className="mt-0.5 text-xl font-bold text-slate-900 tabular-nums sm:text-2xl">{value}</div>
             </div>
-            <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", t.icon)}>
+            <div className={cn("hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex sm:h-9 sm:w-9", t.icon)}>
                 <Icon size={18} />
             </div>
         </>

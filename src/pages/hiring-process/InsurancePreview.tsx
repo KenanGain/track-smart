@@ -37,8 +37,8 @@ export function InsurancePreview({ driverName, carrier, prefill, onBack }: {
     ]);
     const PACKAGE: { label: string; note: string; formId?: string }[] = [
         { label: "Employment Application", note: "Completed application", formId: "application" },
-        { label: "Consent Forms", note: "Signed authorizations (FCRA, MVR release, Clearinghouse…)", formId: "fcra-disclosure" },
-        { label: "MVR — Motor Vehicle Record", note: "Most recent on file", formId: "mvr" },
+        { label: "Consent Forms", note: "Signed authorizations (FCRA, abstract release, Clearinghouse…)", formId: "fcra-disclosure" },
+        { label: "Driver Non-Commercial Abstract", note: "Most recent on file", formId: "mvr" },
         { label: "PSP — Pre-Employment Screening", note: "Most recent on file", formId: "psp" },
         { label: "Driver Abstract / CVDR / CDA", note: "Whichever applies to the driver's jurisdiction", formId: "driver-abstract" },
         ...letterEntries,
@@ -74,7 +74,7 @@ export function InsurancePreview({ driverName, carrier, prefill, onBack }: {
     const CHECKS = [
         "Employment application reviewed",
         "Consent forms reviewed",
-        "Driving record (MVR / PSP) reviewed",
+        "Driving record (abstract / PSP) reviewed",
         "Experience letters reviewed",
         "Driver meets insurability criteria",
     ];

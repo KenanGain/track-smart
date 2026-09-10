@@ -1,9 +1,12 @@
 import { useState, useMemo } from 'react';
 import React from 'react';
-import { Download, Upload, Clock, Route, Truck, User, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { Download, Upload, Clock, Clock3, Route, Truck, User, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { HOS_DAILY_LOGS, type HosDailyLog } from './hos.data';
 import { getHosForCarrier } from './carrier-hos.data';
 import { StatCard, ViewBtn, DetailModal, fmtMs, fmtDatetime, miToKm } from './hos-components';
+import { cn } from '@/lib/utils';
+import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
+import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 
 const DAILY_TIME_OPTIONS = ['All', '00:00-05:59', '06:00-11:59', '12:00-17:59', '18:00-23:59'];
 const DAILY_HOS_HOURS_OPTIONS = ['All', '0-8h', '8-11h', '11h+'];
@@ -317,6 +320,16 @@ export function HoursOfServicePage({ accountId }: HoursOfServicePageProps = {}) 
   const activeDrivers = new Set(dailyLogs.map(l => l.driver.id)).size;
   const totalRecords = dailyLogs.length;
 
+  // The header stays put and shrinks as the logs scroll; the body below is its own scroller.
+  const { scrollRef, condensed, onScroll } = useCondensingHeader();
+  const kpiChips = useMemo(() => [
+    { id: 'driving', label: 'Driving', value: fmtMs(totalDriving), tone: 'text-emerald-700' },
+    { id: 'distance', label: 'Distance', value: `${d(Math.round(totalDist)).toLocaleString()} ${dUnit}`, tone: 'text-blue-700' },
+    { id: 'drivers', label: 'Drivers', value: activeDrivers, tone: 'text-violet-700' },
+    { id: 'records', label: 'Records', value: totalRecords, tone: 'text-amber-700' },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [totalDriving, totalDist, dUnit, activeDrivers, totalRecords]);
+
   const thCls = 'px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider';
 
   const toggleExpand = (id: string) => {
@@ -331,21 +344,25 @@ export function HoursOfServicePage({ accountId }: HoursOfServicePageProps = {}) 
   const sortD2 = (f: string) => toggleSort(f, dailySortF, dailySortD, setDailySortF, setDailySortD);
 
   return (
-    <div className="flex-1 bg-slate-50 min-h-screen">
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Hours of Service</h1>
-            <p className="text-sm text-gray-500">Track HOS daily logs, duty status, and fleet compliance data.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
-              <Download size={16} /> Export
-            </button>
-          </div>
-        </div>
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      {/* The app's standard list header (see `ListPageHeader`). */}
+      <ListPageHeader
+        Icon={Clock3}
+        title="Hours of Service"
+        description="Track HOS daily logs, duty status, and fleet compliance data."
+        count={totalRecords}
+        countTitle={`${totalRecords.toLocaleString()} daily logs`}
+        chips={kpiChips}
+        condensed={condensed}
+        actions={
+          <button className={cn('inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50', condensed ? 'h-8' : 'h-9')}>
+            <Download size={16} /> Export
+          </button>
+        }
+      />
 
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+      <div className={cn('py-4 sm:py-6', PAGE_PAD)}>
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard icon={Clock} label="Total Driving" value={fmtMs(totalDriving)} sub="Across daily logs" color="bg-emerald-50 text-emerald-600" />
@@ -473,6 +490,8 @@ export function HoursOfServicePage({ accountId }: HoursOfServicePageProps = {}) 
           </div>
           <Pagination total={filteredDaily.length} page={dailyPage} perPage={dailyPP} onPage={setDailyPage} onPerPage={v => { setDailyPP(v); setDailyPage(1); }} />
         </div>
+      </div>
+
       </div>
 
       {/* Detail Modal */}

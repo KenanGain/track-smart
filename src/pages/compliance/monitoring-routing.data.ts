@@ -384,7 +384,7 @@ export function defaultRolesFor(users: SeedUser[] = []): NotificationRole[] {
 export interface SimpleSlot { key: 'carrier' | 'drivers' | 'assets' | 'overdue'; ruleId: string; label: string; sub: string; entity: RoutingEntity; severityFloor: Severity }
 export const SIMPLE_SLOTS: SimpleSlot[] = [
     { key: 'carrier', ruleId: 'rule-carrier', label: 'Carrier records', sub: 'MC/DOT, IFTA, insurance…', entity: 'Carrier', severityFloor: 'low' },
-    { key: 'drivers', ruleId: 'rule-drivers', label: 'Driver records', sub: 'Licenses, medicals, MVRs…', entity: 'Driver', severityFloor: 'low' },
+    { key: 'drivers', ruleId: 'rule-drivers', label: 'Driver records', sub: 'Licenses, medicals, abstracts…', entity: 'Driver', severityFloor: 'low' },
     { key: 'assets', ruleId: 'rule-assets', label: 'Asset records', sub: 'Registrations, inspections…', entity: 'Asset', severityFloor: 'low' },
     { key: 'overdue', ruleId: 'rule-overdue', label: 'Escalate overdue', sub: 'Anything past its due date', entity: 'all', severityFloor: 'overdue' },
 ];

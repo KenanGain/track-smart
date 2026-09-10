@@ -1254,9 +1254,9 @@ function RecommendationsPage({
     const dom = [...snapshot.scoreBreakdown].sort((a, b) => b.value - a.value)[0];
     if (dom && dom.value > 0) {
         const playbooks: Record<string, string> = {
-            "Convictions":              "Audit the top convicted drivers' MVRs, schedule remedial training, and review dispatch routing through high-violation corridors.",
-            "Conviction Score":         "Audit the top convicted drivers' MVRs, schedule remedial training, and review dispatch routing through high-violation corridors.",
-            "Conviction Points":        "Audit the top convicted drivers' MVRs, schedule remedial training, and review dispatch routing through high-violation corridors.",
+            "Convictions":              "Audit the top convicted drivers' abstracts, schedule remedial training, and review dispatch routing through high-violation corridors.",
+            "Conviction Score":         "Audit the top convicted drivers' abstracts, schedule remedial training, and review dispatch routing through high-violation corridors.",
+            "Conviction Points":        "Audit the top convicted drivers' abstracts, schedule remedial training, and review dispatch routing through high-violation corridors.",
             "Contraventions":           "Identify the most-cited driver / vehicle / load contraventions and integrate findings into monthly safety meetings.",
             "CVSA Inspections":         "Tighten pre-trip inspection checks on the highest-cited equipment and accelerate brake / lighting PM intervals.",
             "CVSA (Out of Service)":    "Tighten pre-trip inspection checks on the highest-cited equipment and accelerate brake / lighting PM intervals.",

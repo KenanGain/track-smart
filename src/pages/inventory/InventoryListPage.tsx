@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-    Plus, Building2, Search,
+    Plus, Boxes, Search,
     Truck, IdCard, Pencil,
     Fuel, Radio, Activity, Map as MapIcon, Camera, Wrench, Layers,
     KeyRound, ShieldCheck, Package, Cpu, CreditCard,
@@ -26,7 +26,9 @@ import {
     useDriverHandovers, itemsHandedElsewhere, handoverStatusOf,
     buildDriverGroups, type HandoverStatus,
 } from "./handovers.data";
-import { InventoryTabs } from "./InventoryTabs";
+import { INVENTORY_TABS } from "./InventoryTabs";
+import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
+import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { TablePager } from "./TablePager";
 import { KpiTile } from "./InventoryKpi";
 import { AddInventoryModule } from "./AddInventoryModule";
@@ -203,6 +205,16 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
         return { total: items.length, active, expiring, expired, unassigned };
     }, [items]);
 
+    // The header stays put and shrinks as the list scrolls; the body is its own scroller.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(handoverFilter);
+    const kpiChips = useMemo(() => [
+        { id: 'total', label: 'Items', value: counts.total, tone: 'text-blue-700' },
+        { id: 'active', label: 'Active', value: counts.active, tone: 'text-emerald-700' },
+        { id: 'expiring', label: 'Expiring', value: counts.expiring, tone: 'text-amber-700' },
+        { id: 'expired', label: 'Expired', value: counts.expired, tone: 'text-rose-700' },
+        { id: 'unassigned', label: 'Unassigned', value: counts.unassigned },
+    ], [counts]);
+
     // Status + hand-over filters drive the category tabs; search narrows rows.
     const baseFiltered = useMemo(
         () => items.filter((it) => {
@@ -255,26 +267,22 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     const pagedRows = rows.slice(safePage * perPage, safePage * perPage + perPage);
 
     return (
-        <div className="bg-slate-50 min-h-screen">
-            {/* Header band (white) */}
-            <div className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5">
-                {/* Breadcrumb — full width on top */}
-                <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
-                    <Building2 size={14} />
-                    <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
-                    <span>/</span>
-                    <span>Inventory</span>
-                </div>
-
-                {/* Title + hand-over switch — switch aligns with the H1 (matches the
-                    carrier-compliance toggle) */}
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                        <h1 className="text-2xl font-bold text-slate-900">Inventory</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                            Company inventory across every vendor category — filter by category using the tabs below.
-                        </p>
-                    </div>
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            {/* The app's standard list header (see `ListPageHeader`). The section tabs are the
+                header's tab row now, so they stay reachable however far down the list you are. */}
+            <ListPageHeader
+                Icon={Boxes}
+                title="Inventory"
+                description={<><span className="font-semibold text-slate-700">{accountName ?? CARRIER_NAME}</span> — company inventory across every vendor category.</>}
+                count={counts.total}
+                countTitle={`${counts.total.toLocaleString()} items`}
+                chips={kpiChips}
+                condensed={condensed}
+                tabsLabel="Inventory sections"
+                tabs={INVENTORY_TABS.map(t => ({ id: t.id, label: t.label, icon: t.Icon }))}
+                activeTab="list"
+                onTabChange={id => onNavigate(INVENTORY_TABS.find(t => t.id === id)?.path ?? '/inventory')}
+                actions={
                     <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
                         {HANDOVER_FILTERS.map((o) => (
                             <button
@@ -282,7 +290,8 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                 type="button"
                                 onClick={() => setHandoverFilter(o.id)}
                                 className={cn(
-                                    "px-4 py-1.5 text-sm font-semibold rounded-md whitespace-nowrap transition-colors",
+                                    "rounded-md px-3 text-sm font-semibold whitespace-nowrap transition-colors",
+                                    condensed ? "py-1" : "py-1.5",
                                     handoverFilter === o.id
                                         ? "bg-blue-600 text-white shadow-sm"
                                         : "text-slate-600 hover:text-slate-900",
@@ -292,14 +301,12 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             </button>
                         ))}
                     </div>
-                </div>
-
-                {/* Section tabs */}
-                <InventoryTabs current="list" onNavigate={onNavigate} className="mt-4 -mb-5" />
-            </div>
+                }
+            />
 
             {/* Body */}
-            <div className="px-6 lg:px-8 py-6">
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+            <div className={cn("py-4 sm:py-6", PAGE_PAD)}>
             {/* KPI strip */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
                 <KpiTile label="Total Items"   value={counts.total}      Icon={Layers}        accent="blue" />
@@ -472,6 +479,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     />
                     </div>
                 )}
+            </div>
             </div>
             </div>
 

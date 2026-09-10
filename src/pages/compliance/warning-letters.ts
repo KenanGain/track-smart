@@ -7,9 +7,9 @@
 // file it a second time by hand.
 //
 // So issuing one writes the Warning Letter record for that driver, carrying the
-// SOURCE with it: which surface it came from, what the event was, that record's
-// own number and date, and a one-line summary. That is what makes a file of
-// letters readable — every row says what it was for.
+// SOURCE with it: what it was issued for, what the event was, and that record's
+// own number and date. That is what makes a file of letters readable — every row
+// says what it was for, and its reference opens the record it came from.
 //
 // Nothing here knows about React. Each review surface builds a
 // `WarningLetterSource` from its own record and calls `issueWarningLetter`.
@@ -22,7 +22,7 @@ import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 /** The catalog record every warning letter is filed as. */
 export const WARNING_LETTER_RECORD_ID = 'warning-letter';
 
-/** The surfaces a letter can be issued from, and the label the record stores. */
+/** What a letter can be issued for, and the label the record stores. */
 export const WARNING_SOURCE_LABEL = {
     hos: 'Hours of Service',
     'safety-event': 'Safety Event',
@@ -55,8 +55,6 @@ export interface WarningLetterSource {
     sourceId?: string;
     /** When the event happened (YYYY-MM-DD). */
     eventDate?: string;
-    /** One line of context, shown on the letter and in the file. */
-    summary?: string;
 }
 
 export const warningLetterRecord = (): SafetyRecord | undefined =>
@@ -121,7 +119,6 @@ export function warningLetterVersion(src: WarningLetterSource, issuedBy?: string
         letterSource: WARNING_SOURCE_LABEL[src.kind],
         eventType: src.eventType.trim(),
         ...(src.reference?.trim() ? { eventReference: src.reference.trim() } : {}),
-        ...(src.summary?.trim() ? { eventSummary: src.summary.trim() } : {}),
         ...(warningEventDate(src.eventDate) ? { eventDate: warningEventDate(src.eventDate) } : {}),
     };
     // Kept so the letter's Event reference can open the record it was issued for. The

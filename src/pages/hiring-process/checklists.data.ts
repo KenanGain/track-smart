@@ -57,10 +57,10 @@ const mk = (id: string, name: string, description: string, stage1Review: string,
 });
 
 const DEFAULTS: Checklist[] = [
-    mk("cl-us", "US Driver Approval", "3-stage approval for interstate US drivers (PSP).", "Reviewed MVR / PSP / Experience / Attitude", true, false),
+    mk("cl-us", "US Driver Approval", "3-stage approval for interstate US drivers (PSP).", "Reviewed Abstract / PSP / Experience / Attitude", true, false),
     mk("cl-canada", "Canada Driver Approval", "3-stage approval for Canadian drivers (CVOR / Abstract).", "Reviewed CVOR / Abstract / Experience / Attitude", false, true),
-    mk("cl-local", "Local / Domestic Approval", "3-stage approval for local / domestic CDL hires.", "Reviewed MVR / Abstract / Experience / Attitude", false, false),
-    mk("cl-cross", "Cross-Border Approval", "3-stage approval for cross-border drivers (PSP + CVOR).", "Reviewed CVOR / MVR / PSP / Experience / Attitude", true, true),
+    mk("cl-local", "Local / Domestic Approval", "3-stage approval for local / domestic CDL hires.", "Reviewed Non-Commercial / Provincial Abstract / Experience / Attitude", false, false),
+    mk("cl-cross", "Cross-Border Approval", "3-stage approval for cross-border drivers (PSP + CVOR).", "Reviewed CVOR / Abstract / PSP / Experience / Attitude", true, true),
 ];
 
 // Default checklist id for a driver type.

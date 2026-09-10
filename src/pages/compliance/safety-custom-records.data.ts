@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { SafetyRecord, CustomFormConfig } from '@/pages/compliance/safety-software-catalog.data';
+import type { SafetyRecord } from '@/pages/compliance/safety-software-catalog.data';
 
 /**
  * User-created CUSTOM records for the "New Compliance & Documents" catalog.
@@ -19,8 +19,8 @@ import type { SafetyRecord, CustomFormConfig } from '@/pages/compliance/safety-s
 const KEY = 'safety-custom-records-v2';
 /** Legacy global (non-carrier-scoped) store — records added before per-carrier scoping. */
 const LEGACY_KEY = 'safety-custom-records-v1';
-/** Tracks which accounts have already received the seed demos (so deletes stick). */
-const SEEDED_KEY = 'safety-custom-records-seeded-v1';
+/** Tracks which accounts have had the retired demo records swept out (so it runs once). */
+const PURGED_KEY = 'safety-custom-records-purged-v1';
 const EVENT = 'safety-custom-records-change';
 /** Bucket used when no carrier is selected (e.g. the page opened without an account). */
 const NO_ACCOUNT = '_noacct';
@@ -30,52 +30,6 @@ export function newCustomRecordId(): string {
 }
 
 type Store = Record<string, SafetyRecord[]>;
-
-// ── Demo custom records — seeded once per carrier so there's something to edit ────────
-/** Monitoring / Tags / Notes are common to every record — always enabled. */
-const COMMON = { monitoring: { enabled: true }, tags: { enabled: true }, notes: { enabled: true } };
-
-const DEMO_1_FORM: CustomFormConfig = {
-    numberField: { enabled: true, required: true },
-    country: { enabled: true, required: false },
-    state: { enabled: true, required: false },
-    issueDate: { enabled: true, required: false },
-    expiryDate: { enabled: true, required: true },
-    status: { enabled: false, required: false },
-    upload: { enabled: true, required: true, multi: false },
-    ...COMMON,
-};
-const DEMO_2_FORM: CustomFormConfig = {
-    numberField: { enabled: false, required: false },
-    country: { enabled: true, required: false },
-    state: { enabled: false, required: false },
-    issueDate: { enabled: false, required: false },
-    expiryDate: { enabled: true, required: true },
-    status: { enabled: false, required: false },
-    upload: { enabled: true, required: true, multi: true },
-    ...COMMON,
-};
-
-const DEMO_RECORDS: SafetyRecord[] = [
-    {
-        id: 'custom-demo-1', recordName: 'Business License (Demo 1)',
-        description: 'City / municipal business operating license',
-        numberName: 'License Number', documentName: 'License Certificate',
-        category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-        recurring: 'Custom', monitorType: 'Expiry date', tracksIssueDate: true, hideState: false,
-        jurisdiction: '—', monitor: 'Custom record — monitored on the expiry date.',
-        uploadMode: 'recurring', multiInstance: false, custom: true, customForm: DEMO_1_FORM,
-    },
-    {
-        id: 'custom-demo-2', recordName: 'Insurance Certificates (Demo 2)',
-        description: 'Fleet insurance certificates & endorsements',
-        numberName: '', documentName: 'Insurance Document',
-        category: 'Other', entity: 'Carrier', type: 'D', docRequirement: 'required',
-        recurring: 'Custom', monitorType: 'Expiry date', tracksIssueDate: false, hideState: true,
-        jurisdiction: '—', monitor: 'Custom record — monitored on the expiry date.',
-        uploadMode: 'recurring', multiInstance: true, custom: true, customForm: DEMO_2_FORM,
-    },
-];
 
 function loadStore(): Store {
     try {
@@ -109,29 +63,34 @@ function migrateLegacyInto(acct: string) {
 }
 
 /**
- * Seed the two demo records into a carrier's bucket ONCE (tracked in SEEDED_KEY), so there's
- * always something to open and edit. Runs once per account ever — if the user deletes a demo,
- * it stays deleted.
+ * The two demo custom records ("Business License (Demo 1)", "Insurance Certificates (Demo 2)")
+ * were seeded into every carrier's bucket so there was always something to open and edit.
+ * They are gone now — but deleting the constants alone would leave the copies already written
+ * to each carrier sitting in the catalog forever, so they are swept out once per browser.
+ *
+ * Only those two ids, and only once (tracked in `PURGED_KEY`): a record the user made
+ * themselves is never touched, and a carrier who has already been swept is not swept again.
  */
-function seedDemosInto(acct: string) {
+const DEMO_IDS = ['custom-demo-1', 'custom-demo-2'];
+function purgeDemosFrom(acct: string) {
     if (acct === NO_ACCOUNT) return;
-    let seeded: Record<string, boolean> = {};
-    try { seeded = JSON.parse(localStorage.getItem(SEEDED_KEY) || '{}'); } catch { /* ignore */ }
-    if (seeded[acct]) return;
+    let purged: Record<string, boolean> = {};
+    try { purged = JSON.parse(localStorage.getItem(PURGED_KEY) || '{}'); } catch { /* ignore */ }
+    if (purged[acct]) return;
     const store = loadStore();
-    const existing = new Set((store[acct] ?? []).map(r => r.id));
-    const fresh = DEMO_RECORDS.filter(d => !existing.has(d.id));
-    if (fresh.length) {
-        store[acct] = [...(store[acct] ?? []), ...fresh.map(r => ({ ...r, custom: true }))];
+    const list = store[acct] ?? [];
+    const kept = list.filter(r => !DEMO_IDS.includes(r.id));
+    if (kept.length !== list.length) {
+        store[acct] = kept;
         try { localStorage.setItem(KEY, JSON.stringify(store)); } catch { /* ignore */ }
     }
-    seeded[acct] = true;
-    try { localStorage.setItem(SEEDED_KEY, JSON.stringify(seeded)); } catch { /* ignore */ }
+    purged[acct] = true;
+    try { localStorage.setItem(PURGED_KEY, JSON.stringify(purged)); } catch { /* ignore */ }
 }
 
 function loadFor(acct: string): SafetyRecord[] {
     migrateLegacyInto(acct);
-    seedDemosInto(acct);
+    purgeDemosFrom(acct);
     const list = loadStore()[acct] ?? [];
     return list.map(r => ({ ...r, custom: true }));
 }

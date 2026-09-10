@@ -313,7 +313,7 @@ function ApplicantListView({ onOpen }: { onOpen: (id: string) => void }) {
     );
 }
 
-/** The Hiring-ATS pipeline stages (PSP · MVR · Criminal Background · Substance ·
+/** The Hiring-ATS pipeline stages (PSP · Abstract · Criminal Background · Substance ·
  *  DOT/Employment · Decision) as Ask/Order targets — so "Order" orders a SCREENING
  *  here, not an application form. */
 function atsOrderSteps(): DriverTemplateStep[] {
@@ -1315,7 +1315,7 @@ function DecisionBody({ applicant }: { applicant: Applicant }) {
     );
 }
 
-// ── Generic screening-order body (PSP / MVR / Criminal BG / DOT Verif) ────
+// ── Generic screening-order body (PSP / Abstract / Criminal BG / DOT Verif) ────
 
 function ScreeningOrderBody({ applicant, stepId }: { applicant: Applicant; stepId: PipelineStepId }) {
     const screeningType: 'psp' | 'mvr' | 'criminal_background' | 'dot_employment_verification' = stepId as any;

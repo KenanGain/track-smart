@@ -920,7 +920,7 @@ export const INITIAL_TAG_SECTIONS: TagSection[] = [
         allowCustomTags: true,
         tags: [
             { id: 'dq_medical', label: 'Medical Certificate' },
-            { id: 'dq_mvr', label: 'Motor Vehicle Record (MVR)' },
+            { id: 'dq_mvr', label: 'Driver Non-Commercial Abstract' },
             { id: 'dq_psp', label: 'PSP Report' },
             { id: 'dq_background', label: 'Background Check' },
             { id: 'dq_drug', label: 'Drug & Alcohol Test' },

@@ -22,6 +22,16 @@ type SubTabsProps<T extends string> = {
     fill?: boolean;
     /** Visual style: 'underline' (default) or 'segmented' (white active pill on a slate track). */
     variant?: "underline" | "segmented";
+    /**
+     * Show a `0` badge instead of hiding it.
+     *
+     * A tab whose count is zero normally drops the badge — on a settings page the number is
+     * decoration and an empty one is noise. On a filter strip over a ledger it is the opposite:
+     * "Other 0" is the answer to a question, and a tab that silently loses its badge reads as a
+     * different kind of tab from the ones beside it.
+     */
+    showZeroCounts?: boolean;
+    ariaLabel?: string;
 };
 
 /**
@@ -38,6 +48,8 @@ export function SubTabs<T extends string>({
     size = "md",
     fill = false,
     variant = "underline",
+    showZeroCounts = false,
+    ariaLabel,
 }: SubTabsProps<T>) {
     const segmented = variant === "segmented";
     return (
@@ -48,7 +60,7 @@ export function SubTabs<T extends string>({
                 className
             )}
         >
-            <TabRow segmented={segmented} fill={fill} activeKey={String(activeId)}>
+            <TabRow segmented={segmented} fill={fill} activeKey={String(activeId)} ariaLabel={ariaLabel}>
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const active = activeId === tab.id;
@@ -78,7 +90,7 @@ export function SubTabs<T extends string>({
                         >
                             {Icon && <Icon size={15} className={active ? "text-blue-600" : "text-slate-400"} />}
                             <span>{tab.label}</span>
-                            {typeof tab.count === "number" && tab.count > 0 && (
+                            {typeof tab.count === "number" && (tab.count > 0 || showZeroCounts) && (
                                 <span
                                     className={cn(
                                         "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold",
@@ -101,14 +113,14 @@ export function SubTabs<T extends string>({
  * hides the scrollbar and adds the left/right chevrons; `fill` bars can't scroll
  * (the tabs share the width), so they stay a plain flex row.
  */
-function TabRow({ segmented, fill, activeKey, children }: {
-    segmented: boolean; fill: boolean; activeKey: string; children: React.ReactNode;
+function TabRow({ segmented, fill, activeKey, ariaLabel, children }: {
+    segmented: boolean; fill: boolean; activeKey: string; ariaLabel?: string; children: React.ReactNode;
 }) {
     if (fill) {
         return <div className={cn("flex w-full items-center gap-1", !segmented && "-mb-px")}>{children}</div>;
     }
     return (
-        <TabScroller activeKey={activeKey} navClassName={cn("gap-1", !segmented && "-mb-px")}>
+        <TabScroller activeKey={activeKey} ariaLabel={ariaLabel} navClassName={cn("gap-1", !segmented && "-mb-px")}>
             {children}
         </TabScroller>
     );

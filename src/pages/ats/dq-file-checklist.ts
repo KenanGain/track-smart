@@ -44,7 +44,7 @@ export const DQ_FILE_CHECKLIST: DqChecklistSection[] = [
         items: [
             { label: 'Application', keywords: ['application', 'applicant information'] },
             { label: 'CVDR', keywords: ['cvdr', 'cvor', 'driver abstract', 'driving record'] },
-            { label: 'MVR', keywords: ['mvr', 'motor vehicle record'] },
+            { label: 'Non-Commercial Abstract', keywords: ['mvr', 'motor vehicle record'] },
             { label: 'Passport', keywords: ['passport'] },
             { label: "Driver's License", keywords: ['license', 'licence', 'cdl', 'driver license', 'driving licence'] },
             { label: 'PCC', keywords: ['pcc', 'police clearance', 'criminal', 'background'] },

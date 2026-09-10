@@ -301,7 +301,7 @@ const PANELS: Record<Exclude<AgentIntent, 'greeting' | 'help'>, AiPanel> = {
     rows: [
       { title: 'CDL — Maria Rodriguez', subtitle: 'Driver License', badge: 'Valid', tone: 'emerald', meta: 'exp 2027-04', tags: ['valid'], path: '/default-compliance-documents', recordId: 'cdl' },
       { title: 'Medical Certificate — Maria Rodriguez', subtitle: 'Medical', badge: 'Expiring', tone: 'amber', meta: '12 days', tags: ['expiring'], path: '/default-compliance-documents', recordId: 'medical-cert' },
-      { title: 'MVR — Robert Chen', subtitle: 'Abstracts', badge: 'Due', tone: 'amber', meta: '5 days', tags: ['expiring'], path: '/default-compliance-documents', recordId: 'mvr' },
+      { title: 'Non-Commercial Abstract — Robert Chen', subtitle: 'Abstracts', badge: 'Due', tone: 'amber', meta: '5 days', tags: ['expiring'], path: '/default-compliance-documents', recordId: 'mvr' },
       { title: 'Drug & Alcohol Policy — John Smith', subtitle: 'Disclosures', badge: 'Missing', tone: 'rose', meta: 'not uploaded', tags: ['missing'], path: '/default-compliance-documents', recordId: 'drug-test' },
       { title: 'Safety Fitness Certificate', subtitle: 'NSC registration', badge: 'Expiring', tone: 'amber', meta: '7 days', tags: ['expiring'], path: '/default-compliance-documents', recordId: 'safety-fitness' },
     ],
@@ -320,7 +320,7 @@ const PANELS: Record<Exclude<AgentIntent, 'greeting' | 'help'>, AiPanel> = {
     ] },
     filters: [{ id: 'week', label: 'This week', tone: 'rose' }, { id: 'month', label: '30 days', tone: 'amber' }, { id: 'quarter', label: '90 days', tone: 'blue' }],
     rows: [
-      { title: 'MVR — Robert Chen', subtitle: 'Motor Vehicle Record', badge: 'Due soon', tone: 'rose', meta: '5 days', tags: ['week', 'month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'mvr' },
+      { title: 'Non-Commercial Abstract — Robert Chen', subtitle: 'Driver Non-Commercial Abstract', badge: 'Due soon', tone: 'rose', meta: '5 days', tags: ['week', 'month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'mvr' },
       { title: 'Safety Fitness Certificate', subtitle: 'NSC registration', badge: 'Due', tone: 'rose', meta: '7 days', tags: ['week', 'month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'safety-fitness' },
       { title: 'Medical Certificate — Maria Rodriguez', subtitle: 'DOT medical', badge: 'Due', tone: 'amber', meta: '12 days', tags: ['month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'medical-cert' },
       { title: 'CDL — Kevin O’Brien', subtitle: 'Driver license', badge: 'Renewal', tone: 'amber', meta: '21 days', tags: ['month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'cdl' },
@@ -379,7 +379,7 @@ const PANELS: Record<Exclude<AgentIntent, 'greeting' | 'help'>, AiPanel> = {
     filters: [{ id: 'progress', label: 'In progress', tone: 'amber' }, { id: 'ready', label: 'Ready to approve', tone: 'emerald' }, { id: 'onboarding', label: 'Onboarding', tone: 'violet' }],
     rows: [
       { title: 'Daniel Reed', subtitle: 'Cross-border · Application', badge: 'Step 6 / 13', tone: 'amber', meta: 'PSP pending', progress: 46, tags: ['progress'], path: '/hiring-process/hiring' },
-      { title: 'Sophia Nguyen', subtitle: 'US only · Reports', badge: 'Step 9 / 13', tone: 'amber', meta: 'MVR ordered', progress: 69, tags: ['progress'], path: '/hiring-process/hiring' },
+      { title: 'Sophia Nguyen', subtitle: 'US only · Reports', badge: 'Step 9 / 13', tone: 'amber', meta: 'Abstract ordered', progress: 69, tags: ['progress'], path: '/hiring-process/hiring' },
       { title: 'Marcus Hall', subtitle: 'Canada · Road test', badge: 'Ready', tone: 'emerald', meta: 'Awaiting approval', progress: 100, tags: ['ready'], path: '/hiring-process/hiring' },
     ],
     footnote: '2 applicants are ready for your final approval', link: { label: 'Open Hiring', path: '/hiring-process/hiring' },
@@ -552,7 +552,7 @@ export const AGENTS: AgentDef[] = [
     primaryIntent: 'hiring',
     blurb: 'applicants, reports and onboarding',
     greeting: 'I track applicants from application through onboarding — I can pull pipeline status, order reports, send applications and start onboarding.',
-    prompts: ['Hiring pipeline status', 'Who’s ready to approve?', 'Onboarding progress', 'Send an application', 'Request a document', 'Order MVR + PSP'],
+    prompts: ['Hiring pipeline status', 'Who’s ready to approve?', 'Onboarding progress', 'Send an application', 'Request a document', 'Order Abstract + PSP'],
     commands: [
       { id: 'pipeline', label: 'Pipeline status', hint: 'Show the hiring pipeline', icon: 'user', intent: 'hiring' },
       { id: 'onboarding', label: 'Onboarding progress', hint: 'Show onboarding steps', icon: 'clipboard', intent: 'onboarding' },
@@ -568,8 +568,8 @@ export const AGENTS: AgentDef[] = [
         deliver: (n) => `Hi ${n}, please complete this form so we can move your application forward.`,
         resource: () => formRes('Complete your application form', 'About 10 minutes'),
         action: { icon: 'clipboard', tone: 'blue', title: 'Form sent', detail: 'Application form to complete', status: 'Delivered' } },
-      { id: 'order-report', label: 'Order MVR + PSP', hint: 'Request screening reports', icon: 'clipboard',
-        action: { icon: 'clipboard', tone: 'amber', title: 'MVR + PSP ordered', detail: 'Requested from the screening provider', status: 'Queued' } },
+      { id: 'order-report', label: 'Order Abstract + PSP', hint: 'Request screening reports', icon: 'clipboard',
+        action: { icon: 'clipboard', tone: 'amber', title: 'Abstract + PSP ordered', detail: 'Requested from the screening provider', status: 'Queued' } },
       { id: 'approve', label: 'Approve applicant', hint: 'Approve & move to onboarding', icon: 'check',
         action: { icon: 'check', tone: 'emerald', title: 'Applicant approved', detail: 'Marcus Hall moved to onboarding', status: 'Done' } },
     ],

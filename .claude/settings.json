@@ -24,7 +24,8 @@
       "Bash(curl -s -o /dev/null -w \"http:%{http_code}\\\\n\" http://localhost:5240/)",
       "Bash(node \"C:/Users/kenan/AppData/Local/Temp/claude/c--Users-kenan-Full-prototpye-code/8e24bebe-63b8-44dc-aaa3-42878858addb/scratchpad/dc-mon2.mjs\")",
       "Bash(echo \"tsc exit=$?\")",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(grep -n \"^        </div>$\\\\|^    \\);$\\\\|^}$\" src/pages/inventory/InventoryListPage.tsx)"
     ],
     "additionalDirectories": [
       "c:\\Users\\kenan\\.claude\\projects\\c--Users-kenan-Full-prototpye-code\\memory"

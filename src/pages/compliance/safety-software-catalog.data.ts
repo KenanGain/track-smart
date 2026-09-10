@@ -1,4 +1,5 @@
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
+import { CA_PROVINCES } from '@/pages/compliance/jurisdiction.data';
 
 /**
  * SAFETY SOFTWARE — Document and Compliance classification (system default).
@@ -266,6 +267,33 @@ export const DEFAULT_CUSTOM_FORM: CustomFormConfig = {
     notes: { enabled: true },
 };
 
+/**
+ * ONE kind of document on a record that holds several — see `SafetyRecord.variantByField`.
+ *
+ * Only what differs is listed; everything unset stays as the record declares it. A certificate
+ * of incorporation is issued once and never expires, a master business licence expires and is
+ * renewed — so a single form asking both for an expiry date is asking one of them for a date
+ * that does not exist, and offering an alert that can never fire.
+ */
+export interface RecordVariant {
+    /** Label of the number field on THIS document (e.g. a corporation number). */
+    numberName?: string;
+    /** The document's own name, for the upload block. */
+    documentName?: string;
+    /** Whether this document carries an issue date. */
+    tracksIssueDate?: boolean;
+    /** What is monitored — a status-only value (e.g. 'No expiry') means no date is asked for. */
+    monitorType?: string;
+    /** Nothing to alert on for this document. */
+    hideMonitoring?: boolean;
+    /** Monitoring arrives switched ON for this document. */
+    monitorByDefault?: boolean;
+    /** How often this one renews. */
+    recurring?: string;
+    /** Keys of the record's extra fields this document does NOT capture. */
+    hideFields?: string[];
+}
+
 export interface SafetyRecord {
     id: string;
     /** Short/common label — the main name column. */
@@ -318,12 +346,59 @@ export interface SafetyRecord {
     hideCountry?: boolean;
     /** Pre-select this country on a new record (e.g. a US-federal report). */
     defaultCountry?: string;
+    /**
+     * State / province a new record arrives with — for records issued by ONE jurisdiction (a
+     * CVOR is Ontario's, always). Paired with `defaultCountry`, since a province without its
+     * country cannot be selected: the list of provinces comes from the country above it.
+     */
+    defaultStateProv?: string;
+    /**
+     * Start with monitoring ON. For a document whose whole purpose is to be valid on a date,
+     * monitoring switched off by default means the alert exists but nobody has it — the office
+     * has to remember to arm it on every single record, which is the thing being automated.
+     * The basis follows `defaultMonitorBasis` / the record's own monitored date as usual, and
+     * a config the user has already saved always wins over this.
+     */
+    monitorByDefault?: boolean;
     /** Hide the monitored-status field — the record has neither a date nor a status to track. */
     hideStatus?: boolean;
+    /**
+     * The monitored date is OPTIONAL on this record's form.
+     *
+     * Required is right where the date is on the document (a licence's expiry): you are copying
+     * it across. It is wrong where the date is one the system works out — a next review due from
+     * an issue date and a cycle — because then the form demands a figure it already knows, and a
+     * record that is otherwise complete cannot be filed.
+     */
+    expiryOptional?: boolean;
     /** Extra single-select fields the data-entry form captures (e.g. a drug test's Test type). */
     selectFields?: RecordSelectField[];
     /** Extra free-text fields the data-entry form captures (e.g. a licence's class / endorsements). */
     textFields?: RecordTextField[];
+    /**
+     * Key of a select field that NAMES each record — a safety fitness certificate is called
+     * after the form it takes (NIR, CVOR Level 2, NSC), because that is what distinguishes one
+     * of these from another in a list. Picking the type renames the record; a name the user
+     * typed themselves is never overwritten (see `isAutoVersionLabel`).
+     */
+    nameFromField?: string;
+    /**
+     * The record's province depends on a field's value: `from` names the select field, `states`
+     * maps each of its values to the provinces that may issue it. One province means the form
+     * fills it in; several narrows the dropdown to those. Without this, a form offering all
+     * thirteen provinces invites a certificate to be filed against one that cannot issue it.
+     */
+    stateByField?: { from: string; states: Record<string, string[]> };
+    /**
+     * The record holds MORE THAN ONE KIND of document, and each kind has its own shape:
+     * `from` names the select field that says which, `variants` maps each of its values to
+     * what that document actually captures. The `''` entry covers "nothing picked yet".
+     *
+     * The record ITSELF declares the union — every field any of its documents has — so the
+     * list, its columns and the catalog still describe the whole record; a variant only ever
+     * NARROWS that. Read through `recordForFields`, never directly.
+     */
+    variantByField?: { from: string; variants: Record<string, RecordVariant> };
     /** Name a NEW record takes, when it differs from the catalog's formal `recordName`. */
     versionName?: string;
     /** A previous `versionName` / `recordName`, so stored records get relabelled on rename. */
@@ -366,6 +441,35 @@ export interface SafetyRecord {
 export const WARNING_LETTER_SOURCES = ['Hours of Service', 'Safety Event', 'Ticket', 'Accident', 'Other'] as const;
 
 /**
+ * The forms a provincial safety fitness certificate takes. One certificate, three names:
+ * Québec issues an NIR, Ontario a CVOR Level 2, and the remaining provinces an NSC
+ * certificate. Declared here so the record, its province mapping and the merge of the old
+ * per-province records all read from one list.
+ */
+export const SAFETY_FITNESS_TYPES = ['NIR', 'CVOR Level 2', 'NSC'] as const;
+export type SafetyFitnessType = typeof SAFETY_FITNESS_TYPES[number];
+
+/**
+ * Which province can issue each of them. NIR and CVOR Level 2 pin exactly one — so choosing
+ * the type IS choosing the province, and the form fills it in rather than asking. NSC covers
+ * everywhere else, which narrows the list instead of pinning it: Ontario and Québec are left
+ * out because those two provinces issue their own kind.
+ */
+export const SAFETY_FITNESS_STATES: Record<string, string[]> = {
+    NIR: ['Quebec'],
+    'CVOR Level 2': ['Ontario'],
+    NSC: CA_PROVINCES.filter(p => p !== 'Ontario' && p !== 'Quebec'),
+};
+
+/**
+ * The two company papers filed on one record. Incorporation created the company; the master
+ * business licence registers the name it operates under. Declared here so the record, its
+ * per-type form and the merge of the two old records all read from one list.
+ */
+export const COMPANY_DOC_TYPES = ['Articles of Incorporation', 'Master Business License'] as const;
+export type CompanyDocType = typeof COMPANY_DOC_TYPES[number];
+
+/**
  * Where each of those sources lives, so a filed letter can open the record it was issued
  * for. Keyed by the value stored on the letter, and pointing at the same page paths the
  * shared record links use. "Other" is deliberately absent: a letter written by hand about
@@ -380,26 +484,48 @@ export const WARNING_LETTER_SOURCE_PATHS: Record<string, string> = {
 
 export const SAFETY_RECORDS: SafetyRecord[] = [
     // ── 1. Regulatory and Safety Numbers ──────────────────────────────
+    // A CVOR is issued by Ontario, to one carrier, and every one of them expires — so none of
+    // that is worth asking for. The record names itself, arrives as Ontario, Canada, and comes
+    // with monitoring already on and pointed at the expiry date: for a certificate whose whole
+    // purpose is to be valid on a date, monitoring switched off is never the right default.
     { id: 'cvor', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'CVOR Certificate', description: "Commercial Vehicle Operator's Registration (CVOR)", numberName: 'CVOR Number', documentName: 'CVOR Certificate',
       recurring: 'Variable renewal/expiry', monitorType: 'Expiry date', tracksIssueDate: true, jurisdiction: 'Ontario, Canada',
-      monitor: 'Expiry date. Store issue date for history only.' },
-    { id: 'cvor-level-2', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'D', docRequirement: 'optional',
-      recordName: 'CVOR Level 2', description: 'CVOR Level 2 (carrier profile)', numberName: '', documentName: 'CVOR Level 2 Certificate',
-      recurring: 'Per issue', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'Ontario, Canada',
-      monitor: 'CVOR Level 2 carrier-profile document. Issue date only — no expiry monitored.' },
+      nameFromRecord: true, defaultCountry: 'Canada', defaultStateProv: 'Ontario', monitorByDefault: true,
+      monitor: 'Expiry date, monitored by default. Store issue date for history only.' },
+    // CVOR Level 2 and the Québec NIR used to be records of their own here. They are now the
+    // two provincial FORMS of the Safety Fitness Certificate below, chosen by its type field;
+    // records already filed under either are moved onto it (see `MERGED_RECORDS`).
+    // ONE record for the provincial safety fitness certificate, in whichever form the
+    // province issues it: Québec's NIR, Ontario's CVOR Level 2, an NSC certificate anywhere
+    // else. Three near-identical records (each with its own number field, its own name and
+    // its own province) said the same thing three times, and a carrier had to know which of
+    // them applied before it could file the certificate in its hand. Now it picks the type,
+    // and the type settles the name and the province.
     { id: 'safety-fitness', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Safety Fitness Certificate', description: 'Safety Fitness / National Safety Code Registration', numberName: 'NSC / Safety Fitness Number', documentName: 'Safety Fitness Certificate',
-      recurring: 'Depends on Canadian jurisdiction', monitorType: 'Expiry / renewal due', jurisdiction: 'Canadian province/territory (BC, AB, SK, MB, NL, NB, NS, PE)',
-      monitor: 'Expiry/renewal due date. If no expiry printed, store next review/renewal date.' },
-    { id: 'nir', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'NIR Certificate', description: 'Québec Heavy-Vehicle Owner/Operator Registration (NIR)', numberName: 'NIR Number', documentName: 'NIR Registration Certificate',
-      recurring: 'Periodic registry update', monitorType: 'Next update / renewal due', jurisdiction: 'Québec, Canada',
-      monitor: 'Expiry or next update/renewal due date when provided; do not alert on issue date alone.' },
+      recordName: 'Safety Fitness Certificate', description: 'Provincial safety fitness certificate — NIR (Québec), CVOR Level 2 (Ontario) or NSC', numberName: 'Certificate Number', documentName: 'Safety Fitness Certificate',
+      recurring: 'Depends on Canadian jurisdiction', monitorType: 'Expiry date', jurisdiction: 'Canadian province / territory',
+      defaultCountry: 'Canada', hideStatus: true, monitorByDefault: true,
+      // The type is asked FIRST and decides the rest: it names the record and pins the
+      // province (or, for an NSC, narrows the list to the provinces that issue one).
+      nameFromField: 'certType',
+      stateByField: { from: 'certType', states: SAFETY_FITNESS_STATES },
+      selectFields: [
+          { key: 'certType', label: 'Type of certificate', required: true, order: -3, rowStart: true,
+            options: [...SAFETY_FITNESS_TYPES] },
+      ],
+      monitor: 'Expiry date of the certificate, monitored by default. Where a province prints no expiry, store the next renewal / review date — or switch the alert to a custom date.' },
+    // The certificate itself is filed once: a number, the day it was issued, and the document.
+    // It does not expire, and the office does not decide whether the authority is active —
+    // FMCSA does. So there is no status field here and nothing to alert on; the authority's
+    // real status, the insurance it requires and the filings against it are looked up and shown
+    // on the record's own page (see `mc-authority.data`).
     { id: 'mc', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required', hideState: true,
       recordName: 'MC Certificate', description: 'FMCSA Motor Carrier Operating Authority', numberName: 'MC Number', documentName: 'FMCSA Operating Authority Certificate (MC)',
       recurring: 'No fixed expiry', monitorType: 'Authority / status change', jurisdiction: 'United States, federal',
-      monitor: 'Authority/status changes, revocation, suspension, or replacement — not a normal expiry date.' },
+      nameFromRecord: true, defaultCountry: 'United States', tracksIssueDate: true,
+      hideStatus: true, hideMonitoring: true,
+      monitor: 'Authority status, revocation, suspension and the insurance filed against it come from FMCSA — read on the record, not alerted on here.' },
     { id: 'dot-biennial', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'optional',
       recordName: 'DOT Biennial Update', description: 'FMCSA DOT Biennial Update', numberName: 'DOT Biennial Update (linked to USDOT)', documentName: 'MCS-150 / MCS-150B Filing Confirmation',
       recurring: 'Biennial', monitorType: 'Next filing due', jurisdiction: 'United States, federal',
@@ -421,10 +547,14 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       statusLabel: 'Test result', statusOptions: DRUG_TEST_RESULTS, statusControl: 'radio',
       jurisdiction: 'Applicable DOT testing jurisdiction',
       monitor: 'Point-in-time drug & alcohol test result; no document expiry. Retained on file.' },
+    // PHMSA registers hazmat carriers federally, for a term that ends: so the record names
+    // itself, arrives as the United States with no province to pick (there is no state-issued
+    // version of this), and comes with monitoring already pointed at the expiry date.
     { id: 'hazmat', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'HAZMAT', description: 'PHMSA Hazardous Materials Registration', numberName: 'HAZMAT Registration Number', documentName: 'HAZMAT Certificate of Registration',
       recurring: 'Yes', monitorType: 'Expiry date', configuredDate: '2026-06-30', jurisdiction: 'United States, federal',
-      monitor: 'Expiry date.' },
+      nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
+      monitor: 'Expiry date, monitored by default.' },
     { id: 'mcs90', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'D', docRequirement: 'required',
       recordName: 'MCS-90', description: 'Motor Carrier Public Liability Endorsement', numberName: '', documentName: 'MCS-90 Endorsement',
       recurring: 'No independent expiry', monitorType: 'Linked to insurance policy', jurisdiction: 'United States, federal',
@@ -476,14 +606,46 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'WSIB', description: 'Ontario Workplace Safety and Insurance Registration', numberName: 'WSIB Account Number', documentName: 'WSIB Clearance Certificate',
       recurring: 'Monthly', monitorType: 'Valid-to / clearance date', jurisdiction: 'Select jurisdiction',
       monitor: 'Certificate valid-to / clearance expiry date, not merely the issue date.' },
-    { id: 'articles', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Articles of Incorporation', description: 'Business Incorporation Registration', numberName: 'Corporation Number', documentName: 'Articles / Certificate of Incorporation',
-      recurring: 'Usually static', monitorType: 'No expiry (unless jurisdiction sets one)', jurisdiction: 'Federal / provincial / state',
-      monitor: 'Expiry/renewal only if the issuing jurisdiction provides one; otherwise no expiry alert.' },
-    { id: 'operating-name', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Operating Name Registration', description: 'Operating or Business Name Registration', numberName: 'Operating Name Registration Number', documentName: 'Operating / Business Name Registration Certificate',
-      recurring: 'Where a renewal cycle applies', monitorType: 'Registration expiry / renewal', jurisdiction: 'Province/state registering jurisdiction',
-      monitor: 'Registration expiry/renewal due date.' },
+    // ONE record for the two papers that say the company exists: the certificate of
+    // incorporation that created it, and the master business licence that registers the name it
+    // trades under. They were two records, and they behave nothing alike — incorporation is
+    // issued once and never expires, a business licence expires and is renewed — so the type is
+    // asked first and settles the rest: the record's name, which dates it asks for, and whether
+    // there is anything to monitor at all. Records already filed under either are moved here
+    // (see `MERGED_RECORDS`).
+    { id: 'company-docs', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'Company Documents', description: 'Incorporation and business-name registration documents', numberName: 'Corporation / Registration Number', documentName: 'Company Document',
+      recurring: 'Depends on the document', monitorType: 'Expiry date', tracksIssueDate: true, jurisdiction: 'Federal / provincial / state registering jurisdiction',
+      hideStatus: true,
+      // The record declares BOTH documents' fields — that is what the list and its columns
+      // describe. Each type then narrows it to its own (see `variantByField` below).
+      nameFromField: 'docType',
+      selectFields: [
+          { key: 'docType', label: 'Type', required: true, order: -3, rowStart: true,
+            options: [...COMPANY_DOC_TYPES] },
+      ],
+      textFields: [
+          { key: 'registrationName', label: 'Registration name', order: -2,
+            placeholder: 'Business name as registered', demoValues: ['Acme Transport', 'Acme Logistics Group', 'Acme Freight Systems'] },
+      ],
+      variantByField: {
+          from: 'docType',
+          variants: {
+              // Nothing picked yet: ask for the type before asking for dates that may not exist.
+              '': { tracksIssueDate: false, monitorType: 'No expiry', hideMonitoring: true, hideFields: ['registrationName'] },
+              'Articles of Incorporation': {
+                  numberName: 'Corporation Number', documentName: 'Articles / Certificate of Incorporation',
+                  recurring: 'Usually static', monitorType: 'No expiry', hideMonitoring: true,
+                  hideFields: ['registrationName'],
+              },
+              'Master Business License': {
+                  numberName: 'BIN / Registration Number', documentName: 'Master Business Licence / Business Name Registration',
+                  recurring: 'Where a renewal cycle applies', monitorType: 'Expiry date',
+                  tracksIssueDate: false, monitorByDefault: true,
+              },
+          },
+      },
+      monitor: 'A master business licence is monitored on its expiry date (or a custom date where the province prints none). A certificate of incorporation does not expire — it carries an issue date only, and no alert.' },
 
     // ── 3. Carrier & Industry Codes ───────────────────────────────────
     { id: 'carrier-code', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
@@ -604,21 +766,24 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'Medical Certificate', description: "Medical Examiner's Certificate (DOT Medical Card, MCSA-5876)", numberName: 'National Registry Number', documentName: "Medical Examiner's Certificate",
       recurring: 'Per medical term (≤ 24 months)', monitorType: 'Medical card expiry', tracksIssueDate: true, jurisdiction: 'United States, federal (FMCSA)',
       monitor: 'Medical certificate expiry date (max 24-month term, 49 CFR 391.41).' },
-    // An MVR does not expire — it is pulled, reviewed, and pulled again. The date tracked is
-    // when the next one falls due, so that is what the form and the monitoring both call it.
+    // A driver's non-commercial abstract does not expire — it is pulled, reviewed, and pulled
+    // again. The date tracked is when the next one falls due, so that is what the form and the
+    // monitoring both call it. Known by its acronym, so MVR stays the short name and the full
+    // name — the counterpart of the Driver Commercial Abstract below — is its description.
+    // `versionRenamedFrom` relabels records filed under the full name back to the acronym.
     { id: 'mvr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
-      recordName: 'MVR', description: 'Motor Vehicle Record (MVR)', numberName: 'MVR Order / Reference Number', documentName: 'Motor Vehicle Record (MVR)',
-      recurring: 'Annual', monitorType: 'Next renew date', nameFromRecord: true,
+      recordName: 'MVR', description: 'Driver Non-Commercial Abstract', numberName: 'Abstract Order / Reference Number', documentName: 'Driver Non-Commercial Abstract',
+      recurring: 'Annual', monitorType: 'Next renew date', nameFromRecord: true, versionRenamedFrom: 'Driver Non-Commercial Abstract',
       jurisdiction: 'Driver licensing state / province',
       monitor: 'Reviewed at least every 12 months (§391.25).' },
     // An abstract is pulled and reviewed on a cycle rather than expiring, so monitoring runs
     // from the ISSUE date on an annual recurrence, and the date captured is the next review.
     { id: 'driver-cvdr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', tracksIssueDate: true,
-      recordName: 'Driver Commercial Abstract', description: 'Driver Commercial Abstract (CVDR / CDR / CDA)', numberName: 'Abstract Reference Number', documentName: 'Driver Commercial Abstract',
+      recordName: 'Driver Commercial Abstract', description: 'Provincial commercial driving record, reviewed annually', numberName: 'Abstract Reference Number', documentName: 'Driver Commercial Abstract',
       recurring: 'Annual', monitorType: 'Next review date', nameFromRecord: true,
       defaultMonitorBasis: 'issue', jurisdiction: 'Issuing province / state',
       monitor: 'Annual review of the driver commercial abstract. Monitored from the issue date on an annual cycle. Reminders 30 / 15 days before the review due date.',
-      note: 'Canadian commercial driver record — provincial equivalent of the MVR.',
+      note: 'Canadian commercial driver record — the commercial counterpart of the non-commercial abstract.',
       defaultReminders: [30, 15],
       practiceNote: 'Renewing every 90 days is good practice for this record.' },
     // A PSP is pulled once per hire and filed: it has no expiry, no status to track and
@@ -772,8 +937,10 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // service rather than by a state, so it captures no jurisdiction.
     { id: 'criminal-record', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'optional',
       recordName: 'Police Clearance Check', description: 'Police Clearance Check (PCC) / Criminal Record Check', numberName: 'Reference Number', documentName: 'Police Clearance Check',
-      recurring: 'Every 3 years', monitorType: 'Next renew date', tracksIssueDate: true,
-      nameFromRecord: true, hideCountry: true, hideState: true, defaultMonitorBasis: 'issue',
+      recurring: 'Every 3 years', monitorType: 'Next review date', tracksIssueDate: true,
+      // The next review is WORKED OUT from the issue date and the three-year cycle, so the
+      // office should not have to type it in to file a check it already holds.
+      nameFromRecord: true, hideCountry: true, hideState: true, defaultMonitorBasis: 'issue', expiryOptional: true,
       selectFields: [
           { key: 'checkResult', label: 'Result', options: ['Clear', 'Not Clear'], control: 'radio', required: true },
       ],
@@ -782,7 +949,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
             demoValues: ['RCMP', 'Ontario Provincial Police', 'Sterling Backcheck'] },
       ],
       jurisdiction: 'National / provincial police service',
-      monitor: 'Police clearance check result. Monitored from the issue date on a three-year cycle; the next renew date is what that works out to.' },
+      monitor: 'Police clearance check result. Monitored from the issue date on a three-year cycle; the next review date is what that works out to.' },
     // A pay statement covers a PERIOD and pays an amount in a currency. The period's length
     // is worked out from its two dates rather than typed, and the currency is worth filtering
     // the list by for a carrier running both sides of the border. Paid by the company, not
@@ -879,17 +1046,18 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       monitor: 'Employment termination / separation letter retained in the driver file.' },
     // A warning letter is never issued on its own — it is always ABOUT something: an
     // hours-of-service violation, a telematics event, a ticket, an accident. So the letter
-    // carries its source with it (where it was issued from, what happened, that record's own
+    // carries its source with it (what it was issued for, what happened, that record's own
     // number and date), filled in automatically when it is issued from a review and typed by
     // hand when one is filed directly. Without that the driver file shows a stack of letters
-    // and no way to tell what any of them was for.
+    // and no way to tell what any of them was for. The detail of the event itself stays on
+    // the source record, which the Event reference links to — it is not retyped here.
     { id: 'warning-letter', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'Warning Letter', description: 'Driver Warning Letter (issued on review)', numberName: '', documentName: 'Warning Letter',
       recurring: 'Per incident', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
       tracksIssueDate: true,
       selectFields: [
-          { key: 'letterSource', label: 'Issued from', required: true, order: -3,
+          { key: 'letterSource', label: 'Issued for', required: true, order: -3,
             options: [...WARNING_LETTER_SOURCES] },
       ],
       textFields: [
@@ -903,14 +1071,6 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
             placeholder: 'e.g. HOSV-1042',
             sourceLink: { from: 'letterSource', paths: WARNING_LETTER_SOURCE_PATHS },
             demoValues: ['HOSV-1042', 'SE-2291', 'OFF-84729', 'ACC-2026-0021'] },
-          { key: 'eventSummary', label: 'What happened', multiline: true, order: 2,
-            placeholder: 'The event this letter was issued for.',
-            demoValues: [
-                'Exceeded the 11-hour driving limit by 42 minutes on a Chicago run.',
-                'Harsh braking event recorded at 65 km/h in a 50 zone.',
-                'Speeding citation issued on Hwy 401 westbound near Exit 312.',
-                'Rear-end collision at low speed; no injuries reported.',
-            ] },
       ],
       dateFields: [
           { key: 'eventDate', label: 'Event date', order: 1,
@@ -921,14 +1081,17 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
 ];
 
 // ── Upload mode classification (per the safety-software workbook) ──────
-// Single upload (one file; replaces): MC, FEIN (147C), Articles of Incorporation, Carrier Code, BOC-3.
+// Single upload (one file; replaces): MC, FEIN (147C), Carrier Code, BOC-3.
+// Company Documents is NOT single-upload, even though incorporation is filed once: the same
+// record holds the master business licence, which is renewed, and a renewal has to be able to
+// keep the licence it replaces.
 // Event/replacement (multiple dated versions, no fixed schedule): Drug Test, MCS-90, and the toll/
 // transponder passes (reissued/replaced ad-hoc). Everything else with a document is recurring
 // (retain previous + new dated version on renew/reissue/review/replace). Compliance-only records
 // (USDOT, IRP Plate) have no document → no upload mode.
 // Single (one file; replaces) also covers the once-per-hire driver DQ paperwork.
-const SINGLE_UPLOAD_IDS = new Set(['mc', 'fein', 'articles', 'carrier-code', 'boc3',
-    'safety-perf-history', 'road-test', 'driver-application', 'cvor-level-2',
+const SINGLE_UPLOAD_IDS = new Set(['mc', 'fein', 'carrier-code', 'boc3',
+    'safety-perf-history', 'road-test', 'driver-application',
     // Once-on-file driver personal / hiring documents (replace on update).
     'criminal-record', 'ssn-sin-card', 'offer-letter', 'termination-letter']);
 // Event/replacement (re-pulled ad-hoc) also covers the PSP report and per-incident / ad-hoc driver documents.
@@ -992,8 +1155,82 @@ export const MAX_RECORD_NAME = 40;
  */
 export function defaultVersionLabel(r: SafetyRecord, year?: number | string): string {
     const base = r.versionName ?? r.recordName;
-    if (r.nameFromRecord || r.versionName) return year ? `${base} ${year}` : base;
+    if (r.nameFromRecord || r.versionName || r.nameFromField) return year ? `${base} ${year}` : base;
     return `Record ${year ?? new Date().getFullYear()}`;
+}
+
+/** The values a record's own select field offers, or [] when it has no such field. */
+const fieldOptions = (r: SafetyRecord, key?: string): string[] =>
+    (key ? r.selectFields?.find(f => f.key === key)?.options : undefined) ?? [];
+
+/**
+ * True when a record's name is still one the SYSTEM chose, rather than something a person
+ * typed. That is the licence to change it: picking a different certificate type may rename the
+ * record, but only if nobody has given it a name of their own.
+ *
+ * Auto names are the record's default ("Safety Fitness Certificate"), the generic "Record",
+ * any value of the field the record is named after ("NIR"), or any of those followed by a year
+ * and / or the " (2)" that keeps a second record in the same year distinct.
+ */
+export function isAutoVersionLabel(r: SafetyRecord, label: string): boolean {
+    const bare = label.trim().replace(/\s*\(\d+\)$/, '').replace(/\s+\d{4}$/, '').trim();
+    if (!bare) return true;
+    const auto = ['Record', r.versionName ?? r.recordName, r.versionRenamedFrom, ...fieldOptions(r, r.nameFromField)];
+    return auto.some(a => !!a && a.toLowerCase() === bare.toLowerCase());
+}
+
+/**
+ * The provinces a record allows, given the field its jurisdiction depends on — null when the
+ * record puts no constraint on it (the country's full list applies).
+ */
+export function statesForRecord(r: SafetyRecord, fields?: Record<string, string>): string[] | null {
+    const dep = r.stateByField;
+    if (!dep) return null;
+    const chosen = fields?.[dep.from] ?? '';
+    return dep.states[chosen] ?? null;
+}
+
+/**
+ * The record as it applies to ONE filed document.
+ *
+ * A record that holds several kinds of document (`variantByField`) declares the union of their
+ * fields, because that is what the record IS — but no single document has all of them. This
+ * resolves the record down to the one being looked at, so every surface that reads a record's
+ * flags (the form, the detail facts, the migration) narrows in step, from one declaration,
+ * rather than each growing its own conditions.
+ *
+ * Returns the record itself — the same object — for everything that has no variants.
+ */
+export function recordForFields(r: SafetyRecord, fields?: Record<string, string>): SafetyRecord {
+    const dep = r.variantByField;
+    if (!dep) return r;
+    const variant = dep.variants[fields?.[dep.from] ?? ''];
+    if (!variant) return r;
+    const { hideFields, ...over } = variant;
+    const merged: SafetyRecord = { ...r, ...over };
+    if (hideFields?.length) {
+        const drop = new Set(hideFields);
+        const keep = <T extends { key: string }>(list?: T[]) => list?.filter(f => !drop.has(f.key));
+        merged.selectFields = keep(merged.selectFields);
+        merged.textFields = keep(merged.textFields);
+        merged.dateFields = keep(merged.dateFields);
+        merged.derivedFields = keep(merged.derivedFields);
+    }
+    return merged;
+}
+
+/**
+ * Stored field values, minus anything the record — resolved for this document — does not
+ * capture. A value left behind by a field the form no longer shows is worse than missing: it
+ * is still read by the list columns and the record's facts, so it reads as current while
+ * being unreachable and uncorrectable. Only records WITH variants are pruned.
+ */
+export function pruneRecordFields(r: SafetyRecord, fields?: Record<string, string>): Record<string, string> | undefined {
+    if (!r.variantByField || !fields) return fields;
+    const keys = new Set(recordFields(recordForFields(r, fields)).map(f => f.key));
+    const out: Record<string, string> = {};
+    for (const [k, val] of Object.entries(fields)) if (keys.has(k)) out[k] = val;
+    return Object.keys(out).length === Object.keys(fields).length ? fields : out;
 }
 
 /** The values the monitored-status field offers for a record. */

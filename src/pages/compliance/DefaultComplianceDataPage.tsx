@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCondensingAnchor, useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { type KpiChip } from '@/components/ui/KpiChipStrip';
+import {
+    ColumnPicker, FilterSelect, HistoryToggle, ListToolbar, SortTh, TablePager,
+} from '@/components/ui/ListChrome';
+import { type SortState } from '@/components/ui/list-chrome';
+import { SubTabs } from '@/components/ui/SubTabs';
 import {
     Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
-    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock, CornerDownRight, Share2,
+    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, CornerDownRight, Share2,
     ToggleLeft, ToggleRight, RotateCcw, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,18 +22,20 @@ import { useRecordEnablement } from '@/pages/compliance/record-enablement';
 // The Monitoring & Notifications block lives on its own so the driver application can
 // render the SAME control — what it captures becomes a record here.
 import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
+import { McAuthorityFacts, McInsuranceTab } from '@/pages/compliance/McAuthorityPanel';
 import {
     basisLabel, recurrenceLabel, reminderLabel, monitoredDateFor,
 } from '@/pages/compliance/monitoring-schedule';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, ENTITY_ORDER, isDateMonitored, RECORD_TYPE_LABEL, RECORD_TYPE_ORDER,
-    defaultVersionLabel, MAX_RECORD_NAME, statusOptionsFor, recordFields, fieldPool, fieldValue, type RecordFieldDef,
+    defaultVersionLabel, MAX_RECORD_NAME, statusOptionsFor, recordFields, fieldPool, fieldValue,
+    isAutoVersionLabel, statesForRecord, recordForFields, pruneRecordFields, type RecordFieldDef,
     type SafetyRecord, type EntityId, type RecordTypeId,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
     useComplianceData, computeStats, entryStatus, currentVersion, newVersion, blankVersion, newInstance, instancesOf, emptyEntry,
-    defaultMonitoring, CARRIER_SUBJECT,
+    defaultMonitoring, fieldWritePatch, CARRIER_SUBJECT,
     type RecordDataEntry, type DocVersion, type DocInstance, type DataDocFile, type DataStatus, type MonitoringConfig,
 } from '@/pages/compliance/compliance-data-store';
 import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
@@ -221,7 +231,6 @@ const DATA_COLUMNS: { id: DataColId; label: string }[] = [
 ];
 const ALL_DATA_COLS: DataColId[] = DATA_COLUMNS.map(c => c.id);
 const STATUS_RANK: Record<DataStatus, number> = { complete: 0, missing: 1, optional: 2 };
-const PAGE_SIZES = [10, 25, 50, 100];
 // Status values for status-based records (the monitored value captured in the form).
 const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
 
@@ -253,6 +262,10 @@ export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig
         : 'expiry';
     if (base.basis === 'status') base.reminders = [];
     else if (record.defaultReminders) base.reminders = [...record.defaultReminders]; // per-record reminder default
+    // A record that exists to be valid on a date arrives with its alert already armed. Every
+    // path that creates a version seeds through here, so this is the only place it is decided.
+    base.enabled = !!record.monitorByDefault;
+    // A stored config always wins: monitoring the user switched OFF must stay off.
     return existing ? { ...base, ...existing } : base;
 }
 
@@ -320,14 +333,14 @@ function sampleJurisdiction(record: SafetyRecord): { country: string; stateProv:
 // unlike inline data: URLs, which browsers block from top-level navigation. Regenerate: `node scripts/generate-demo-docs.mjs`.
 const DEMO_PDF_SIZE: Record<string, number> = {
     'cvor-certificate.pdf': 4780, 'insurance-certificate.pdf': 4793, 'compliance-document.pdf': 4783, 'driver-license.pdf': 4676,
-    'medical-certificate.pdf': 4785, 'drug-test.pdf': 4790, 'mvr.pdf': 4808, 'psp-report.pdf': 4779, 'safety-fitness.pdf': 4800,
+    'medical-certificate.pdf': 4785, 'drug-test.pdf': 4790, 'non-commercial-abstract.pdf': 4808, 'psp-report.pdf': 4779, 'safety-fitness.pdf': 4800,
     'mc-authority.pdf': 4762, 'ifta.pdf': 4763, 'irp.pdf': 4779, 'annual-inspection.pdf': 4766, 'business-registration.pdf': 4777,
 };
 // Route a record to its best-matching demo PDF by id / document name / record name (first rule wins).
 const DEMO_PDF_RULES: { re: RegExp; file: string }[] = [
     { re: /medical|physical/, file: 'medical-certificate.pdf' },
     { re: /drug|alcohol|clearinghouse/, file: 'drug-test.pdf' },
-    { re: /mvr|abstract/, file: 'mvr.pdf' },
+    { re: /mvr|abstract/, file: 'non-commercial-abstract.pdf' },
     { re: /psp/, file: 'psp-report.pdf' },
     { re: /safety.?fitness|\bnsc\b|fitness/, file: 'safety-fitness.pdf' },
     { re: /\bmc\b|operating.?authority/, file: 'mc-authority.pdf' },
@@ -364,10 +377,15 @@ function withDemoPdf(record: SafetyRecord, f: DataDocFile): DataDocFile {
     const { file, size } = demoPdfFile(record);
     return { ...f, url: `/demo-docs/${file}`, size, name: f.name.replace(/\.[a-z0-9]+$/i, '.pdf') };
 }
-function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVersion> = {}): DocVersion {
-    const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
-    const { country, stateProv } = sampleJurisdiction(record);
+function sampleVersion(baseRecord: SafetyRecord, label: string, over: Partial<DocVersion> = {}): DocVersion {
+    const hasDoc = baseRecord.type !== 'C' && baseRecord.docRequirement !== 'none';
     const seed = label.length;
+    // Which KIND of document this sample is comes first, then everything else is sampled for
+    // that kind — otherwise the demo data contradicts the form it is shown in: a certificate of
+    // incorporation with an expiry date, or a business licence with fields it never had.
+    const fields = pruneRecordFields(baseRecord, sampleFields(baseRecord, labelSeed(label)));
+    const record = recordForFields(baseRecord, fields);
+    const { country, stateProv } = sampleJurisdiction(record);
     const v: DocVersion = {
         ...blankVersion(record, label),
         numberValue: record.numberName ? sampleNumber(record) : '',
@@ -375,12 +393,22 @@ function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVer
         issueDate: record.tracksIssueDate ? SAMPLE_ISSUES[recordHash(record) % SAMPLE_ISSUES.length] : '',
         expiryDate: isDateMonitored(record) ? sampleExpiry(record) : '',
         status: capturesStatus(record) ? sampleStatus(record, seed) : '',
-        fields: sampleFields(record, labelSeed(label)),
+        fields,
         files: [],
         monitoring: { ...seedMonitoring(record), enabled: true },
         uploadedBy: SAMPLE_UPLOADERS[(recordHash(record) + label.length) % SAMPLE_UPLOADERS.length],
         ...over,
     };
+    // The sample builders write `over` from the RECORD — both dates, for a record that declares
+    // both — so the kind has the last word on which of them this document actually has.
+    if (baseRecord.variantByField) {
+        if (!record.tracksIssueDate) v.issueDate = '';
+        if (!isDateMonitored(record)) v.expiryDate = '';
+    }
+    // Named after the kind it is, exactly as picking that type on the form would name it.
+    if (record.nameFromField && fields?.[record.nameFromField] && isAutoVersionLabel(record, v.label)) {
+        v.label = v.label.replace(defaultVersionLabel(record), fields[record.nameFromField]);
+    }
     if (hasDoc && v.files.length === 0) v.files = sampleDocFiles(record);
     // A record with no monitoring block must never come back with monitoring switched on.
     if (record.hideMonitoring) v.monitoring = { ...v.monitoring, enabled: false };
@@ -469,11 +497,14 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
         ];
         return { versions: [], instances: defs.map(([n, num, yrs], pi) => policy(n, num, yrs, pi)) };
     }
-    // 6 dated versions (newest = current, the rest are renewal history).
+    // 14 dated versions (newest = current, the rest are renewal history) — a carrier that has
+    // held its authority for over a decade, which is also the length that makes the list worth
+    // paging, sorting and searching, and the page long enough for the header to fold.
     // Slotted records (CDL, SSN) naturally get multiple files (Front/Back) via sampleVersion; single-upload records stay single.
     // History versions deliberately carry realistic GAPS so "missing document / date / number" states are demonstrable
     // (the current version i===0 always stays complete, so the record still reads as up-to-date).
-    const years = [2026, 2025, 2024, 2023, 2022, 2021];
+    const thisYear = new Date().getFullYear();
+    const years = Array.from({ length: 14 }, (_, i) => thisYear - i);
     return {
         versions: years.map((y, i) => {
             const v = sampleVersion(record, defaultVersionLabel(record, y), {
@@ -587,6 +618,17 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
     const [selectedSubject, setSelectedSubject] = useState<string | null>(null); // asset/driver id
     const [focusRecordId, setFocusRecordId] = useState<string | null>(null);     // deep-link from the Monitoring page
     const [detailOpen, setDetailOpen] = useState(false);                         // a record's dedicated detail page is open → hide page chrome
+    // The header pins to the top of the app's scroll area and shrinks as you scroll into the
+    // list; the KPI cards below fold with it through `CondensedHeaderContext`.
+    // The header stays put and shrinks as the list scrolls; the body below is its own
+    // scroller, which is what makes that possible and lets a list's toolbar pin beneath it.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(entity);
+    // The figures from whichever view is on screen, so they can ride up into the header as the
+    // cards they belong to scroll away. Each view reports its own — the Carrier tab counts
+    // records, the roster counts drivers — and only the one being rendered ever reports.
+    const [kpiChips, setKpiChips] = useState<KpiChip[]>([]);
+    // …and the buttons that act on the page rather than on the search.
+    const [listActions, setListActions] = useState<ListPageActions>({});
 
     // Deep-link: the Monitoring page writes a `dcd-focus` hint before navigating here → jump to that
     // record's entity/type/subject and auto-open its Manage modal.
@@ -652,77 +694,65 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
     }, [assets, drivers]);
 
     return (
-        <div className="flex-1 bg-slate-50 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
             <ToastStack />
-            {/* Header — hidden while a record's dedicated detail page is open */}
+            {/* The app's standard list header (see `ListPageHeader`) — hidden while a record's
+                dedicated detail page is open, which brings its own. */}
             {!detailOpen && (
-            <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <Layers size={20} />
-                        </div>
-                        <div className="min-w-0">
-                            <h1 className="text-2xl font-bold text-slate-900">Default Compliances &amp; Documents</h1>
-                            <p className="text-sm text-slate-500 mt-0.5">
-                                Compliance &amp; document records for <span className="font-semibold text-slate-700">{carrierName}</span> — captured per carrier, asset and driver.
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 ml-auto">
+                <ListPageHeader
+                    Icon={Layers}
+                    title="Default Compliances &amp; Documents"
+                    description={<>Compliance &amp; document records for <span className="font-semibold text-slate-700">{carrierName}</span> — captured per carrier, asset and driver.</>}
+                    chips={kpiChips}
+                    condensed={condensed}
+                    tabsLabel="Record scope"
+                    tabs={ENTITY_ORDER.map(e => ({
+                        id: e,
+                        label: e,
+                        icon: ENTITY_ICON[e],
+                        count: e === 'Asset' ? assets.length : e === 'Driver' ? drivers.length : entityCounts.Carrier,
+                    }))}
+                    activeTab={entity}
+                    onTabChange={id => switchEntity(id as EntityId)}
+                    tabsRight={
+                        entity !== 'Carrier' && !selectedSubject
+                            ? <SubViewSwitch
+                                value={subView} onChange={setSubView}
+                                listLabel={entity === 'Asset' ? 'Assets' : 'Drivers'}
+                                ListIcon={entity === 'Asset' ? Truck : User}
+                                listCount={entity === 'Asset' ? assets.length : drivers.length}
+                                recordCount={entity === 'Asset' ? assetRecordCount : driverRecordCount} />
+                            : undefined
+                    }
+                    actions={<>
+                        {listActions.loadSample && (
+                            <button type="button" onClick={listActions.loadSample}
+                                title={listActions.seedsEverywhere
+                                    ? 'Load sample data everywhere — the carrier plus every asset & driver (with demo PDF documents), so all records, monitoring and the Records lists have data'
+                                    : 'Populate this list with representative sample records (with demo PDF documents)'}
+                                className={cn('inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-semibold text-violet-700 hover:bg-violet-100', condensed ? 'h-8' : 'h-9')}>
+                                <Sparkles size={14} className="shrink-0" />
+                                <span className="hidden sm:inline">{listActions.seedsEverywhere ? 'Load sample data (everywhere)' : 'Load sample data'}</span>
+                            </button>
+                        )}
+                        {listActions.clear && (
+                            <button type="button" onClick={listActions.clear} title="Clear all captured data"
+                                className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-500 hover:border-rose-200 hover:bg-slate-50 hover:text-rose-600', condensed ? 'h-8' : 'h-9')}>
+                                <Trash2 size={14} /> <span className="hidden sm:inline">Clear</span>
+                            </button>
+                        )}
                         {account && (
                             <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
                                 <Building2 size={15} /> {carrierName}
                             </span>
                         )}
-                    </div>
-                </div>
-
-                {/* Entity tabs + (Asset/Driver) inline Records|roster view toggle */}
-                <div className="flex items-end justify-between gap-x-3 gap-y-2 mt-4 -mb-5 flex-wrap">
-                    <div className="flex items-center gap-1">
-                        {ENTITY_ORDER.map(e => {
-                            const active = entity === e;
-                            const Icon = ENTITY_ICON[e];
-                            const badge = e === 'Asset' ? assets.length : e === 'Driver' ? drivers.length : entityCounts.Carrier;
-                            return (
-                                <button
-                                    key={e}
-                                    type="button"
-                                    onClick={() => switchEntity(e)}
-                                    className={cn(
-                                        'inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                                        active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300',
-                                    )}
-                                >
-                                    <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                                    {e}
-                                    <span className={cn(
-                                        'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                                        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200/70 text-slate-600',
-                                    )}>
-                                        {badge}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                    {entity === 'Asset' && !selectedSubject && (
-                        <div className="pb-2">
-                            <SubViewSwitch value={subView} onChange={setSubView} listLabel="Assets" ListIcon={Truck} listCount={assets.length} recordCount={assetRecordCount} />
-                        </div>
-                    )}
-                    {entity === 'Driver' && !selectedSubject && (
-                        <div className="pb-2">
-                            <SubViewSwitch value={subView} onChange={setSubView} listLabel="Drivers" ListIcon={User} listCount={drivers.length} recordCount={driverRecordCount} />
-                        </div>
-                    )}
-                </div>
-            </div>
+                    </>}
+                />
             )}
 
-            {/* Body */}
-            <div className="px-4 sm:px-8 py-6 space-y-5">
+            {/* Body — the scroller the header shrinks against. */}
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+            <div className="space-y-5 p-4 sm:p-8">
                 {entity === 'Carrier' && (
                     <SubjectDocuments
                         accountId={accountId}
@@ -740,6 +770,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                         alsoSeedSubjects={sampleSubjects}
                         onDetailChange={setDetailOpen}
                         onNavigate={onNavigate}
+                        onKpis={setKpiChips} onActions={setListActions}
                     />
                 )}
 
@@ -765,12 +796,13 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                                     backLabel="All assets"
                                     onDetailChange={setDetailOpen}
                                     onNavigate={onNavigate}
+                                    onKpis={setKpiChips} onActions={setListActions}
                                 />
                             );
                         })()
                         : (subView === 'records'
-                            ? <AllRecordsView entity="Asset" subjects={assetSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} />
-                            : <SubjectRoster entity="Asset" subjects={assetRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
+                            ? <AllRecordsView entity="Asset" subjects={assetSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} onKpis={setKpiChips} onActions={setListActions} />
+                            : <SubjectRoster entity="Asset" subjects={assetRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} onKpis={setKpiChips} />)
                 )}
 
                 {entity === 'Driver' && (
@@ -795,16 +827,79 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                                     backLabel="All drivers"
                                     onDetailChange={setDetailOpen}
                                     onNavigate={onNavigate}
+                                    onKpis={setKpiChips} onActions={setListActions}
                                 />
                             );
                         })()
                         : (subView === 'records'
-                            ? <AllRecordsView entity="Driver" subjects={driverSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} />
-                            : <SubjectRoster entity="Driver" subjects={driverRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
+                            ? <AllRecordsView entity="Driver" subjects={driverSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} onNavigate={onNavigate} onKpis={setKpiChips} onActions={setListActions} />
+                            : <SubjectRoster entity="Driver" subjects={driverRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} onKpis={setKpiChips} />)
                 )}
+            </div>
             </div>
         </div>
     );
+}
+
+/**
+ * The KPI cards above a list.
+ *
+ * They scroll away with the body — the header above is fixed, not sticky, so there is nothing
+ * to fold them against — and hand their figures to the header's chip strip on the way out
+ * (`onKpis`), which is why every view here reports the same numbers it draws.
+ */
+function KpiRow({ children }: { children: ReactNode }) {
+    return <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>;
+}
+
+/**
+ * What the page header should offer on this view's behalf.
+ *
+ * The buttons live in the header, but only the view knows whether there is anything to clear
+ * or how much a "load sample data" would seed — so the view says what is possible and the page
+ * draws it, in the one band that never scrolls away.
+ */
+export interface ListPageActions {
+    loadSample?: () => void;
+    /** Undefined when there is nothing captured yet — no button rather than a dead one. */
+    clear?: () => void;
+    /** The seed covers the carrier plus every asset and driver, not just this list. */
+    seedsEverywhere?: boolean;
+}
+
+/**
+ * Report those actions upward. The handlers are re-created on every render, so they are held
+ * in a ref and the reported object is rebuilt only when what is POSSIBLE changes — otherwise
+ * the page would set state on every render of the view it is rendering.
+ */
+function useReportActions(report: ((a: ListPageActions) => void) | undefined, a: ListPageActions) {
+    const latest = useRef(a);
+    latest.current = a;
+    const can = `${!!a.loadSample}|${!!a.clear}|${!!a.seedsEverywhere}`;
+    const stable = useMemo<ListPageActions>(() => ({
+        loadSample: latest.current.loadSample && (() => latest.current.loadSample?.()),
+        clear: latest.current.clear && (() => latest.current.clear?.()),
+        seedsEverywhere: latest.current.seedsEverywhere,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [can]);
+    useEffect(() => { report?.(stable); }, [report, stable]);
+    useEffect(() => () => report?.({}), [report]);
+}
+
+/**
+ * Hand this view's KPI figures to the page header.
+ *
+ * `deps` is the list of raw numbers, not the chip array: rebuilding the array every render and
+ * reporting that would set state on the page on every render, which re-renders this view, which
+ * builds another array. The numbers are what actually change.
+ */
+function useReportKpis(report: ((chips: KpiChip[]) => void) | undefined, chips: KpiChip[], deps: unknown[]) {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const stable = useMemo(() => chips, deps);
+    useEffect(() => { report?.(stable); }, [report, stable]);
+    // A view that unmounts takes its figures with it, or the header keeps showing the last
+    // tab's numbers beside the new tab's title.
+    useEffect(() => () => report?.([]), [report]);
 }
 
 // ── Master lists (Asset / Driver) ─────────────────────────────────────
@@ -821,13 +916,14 @@ function CompletionBar({ pct }: { pct: number }) {
 type RosterSubject = { id: string; name: string; sub?: string; type: string; extra?: string; initials?: string };
 type RosterCol = 'name' | 'type' | 'completion' | 'missing';
 
-function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
+function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpis }: {
     entity: 'Asset' | 'Driver';
     subjects: RosterSubject[];
     records: SafetyRecord[];
     getEntry: EntryGetter;
     onOpen: (id: string) => void;
     all: unknown;
+    onKpis?: (chips: KpiChip[]) => void;
 }) {
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
     const [search, setSearch] = useState('');
@@ -851,6 +947,13 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
         const avg = total ? Math.round(rows.reduce((a, r) => a + r.stats.pct, 0) / total) : 0;
         return { total, complete, withMissing, avg };
     }, [rows]);
+
+    useReportKpis(onKpis, [
+        { id: 'total', label: entity === 'Asset' ? 'Assets' : 'Drivers', value: kpis.total },
+        { id: 'complete', label: 'Complete', value: kpis.complete, tone: 'text-emerald-700' },
+        { id: 'missing', label: 'With missing', value: kpis.withMissing, tone: 'text-rose-700' },
+        { id: 'avg', label: 'Avg completion', value: `${kpis.avg}%`, tone: 'text-blue-700' },
+    ], [entity, kpis.total, kpis.complete, kpis.withMissing, kpis.avg]);
 
     const types = useMemo(() => Array.from(new Set(subjects.map(s => s.type).filter(t => t && t !== '—'))), [subjects]);
 
@@ -899,12 +1002,12 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
     return (
         <div className="space-y-5">
             {/* KPI tiles */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <KpiRow>
                 <KpiTile label={entity === 'Asset' ? 'Assets' : 'Drivers'} value={kpis.total} Icon={Icon} accent="slate" />
                 <KpiTile label="Fully complete" value={kpis.complete} Icon={Check} accent="emerald" />
                 <KpiTile label="With missing" value={kpis.withMissing} Icon={CircleAlert} accent="rose" />
                 <KpiTile label="Avg completion" value={`${kpis.avg}%`} Icon={CalendarClock} accent="blue" />
-            </div>
+            </KpiRow>
 
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 {/* Toolbar */}
@@ -980,28 +1083,8 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
                 )}
 
                 {/* Pagination */}
-                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
-                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
-                        <label className="flex items-center gap-1.5">
-                            Rows per page
-                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </label>
-                        <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            <ChevronLeft size={14} /> Prev
-                        </button>
-                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
-                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Next <ChevronRight size={14} />
-                        </button>
-                    </div>
-                </div>
+                <TablePager page={safePage} pageSize={pageSize} total={total}
+                    onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
             </div>
         </div>
     );
@@ -1041,7 +1124,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate, accountId }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate, accountId, onKpis, onActions }: {
     entity: EntityId;
     subjectId: string;
     /** Scopes which records this subject tracks (see `record-enablement`). */
@@ -1073,6 +1156,12 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     hideCategoryTabs?: boolean;
     // Deep-link navigation (used by the record-share "Share to chat" flow).
     onNavigate?: (path: string) => void;
+    // Report this view's KPI figures to the page header, which shows them as chips once the
+    // cards have scrolled out of reach. Not passed when embedded — there is no header to tell.
+    onKpis?: (chips: KpiChip[]) => void;
+    // The buttons that act on the whole page rather than on the search — they are drawn in the
+    // header, which does not scroll away. See `ListPageActions`.
+    onActions?: (a: ListPageActions) => void;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const [category, setCategory] = useState<KeyNumberGroup | 'All'>('All');
@@ -1147,6 +1236,18 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const stats = useMemo(() => computeStats(entityRecords, entryFor), [entityRecords, subjectId, all]);
 
+    useReportActions(onActions, {
+        loadSample: loadSampleData,
+        clear: hasData ? () => setConfirmClear(true) : undefined,
+        seedsEverywhere: !!alsoSeedSubjects?.length,
+    });
+    useReportKpis(onKpis, [
+        { id: 'records', label: 'Records', value: stats.total },
+        { id: 'complete', label: 'Complete', value: stats.complete, tone: 'text-emerald-700' },
+        { id: 'missing', label: 'Req. missing', value: stats.requiredMissing, tone: 'text-rose-700' },
+        { id: 'pct', label: 'Req. complete', value: `${stats.pct}%`, tone: 'text-blue-700' },
+    ], [stats.total, stats.complete, stats.requiredMissing, stats.pct]);
+
     const categoryTabs = useMemo(() => {
         const present = SAFETY_CATEGORY_ORDER.filter(c => entityRecords.some(r => r.category === c));
         return [
@@ -1211,8 +1312,11 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 />
             ) : (
             <>
-            {/* Breadcrumb / subject header — hidden when embedded (the detail page already names the subject). */}
-            {!embedded && (
+            {/* Which subject am I looking at — a back button and its name. Only where that is a
+                question worth answering: an asset or driver drilled into from a roster. On the
+                Carrier tab it named the carrier a third time, under a header and a tab that had
+                already said it, so it is gone. `onBack` is what distinguishes the two. */}
+            {!embedded && onBack && (
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
                     {onBack && (
@@ -1232,17 +1336,17 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
             {embedded ? (
                 <SubjectStatBar stats={stats} />
             ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <KpiRow>
                 <KpiTile label="Records" value={stats.total} Icon={Layers} accent="slate" />
                 <KpiTile label="Complete" value={stats.complete} Icon={Check} accent="emerald" />
                 <KpiTile label="Required Missing" value={stats.requiredMissing} Icon={CircleAlert} accent="rose" />
                 <KpiTile label="Required Complete" value={`${stats.pct}%`} Icon={CalendarClock} accent="blue" />
-            </div>
+            </KpiRow>
             )}
 
             {/* Enabled / Disabled — which of this subject's records the list is showing. */}
             {/* List card */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 {/* Which records am I looking at — the category tabs and the Enabled / Disabled
                     switch answer the same question, so they share the card's top row: the
                     subsets on the left, which SIDE of the list on the right. The row survives
@@ -1320,19 +1424,6 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     </select>
                     <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
                     </div>
-                    <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
-                        <button type="button" onClick={loadSampleData} title={alsoSeedSubjects?.length ? 'Load sample data everywhere — the carrier plus every asset & driver (with demo PDF documents), so all records, monitoring and the Records lists have data' : 'Populate this list with representative sample records (with demo PDF documents)'}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100 sm:flex-none sm:justify-start">
-                            <Sparkles size={14} className="shrink-0" />
-                            <span className="truncate">{alsoSeedSubjects?.length ? 'Load sample data (everywhere)' : 'Load sample data'}</span>
-                        </button>
-                        {hasData && (
-                            <button type="button" onClick={() => setConfirmClear(true)} title="Clear all captured data for this subject"
-                                className="inline-flex shrink-0 items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200">
-                                <Trash2 size={14} /> Clear
-                            </button>
-                        )}
-                    </div>
                 </div>
 
                 {pageRows.length === 0 ? (
@@ -1359,7 +1450,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                         </div>
                         {/* Desktop — full table */}
                         <div className="hidden lg:block overflow-x-auto">
-                            <table className="w-full min-w-[1070px]">
+                            <table className="pin-first w-full min-w-[1070px]">
                                 <thead className="border-b border-slate-200 bg-slate-50">
                                     <tr className="text-left">
                                         <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
@@ -1387,28 +1478,8 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 )}
 
                 {/* Pagination footer */}
-                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
-                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
-                        <label className="flex items-center gap-1.5">
-                            Rows per page
-                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </label>
-                        <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            <ChevronLeft size={14} /> Prev
-                        </button>
-                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
-                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Next <ChevronRight size={14} />
-                        </button>
-                    </div>
-                </div>
+                <TablePager page={safePage} pageSize={pageSize} total={total}
+                    onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
             </div>
             </>
             )}
@@ -1541,7 +1612,7 @@ function SubjectCell({ s }: { s: RecSubject }) {
  * with the subject name on each row. KPIs + search + type / status / tag / subject filters + column
  * chooser + Load sample data. Rows open that subject's record detail page. Mirrors SubjectDocuments.
  */
-function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntries, all, onDetailChange, onNavigate }: {
+function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntries, all, onDetailChange, onNavigate, onKpis, onActions }: {
     entity: 'Asset' | 'Driver';
     subjects: RecSubject[];
     records: SafetyRecord[];
@@ -1551,6 +1622,8 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     all: unknown; // store snapshot — changes on every write; forces the memos below to recompute
     onDetailChange?: (open: boolean) => void;
     onNavigate?: (path: string) => void;
+    onKpis?: (chips: KpiChip[]) => void;
+    onActions?: (a: ListPageActions) => void;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
@@ -1590,6 +1663,13 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
         return { total: allRows.length, complete, missing, pct: req ? Math.round((complete / req) * 100) : 100 };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allRows, all]);
+
+    useReportKpis(onKpis, [
+        { id: 'records', label: 'Records', value: kpis.total },
+        { id: 'complete', label: 'Complete', value: kpis.complete, tone: 'text-emerald-700' },
+        { id: 'missing', label: 'Req. missing', value: kpis.missing, tone: 'text-rose-700' },
+        { id: 'pct', label: 'Req. complete', value: `${kpis.pct}%`, tone: 'text-blue-700' },
+    ], [kpis.total, kpis.complete, kpis.missing, kpis.pct]);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -1644,6 +1724,11 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     };
     const hasData = allRows.some(({ subject, record }) => { const e = getEntry(subject.id, record.id); return e.versions.length > 0 || (e.instances?.length ?? 0) > 0; });
 
+    useReportActions(onActions, {
+        loadSample: loadSampleData,
+        clear: hasData ? () => setConfirmClear(true) : undefined,
+    });
+
     if (detail) {
         return (
             <RecordDetailPage
@@ -1662,12 +1747,12 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     return (
         <div className="space-y-5">
             {/* KPI tiles — aggregated across all subjects */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <KpiRow>
                 <KpiTile label="Records" value={kpis.total} Icon={Layers} accent="slate" />
                 <KpiTile label="Complete" value={kpis.complete} Icon={Check} accent="emerald" />
                 <KpiTile label="Required Missing" value={kpis.missing} Icon={CircleAlert} accent="rose" />
                 <KpiTile label="Required Complete" value={`${kpis.pct}%`} Icon={CalendarClock} accent="blue" />
-            </div>
+            </KpiRow>
 
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 {/* Toolbar */}
@@ -1697,18 +1782,6 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                         {tagCatalog.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
-                    <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={loadSampleData} title={`Populate every ${entity.toLowerCase()} with representative sample records (with demo PDF documents)`}
-                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100">
-                            <Sparkles size={14} /> Load sample data
-                        </button>
-                        {hasData && (
-                            <button type="button" onClick={() => setConfirmClear(true)} title={`Clear all captured data for every ${entity.toLowerCase()}`}
-                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200">
-                                <Trash2 size={14} /> Clear
-                            </button>
-                        )}
-                    </div>
                 </div>
 
                 {pageRows.length === 0 ? (
@@ -1730,7 +1803,7 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                         </div>
                         {/* Desktop — full table */}
                         <div className="hidden lg:block overflow-x-auto">
-                            <table className="w-full min-w-[1080px]">
+                            <table className="pin-first w-full min-w-[1080px]">
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr className="text-left">
                                         <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
@@ -1756,28 +1829,8 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                 )}
 
                 {/* Pagination */}
-                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
-                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
-                        <label className="flex items-center gap-1.5">
-                            Rows per page
-                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </label>
-                        <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            <ChevronLeft size={14} /> Prev
-                        </button>
-                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
-                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Next <ChevronRight size={14} />
-                        </button>
-                    </div>
-                </div>
+                <TablePager page={safePage} pageSize={pageSize} total={total}
+                    onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
             </div>
 
             {confirmClear && (
@@ -2431,50 +2484,24 @@ function docSearchBlob(row: DocRow, record: SafetyRecord): string {
 function rowAllTags(row: DocRow): string[] {
     return Array.from(new Set([...row.version.tags, ...row.version.files.map(f => f.tag).filter((t): t is string => !!t)]));
 }
+// Both of these are the shared list furniture (`ListChrome`) with this table's own vocabulary
+// filled in. They stay as named wrappers because the call sites read better for it — and
+// because there is then exactly one place where a heading or a column picker is drawn, which
+// is the point: the insurance filings on the MC certificate are the same kind of list, and
+// two hand-rolled copies drift.
 /** Sortable header cell for the detail document table. */
 function DocTh({ col, label, sortable, sort, onSort, className }: {
     col?: DocSortCol; label: string; sortable?: boolean;
-    sort: { col: DocSortCol; dir: 'asc' | 'desc' } | null; onSort: (c: DocSortCol) => void; className?: string;
+    sort: SortState<DocSortCol> | null; onSort: (c: DocSortCol) => void; className?: string;
 }) {
-    if (!sortable || !col) return <th className={cn(DOC_TH_CLS, className)}>{label}</th>;
-    const active = sort?.col === col;
-    const Icon = active ? (sort!.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
-    return (
-        <th className={cn(DOC_TH_CLS, className)}>
-            <button type="button" onClick={() => onSort(col)} className={cn('inline-flex items-center gap-1 hover:text-slate-700 transition-colors', active && 'text-blue-600')}>
-                {label} <Icon size={12} className={active ? '' : 'text-slate-300'} />
-            </button>
-        </th>
-    );
+    return <SortTh col={col} label={label} sortable={sortable} sort={sort} onSort={onSort} className={className} />;
 }
 /** Column-visibility dropdown for the detail document table (lists only the columns that apply to this record). */
 function DocColumnsDropdown({ record, cols, visible, onToggle }: { record: SafetyRecord; cols: DocColId[]; visible: Set<DocColId>; onToggle: (id: DocColId) => void }) {
-    const [open, setOpen] = useState(false);
     return (
-        <div className="relative">
-            <button type="button" onClick={() => setOpen(o => !o)}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
-                <Columns size={14} /> Columns <ChevronDown size={13} className="text-slate-400" />
-            </button>
-            {open && (
-                <>
-                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                    <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-lg p-1.5">
-                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</div>
-                        {cols.map(id => {
-                            const locked = DOC_LOCKED_COLS.includes(id);
-                            return (
-                                <label key={id} className={cn('flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-slate-700', locked ? 'cursor-default opacity-80' : 'hover:bg-slate-50 cursor-pointer')}>
-                                    <input type="checkbox" checked={locked || visible.has(id)} disabled={locked} onChange={() => !locked && onToggle(id)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-100" />
-                                    <span className="flex-1">{docColLabel(record, id)}</span>
-                                    {locked && <Lock size={11} className="text-slate-400" />}
-                                </label>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
-        </div>
+        <ColumnPicker
+            columns={cols.map(id => ({ id, label: docColLabel(record, id), locked: DOC_LOCKED_COLS.includes(id) }))}
+            visible={visible} onToggle={onToggle} />
     );
 }
 
@@ -2651,15 +2678,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                 ) : <span />}
                 <div className="flex items-center gap-3 flex-wrap">
                     {/* Persistent "Show history" toggle — reveals older/historical versions; disabled when there are none yet. */}
-                    <button type="button" disabled={historyCount === 0} onClick={() => setIncludeHistory(v => !v)}
-                        title={historyCount === 0 ? 'No older records yet' : includeHistory ? 'Hide historical records' : 'Show historical (old) records'}
-                        className={cn('inline-flex items-center gap-2 text-[12px] font-semibold', historyCount === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:text-slate-800')}>
-                        <span className={cn('relative h-5 w-9 rounded-full transition-colors', includeHistory && historyCount > 0 ? 'bg-blue-600' : 'bg-slate-300')}>
-                            <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', includeHistory && historyCount > 0 ? 'left-[18px]' : 'left-0.5')} />
-                        </span>
-                        Show history
-                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-slate-100', historyCount === 0 ? 'text-slate-400' : 'text-slate-500')}>{historyCount}</span>
-                    </button>
+                    <HistoryToggle on={includeHistory} onChange={setIncludeHistory} count={historyCount}
+                        emptyTitle="No older records yet" />
                     <button type="button" onClick={() => setEntry(subjectId, record.id, buildDetailSample(record))} title="Populate this record with sample data (multiple documents)"
                         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[12px] font-semibold text-violet-700 hover:bg-violet-100">
                         <Sparkles size={14} /> Sample data
@@ -2680,44 +2700,34 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             ) : (
                 <>
                     {/* Toolbar — search + tag filter + column selector (hidden in compact/inline mode) */}
-                    {!compact && (
-                    <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 flex-wrap">
-                        <div className="relative flex-1 min-w-[200px] max-w-sm">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="Search records, numbers, tags, files…"
-                                className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
-                        </div>
-                        {(tagOptions.length > 0 || showStatus || selectFieldDefs.length > 0) && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
-                        )}
-                        {showStatus && (() => {
-                            const opts = record.statusOptions ?? presentValues(v => v.status);
-                            const label = record.statusLabel ?? 'Status';
-                            return opts.length > 0 && (
-                                <select value={valueFilters.status ?? ''} onChange={e => setValueFilter('status', e.target.value)} title={`Filter by ${label.toLowerCase()}`}
-                                    className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                    <option value="">All {pluralise(label.toLowerCase())}</option>
-                                    {opts.map(o => <option key={o} value={o}>{o}</option>)}
-                                </select>
-                            );
-                        })()}
-                        {selectFieldDefs.map(f => (
-                            <select key={f.key} value={valueFilters[f.key] ?? ''} onChange={e => setValueFilter(f.key, e.target.value)} title={`Filter by ${f.label.toLowerCase()}`}
-                                className="h-9 max-w-[13rem] rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                <option value="">All {pluralise(f.label.toLowerCase())}</option>
-                                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                        ))}
-                        {tagOptions.length > 0 && (
-                            <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} title="Filter by tag"
-                                className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                <option value="all">All tags</option>
-                                {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        )}
-                        <div className="hidden md:block"><DocColumnsDropdown record={record} cols={applicableDocCols} visible={visibleDocCols} onToggle={toggleDocCol} /></div>
-                    </div>
-                    )}
+                    {!compact && (() => {
+                        const statusOpts = showStatus ? (record.statusOptions ?? presentValues(v => v.status)) : [];
+                        const statusLabel = record.statusLabel ?? 'Status';
+                        const hasFilters = tagOptions.length > 0 || statusOpts.length > 0 || selectFieldDefs.length > 0;
+                        return (
+                            <ListToolbar
+                                search={docSearch} onSearch={setDocSearch}
+                                placeholder="Search records, numbers, tags, files…"
+                                filters={hasFilters ? (
+                                    <>
+                                        {statusOpts.length > 0 && (
+                                            <FilterSelect value={valueFilters.status ?? ''} onChange={v => setValueFilter('status', v)}
+                                                title={`Filter by ${statusLabel.toLowerCase()}`} allLabel={`All ${pluralise(statusLabel.toLowerCase())}`} options={statusOpts} />
+                                        )}
+                                        {selectFieldDefs.map(f => (
+                                            <FilterSelect key={f.key} value={valueFilters[f.key] ?? ''} onChange={v => setValueFilter(f.key, v)}
+                                                title={`Filter by ${f.label.toLowerCase()}`} allLabel={`All ${pluralise(f.label.toLowerCase())}`} options={f.options} />
+                                        ))}
+                                        {tagOptions.length > 0 && (
+                                            <FilterSelect value={tagFilter === 'all' ? '' : tagFilter} onChange={v => setTagFilter(v || 'all')}
+                                                title="Filter by tag" allLabel="All tags" options={tagOptions} />
+                                        )}
+                                    </>
+                                ) : undefined}
+                                columns={<DocColumnsDropdown record={record} cols={applicableDocCols} visible={visibleDocCols} onToggle={toggleDocCol} />}
+                            />
+                        );
+                    })()}
                     {pageRows.length === 0 ? (
                         <div className="px-5 py-12 text-center text-sm text-slate-500">No documents match your search / filters.</div>
                     ) : (
@@ -2926,28 +2936,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     )}
                     {/* Pagination footer — rows per page + range + pager (hidden in compact/inline mode) */}
                     {!compact && (
-                    <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
-                        <div className="flex items-center gap-3 text-[12px] text-slate-500">
-                            <label className="flex items-center gap-1.5">
-                                Rows per page
-                                <select value={docPageSize} onChange={e => setDocPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                    {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                            </label>
-                            <span className="tabular-nums">{totalDocs === 0 ? '0' : `${docStart + 1}–${Math.min(docStart + docPageSize, totalDocs)}`} of {totalDocs}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <button type="button" disabled={docSafePage <= 1} onClick={() => setDocPage(docSafePage - 1)}
-                                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                <ChevronLeft size={14} /> Prev
-                            </button>
-                            <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {docSafePage} of {docTotalPages}</span>
-                            <button type="button" disabled={docSafePage >= docTotalPages} onClick={() => setDocPage(docSafePage + 1)}
-                                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                Next <ChevronRight size={14} />
-                            </button>
-                        </div>
-                    </div>
+                        <TablePager page={docSafePage} pageSize={docPageSize} total={totalDocs}
+                            onPage={setDocPage} onPageSize={n => { setDocPageSize(n); setDocPage(1); }} />
                     )}
                 </>
             )}
@@ -2996,7 +2986,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     );
 }
 
-type DetailTab = 'documents' | 'monitoring';
+type DetailTab = 'documents' | 'monitoring' | 'insurance';
 function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate, showSubject = true }: {
     record: SafetyRecord; entry: RecordDataEntry; entity: EntityId; subjectLabel: string;
     subjectId: string; setEntry: EntrySetter;
@@ -3016,21 +3006,19 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
     // the user already is, the browser clamps scrollTop, the header re-expands, and the page
     // fights every scroll. A purely cosmetic change can't do that. The facts below the bar are
     // an ordinary block that simply scrolls away.
-    const topSentinel = useRef<HTMLDivElement>(null);
-    const [stuck, setStuck] = useState(false);
-    useEffect(() => {
-        const el = topSentinel.current;
-        if (!el) return;
-        const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { threshold: 0 });
-        io.observe(el);
-        return () => io.disconnect();
-    }, []);
+    // One sentinel answers both questions: has the view started scrolling (the bar's shadow),
+    // and has it gone far enough that the facts should give the table their room back.
+    const { ref: topSentinel, barRef, condensed, stuck } = useCondensingAnchor();
     // Records with nothing to alert on carry no monitoring anywhere — no tab, no summary row.
     const showMonitoring = !record.hideMonitoring;
     const status = entryStatus(record, entry);
     const isMulti = !!record.multiInstance;
     const cur = isMulti ? (instancesOf(entry)[0]?.versions[0] ?? null) : currentVersion(entry);
-    const dated = isDateMonitored(record);
+    // The facts below describe the CURRENT document, so they read the record as that document's
+    // own kind — an incorporation certificate shows its issue date and no expiry, a business
+    // licence the reverse. The tabs and the monitoring summary stay on the whole record.
+    const curRec = recordForFields(record, cur?.fields);
+    const dated = isDateMonitored(curRec);
     const cfg = cur?.monitoring;
     const monitoringOn = isMulti ? instancesOf(entry).some(i => !!i.versions[0]?.monitoring?.enabled) : !!cfg?.enabled;
     const monitoredDate = cur && cfg ? monitoredDateFor(cfg, cur) : '';
@@ -3038,6 +3026,20 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
     const noun = record.instanceNoun || 'document';
     const showNumber = !!record.numberName;
     const docCount = buildDocRows(record, entry).length;
+    /**
+     * The MC certificate is two things at once: the document the office filed, and a federal
+     * authority whose status, required insurance and insurance filings only FMCSA can answer
+     * for. The number on the record is what joins them, so the lookup reads from the current
+     * record — and from the newest one filed if that has none.
+     */
+    const isMc = record.id === 'mc';
+    const mcNumber = isMc
+        ? (cur?.numberValue?.trim() || entry.versions.find(v => v.numberValue?.trim())?.numberValue?.trim() || '')
+        : '';
+    const detailTabs: [DetailTab, string][] = isMc
+        ? [['documents', 'Documents'], ['insurance', 'Insurance details']]
+        : [['documents', isMulti ? `${noun.charAt(0).toUpperCase() + noun.slice(1)} filings` : 'Records'], ['monitoring', 'Monitoring']];
+    const showTabs = isMc || showMonitoring;
 
     return (
         // No `space-y` here: the identity bar and the current-record block must sit flush as
@@ -3049,7 +3051,12 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
             <div ref={topSentinel} aria-hidden className="h-px" />
             {/* Identity bar — pinned, fixed height. Back to list and the record's name stay
                 reachable for the whole page. */}
-            <div className={cn('sticky top-0 z-20 flex items-center gap-3 rounded-t-xl border border-slate-200 bg-white px-4 py-2.5 transition-shadow duration-200',
+            <div ref={barRef} className={cn('sticky top-0 z-20 flex items-center gap-3 rounded-t-xl border border-slate-200 bg-white px-4 transition-shadow duration-200',
+                HEADER_TRANSITION,
+                // The bar tightens as the block below it folds, so the two read as one movement
+                // — the header travelling up and out of the way — rather than as a panel
+                // vanishing from under a bar that did not react.
+                condensed ? 'py-1.5' : 'py-2.5',
                 // Pinned, it is a card floating over the list, so it closes on all four corners.
                 // The block below rounds its own top in the same breath — rounding only the bar
                 // would leave the block's square corners poking out of the notch.
@@ -3059,16 +3066,48 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                     <ChevronLeft size={15} /> <span className="hidden sm:inline">Back to list</span>
                 </button>
                 <span aria-hidden className="h-6 w-px shrink-0 bg-slate-200" />
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                    <FileText size={18} />
+                <span className={cn('flex shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600', HEADER_TRANSITION,
+                    condensed ? 'h-7 w-7' : 'h-9 w-9')}>
+                    <FileText size={condensed ? 15 : 18} />
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                         <h2 className="truncate text-[15px] font-bold leading-tight text-slate-900">{record.recordName}</h2>
                         {record.custom && <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={10} /> Custom</span>}
+                        {/* Condensed, the facts below are gone — so the ones that say whether
+                            this record is in order come up here beside the name. */}
+                        {condensed && cur && (
+                            <span className="hidden min-w-0 items-center gap-2 sm:flex">
+                                <span aria-hidden className="h-3.5 w-px shrink-0 bg-slate-200" />
+                                <span className="truncate text-[12px] font-semibold text-slate-500">{cur.numberValue || cur.label}</span>
+                            </span>
+                        )}
+                        {condensed && isMc && <McAuthorityFacts mcNumber={mcNumber} condensed />}
                     </div>
-                    {record.description && <p className="truncate text-[12px] text-slate-500">{record.description}</p>}
+                    {/* Whose record this is and what kind of record it is — one muted line
+                        under the name. Both used to be facts in the block below, where they
+                        sat among the captured values looking like two more of them. */}
+                    {!condensed && (
+                        <p className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-slate-500">
+                            {showSubject && (
+                                <>
+                                    <EntityIcon size={12} className="shrink-0 text-slate-400" />
+                                    <span className="truncate font-semibold text-slate-600">{subjectLabel}</span>
+                                    <span aria-hidden className="text-slate-300">·</span>
+                                </>
+                            )}
+                            <span className="truncate">{record.description || RECORD_TYPE_LABEL[record.type]}</span>
+                        </p>
+                    )}
                 </div>
+                {/* The classification, kept out of the way at the end of the bar: it never
+                    changes, and it is the last thing anyone comes to this page for. It gives
+                    up its place first — below a wide screen, and while the bar is condensed,
+                    the record's own name and subject need the room more. */}
+                <p className={cn('hidden min-w-0 max-w-[18rem] shrink truncate text-right text-[11px] text-slate-400', !condensed && 'xl:block')}
+                    title={`${RECORD_TYPE_LABEL[record.type]} · ${CATEGORY_SHORT[record.category] ?? record.category} · ${record.jurisdiction}`}>
+                    {RECORD_TYPE_LABEL[record.type]} · {CATEGORY_SHORT[record.category] ?? record.category} · {record.jurisdiction}
+                </p>
                 <div className="flex shrink-0 items-center gap-2">
                     <StatusPill status={status} />
                 </div>
@@ -3076,26 +3115,32 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
             {/* Current record — the values actually captured on the newest version, joined
                 flush to the bar above. The facts flow instead of sitting on a fixed grid: the
                 field set varies per record, and a grid left dead cells on every odd count. */}
-            <div className={cn('overflow-hidden rounded-b-xl border border-slate-200 bg-white shadow-sm',
+            {/*
+                Folding away as the page scrolls, on a REAL height rather than a max-height.
+                A max-height animation has to be given a number bigger than the block can ever
+                be, so most of the transition is spent shrinking through empty space and the
+                fold only becomes visible at the end — it reads as a snap. A grid whose single
+                row goes from `1fr` to `0fr` interpolates the row's actual height, so the block
+                travels the whole way and the content slides up under the pinned bar with it.
+            */}
+            <div className={cn('grid rounded-b-xl border border-slate-200 bg-white shadow-sm',
+                'transition-[grid-template-rows,opacity,box-shadow] duration-300 ease-out',
                 // At rest it is the bottom half of the bar's card — no top edge of its own.
                 // Once the bar detaches, it becomes a card in its own right and closes its top.
-                stuck ? 'rounded-t-xl border-t' : 'border-t-0')}>
-                <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-1.5">
-                    <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">{isMulti ? 'Current filing' : 'Current record'}</span>
-                        {cur && <span className="truncate rounded-md bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">{cur.label}</span>}
-                    </div>
-                    <p className="hidden min-w-0 truncate text-[11px] text-slate-400 md:block" title={`${RECORD_TYPE_LABEL[record.type]} · ${CATEGORY_SHORT[record.category] ?? record.category} · ${record.jurisdiction}`}>
-                        {RECORD_TYPE_LABEL[record.type]} · {CATEGORY_SHORT[record.category] ?? record.category} · {record.jurisdiction}
-                    </p>
-                </div>
+                stuck ? 'rounded-t-xl border-t' : 'border-t-0',
+                condensed ? 'grid-rows-[0fr] border-b-0 opacity-0' : 'grid-rows-[1fr] opacity-100')}>
+                <div className={cn('overflow-hidden', HEADER_TRANSITION,
+                    // A short lift as it goes, so the block reads as tucking up behind the bar
+                    // rather than as a panel being squashed flat.
+                    condensed && '-translate-y-1')}>
                 {cur ? (
+                    // The values captured on the record — and nothing that merely says what
+                    // page you are on. The record's name, its subject and its classification
+                    // are all in the bar above; repeating them here as facts was three rows of
+                    // header before the first real value.
                     <div className="flex flex-wrap gap-x-8 gap-y-3 px-4 py-3">
-                        {showSubject && (
-                            <Fact label="Subject"><span className="flex items-center gap-1.5"><EntityIcon size={13} className="shrink-0 text-slate-400" /> <span className="truncate">{subjectLabel}</span></span></Fact>
-                        )}
-                        {showNumber && <Fact label={record.numberName}>{cur.numberValue || <Dash />}</Fact>}
-                        {recordFields(record).map(f => {
+                        {showNumber && <Fact label={curRec.numberName}>{cur.numberValue || <Dash />}</Fact>}
+                        {recordFields(curRec).map(f => {
                             const text = fieldValue(f, cur.fields);
                             const link = onNavigate ? fieldSourceLink(f, cur) : null;
                             return (
@@ -3112,21 +3157,21 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                                 </Fact>
                             );
                         })}
-                        {(dated || !record.hideStatus) && (
-                            <Fact label={(dated ? record.monitorType : record.statusLabel ?? record.monitorType) || (dated ? 'Monitored date' : 'Status')}>
+                        {(dated || !curRec.hideStatus) && (
+                            <Fact label={(dated ? curRec.monitorType : curRec.statusLabel ?? curRec.monitorType) || (dated ? 'Monitored date' : 'Status')}>
                                 {dated ? (monitoredDate || <Dash />) : (cur.status || <Dash />)}
                             </Fact>
                         )}
-                        {record.tracksIssueDate && <Fact label="Issue date">{cur.issueDate || <Dash />}</Fact>}
+                        {curRec.tracksIssueDate && <Fact label="Issue date">{cur.issueDate || <Dash />}</Fact>}
                         <Fact label="Document" className="min-w-[12rem] max-w-[20rem]">
                             {cur.files.length === 0
                                 ? <span className="font-normal text-amber-600">No document</span>
                                 : <span className="block truncate" title={cur.files.map(f => f.name).join(', ')}>{cur.files[0].name}{cur.files.length > 1 ? ` +${cur.files.length - 1}` : ''}</span>}
                         </Fact>
-                        {showMonitoring && (
+                        {showMonitoring && !curRec.hideMonitoring && (
                             <Fact label="Monitoring">
                                 {monitoringOn && cfg
-                                    ? <span className="inline-flex items-center gap-1 text-blue-600"><Bell size={12} /> On · {basisLabel(record, cfg.basis)}</span>
+                                    ? <span className="inline-flex items-center gap-1 text-blue-600"><Bell size={12} /> On · {basisLabel(curRec, cfg.basis)}</span>
                                     : <span className="font-normal text-slate-400">Off</span>}
                             </Fact>
                         )}
@@ -3143,31 +3188,40 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                         <p className="mt-0.5 text-[12px] text-slate-400">Add a record below to fill in this record’s details.</p>
                     </div>
                 )}
+                {/* The authority as FMCSA holds it — status, the insurance it requires and the
+                    BOC-3 agent on file. Part of THIS header, not a second one: it describes the
+                    same authority the facts above were captured for, and two stacked header
+                    cards saying "MC-103478" pushed the actual records off the screen. */}
+                {isMc && <McAuthorityFacts mcNumber={mcNumber} />}
+                </div>
             </div>
 
             {/* Optional extra section (e.g. DQ "Fill out the form" card) */}
             {detailExtra && <div className="mt-4">{detailExtra}</div>}
 
-            {/* Records + (optional) Monitoring. With monitoring off there is only one
-                section, so the table's own header IS the heading — no one-item tab strip. */}
+            {/* The tabbed body. With one section there is no tab strip — the table's own
+                header is the heading. The strip itself is the app's standard one (`SubTabs`):
+                same underline, same count badges, same scrolling rail as every other tab bar,
+                so a record's tabs are not a second thing to learn. */}
             <div className="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                {showMonitoring && (
-                    <div className="flex items-center gap-1 border-b border-slate-100 px-4 pt-3">
-                        {(([['documents', isMulti ? `${noun.charAt(0).toUpperCase() + noun.slice(1)} filings` : 'Records'], ['monitoring', 'Monitoring']] as [DetailTab, string][])).map(([id, label]) => (
-                            <button key={id} type="button" onClick={() => setTab(id)}
-                                className={cn('inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-                                    tab === id ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
-                                {label}
-                                {id === 'documents' && <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-500">{docCount}</span>}
-                            </button>
-                        ))}
-                    </div>
+                {showTabs && (
+                    <SubTabs
+                        className="px-2"
+                        size="sm"
+                        activeId={tab}
+                        onChange={id => setTab(id as DetailTab)}
+                        tabs={detailTabs.map(([id, label]) => ({
+                            id, label, count: id === 'documents' ? docCount : undefined,
+                        }))}
+                    />
                 )}
 
-                {tab === 'documents' || !showMonitoring ? (
-                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showMonitoring} />
-                ) : (
+                {tab === 'insurance' && isMc ? (
+                    <McInsuranceTab mcNumber={mcNumber} />
+                ) : tab === 'monitoring' && showMonitoring ? (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
+                ) : (
+                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showTabs} />
                 )}
             </div>
         </div>
@@ -3183,12 +3237,13 @@ const ACCENT: Record<string, string> = {
 };
 function KpiTile({ label, value, Icon, accent }: { label: string; value: string | number; Icon: typeof Layers; accent: string }) {
     return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3.5 flex items-center justify-between">
-            <div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
-                <div className="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums">{value}</div>
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:gap-3 sm:px-4 sm:py-3.5">
+            <div className="min-w-0">
+                {/* Wraps rather than truncates — see `KpiStatCard`. */}
+                <div className="text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-400 sm:text-[11px] sm:tracking-wider">{label}</div>
+                <div className="mt-0.5 text-xl font-bold text-slate-900 tabular-nums sm:text-2xl">{value}</div>
             </div>
-            <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center', ACCENT[accent] ?? ACCENT.slate)}>
+            <div className={cn('hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex sm:h-9 sm:w-9', ACCENT[accent] ?? ACCENT.slate)}>
                 <Icon size={18} />
             </div>
         </div>
@@ -3295,7 +3350,7 @@ function RadioChoice({ name, value, options, onChange }: {
  * letter and asking "what actually happened?" should not mean leaving the file and hunting
  * for that record by hand, so the reference becomes a link.
  *
- * Which page it opens comes from the letter itself (its "Issued from" value), and the id —
+ * Which page it opens comes from the letter itself (its "Issued for" value), and the id —
  * present when the letter was filed BY a review rather than typed in — opens that exact
  * record. Without the id the link still lands on the right list, which beats nothing.
  * Null for every ordinary text field, so nothing else on any other record changes.
@@ -3320,7 +3375,7 @@ function openSourceLink(link: { path: string; id?: string }, navigate: (path: st
 /** Max documents that can hang off ONE insurance policy record (bulk drag-drop up to this many). */
 const MAX_POLICY_DOCS = 10;
 
-export function VersionFields({ record, version, onChange, tagCatalog, addToCatalog, editableLabel, onNavigate }: {
+export function VersionFields({ record: baseRecord, version, onChange, tagCatalog, addToCatalog, editableLabel, onNavigate }: {
     record: SafetyRecord; version: DocVersion; onChange: (next: DocVersion) => void;
     tagCatalog: string[]; addToCatalog: (t: string) => void; editableLabel?: boolean;
     /** Needed to open a field's source record (a warning letter's ticket / accident). Without
@@ -3328,6 +3383,12 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     onNavigate?: (path: string) => void;
 }) {
     const v = version;
+    // The form asks for what THIS document has. A record can hold more than one kind — the
+    // certificate of incorporation that never expires and the business licence that does — and
+    // the whole form follows from the kind: its dates, what its number is called, the name of
+    // the document being uploaded, whether there is an alert to set. Records with one kind
+    // resolve to themselves, so nothing else here changes.
+    const record = recordForFields(baseRecord, v.fields);
     const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
     const slots = record.slotLabels ?? [];
     const countries = record.allCountries ? ALL_COUNTRIES : COUNTRIES;
@@ -3355,7 +3416,9 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const ROW_START = 'sm:col-start-1';
     const pairJurisdiction = showCountry && showState;
     const pairDates = showIssue && showExpiry;
-    const expiryRequired = cf ? cf.expiryDate.required : true;
+    // Required unless the record says otherwise — a date the system derives (a next review due
+    // from an issue date) must not block filing a record that is complete without it.
+    const expiryRequired = cf ? cf.expiryDate.required : !record.expiryOptional;
     const showStatus = cf ? cf.status.enabled : (!isDateMonitored(record) && !record.hideStatus);
     const statusRequired = cf ? cf.status.required : true;
     // A record can rename its monitored status and supply its own values — e.g. a drug test
@@ -3382,7 +3445,9 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const firstRadio = inlineFields.find(isRadio)?.key;
     const extraRowStart = (f: RecordFieldDef) =>
         (f.rowStart || f.key === firstExtraDate || f.key === firstRadio || f.kind === 'derived') ? ROW_START : undefined;
-    const setExtra = (key: string, val: string) => patch({ fields: { ...(v.fields ?? {}), [key]: val } });
+    // Writing one of the record's own fields can settle more than that field — see
+    // `fieldWritePatch`, which is where all of that lives.
+    const setExtra = (key: string, val: string) => patch(fieldWritePatch(baseRecord, v, key, val));
     const showUpload = cf ? cf.upload.enabled : hasDoc;
     const showMonitoring = cf ? cf.monitoring.enabled : !record.hideMonitoring;
     const showNotes = cf ? cf.notes.enabled : true;
@@ -3393,7 +3458,11 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
     const showTags = tagsEnabled && !isMultiDoc;
     const showDocTags = tagsEnabled;
     const inputCls = 'w-full h-9 px-3 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
-    const states = STATES_BY_COUNTRY[v.country] ?? [];
+    // A record whose jurisdiction depends on one of its own fields offers only the provinces
+    // that can issue what was chosen — Québec for an NIR, Ontario for a CVOR Level 2, the
+    // provinces that issue an NSC for an NSC. Everything else offers the country's full list.
+    const allowedStates = statesForRecord(record, v.fields);
+    const states = allowedStates ?? STATES_BY_COUNTRY[v.country] ?? [];
 
     const patch = (p: Partial<DocVersion>) => onChange({ ...v, ...p });
     const setCountry = (val: string) => onChange({ ...v, country: val, stateProv: (STATES_BY_COUNTRY[val] ?? []).includes(v.stateProv) ? v.stateProv : '' });
@@ -3517,8 +3586,10 @@ export function VersionFields({ record, version, onChange, tagCatalog, addToCata
                         <input type="date" value={v.issueDate} onChange={e => patch({ issueDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}
+                {/* Marked Optional the same way the issue date is — a field that can be left
+                    blank has to say so, or it reads as required and simply broken. */}
                 {showExpiry && (
-                    <Field label={cf ? 'Expiry date' : record.monitorType} required={expiryRequired} optional={cf ? !expiryRequired : undefined}>
+                    <Field label={cf ? 'Expiry date' : record.monitorType} required={expiryRequired} optional={!expiryRequired}>
                         <input type="date" value={v.expiryDate} onChange={e => patch({ expiryDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}

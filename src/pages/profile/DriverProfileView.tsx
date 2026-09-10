@@ -2369,7 +2369,7 @@ const HEADER_TRANSITION =
                     >
                         <div className="overflow-x-auto border border-slate-200 rounded-lg">
                             <table className="w-full text-left text-sm table-fixed">
-                                <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky-head">
                                     <tr>
                                         <th className="px-6 py-3 w-1/5">Number Type</th>
                                         <th className="px-6 py-3 w-1/5">Value</th>
@@ -2881,7 +2881,7 @@ const HEADER_TRANSITION =
                     <Card title="Documents" icon={FileText}>
                         <div className="overflow-x-auto border border-slate-200 rounded-lg">
                             <table className="w-full text-left text-sm table-fixed">
-                                <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky-head">
                                     <tr>
                                         <th className="px-6 py-3 w-[28%]">Document Type</th>
                                         <th className="px-6 py-3 w-[14%]">Status</th>

@@ -13,10 +13,10 @@ import { Field, Grid, SelectBox, ToggleRow, RevealPanel, PdfUpload, CheckLine, R
 import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocument";
 
 /**
- * Driver Abstract / MVR — official driving record, province / state aware.
- *   • US           → Motor Vehicle Record (MVR), by state
+ * Driver Abstract — official driving record, province / state aware.
+ *   • US           → Driver Non-Commercial Abstract (motor vehicle record), by state
  *   • Canada       → province-specific abstract (Ontario CVOR, Alberta 5-Year, …)
- *   • Cross-Border → BOTH a US MVR and a Canadian Abstract, each captured in full
+ *   • Cross-Border → BOTH a US non-commercial abstract and a Canadian one, in full
  * Record-type options come from abstract-records.data.ts based on the chosen
  * issuing authority, so each province/state shows its own products.
  */
@@ -52,9 +52,9 @@ const newRecord = (region: Region): DrivingRecord => ({
 export function DriverAbstractForm({ onBack, embedded, variant, startPreview, onSignOff }: { onBack: () => void; embedded?: boolean; variant?: "mvr" | "abstract"; startPreview?: boolean; onSignOff?: () => void }) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
-    // When a variant is given the form is locked to a single country (MVR = US, Abstract = Canada).
+    // When a variant is given the form is locked to a single country (non-commercial = US, abstract = Canada).
     const lockedRegion: Region | null = variant === "mvr" ? "United States" : variant === "abstract" ? "Canada" : null;
-    const formTitle = variant === "mvr" ? "Motor Vehicle Record (MVR)" : variant === "abstract" ? "Driver Abstract" : "Driver Abstract / MVR";
+    const formTitle = variant === "mvr" ? "Driver Non-Commercial Abstract" : variant === "abstract" ? "Driver Abstract" : "Driver Abstract";
     const [mode, setMode] = useState<string>(() => lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States"));
     const [records, setRecords] = useState<DrivingRecord[]>(() => {
         const country = lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States");
@@ -89,9 +89,9 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
     const fillSample = () => {
         const sample: DrivingRecord[] = [
             {
-                ...newRecord("United States"), authority: "Illinois", recordType: "Motor Vehicle Record (MVR)", licenseNumber: "D1234-5678-90", status: "Violations on record",
-                primary: { issueDate: "2026-05-20", pdf: "uploaded" }, orderNumber: "MVR-55210", searchDateTime: "2026-05-20T09:15", dateIssued: "2026-05-20", dateReceived: "2026-05-21",
-                abstractNumber: "IL-MVR-77410", abstractIssueDate: "2026-05-20",
+                ...newRecord("United States"), authority: "Illinois", recordType: "Driver Non-Commercial Abstract", licenseNumber: "D1234-5678-90", status: "Violations on record",
+                primary: { issueDate: "2026-05-20", pdf: "uploaded" }, orderNumber: "ABS-55210", searchDateTime: "2026-05-20T09:15", dateIssued: "2026-05-20", dateReceived: "2026-05-21",
+                abstractNumber: "IL-ABS-77410", abstractIssueDate: "2026-05-20",
                 hasViolations: true, violations: [{ date: "2024-02-11", description: "Speeding 12 mph over limit", points: "3", location: "Illinois" }],
             },
             {
@@ -136,7 +136,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
             { title: `${p}Driving Record`, groups: [{ rows: [
                 { label: "Issuing Country", value: r.region }, { label: authLabel, value: r.authority },
                 { label: "Date Issued", value: r.dateIssued }, { label: "Date Received", value: r.dateReceived },
-                { label: `Driver ${isCanada ? "Abstract" : "MVR"} (PDF)`, value: attached(r.primary) },
+                { label: `Driver ${isCanada ? "Abstract" : "Non-Commercial Abstract"} (PDF)`, value: attached(r.primary) },
             ] }] },
             ...(r.hasViolations ? [{ title: `${p}Violations / Convictions`, groups: r.violations.map((vi, i) => ({ label: r.violations.length > 1 ? `Violation ${i + 1}` : undefined, rows: [{ label: "Date", value: vi.date }, { label: "Charge / Description", value: vi.description }, { label: pointsLabel, value: vi.points }, { label: "State / Location", value: vi.location }] })) }] : []),
             ...(r.hasAccidents ? [{ title: `${p}Accidents / Collisions`, groups: r.accidents.map((a, i) => ({ label: r.accidents.length > 1 ? `Accident ${i + 1}` : undefined, rows: [{ label: "Date", value: a.date }, { label: "Description", value: a.description }, { label: "At Fault", value: a.atFault }] })) }] : []),
@@ -154,7 +154,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
         { label: "Total out-of-service recorded", ok: !!summary.outOfService },
     ];
     const recordChecks = (r: DrivingRecord) => {
-        const noun = r.region === "Canada" ? "Abstract" : "MVR";
+        const noun = r.region === "Canada" ? "Abstract" : "Non-Commercial Abstract";
         return [
             { label: `${noun} report uploaded`, ok: !!r.primary.pdf },
             { label: "Issuing state / province provided", ok: !!r.authority },
@@ -177,7 +177,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
             { label: "Total Out-of-Service (OOS)", value: summary.outOfService },
         ] }] },
         { title: "Review Checklist", groups: [
-            ...records.map((r) => ({ label: records.length > 1 ? `Driver ${r.region === "Canada" ? "Abstract" : "MVR"} Record` : undefined, rows: recordChecks(r).map((c) => ({ label: c.label, value: checkVal(c.ok) })) })),
+            ...records.map((r) => ({ label: records.length > 1 ? `Driver ${r.region === "Canada" ? "Abstract" : "Non-Commercial Abstract"} Record` : undefined, rows: recordChecks(r).map((c) => ({ label: c.label, value: checkVal(c.ok) })) })),
             { label: records.length > 1 ? "Summary" : undefined, rows: summaryChecks.map((c) => ({ label: c.label, value: checkVal(c.ok) })) },
         ] },
         ...(remarks.length ? [{ title: "Remarks & Comments", groups: [{ rows: remarks.slice().reverse().map((r, i) => ({ label: `Remark ${i + 1}`, value: r.text })) }] }] : []),
@@ -193,7 +193,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Info className="h-4 w-4" /></div>
                 <p className="text-sm text-slate-600">{lockedRegion
                     ? <>Choose the issuing {lockedRegion === "Canada" ? "province" : "state"}, enter the dates and upload the report, then complete the review checklist and sign off below.</>
-                    : <>Choose the issuing province/state, enter the record details, then complete the review checklist and sign off below. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US MVR and a Canadian abstract.</>}</p>
+                    : <>Choose the issuing province/state, enter the record details, then complete the review checklist and sign off below. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US non-commercial abstract and a Canadian one.</>}</p>
             </div>
 
             {/* Mode — hidden when the form is locked to one country via `variant`. */}
@@ -246,7 +246,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist</p>
                 {records.map((r, i) => {
-                    const noun = r.region === "Canada" ? "Abstract" : "MVR";
+                    const noun = r.region === "Canada" ? "Abstract" : "Non-Commercial Abstract";
                     const checks = [
                         { label: `${noun} report uploaded`, ok: !!r.primary.pdf },
                         { label: "Issuing state / province provided", ok: !!r.authority },
@@ -341,9 +341,9 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
 // ----------------------------- one jurisdiction's record (editable) -----------------------------
 function RecordCard({ value, onChange, locked }: { value: DrivingRecord; onChange: (patch: Partial<DrivingRecord>) => void; locked?: boolean }) {
     const isCanada = value.region === "Canada";
-    const noun = isCanada ? "Abstract" : "MVR";
+    const noun = isCanada ? "Abstract" : "Non-Commercial Abstract";
     const authLabel = isCanada ? "Issuing Province" : "Issuing State";
-    const pdfHint = isCanada ? "Upload the driver abstract PDF for the selected province." : "Upload the Motor Vehicle Record (MVR) PDF.";
+    const pdfHint = isCanada ? "Upload the driver abstract PDF for the selected province." : "Upload the driver non-commercial abstract PDF.";
     const auth = authoritiesFor(value.region);
 
     const onCountry = (c: string) => onChange({ region: c as Region, authority: "" });

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Clock, Search, Download, Filter, Columns, ChevronDown, ChevronUp, ChevronsUpDown, X,
+  Clock3, Search, Download, Filter, Columns, ChevronDown, ChevronUp, ChevronsUpDown, X,
   ShieldAlert, CircleAlert, Flag, AlertOctagon, CheckCircle2, Gauge, Truck,
   Eye, Trash2, MoreVertical, GraduationCap, Ban, History, ClipboardCheck,
   FileWarning, RotateCcw, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PageHeader } from '@/pages/ats/ats-ui';
+import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
+import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 import {
   getHosViolations, fmtDurationMin,
@@ -396,8 +397,6 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
       reference: r.id,
       sourceId: r.id,
       eventDate: r.dateTime,
-      summary: [HOS_TYPE_BY_ID[r.typeId]?.description, r.truckId ? `Unit ${r.truckId}` : null,
-        `${r.severity} severity`].filter(Boolean).join(' · '),
     }, currentUserName);
   };
 
@@ -474,6 +473,17 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
     resolved: records.filter(r => r.status === 'resolved').length,
     points: records.reduce((a, r) => a + r.riskPoints, 0),
   }), [records]);
+
+  // The header stays put and shrinks as the ledger scrolls; the body below is its own scroller.
+  const { scrollRef, condensed, onScroll } = useCondensingHeader(tab);
+  const kpiChips = useMemo(() => [
+    { id: 'total', label: 'Violations', value: kpis.total },
+    { id: 'critical', label: 'Critical', value: kpis.critical, tone: 'text-red-700' },
+    { id: 'high', label: 'High', value: kpis.high, tone: 'text-amber-700' },
+    { id: 'review', label: 'In review', value: kpis.review, tone: 'text-amber-700' },
+    { id: 'closed', label: 'Closed', value: kpis.resolved, tone: 'text-emerald-700' },
+    { id: 'points', label: 'Risk points', value: kpis.points, tone: 'text-violet-700' },
+  ], [kpis]);
 
   const regionCounts = useMemo(() => {
     const c = { all: records.length, us: 0, canada: 0, both: 0 };
@@ -556,35 +566,32 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
   const anyFilter = sevFilter !== 'all' || statusFilter !== 'all' || companyFilter !== 'all' || region !== 'all' || typeFilter || search;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <PageHeader
-        iconGradient="from-orange-500 to-red-600"
-        Icon={Clock}
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      {/* The app's standard list header (see `ListPageHeader`). */}
+      <ListPageHeader
+        Icon={Clock3}
         title="Hours of Service"
-        subtitle="Driver duty-status logs and FMCSA / Canadian HOS violations, synced from your ELD provider"
+        description="Driver duty-status logs and FMCSA / Canadian HOS violations, synced from your ELD provider"
+        count={tab === 'violations' ? kpis.total : undefined}
+        countTitle={`${kpis.total.toLocaleString()} violations`}
+        chips={tab === 'violations' ? kpiChips : undefined}
+        condensed={condensed}
+        tabsLabel="Hours-of-service views"
+        showZeroCounts
+        tabs={[{ id: 'logs', label: 'Logs' }, { id: 'violations', label: 'Violations', count: kpis.total }]}
+        activeTab={tab}
+        onTabChange={id => setTab(id as 'violations' | 'logs')}
         actions={
-          <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
+          <button type="button" className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}>
             <Download size={15} /> Export
           </button>
         }
-      >
-        <div className="flex gap-1">
-          {([['logs', 'Logs'], ['violations', 'Violations']] as const).map(([id, label]) => {
-            const active = tab === id;
-            return (
-              <button key={id} type="button" onClick={() => setTab(id)}
-                className={cn('relative flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
-                  active ? 'border-orange-600 text-orange-700' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </PageHeader>
+      />
 
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
       {tab === 'logs' && <HosLogsView accountId={accountId} />}
       {tab === 'violations' && (
-      <div className="space-y-5 p-4 sm:p-8">
+      <div className={cn('space-y-4 py-4 sm:space-y-5 sm:py-6', PAGE_PAD)}>
         {/* KPI cards — click to filter by severity / status */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <KpiStatCard label="Total Violations" value={kpis.total} Icon={ShieldAlert} accent="blue"
@@ -895,6 +902,7 @@ export function HosViolationsPage({ accountId, currentUserName = 'Safety Manager
         </div>
       </div>
       )}
+      </div>
 
       {viewing && (
         <HosViolationModal

@@ -1064,7 +1064,7 @@ function seedForms(): ApplicationFormDef[] {
         kind: 'custom',
         name: 'Additional Declarations',
         displayTitle: 'Additional Declarations',
-        description: 'Driver self-declarations (criminal charges, English proficiency). Compliance documents (MVR, PSP, abstract, background) are collected on their own review forms.',
+        description: 'Driver self-declarations (criminal charges, English proficiency). Compliance documents (non-commercial abstract, PSP, CVOR, background) are collected on their own review forms.',
         introText: 'A couple of declarations. The driving-record, PSP, abstract and background documents are gathered on the dedicated review forms — not here.',
         fields: [
             { id: 'f-add-criminal-charges', type: 'toggle', required: false, options: [], instruction: 'Self-declaration. The criminal background report is collected on the Criminal Background Check form.', label: 'Do you have any criminal charges against you?' },
@@ -1328,7 +1328,7 @@ function seedForms(): ApplicationFormDef[] {
         isDefault: true,
         updatedAt: today(),
     },
-    // Back-office compliance pipeline forms (PSP / MVR / Background / Substance / Clearinghouse / Employment / Decision).
+    // Back-office compliance pipeline forms (PSP / Abstract / Background / Substance / Clearinghouse / Employment / Decision).
     ...complianceReviewForms(),
     // Hiring ATS (post-application) pipeline forms — Abstract, CDR, Employment Verification,
     // Drug & Alcohol, Road Test, HOS/DVIR Quiz, Training Modules, Contracts.
@@ -1343,7 +1343,7 @@ function hiringAtsForms(): ApplicationFormDef[] {
         fields, documents: [], isDefault: true, formType: 'hiring-ats', updatedAt: today(),
     });
     return [
-        mk('form-ats-abstract', 'Driver Record Review', 'Driver Record Review (Abstract / CVOR / MVR)', "Consolidated driving-record review — driver abstract / CVOR / MVR details, operator-record summary, and the §391.25 annual review of the driving record.", [
+        mk('form-ats-abstract', 'Driver Record Review', 'Driver Record Review (Abstract / CVOR / Non-Commercial)', "Consolidated driving-record review — driver abstract / CVOR / non-commercial abstract details, operator-record summary, and the §391.25 annual review of the driving record.", [
             // ════════ 1 · Abstract Request ════════
             // Covers both Ontario abstract formats: the CVOR (Commercial Vehicle
             // Operator Record) and the 3-Year Driver Record Search. Both are uploaded

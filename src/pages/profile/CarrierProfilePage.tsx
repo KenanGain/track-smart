@@ -76,7 +76,8 @@ import { DriverImportModal } from './DriverImportModal';
 
 import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
-import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
+import { type SubTab } from '@/components/ui/SubTabs';
+import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
 import { PaginationBar, ColumnsDropdown } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 
@@ -1259,7 +1260,7 @@ export function CarrierProfilePage({
             // records — file them under the driver's id, which for a new driver only exists
             // once the roster below assigns one.
             const fileTravelDocs = (driverId: string) => {
-                const written = commitTravelDocs(accountId, driverId, data.application?.travelProfile, data.application?.travelDocs, 'Application');
+                const written = commitTravelDocs(accountId, driverId, data.application?.travelDocs, 'Application');
                 if (written.length) {
                     showToast(`${written.length} travel ${written.length === 1 ? 'document' : 'documents'} filed to compliance — ${written.join(', ')}`);
                 }
@@ -1314,65 +1315,30 @@ export function CarrierProfilePage({
                 ? 'h-full flex flex-col overflow-hidden'
                 : 'flex h-full min-h-0 flex-col overflow-hidden',
         )}>
-            {/* Header — white edge-to-edge bar with breadcrumb, page title +
-                subtitle and underline tabs, mirroring the New Compliance &
-                Documents catalog header. Hidden while reading a single asset
-                so the detail page's own header is the only navigational
-                element on screen. The carrier-switcher in the top navbar is
-                the single carrier-pick surface. */}
+            {/* The app's standard list header (see `ListPageHeader`). Hidden while reading a
+                single asset or running the asset wizard, both of which bring their own — the
+                carrier switcher in the top navbar is the single carrier-pick surface. */}
             {!isAssetDetailActive && !isAssetFormActive && (
-                <div className={cn(
-                    'relative z-20 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-8 transition-all duration-300 ease-out',
-                    condensed ? 'pt-3 pb-0 shadow-md' : 'py-5 shadow-none',
-                )}>
-                    <div className={cn(
-                        'flex items-center gap-3 flex-wrap overflow-hidden transition-all duration-300 ease-out',
-                        condensed ? 'max-h-0 opacity-0' : 'max-h-10 min-h-[18px] opacity-100',
-                    )}>
-                        {backTarget && (
-                            <>
-                                <button
-                                    type="button"
-                                    onClick={() => onNavigate?.(backTarget.path)}
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
-                                >
-                                    <ChevronDown size={13} className="rotate-90" />
-                                    {backTarget.label}
-                                </button>
-                                <span aria-hidden className="h-4 w-px bg-slate-200" />
-                            </>
-                        )}
-                        <div className="flex items-center gap-2 text-xs text-slate-400">
-                            <Building2 className="w-3.5 h-3.5" />
-                            <span>{viewData.page.breadcrumb[0]}</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="font-semibold text-slate-600">{viewData.page.breadcrumb[1]}</span>
-                        </div>
-                    </div>
-
-                    <div className={cn('min-w-0 transition-all duration-300 ease-out', condensed ? 'mt-0 flex items-baseline gap-2.5' : 'mt-3')}>
-                        <h1 className={cn(
-                            'font-bold text-slate-900 tracking-tight transition-all duration-300 ease-out',
-                            condensed ? 'text-base shrink-0' : 'text-2xl',
-                        )}>Carrier Profile</h1>
-                        <p className={cn(
-                            'text-slate-500 truncate transition-all duration-300 ease-out',
-                            condensed ? 'text-xs mt-0' : 'text-sm mt-0.5',
-                        )}>
-                            {viewData.page.carrierHeader.name} — {profileBundle?.assets?.length ?? INITIAL_ASSETS.length} assets · {drivers.length} drivers
-                        </p>
-                    </div>
-
-                    {/* Entity tabs — underline style flush with the header's bottom border. */}
-                    <SubTabs
-                        tabs={tabs}
-                        activeId={activeTab}
-                        onChange={setActiveTab}
-                        variant="underline"
-                        bordered={false}
-                        className={cn('transition-all duration-300 ease-out', condensed ? 'mt-2' : 'mt-4 -mb-5')}
-                    />
-                </div>
+                <ListPageHeader
+                    Icon={Building2}
+                    title="Carrier Profile"
+                    description={`${viewData.page.carrierHeader.name} — ${profileBundle?.assets?.length ?? INITIAL_ASSETS.length} assets \u00b7 ${drivers.length} drivers`}
+                    condensed={condensed}
+                    tabsLabel="Carrier profile sections"
+                    tabs={tabs}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    actions={backTarget && (
+                        <button
+                            type="button"
+                            onClick={() => onNavigate?.(backTarget.path)}
+                            className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600', condensed ? 'h-8' : 'h-9')}
+                        >
+                            <ChevronDown size={13} className="rotate-90" />
+                            {backTarget.label}
+                        </button>
+                    )}
+                />
             )}
 
             {/* Tab Content — edge-to-edge (no body padding) while reading an asset
@@ -1385,7 +1351,7 @@ export function CarrierProfilePage({
                     'min-h-0 flex-1',
                     isAssetFormActive || isAssetDetailActive
                         ? 'overflow-hidden'
-                        : 'overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6',
+                        : cn('overflow-y-auto overflow-x-hidden py-4 sm:py-6', PAGE_PAD),
                 )}
             >
 
@@ -1919,7 +1885,7 @@ export function CarrierProfilePage({
                                     {/* Desktop — full table. Actions stay pinned to the right edge so
                                         they are reachable however far the table is scrolled. */}
                                     <div className="hidden overflow-x-auto lg:block">
-                                        <table className="w-full min-w-[1040px] text-left text-sm">
+                                        <table className="pin-first w-full min-w-[1040px] text-left text-sm">
                                             <thead className="border-b border-slate-200 bg-slate-50">
                                                 <tr>
                                                     <DriverSortTH id="name" label="Driver" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-5" />
@@ -2110,7 +2076,7 @@ export function CarrierProfilePage({
                         >
                             <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                 <table className="w-full text-left text-sm table-fixed">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky top-0">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky-head">
                                         <tr>
                                             <th className="px-6 py-3 w-1/4">Number Type</th>
                                             <th className="px-6 py-3 w-1/4">Value</th>
@@ -2249,7 +2215,7 @@ export function CarrierProfilePage({
                         <Card title="Carrier Documents" icon="FileText" fullWidth>
                             <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                 <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky top-0">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky-head">
                                         <tr>
                                             <th className="px-4 py-3">Document Type</th>
                                             <th className="px-4 py-3">Document Type</th>

@@ -42,7 +42,7 @@ export const KNOWN_DATA_KEYS: Record<string, string> = {
     'f-psp-name': 'driver.fullName',
     // Date of birth (asked on Applicant, PSP, Clearinghouse)
     'f-dob': 'driver.dob', 'f-psp-dob': 'driver.dob', 'f-ch-dob': 'driver.dob',
-    // License / CDL number (License, PSP, MVR, Clearinghouse)
+    // License / CDL number (License, PSP, Abstract, Clearinghouse)
     'f-lic-number': 'license.number', 'f-psp-cdl': 'license.number',
     'f-mvr-number': 'license.number', 'f-ch-cdl': 'license.number',
     // License state / province
@@ -79,7 +79,7 @@ export interface CanonicalPart { id: string; fields: FormField[]; values: Record
  * key-number + document, e.g. the Driver License) is unpacked: its number → the
  * field's dataKey, and — when that key is a `license.*` key — its issue/expiry/
  * state/country meta → the matching `license.*` keys, so a license entered once
- * fills the License-number / state / dates fields on PSP / MVR / Clearinghouse.
+ * fills the License-number / state / dates fields on PSP / Abstract / Clearinghouse.
  */
 export function collectCanonical(parts: { fields: FormField[]; values: Record<string, unknown> }[]): Record<string, unknown> {
     const canon: Record<string, unknown> = {};

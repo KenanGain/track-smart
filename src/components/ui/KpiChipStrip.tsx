@@ -32,7 +32,9 @@ export function KpiChipStrip({ items, condensed, className }: {
     return (
         <div
             aria-hidden={!condensed}
-            className={cn('overflow-hidden', HEADER_TRANSITION, condensed ? 'max-h-12 opacity-100' : 'max-h-0 opacity-0', className)}
+            className={cn('overflow-hidden', HEADER_TRANSITION,
+                condensed ? 'max-h-12 opacity-100' : 'max-h-0 opacity-0',
+                className)}
         >
             {/* no-scrollbar rather than a visible one: this is a summary, and a scrollbar
                 across the header reads as a rendering fault (it did, on the tab strip). */}

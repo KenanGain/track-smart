@@ -268,7 +268,7 @@ const DocumentTypesPage: React.FC<DocumentTypesPageProps> = ({ onNavigate }) => 
                         <div className="flex-1 overflow-auto bg-white rounded-lg shadow ring-1 ring-gray-200">
 
                             <table className="min-w-full divide-y divide-gray-300">
-                                <thead className="bg-gray-50 sticky top-0 z-10">
+                                <thead className="bg-gray-50 sticky-head">
                                     <tr>
                                         <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 sm:pl-6">Document Name</th>
                                         <th scope="col" className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Category</th>

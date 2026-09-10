@@ -26,7 +26,7 @@ export interface DocTagSection {
     tags: DocTag[];
 }
 
-const STORAGE_KEY = 'ats:document-tag-sections-v2';
+const STORAGE_KEY = 'ats:document-tag-sections-v3';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -147,7 +147,7 @@ function seedSections(): DocTagSection[] {
             allowCustomTags: true,
             tags: [
                 { id: 'tag-medical',     label: 'Medical Certificate' },
-                { id: 'tag-mvr',         label: 'Motor Vehicle Record (MVR)' },
+                { id: 'tag-mvr',         label: 'Driver Non-Commercial Abstract' },
                 { id: 'tag-psp',         label: 'PSP Report' },
                 { id: 'tag-background',  label: 'Background Check' },
                 { id: 'tag-road-test',   label: 'Road Test' },

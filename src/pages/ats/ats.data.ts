@@ -67,7 +67,7 @@ export interface DrivingExperienceRow {
 export interface DocumentRow {
     id: string;
     label: string;
-    category: 'Application' | 'Background' | 'MVR' | 'PSP' | 'Substance' | 'DOT' | 'Other';
+    category: 'Application' | 'Background' | 'Abstract' | 'PSP' | 'Substance' | 'DOT' | 'Other';
     uploadedAt: string;
     uploadedBy: string;
     sizeKb: number;
@@ -183,7 +183,7 @@ export interface Applicant {
 export const PIPELINE_BLUEPRINT: { id: PipelineStepId; label: string; lines: string[] }[] = [
     { id: 'application_review',          label: 'Application Review',            lines: ['Application', 'Review'] },
     { id: 'psp',                         label: 'PSP',                           lines: ['PSP'] },
-    { id: 'mvr',                         label: 'MVR',                           lines: ['MVR'] },
+    { id: 'mvr',                         label: 'Non-Commercial Abstract',      lines: ['Non-Commercial Abstract'] },
     { id: 'criminal_background',         label: 'Criminal Background Check',     lines: ['Criminal', 'Background', 'Check'] },
     { id: 'substance_testing',           label: 'Substance Testing',             lines: ['Substance', 'Testing'] },
     { id: 'dot_employment_verification', label: 'DOT / Employment Verification', lines: ['DOT / Employment', 'Verification'] },
@@ -380,7 +380,7 @@ const _Maria: Applicant = (() => {
         substanceTest: { donorName: 'Maria Sharapova', employer: 'Craig Safety Technologies', orderStatus: 'draft' },
         screeningOrders: [
             { id: 'or-m1', type: 'psp', vendor: 'HireRight PSP', status: 'complete',  orderedAt: '2026-05-02', completedAt: '2026-05-05', resultSummary: 'No PSP violations on record.' },
-            { id: 'or-m2', type: 'mvr', vendor: 'Samba MVR',     status: 'ordered',   orderedAt: '2026-05-10' },
+            { id: 'or-m2', type: 'mvr', vendor: 'Samba',         status: 'ordered',   orderedAt: '2026-05-10' },
         ],
         documents: [], notes: [],
         alerts: [],
@@ -388,7 +388,7 @@ const _Maria: Applicant = (() => {
             baseEvent('ev-m1', 'created',        'Application created', 15, 'Self-service'),
             baseEvent('ev-m2', 'step_completed', 'Application Review completed', 13, 'Sarah Chen', undefined, 'application_review'),
             baseEvent('ev-m3', 'step_completed', 'PSP completed', 10, 'Compliance Monitor', 'No violations', 'psp'),
-            baseEvent('ev-m4', 'step_ordered',   'MVR ordered', 5, 'Sarah Chen', 'Vendor: Samba MVR', 'mvr'),
+            baseEvent('ev-m4', 'step_ordered',   'Abstract ordered', 5, 'Sarah Chen', 'Vendor: Samba', 'mvr'),
         ],
     };
 })();
@@ -413,12 +413,12 @@ const _LeBron: Applicant = (() => {
         ],
         substanceTest: { donorName: 'LeBron James', licenseNumber: '987776543', phone: '(216) 555-2323', employer: 'Craig Safety Technologies - North Kansas City', orderStatus: 'scheduled', testType: 'DOT', clinicName: 'Concentra · Cleveland Downtown' },
         screeningOrders: [
-            { id: 'or-l1', type: 'mvr', vendor: 'Samba MVR', status: 'complete', orderedAt: '2026-04-22', completedAt: '2026-04-24', resultSummary: 'Clean — no violations in 3 years.' },
+            { id: 'or-l1', type: 'mvr', vendor: 'Samba', status: 'complete', orderedAt: '2026-04-22', completedAt: '2026-04-24', resultSummary: 'Clean — no violations in 3 years.' },
             { id: 'or-l2', type: 'criminal_background', vendor: 'Checkr', status: 'complete', orderedAt: '2026-04-26', completedAt: '2026-04-30', resultSummary: 'No reportable records.' },
         ],
         documents: [
             { id: 'd-l1', label: 'Driver Application.pdf', category: 'Application', uploadedAt: '2026-04-15', uploadedBy: 'Self-service', sizeKb: 458, linkedStepId: 'application_review' },
-            { id: 'd-l2', label: 'MVR Report.pdf', category: 'MVR', uploadedAt: '2026-04-24', uploadedBy: 'Samba MVR', sizeKb: 132, linkedStepId: 'mvr' },
+            { id: 'd-l2', label: 'non-commercial-abstract.pdf', category: 'Abstract', uploadedAt: '2026-04-24', uploadedBy: 'Samba', sizeKb: 132, linkedStepId: 'mvr' },
             { id: 'd-l3', label: 'Background Check Report.pdf', category: 'Background', uploadedAt: '2026-04-30', uploadedBy: 'Checkr', sizeKb: 219, linkedStepId: 'criminal_background' },
         ],
         notes: [
@@ -431,7 +431,7 @@ const _LeBron: Applicant = (() => {
             baseEvent('ev-l1', 'created',          'Application created', 30, 'Self-service'),
             baseEvent('ev-l2', 'step_completed',   'Application Review completed', 28, 'Sarah Chen', undefined, 'application_review'),
             baseEvent('ev-l3', 'step_skipped',     'PSP skipped',                  28, 'Sarah Chen', 'Intrastate-only position', 'psp'),
-            baseEvent('ev-l4', 'step_completed',   'MVR completed',                21, 'Compliance Monitor', undefined, 'mvr'),
+            baseEvent('ev-l4', 'step_completed',   'Abstract completed',           21, 'Compliance Monitor', undefined, 'mvr'),
             baseEvent('ev-l5', 'step_completed',   'Criminal Background completed',15, 'Compliance Monitor', undefined, 'criminal_background'),
             baseEvent('ev-l6', 'substance_scheduled', 'Substance test scheduled',  3,  'Sarah Chen', 'Concentra · Cleveland Downtown · 2026-05-16', 'substance_testing'),
         ],
@@ -458,7 +458,7 @@ const _Serena: Applicant = (() => {
         substanceTest: { donorName: 'Serena Williams', licenseNumber: '447128920', phone: '(305) 555-8181', employer: 'Craig Safety Technologies', orderStatus: 'completed', testType: 'DOT', clinicName: 'Concentra · West Palm Beach' },
         screeningOrders: [
             { id: 'or-s1', type: 'psp', vendor: 'HireRight PSP', status: 'complete', orderedAt: '2026-04-08', completedAt: '2026-04-10', resultSummary: 'No PSP violations.' },
-            { id: 'or-s2', type: 'mvr', vendor: 'Samba MVR',     status: 'complete', orderedAt: '2026-04-10', completedAt: '2026-04-12', resultSummary: 'Clean.' },
+            { id: 'or-s2', type: 'mvr', vendor: 'Samba',         status: 'complete', orderedAt: '2026-04-10', completedAt: '2026-04-12', resultSummary: 'Clean.' },
             { id: 'or-s3', type: 'criminal_background', vendor: 'Checkr', status: 'complete', orderedAt: '2026-04-12', completedAt: '2026-04-18', resultSummary: 'No reportable records.' },
             { id: 'or-s4', type: 'dot_employment_verification', vendor: 'EmployerOne', status: 'complete', orderedAt: '2026-04-20', completedAt: '2026-04-30', resultSummary: 'All prior employers verified.' },
         ],

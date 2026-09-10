@@ -1591,7 +1591,7 @@ function RecommendationsPage({
         "Hours-of-service Compliance":
             "Audit ELD edits over the last 60 days, cross-check supporting documents, and retrain dispatchers on 14-hour and 70-hour limit planning.",
         "Driver Fitness":
-            "Verify medical-card and CDL expiry tracking, confirm DQ files are current for all flagged drivers, and pull MVRs.",
+            "Verify medical-card and CDL expiry tracking, confirm DQ files are current for all flagged drivers, and pull driver abstracts.",
         "Controlled Substances":
             "Review random-pool selection rates, confirm pre-employment and reasonable-suspicion testing protocols, and audit chain-of-custody records.",
         "Hazmat compliance":

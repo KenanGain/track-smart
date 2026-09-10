@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
-/** Shared building blocks for hiring-process forms (Driver License, Abstract/MVR, …). */
+/** Shared building blocks for hiring-process forms (Driver License, Driver Abstract, …). */
 
 export function Field({ label, required, hint, children, className }: {
     label: string; required?: boolean; hint?: string; children: React.ReactNode; className?: string;
@@ -354,7 +354,7 @@ export function PdfUpload({ value, onChange }: { value: string; onChange: (v: st
     );
 }
 
-/** Multi-file uploader (e.g. multi-page MVR / abstract report). */
+/** Multi-file uploader (e.g. multi-page abstract report). */
 export function DocumentsUpload({ label, hint, value, onChange }: { label: string; hint?: string; value: string[]; onChange: (v: string[]) => void }) {
     const ref = useRef<HTMLInputElement>(null);
     const onFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -387,7 +387,7 @@ export function DocumentsUpload({ label, hint, value, onChange }: { label: strin
     );
 }
 
-// ── Read-only review primitives (shared by the License / MVR review steps) ──────
+// ── Read-only review primitives (shared by the License / Abstract review steps) ─────
 export function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 /** A read-only field — label + boxed value. */

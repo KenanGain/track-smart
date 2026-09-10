@@ -13,8 +13,7 @@ import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { ViolationEditForm } from './ViolationEditForm';
 import { useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
-import { TabScroller } from '@/components/ui/TabScroller';
-import { KpiChipStrip } from '@/components/ui/KpiChipStrip';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
 import { getViolationsForCarrier, type CarrierViolationRecord } from './carrier-violations.data';
 import {
   getExternalViolationsForCarrier,
@@ -814,8 +813,8 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
 
   // The same figures the KPI cards show, for the compact form the header keeps once
   // the cards themselves have scrolled away. One array so the two cannot disagree.
+  // No Total: the count sits beside the title at every height.
   const kpiChips = useMemo(() => [
-    { id: 'total',     label: 'Total',     value: kpi.total.toLocaleString(), tone: 'text-blue-700' },
     { id: 'oos',       label: 'OOS',       value: kpi.oos.toLocaleString(), tone: 'text-red-700' },
     { id: 'highrisk',  label: 'High risk', value: kpi.highRisk.toLocaleString(), tone: 'text-rose-700' },
     { id: 'citations', label: 'Citations', value: kpi.citations.toLocaleString(), tone: 'text-amber-700' },
@@ -998,116 +997,58 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      {/* Header — stays put and SHRINKS as the ledger scrolls; returns when you
-          scroll back up. Nothing is removed on the way down: the view switch and both
-          buttons stay in place and keep working throughout.
-
-          The All / Drivers / Assets switch used to sit in a right-hand COLUMN stacked
-          above the buttons, which made the band two rows tall and put the page's main
-          control in its least reachable corner. It sits on the title row now. */}
-      <header className={cn('shrink-0 border-b border-slate-200 bg-white z-30', HEADER_TRANSITION, condensed ? 'shadow-md' : 'shadow-sm')}>
-        <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 sm:px-6', HEADER_TRANSITION, condensed ? 'py-2' : 'py-4')}>
-          <div className="min-w-0">
-            <nav className={cn('flex items-center gap-2 overflow-hidden text-sm font-medium text-slate-500', HEADER_TRANSITION,
-              condensed ? 'mb-0 max-h-0 opacity-0' : 'mb-1 max-h-6 opacity-100')} aria-label="Breadcrumb">
-              <span>Safety</span>
-              <span className="text-slate-300">/</span>
-              <span className="text-slate-900">Violations</span>
-            </nav>
-            <h1 className={cn('truncate font-bold tracking-tight text-slate-900', HEADER_TRANSITION, condensed ? 'text-base' : 'text-2xl')}>Violations</h1>
-            <p className={cn('overflow-hidden whitespace-nowrap text-xs text-slate-500', HEADER_TRANSITION,
-              condensed ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-6 opacity-100')}>
-              {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
-              {activeDataset.length.toLocaleString()} records · {availableSources.filter(s => s !== 'all').join(' · ') || 'No regulator feeds'}
-            </p>
+      {/* The app's standard list header (see `ListPageHeader`). The scope switch rides the
+          title row rather than a column of its own: stacked above the buttons it made the band
+          two rows tall and put the page's main control in its least reachable corner. */}
+      <ListPageHeader
+        Icon={Ban}
+        title="Violations"
+        description={<>{carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> &middot; </> : null}{availableSources.filter(s => s !== 'all').join(' \u00b7 ') || 'No regulator feeds'}</>}
+        count={activeDataset.length}
+        chips={kpiChips}
+        condensed={condensed}
+        tabsLabel="Violation categories"
+        showZeroCounts
+        tabs={BASIC_TABS.map(t => ({ id: t.key, label: t.label, count: basicCounts[t.key] ?? 0 }))}
+        activeTab={basicTab}
+        onTabChange={id => { setBasicTab(id as (typeof BASIC_TABS)[number]['key']); setSubCatFilter(null); setPage(1); }}
+        actions={<>
+          <div className={cn('flex rounded-lg border border-slate-200/50 bg-slate-100 p-1', HEADER_TRANSITION)}>
+            {([
+              { key: 'all',     label: 'All',     Icon: List },
+              { key: 'drivers', label: 'Drivers', Icon: Users },
+              { key: 'assets',  label: 'Assets',  Icon: Truck },
+            ] as const).map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => { setPageView(key); setPage(1); setExpandedId(null); }}
+                className={cn(
+                  'flex items-center gap-2 rounded-md px-3 text-xs font-medium transition-all',
+                  condensed ? 'h-6' : 'h-7',
+                  pageView === key
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                    : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-700',
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {/* Scope switch — which ledger you are looking at, so it stays whatever the
-                header's height, on the same row as the actions it belongs beside. */}
-            <div className={cn('flex rounded-lg border border-slate-200/50 bg-slate-100 p-1', HEADER_TRANSITION)}>
-              {([
-                { key: 'all',     label: 'All',     Icon: List },
-                { key: 'drivers', label: 'Drivers', Icon: Users },
-                { key: 'assets',  label: 'Assets',  Icon: Truck },
-              ] as const).map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setPageView(key); setPage(1); setExpandedId(null); }}
-                  className={cn(
-                    'flex items-center gap-2 rounded-md px-3 text-xs font-medium transition-all',
-                    condensed ? 'h-6' : 'h-7',
-                    pageView === key
-                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
-                      : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-700',
-                  )}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
-            </div>
-            <button
-              className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
-              onClick={() => {}}
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-            <button
-              className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
-              onClick={() => { setEditingRecord(null); setEditModalOpen(true); }}
-            >
-              <Plus className="w-4 h-4" />
-              Add Violation
-            </button>
-          </div>
-        </div>
-
-        {/* The KPI numbers, small — they fade in exactly as the cards below scroll
-            out of reach, so the figures framing the ledger never leave. */}
-        <div className="px-4 sm:px-6">
-          <KpiChipStrip items={kpiChips} condensed={condensed} />
-        </div>
-
-        {/* BASIC category strip — part of the HEADER, not the list, so nothing scrolls
-            underneath it and it is reachable from anywhere in 497 rows. It does NOT
-            condense with the title: navigation that disappears on scroll is not
-            navigation. On the shared rail, so the scrollbar is hidden and a strip wider
-            than the column gets edge chevrons instead of ending without warning. */}
-        <div className="w-full border-t border-slate-100 px-4 sm:px-6">
-          <TabScroller ariaLabel="Violation categories" activeKey={basicTab}>
-            {BASIC_TABS.map(t => {
-              const active = basicTab === t.key;
-              const count = basicCounts[t.key] ?? 0;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => { setBasicTab(t.key); setSubCatFilter(null); setPage(1); }}
-                  data-tab-active={active || undefined}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    // Selection is BLUE, as on every other tab bar in the app.
-                    'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
-                    active
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                  )}
-                >
-                  {t.label}
-                  <span className={cn(
-                    'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
-                  )}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </TabScroller>
-        </div>
-      </header>
+          <button
+            className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
+            onClick={() => {}}
+          >
+            <Download className="w-4 h-4" /> Export
+          </button>
+          <button
+            className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
+            onClick={() => { setEditingRecord(null); setEditModalOpen(true); }}
+          >
+            <Plus className="w-4 h-4" /> Add Violation
+          </button>
+        </>}
+      />
 
       {/* Scrollable content — its own scroller, so the header band above shrinks
           instead of scrolling away. */}
@@ -1613,7 +1554,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                 single component — no gap. */}
             <div className="border-t border-slate-200" />
 
-            {/* Filters — search, source pills, date range, status / risk / result */}
             <div className="p-3 space-y-2.5">
             {/* Row 1: Search + Source pills */}
             <div className="flex flex-col sm:flex-row gap-2">

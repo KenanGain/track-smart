@@ -147,4 +147,51 @@
     .no-scrollbar::-webkit-scrollbar {
         display: none;
     }
+
+    /* ── A column header that stays ──────────────────────────────────────
+       Put `.sticky-head` on the <thead>.
+
+       `sticky top-0` written on the <thead> element itself is the obvious
+       thing and it half-works: the header does stay, but on a table it is the
+       CELLS that paint a background, not the thead or the row. So the header
+       froze in place while every row scrolled straight through it — two
+       tables in the carrier profile were rendering their first rows on top of
+       their own column titles.
+
+       Sticking the cells fixes both halves at once: each one carries its own
+       opaque background and its own stacking, so rows pass underneath.
+
+       `top: -1px` rather than 0: a table's own top border sits between the
+       scrollport edge and the first header cell, and at fractional zoom levels
+       a one-pixel line of the row beneath bleeds through above the header. */
+    .sticky-head > tr > th {
+        position: sticky;
+        top: -1px;
+        z-index: 10;
+        background-color: rgb(248 250 252);      /* slate-50 */
+    }
+
+    /* ── The identity column, kept in view ───────────────────────────────
+       Put `.pin-first` on the <table>. A wide table on a narrow screen scrolls
+       sideways, and by the third column you can no longer tell whose row you
+       are reading. This pins the first cell of every row — the unit number,
+       the driver, the record name — so the answer is always on screen.
+
+       Below the header (z-10) so the two cross cleanly at the corner. */
+    .pin-first > tbody > tr > *:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        background-color: #fff;
+    }
+
+    .pin-first > tbody > tr:hover > *:first-child {
+        background-color: rgb(248 250 252);      /* keeps the row-hover unbroken */
+    }
+
+    /* The corner cell belongs to both and must out-rank each. */
+    .sticky-head.pin-first > tr > th:first-child,
+    .pin-first > .sticky-head > tr > th:first-child {
+        z-index: 15;
+    }
 }

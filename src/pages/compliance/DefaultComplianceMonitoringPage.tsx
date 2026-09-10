@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs } from '@/components/ui/SubTabs';
+import { ListPageHeader, ListPageBody, PAGE_PAD } from '@/components/ui/ListPageHeader';
+import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import {
     SAFETY_RECORDS, type SafetyRecord, type EntityId,
 } from '@/pages/compliance/safety-software-catalog.data';
@@ -515,26 +517,44 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const rosterSubjects = entityFilter === 'Driver' ? driverSubjects : assetSubjects;
     const isRoster = showSwitch && subView === 'roster';
 
+    // The header stays put and shrinks as the alert list scrolls; the body is its own scroller.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(tab);
+    const kpiChips = useMemo(() => [
+        { id: 'overdue', label: 'Overdue', value: counts.overdue, tone: 'text-rose-700' },
+        { id: 'week', label: 'Due this week', value: counts.week, tone: 'text-orange-700' },
+        { id: 'month', label: 'Due in 30 days', value: counts.month, tone: 'text-amber-700' },
+        { id: 'total', label: 'Monitored', value: counts.total, tone: 'text-blue-700' },
+    ], [counts.overdue, counts.week, counts.month, counts.total]);
+
     const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
 
+    const monitoringTabs = [
+        { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard, count: alerts.length },
+        { id: 'Calendar', label: 'Calendar', icon: CalendarDays, count: dateAlerts.length },
+        { id: 'Activity', label: 'Activity Log', icon: ClipboardList, count: actions.length },
+    ];
+
     return (
-        <div className={embedded ? '' : 'flex-1 bg-slate-50 min-h-screen'}>
-            {/* Header — hidden in embedded (entity-detail tab) mode */}
-            <div className={embedded ? '' : 'bg-white border-b border-slate-200'}>
-                {!embedded && (
-                <div className="px-4 sm:px-8 pt-5 flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <BellRing size={20} />
-                        </div>
-                        <div className="min-w-0">
-                            <h1 className="text-2xl font-bold text-slate-900">Default Compliance Monitoring</h1>
-                            <p className="text-sm text-slate-500 mt-0.5">
-                                Upcoming notifications &amp; alerts from <span className="font-semibold text-slate-700">{carrierName}</span>’s compliance &amp; document records — by date and priority.
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+        <div className={embedded ? '' : 'flex h-full min-h-0 flex-col bg-slate-50'}>
+            {/* The app's standard list header (see `ListPageHeader`) — replaced by a bare tab
+                row in embedded (entity-detail tab) mode, where the host page names the subject. */}
+            {embedded ? (
+                <SubTabs tabs={monitoringTabs} activeId={tab} onChange={id => setTab(id as 'Dashboard' | 'Calendar' | 'Activity')} bordered={false} />
+            ) : (
+                <ListPageHeader
+                    Icon={BellRing}
+                    title="Default Compliance Monitoring"
+                    description={<>Upcoming notifications &amp; alerts from <span className="font-semibold text-slate-700">{carrierName}</span>’s compliance &amp; document records — by date and priority.</>}
+                    count={counts.total}
+                    countTitle={`${counts.total.toLocaleString()} monitored items`}
+                    chips={kpiChips}
+                    condensed={condensed}
+                    tabsLabel="Monitoring views"
+                    showZeroCounts
+                    tabs={monitoringTabs}
+                    activeTab={tab}
+                    onTabChange={id => setTab(id as 'Dashboard' | 'Calendar' | 'Activity')}
+                    actions={<>
                         {account && (
                             <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
                                 <Building2 size={15} /> {carrierName}
@@ -542,34 +562,22 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                         )}
                         <button type="button" onClick={seedSampleData}
                             title="Populate the carrier plus every asset & driver with monitored sample records so you can test this page"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                            <Sparkles size={15} className="text-amber-500" /> Load sample data
+                            className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}>
+                            <Sparkles size={15} className="text-amber-500" /> <span className="hidden sm:inline">Load sample data</span>
                         </button>
                         {onNavigate && (
                             <button type="button" onClick={() => onNavigate('/settings/default-compliance-monitoring')}
                                 title="Manage which notifications go to whom"
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                                <Sliders size={15} /> Notification routing
+                                className={cn('inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}>
+                                <Sliders size={15} /> <span className="hidden lg:inline">Notification routing</span>
                             </button>
                         )}
-                    </div>
-                </div>
-                )}
-                <div className={embedded ? '' : 'px-4 sm:px-8 mt-4'}>
-                    <SubTabs
-                        tabs={[
-                            { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard, count: alerts.length },
-                            { id: 'Calendar', label: 'Calendar', icon: CalendarDays, count: dateAlerts.length },
-                            { id: 'Activity', label: 'Activity Log', icon: ClipboardList, count: actions.length },
-                        ]}
-                        activeId={tab}
-                        onChange={setTab}
-                        bordered={false}
-                    />
-                </div>
-            </div>
+                    </>}
+                />
+            )}
 
-            <div className={embedded ? 'pt-5 space-y-5' : 'px-4 sm:px-8 py-6 space-y-5'}>
+            <ListPageBody standalone={!embedded} scrollRef={scrollRef} onScroll={onScroll}>
+            <div className={embedded ? 'pt-5 space-y-5' : cn('space-y-4 py-4 sm:space-y-5 sm:py-6', PAGE_PAD)}>
                 {tab === 'Dashboard' ? (
                 <>
                 {/* Compliance health meter */}
@@ -602,7 +610,6 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                             onOpen={(id, label) => { setSubjectFilter({ id, label }); setSubView('records'); }} />
                     ) : (
                     <>
-                    {/* Toolbar */}
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
                         <div className="relative flex-1 min-w-[220px] max-w-sm">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -739,6 +746,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                     onNavigate={onNavigate}
                 />
             )}
+            </ListPageBody>
         </div>
     );
 }

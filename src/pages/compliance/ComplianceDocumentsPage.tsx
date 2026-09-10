@@ -1499,7 +1499,7 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
 
                                      <div className="overflow-x-auto border-t border-slate-200">
                                         <table className="w-full text-left text-sm table-fixed">
-                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky-head">
                                                 <tr>
                                                     {knColumns.type && (
                                                         <th 
@@ -1720,7 +1720,7 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
                                      </div>
                                     <div className="overflow-x-auto border-t border-slate-200">
                                         <table className="w-full text-left text-sm table-fixed">
-                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky-head">
                                             <tr>
 
                                                     {docColumns.type && (

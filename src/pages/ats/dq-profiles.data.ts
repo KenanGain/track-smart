@@ -66,7 +66,7 @@ function dqFileSection(extra: DqChecklistItem[]): DqChecklistSection {
     return section('DQ File', [
         item('Application', ['application', 'applicant information']),
         item('CVDR', ['cvdr', 'cvor', 'driver abstract', 'driving record']),
-        item('MVR', ['mvr', 'motor vehicle record']),
+        item('Non-Commercial Abstract', ['mvr', 'motor vehicle record']),
         item("Driver's License", ['license', 'licence', 'cdl', 'driver license', 'driving licence']),
         item('PCC', ['pcc', 'police clearance', 'criminal', 'background']),
         item('PSP', ['psp']),

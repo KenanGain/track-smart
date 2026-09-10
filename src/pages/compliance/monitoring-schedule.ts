@@ -39,7 +39,7 @@ export const MONITOR_BASIS_LABEL: Record<MonitorBasis, string> = {
 
 /**
  * What to call the monitored date FOR THIS RECORD. The generic "Expiry date" is wrong for
- * anything that is reviewed or renewed rather than expiring — an MVR is monitored on its
+ * anything that is reviewed or renewed rather than expiring — a driver abstract is monitored on its
  * next renew date, a CDL on its licence expiry — so the record's own `monitorType` names it.
  */
 export const basisLabel = (record: SafetyRecord, b: MonitorBasis): string =>

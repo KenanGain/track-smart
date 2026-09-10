@@ -2841,7 +2841,7 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
 // ── Insurance Policy step ────────────────────────────────────────────────────
 // Bundle the driver's completed hiring forms & documents and send them to the
 // insurance agent so the agent can add the driver to the carrier's policy:
-// Employment Application · recent Abstract/MVR, PSP, CVDR/CDA (whichever applies) ·
+// Employment Application · recent driver abstract, PSP, CVDR/CDA (whichever applies) ·
 // Employment & Insurance Experience Letters. Anything missing can be ordered by
 // the agent from the other insurance company.
 function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
@@ -2864,7 +2864,7 @@ function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
 
     // Recent driving-record reports — only the ones this workflow actually runs.
     const REPORTS: { fid: string; label: string }[] = [
-        { fid: "mvr", label: "MVR — Motor Vehicle Record" },
+        { fid: "mvr", label: "Driver Non-Commercial Abstract" },
         { fid: "driver-abstract", label: "Driver Abstract" },
         { fid: "psp", label: "PSP — Pre-Employment Screening" },
         { fid: "cvdr-cda", label: "CVDR / CDA" },
@@ -2937,7 +2937,7 @@ function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
         { key: "coi", label: "Certificate of Insurance" },
         { key: "license-copy", label: "Driver's License (copy)" },
         { key: "medical-card", label: "Medical Examiner's Card" },
-        { key: "mvr-recent", label: "Recent MVR" },
+        { key: "mvr-recent", label: "Recent Abstract" },
     ];
     const reqsAll = a.requests ?? [];
     const agentReviewReq = reqsAll.find((r) => r.fid === "insurance-agent-review");

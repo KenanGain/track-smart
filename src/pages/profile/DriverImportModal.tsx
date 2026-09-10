@@ -198,7 +198,7 @@ export function DriverImportModal({ isOpen, onClose, onImport }: {
                         <div className="overflow-hidden rounded-xl border border-slate-200">
                             <div className="max-h-56 overflow-y-auto">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider font-bold sticky-head">
                                         <tr>
                                             <th className="px-4 py-2.5">Column</th>
                                             <th className="px-4 py-2.5">Required</th>

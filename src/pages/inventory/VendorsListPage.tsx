@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Building2, Mail, Phone, MapPin, Tag } from "lucide-react";
+import { Plus, Store, Mail, Phone, MapPin, Tag } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
 import { VendorCategoriesModal } from "./VendorCategoriesModal";
-import { InventoryTabs } from "./InventoryTabs";
+import { INVENTORY_TABS } from "./InventoryTabs";
+import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
+import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
@@ -86,47 +88,43 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
 
     const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? "—";
 
+    // The header stays put and shrinks as the list scrolls; the body is its own scroller.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader();
+
     return (
-        <div className="bg-slate-50 min-h-screen">
-            {/* Header band (white) */}
-            <div className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                            <Building2 size={14} />
-                        <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
-                        <span>/</span>
-                        <span>Inventory</span>
-                        <span>/</span>
-                        <span>Vendors</span>
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-900">Vendors</h1>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                        {vendors.length} vendor{vendors.length === 1 ? "" : "s"} across {categories.length} categor{categories.length === 1 ? "y" : "ies"}
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            {/* The app's standard list header (see `ListPageHeader`) — the same one the
+                Inventory list tab wears, so the two sections read as one page. */}
+            <ListPageHeader
+                Icon={Store}
+                title="Vendors"
+                description={<><span className="font-semibold text-slate-700">{accountName ?? CARRIER_NAME}</span> — {vendors.length} vendor{vendors.length === 1 ? "" : "s"} across {categories.length} categor{categories.length === 1 ? "y" : "ies"}</>}
+                count={vendors.length}
+                countTitle={`${vendors.length.toLocaleString()} vendors`}
+                condensed={condensed}
+                tabsLabel="Inventory sections"
+                tabs={INVENTORY_TABS.map(t => ({ id: t.id, label: t.label, icon: t.Icon }))}
+                activeTab="vendors"
+                onTabChange={id => onNavigate(INVENTORY_TABS.find(t => t.id === id)?.path ?? "/inventory")}
+                actions={<>
                     <button
                         onClick={() => setCategoriesModalOpen(true)}
-                        className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2 shadow-sm"
+                        className={cn("inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50", condensed ? "h-8" : "h-9")}
                     >
                         <Tag size={15} /> Categories
                     </button>
                     <button
                         onClick={() => onNavigate("/inventory/vendors/new")}
-                        className="h-9 px-3.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm"
+                        className={cn("inline-flex items-center gap-2 rounded-lg bg-[#2563EB] px-3.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}
                     >
                         <Plus size={15} /> Add Vendor
                     </button>
-                </div>
-                </div>
-
-                {/* Section tabs */}
-                <InventoryTabs current="vendors" onNavigate={onNavigate} className="mt-4 -mb-5" />
-            </div>
+                </>}
+            />
 
             {/* Body */}
-            <div className="px-6 lg:px-8 py-6">
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+            <div className={cn("py-4 sm:py-6", PAGE_PAD)}>
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <DataListToolbar
                     searchValue={search}
@@ -233,6 +231,7 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
                     onPageChange={setPage}
                     onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
                 />
+            </div>
             </div>
             </div>
 

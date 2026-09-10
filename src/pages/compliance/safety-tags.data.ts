@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
  * (docu-form/document-tags.data.ts) — this is scoped to the safety-software catalog only.
  */
 
-const STORAGE_KEY = 'safety-doc-tags-v4';
+const STORAGE_KEY = 'safety-doc-tags-v5';
 const EVENT = 'safety-doc-tags-change';
 
 /**
@@ -28,7 +28,7 @@ export const DEFAULT_TAG_GROUPS: { title: string; tags: string[] }[] = [
     { title: 'Quarter', tags: ['Q1', 'Q2', 'Q3', 'Q4'] },
     { title: 'CVOR Level', tags: ['CVOR Level 1', 'CVOR Level 2', 'CVOR Level 3'] },
     { title: 'Compliance & Safety', tags: ['DOT Compliance', 'FMCSA Filing', 'CSA Score', 'Safety Audit', 'Hours of Service', 'Vehicle Inspection', 'Drug & Alcohol Testing', 'FMCSA Clearinghouse'] },
-    { title: 'Driver Qualification', tags: ['Medical Certificate', 'Motor Vehicle Record (MVR)', 'PSP Report', 'Background Check', 'Road Test', 'Employment Verification', 'Training Certificate', "Driver's License / CDL"] },
+    { title: 'Driver Qualification', tags: ['Medical Certificate', 'Driver Non-Commercial Abstract', 'PSP Report', 'Background Check', 'Road Test', 'Employment Verification', 'Training Certificate', "Driver's License / CDL"] },
     { title: 'Permits & Authority', tags: ['USDOT Number', 'MC Authority', 'IFTA License', 'IRP Registration', 'UCR Registration', 'Hazmat Permit', 'Oversize / Overweight Permit', 'Fuel / Trip Permit'] },
     { title: 'Tax & Financial', tags: ['Invoice', 'Receipt', 'Tax Return', 'W-9 / W-2', '1099', 'IFTA Filing', 'Settlement Statement', 'Fuel Tax'] },
 ];

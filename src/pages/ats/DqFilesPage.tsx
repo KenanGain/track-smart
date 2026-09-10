@@ -5,7 +5,9 @@ import {
     CircleAlert, Clock, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PageHeader, TabStrip, SelectFilter, type TabDef } from "./ats-ui";
+import { SelectFilter, type TabDef } from "./ats-ui";
+import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
+import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { getAccountById } from "@/pages/accounts/accounts.data";
 import { getDriversForAccount } from "@/pages/accounts/carrier-drivers.data";
 import type { Driver } from "@/pages/profile/carrier-profile.data";
@@ -142,6 +144,16 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
 
     // ── Per-driver detail ── the new DQ UI (Settings preview) for the real driver.
     const selected = selectedDriverId ? drivers.find(d => d.id === selectedDriverId) : null;
+    // The header stays put and shrinks as the list scrolls; the body is its own scroller.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(tab);
+    const kpiChips = useMemo(() => [
+        { id: 'drivers', label: 'Drivers', value: kpis.total, tone: 'text-violet-700' },
+        { id: 'compliant', label: 'Compliant', value: kpis.compliant, tone: 'text-emerald-700' },
+        { id: 'missing', label: 'Items missing', value: kpis.missing, tone: 'text-rose-700' },
+        { id: 'attention', label: 'Needs attention', value: kpis.attention, tone: 'text-amber-700' },
+        { id: 'avg', label: 'Avg completion', value: `${kpis.avg}%`, tone: 'text-blue-700' },
+    ], [kpis]);
+
     if (selected) {
         return (
             <DriverDqFileDetail
@@ -155,17 +167,24 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            <PageHeader
-                iconGradient="from-violet-500 to-purple-600"
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            {/* The app's standard list header (see `ListPageHeader`). */}
+            <ListPageHeader
                 Icon={ListChecks}
                 title="DQ Files"
-                subtitle={`Driver Qualification Files — ${carrierName}`}
-            >
-                <TabStrip tabs={PAGE_TABS} active={tab} onChange={id => setTab(id as "overview" | "drivers")} accent="violet" />
-            </PageHeader>
+                description={<>Driver Qualification Files — <span className="font-semibold text-slate-700">{carrierName}</span></>}
+                count={kpis.total}
+                countTitle={`${kpis.total.toLocaleString()} drivers`}
+                chips={kpiChips}
+                condensed={condensed}
+                tabsLabel="DQ file views"
+                tabs={PAGE_TABS.map(t => ({ id: t.id, label: t.label, count: t.count }))}
+                activeTab={tab}
+                onTabChange={id => setTab(id as "overview" | "drivers")}
+            />
 
-            <div className="space-y-4 p-4 sm:space-y-6 sm:p-8">
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+            <div className={cn('space-y-4 py-4 sm:space-y-6 sm:py-6', PAGE_PAD)}>
                 {/* KPI cards */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                     <StatTile label="Drivers" value={kpis.total} Icon={Users} accent="violet" />
@@ -199,6 +218,7 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
                         <DriversTable rows={filtered} carrierName={carrierName} onOpen={id => setSelectedDriverId(id)} noMatch={rows.length > 0} />
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

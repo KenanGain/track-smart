@@ -18,7 +18,7 @@ export type DocumentCategory =
     | 'Identity'        // Driver license front/back, passport, SSN card, birth certificate
     | 'Photo'           // Headshot, vehicle photos, license photo
     | 'Background'
-    | 'MVR'
+    | 'Abstract'
     | 'PSP'
     | 'Substance'
     | 'DOT'
@@ -222,13 +222,13 @@ export const DEFAULT_TEMPLATE: HiringTemplate = {
         },
         {
             ...stub('mvr'),
-            instruction: 'Order MVR through Samba (or equivalent). Review for serious violations before clearing the step.',
+            instruction: 'Order the driver non-commercial abstract through Samba (or equivalent). Review for serious violations before clearing the step.',
             consents: [
                 { consentId: 'mvr_release', mode: 'required' },
             ],
             documents: [
-                { id: 'doc-mvr-report',  label: 'MVR Report PDF', category: 'MVR', mode: 'required', source: 'Vendor' },
-                { id: 'doc-mvr-summary', label: 'Reviewer Summary Note', category: 'MVR', mode: 'optional', source: 'Recruiter' },
+                { id: 'doc-mvr-report',  label: 'Non-Commercial Abstract PDF', category: 'Abstract', mode: 'required', source: 'Vendor' },
+                { id: 'doc-mvr-summary', label: 'Reviewer Summary Note', category: 'Abstract', mode: 'optional', source: 'Recruiter' },
             ],
             bookings: [],
         },
@@ -315,7 +315,7 @@ export const NON_CDL_TEMPLATE: HiringTemplate = {
         {
             ...stub('mvr'),
             consents: [{ consentId: 'mvr_release', mode: 'required' }],
-            documents: [{ id: 'doc-mvr-report', label: 'MVR Report PDF', category: 'MVR', mode: 'required', source: 'Vendor' }],
+            documents: [{ id: 'doc-mvr-report', label: 'Non-Commercial Abstract PDF', category: 'Abstract', mode: 'required', source: 'Vendor' }],
         },
         {
             ...stub('criminal_background'),

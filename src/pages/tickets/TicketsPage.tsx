@@ -24,6 +24,7 @@ import {
     Trash2,
     AlertOctagon,
     Share2,
+    Ticket,
 } from 'lucide-react';
 import { KebabMenu } from '@/components/ui/KebabMenu';
 import { ShareToChat } from '@/components/share/ShareToChat';
@@ -36,9 +37,8 @@ import { type TicketStatus, type ViolationType, type TicketRecord } from './tick
 import { useCarrierTickets, addTicket, updateTicket, removeTicket, buildTicketFromViolation, type ViolationLike } from './tickets.store';
 import { TicketEditForm, type TicketFormDraft } from './TicketEditForm';
 import { TicketDetailPage } from './TicketDetailPage';
-import { useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
-import { TabScroller } from '@/components/ui/TabScroller';
-import { KpiChipStrip } from '@/components/ui/KpiChipStrip';
+import { useCondensingHeader } from '@/components/ui/use-condensing-header';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
 import { CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 import {
     getMissingTicketsForCarrier,
@@ -303,8 +303,9 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
 
     // The same figures the KPI cards show, for the compact form the header keeps once
     // the cards themselves have scrolled away. One array so the two cannot disagree.
+    // No Total: the count sits beside the title at every height, so a chip repeating it was
+    // the third place on screen saying the same number.
     const kpiChips = useMemo(() => [
-        { id: 'total',       label: 'Total',       value: stats.total.toLocaleString(), tone: 'text-blue-700' },
         { id: 'outstanding', label: 'Outstanding', value: `$${stats.outstandingFines.toLocaleString()}`, tone: 'text-rose-700' },
         { id: 'open',        label: 'Open',        value: stats.openOffenses, tone: 'text-amber-700' },
         { id: 'court',       label: 'In court',    value: stats.inCourt, tone: 'text-indigo-700' },
@@ -552,104 +553,37 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
 
     return (
         <div className="flex flex-col h-full bg-slate-50">
-            {/* Header — stays put and SHRINKS as the list scrolls; restores at the top.
-                The breadcrumb and the record line fold away, the title steps down, the
-                padding tightens and the buttons lose a little height. Nothing is removed:
-                Export and Add Ticket stay in place and keep working throughout. */}
-            <header className={cn('shrink-0 border-b border-slate-200 bg-white z-30', HEADER_TRANSITION, condensed ? 'shadow-md' : 'shadow-sm')}>
-                <div className={cn('flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6', HEADER_TRANSITION, condensed ? 'py-2' : 'py-4')}>
-                    <div className="min-w-0">
-                        <nav className={cn('flex items-center gap-2 overflow-hidden text-sm font-medium text-slate-500', HEADER_TRANSITION,
-                            condensed ? 'mb-0 max-h-0 opacity-0' : 'mb-1 max-h-6 opacity-100')} aria-label="Breadcrumb">
-                            <span>Safety</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="text-slate-900">Tickets</span>
-                        </nav>
-                        <h1 className={cn('truncate font-bold tracking-tight text-slate-900', HEADER_TRANSITION, condensed ? 'text-base' : 'text-2xl')}>
-                            Tickets &amp; Offenses
-                        </h1>
-                        {/* Condensed, the record count moves onto one line beside the title
-                            rather than vanishing — it is the page's only sense of scale. */}
-                        <p className={cn('overflow-hidden whitespace-nowrap text-xs text-slate-500', HEADER_TRANSITION,
-                            condensed ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-6 opacity-100')}>
-                            {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
-                            {tickets.length.toLocaleString()} records · Paper &amp; Electronic citations
-                        </p>
-                    </div>
-                    <div className="ml-auto flex items-center gap-2">
-                        <span className={cn('hidden items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs font-semibold text-slate-500 sm:flex', HEADER_TRANSITION,
-                            condensed ? 'max-w-[16rem] opacity-100' : 'max-w-0 opacity-0')}>
-                            {tickets.length.toLocaleString()} records
-                        </span>
-                        <button
-                            className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
-                            onClick={() => { /* CSV export hook lands later */ }}
-                        >
-                            <Download className="w-4 h-4" />
-                            Export
-                        </button>
-                        <button
-                            onClick={handleAdd}
-                            className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
-                        >
-                            <Plus className="w-4 h-4" />
-                            Add Ticket
-                        </button>
-                    </div>
-                </div>
-
-                {/* The KPI numbers, small — they fade in exactly as the cards below
-                    scroll out of reach, so the figures framing the list never leave. */}
-                <div className="px-4 sm:px-6">
-                    <KpiChipStrip items={kpiChips} condensed={condensed} />
-                </div>
-
-                {/* BASIC category strip — part of the HEADER, not the list.
-
-                    It was sticky inside the list card, which meant it floated over the
-                    sub-category cards as they scrolled past: they slid under it half-cut,
-                    and the rail's own scrollbar drew a grey line across the page. Here it
-                    is simply always present, with nothing passing beneath it — and it does
-                    NOT condense with the title above, because it is the page's navigation.
-
-                    TabScroller hides the scrollbar and adds edge chevrons + fades, so a
-                    strip wider than the column reads as cut off rather than finished. */}
-                <div className="w-full border-t border-slate-100 px-4 sm:px-6">
-                    <TabScroller ariaLabel="Ticket categories" activeKey={basicTab}>
-                        {BASIC_TABS.map(t => {
-                            const active = basicTab === t.key;
-                            const count = basicCounts[t.key] ?? 0;
-                            return (
-                                <button
-                                    key={t.key}
-                                    type="button"
-                                    onClick={() => { setBasicTab(t.key); setSubCatFilter(null); setPage(1); setExpandedId(null); }}
-                                    data-tab-active={active || undefined}
-                                    aria-current={active ? 'page' : undefined}
-                                    className={cn(
-                                        // Selection is BLUE here as it is on every other tab
-                                        // bar in the app. Seven different active colours made
-                                        // the strip read as seven unrelated controls rather
-                                        // than one control with a current value.
-                                        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors',
-                                        active
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                                    )}
-                                >
-                                    {t.label}
-                                    <span className={cn(
-                                        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                                        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
-                                    )}>
-                                        {count}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </TabScroller>
-                </div>
-            </header>
+            {/* The app's standard list header (see `ListPageHeader`): identity, the figures
+                as the cards scroll away, the actions, and the category strip — which stays
+                whatever the height, because navigation that disappears on scroll is not
+                navigation. */}
+            <ListPageHeader
+                Icon={Ticket}
+                title="Tickets & Offenses"
+                description={<>{carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> &middot; </> : null}Paper &amp; electronic citations</>}
+                count={tickets.length}
+                chips={kpiChips}
+                condensed={condensed}
+                tabsLabel="Ticket categories"
+                showZeroCounts
+                tabs={BASIC_TABS.map(t => ({ id: t.key, label: t.label, count: basicCounts[t.key] ?? 0 }))}
+                activeTab={basicTab}
+                onTabChange={id => { setBasicTab(id as (typeof BASIC_TABS)[number]['key']); setSubCatFilter(null); setPage(1); setExpandedId(null); }}
+                actions={<>
+                    <button
+                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
+                        onClick={() => { /* CSV export hook lands later */ }}
+                    >
+                        <Download className="w-4 h-4" /> Export
+                    </button>
+                    <button
+                        onClick={handleAdd}
+                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
+                    >
+                        <Plus className="w-4 h-4" /> Add Ticket
+                    </button>
+                </>}
+            />
 
             {/* Scrollable content — its own scroller, so the header band above shrinks
                 instead of scrolling away, and the tab strip inside can stick to its top. */}
@@ -1270,7 +1204,6 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                         );
                     })()}
 
-                    {/* Filter row 1 — search + reset */}
                     <div className="p-3 space-y-2.5">
                         <div className="flex flex-col sm:flex-row gap-2">
                             <div className="relative flex-1">
@@ -1370,18 +1303,18 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200">
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Offense #</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ticket #</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Location</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Asset</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Driver</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Violation</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Document Type</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Fine</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Status</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Docs</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Offense #</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Ticket #</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date & Time</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Location</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Asset</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Driver</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Violation</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Document Type</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Fine</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-center">Status</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-center">Docs</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -1393,7 +1326,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                         className="hover:bg-slate-50 transition-colors group cursor-pointer"
                                         onClick={() => setExpandedId(ticket.id)}
                                     >
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex flex-col gap-1">
                                                 <span className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer">{ticket.offenseNumber}</span>
                                                 {/* Ticket-kind chip — Paper (blue) vs Electronic (violet).
@@ -1409,7 +1342,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-mono font-medium text-slate-800">
                                                     {ticket.identifiers?.ticketNumber || <span className="text-slate-300 font-sans italic font-normal">—</span>}
@@ -1419,7 +1352,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-medium text-slate-900">{ticket.date}</span>
                                                 <span className="text-xs text-slate-500">{ticket.time}</span>
@@ -1427,15 +1360,15 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-slate-900">{ticket.location.split(',')[0]}</span>
+                                                <span className="whitespace-nowrap text-sm font-medium text-slate-900">{ticket.location.split(',')[0]}</span>
                                                 <span className="text-xs text-slate-500 truncate max-w-[150px]" title={ticket.description}>
                                                     {ticket.location.split(',')[1] || ''}
                                                     {ticket.description}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{ticket.assetId}</td>
-                                        <td className="px-6 py-4 text-sm text-slate-700">{ticket.driverName}</td>
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-900 whitespace-nowrap">{ticket.assetId}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">{ticket.driverName}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col gap-1.5 min-w-[220px]">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -1481,13 +1414,13 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             {getDocTypeBadge(ticket)}
                                         </td>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-900">
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-900 whitespace-nowrap">
                                             {ticket.currency === 'CAD' ? 'CA$' : '$'}{ticket.fineAmount.toFixed(2)}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
+                                        <td className="px-6 py-4 text-center whitespace-nowrap">
                                             {getStatusBadge(ticket.status)}
                                         </td>
                                         <td className="px-6 py-4">

@@ -1823,7 +1823,7 @@ function CategorySelect({ value, onChange }: { value: DocumentCategory; onChange
             onChange={e => onChange(e.target.value as DocumentCategory)}
             className="h-8 w-full px-2 rounded border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-300"
         >
-            {(['Application','Identity','Photo','Background','MVR','PSP','Substance','DOT','Medical','Insurance','Other'] as DocumentCategory[]).map(c => (
+            {(['Application','Identity','Photo','Background','Abstract','PSP','Substance','DOT','Medical','Insurance','Other'] as DocumentCategory[]).map(c => (
                 <option key={c} value={c}>{c}</option>
             ))}
         </select>

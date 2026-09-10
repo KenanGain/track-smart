@@ -13,7 +13,7 @@ import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocu
 
 /**
  * Driver Screening Reports — PSP / CVDR / CDA. Country + dates + one report PDF,
- * a quick summary, and crash / inspection detail. Built to mirror the MVR form.
+ * a quick summary, and crash / inspection detail. Built to mirror the driver abstract form.
  */
 
 // Short product name for headings — the part before the " — " description.

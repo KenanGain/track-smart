@@ -500,8 +500,8 @@ export function AssetDirectoryPage({
                         <div className={isEmbedded ? "w-full flex flex-col pt-0" : "flex-1 p-6 pt-0 overflow-hidden flex flex-col"}>
                             <div className={isEmbedded ? "bg-white rounded-2xl border border-slate-200/60 flex flex-col shadow-sm" : "bg-white rounded-2xl border border-slate-200/60 flex-1 flex flex-col overflow-hidden shadow-sm"}>
                                 <div className={isEmbedded ? "overflow-visible" : "flex-1 overflow-auto"}>
-                                    <table className="w-full text-left border-collapse min-w-[1300px]">
-                                        <thead className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
+                                    <table className="pin-first w-full text-left border-collapse min-w-[1300px]">
+                                        <thead className="bg-slate-50/80 border-b border-slate-200 sticky-head">
                                             <tr>
                                                 <SortTH id="unitNumber"  label="Unit #"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32 pl-6" />
                                                 <SortTH id="type"        label="Type"                 current={sortKey} dir={sortDir} onClick={handleSort} className="w-40" />

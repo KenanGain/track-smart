@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SAFETY_RECORDS, recordFields, fieldPool, defaultVersionLabel, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { SAFETY_RECORDS, recordFields, fieldPool, defaultVersionLabel, isDateMonitored, statesForRecord, recordForFields, pruneRecordFields, isAutoVersionLabel, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
@@ -223,7 +223,56 @@ export function newVersion(label: string): DocVersion {
 export function blankVersion(record: SafetyRecord, label: string): DocVersion {
     const v = newVersion(label);
     if (record.defaultCountry) v.country = record.defaultCountry;
+    // Only alongside its country: the province list is derived from the country above it, so a
+    // province set on its own would be a value the form cannot show.
+    if (record.defaultStateProv && v.country) v.stateProv = record.defaultStateProv;
     return v;
+}
+
+/**
+ * Writing ONE of a record's own fields — and everything that answer settles.
+ *
+ * Some fields are not a detail of the record, they are what the record IS, and the rest
+ * follows from them: choosing NIR names the certificate NIR and makes it Québec's; choosing
+ * Articles of Incorporation says this document has an issue date, no expiry and nothing to
+ * alert on. Those are not separate answers the user should have to give again.
+ *
+ * The half that is easy to forget is what the OLD answer left behind. A field or a date the
+ * new kind does not have stays in the data unless it is cleared — invisible in the form, still
+ * read by the list columns and by monitoring, so an incorporation certificate would sit on the
+ * dashboard as expiring on a date inherited from a business licence, with nowhere to correct
+ * it. Anything the user typed themselves — the record's name — is never overwritten.
+ *
+ * Returns just the patch, so every form that edits a version applies the same rules.
+ */
+export function fieldWritePatch(base: SafetyRecord, v: DocVersion, key: string, val: string): Partial<DocVersion> {
+    const fields = { ...(v.fields ?? {}), [key]: val };
+    const next: Partial<DocVersion> = { fields };
+    const rec = recordForFields(base, fields);
+    if (base.nameFromField === key && val && isAutoVersionLabel(base, v.label)) next.label = val;
+    if (base.variantByField?.from === key) {
+        next.fields = pruneRecordFields(rec, fields);
+        if (!rec.tracksIssueDate) next.issueDate = '';
+        if (!isDateMonitored(rec)) next.expiryDate = '';
+        const hadMonitoring = !recordForFields(base, v.fields).hideMonitoring;
+        next.monitoring = {
+            ...v.monitoring,
+            // Armed by the new kind's own default when there was no alert to speak of before;
+            // a choice the user has already made about a monitored kind is left standing.
+            enabled: rec.hideMonitoring ? false : hadMonitoring ? v.monitoring.enabled : !!rec.monitorByDefault,
+            // A basis the new kind cannot resolve points the alert at no date at all.
+            basis: !isDateMonitored(rec) ? 'status'
+                : (v.monitoring.basis === 'status' || (v.monitoring.basis === 'issue' && !rec.tracksIssueDate)) ? 'expiry'
+                : v.monitoring.basis,
+        };
+    }
+    if (base.stateByField?.from === key) {
+        const allowed = statesForRecord(base, fields);
+        next.stateProv = allowed?.length === 1 ? allowed[0]
+            : (allowed && !allowed.includes(v.stateProv)) ? '' : v.stateProv;
+        if (next.stateProv && !v.country && base.defaultCountry) next.country = base.defaultCountry;
+    }
+    return next;
 }
 
 type Store = Record<string, RecordDataEntry>; // `${accountId}::${subjectId}::${recordId}` -> entry
@@ -255,7 +304,7 @@ function persist(all: Store) {
 // future rule change without another migration.
 // Bump this (not KEY) whenever the catalog's field rules change again — bumping KEY would
 // discard every record the user has captured.
-const MIGRATION_KEY = 'compliance-data-catalog-v24';
+const MIGRATION_KEY = 'compliance-data-catalog-v33';
 
 /** Deterministic pick so a migrated version keeps the same value on every reload. */
 function pickFor(seed: string, options: string[]): string {
@@ -264,9 +313,15 @@ function pickFor(seed: string, options: string[]): string {
     return options[h % options.length] ?? '';
 }
 
-function migrateVersion(r: SafetyRecord | undefined, v: DocVersion): DocVersion | null {
+function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersion | null {
     let next: DocVersion | null = null;
     const patch = (p: Partial<DocVersion>) => { next = { ...(next ?? v), ...p }; };
+    // A record holding several KINDS of document is read as the kind THIS version is: which
+    // dates it has, what its number is called and whether it has an alert at all differ per
+    // kind, so every rule below has to ask the variant, not the record. Resolved from the
+    // stored type — never guessed: a version with no type chosen is exactly that, and stamping
+    // one on it would invent what document a carrier filed.
+    const r = base ? recordForFields(base, v.fields) : base;
     // The old free-form lifecycle value (current | historical | superseded | …) is gone:
     // a record is either the pinned current one or history. Anything that was explicitly
     // "current" becomes the pin; every other value falls back to position.
@@ -279,8 +334,12 @@ function migrateVersion(r: SafetyRecord | undefined, v: DocVersion): DocVersion 
     // Jurisdiction fields the record no longer shows would otherwise stay in the data.
     if (r.hideCountry && ((next ?? v).country || (next ?? v).stateProv)) patch({ country: '', stateProv: '' });
     else if (r.hideState && (next ?? v).stateProv) patch({ stateProv: '' });
-    // A record with a fixed jurisdiction fills its country in rather than leaving it blank.
+    // A record with a fixed jurisdiction fills its country in rather than leaving it blank —
+    // and its province too, where the record is issued by exactly one.
     if (r.defaultCountry && !(next ?? v).country) patch({ country: r.defaultCountry });
+    if (r.defaultStateProv && (next ?? v).country === r.defaultCountry && !(next ?? v).stateProv) {
+        patch({ stateProv: r.defaultStateProv });
+    }
     // A status the record no longer captures would keep showing in the list column.
     if (r.hideStatus && (next ?? v).status) patch({ status: '' });
     // A status value from the old generic list is meaningless under the record's own set.
@@ -294,27 +353,132 @@ function migrateVersion(r: SafetyRecord | undefined, v: DocVersion): DocVersion 
     // the same entry of its matched pool, so a start date lands before its end date. Derived
     // fields have no pool — they are computed from those dates, never stored.
     for (const f of recordFields(r)) {
+        // Never the field that says WHICH document this is: a plausible value for an unanswered
+        // question is one thing, deciding on a carrier's behalf that their filing is a
+        // certificate of incorporation is another.
+        if (r.variantByField?.from === f.key) continue;
         const pool = fieldPool(f);
         if (pool.length && !(next ?? v).fields?.[f.key]) {
             patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: pickFor(f.kind === 'date' ? v.id : v.id + f.key, pool) } });
         }
     }
+    // Anything left over from a field, or a date, that THIS kind of document does not have.
+    // Left in place it is worse than missing: the list columns and the record's facts still
+    // read it, so it shows as current while being unreachable in the form — and an expiry date
+    // stashed on a document that cannot expire puts the record on the monitoring dashboard as
+    // expiring. Only records with variants are swept; nothing else changes shape per version.
+    if (r.variantByField) {
+        const pruned = pruneRecordFields(r, (next ?? v).fields);
+        if (pruned !== (next ?? v).fields) patch({ fields: pruned });
+        if (!r.tracksIssueDate && (next ?? v).issueDate) patch({ issueDate: '' });
+        if (!isDateMonitored(r) && (next ?? v).expiryDate) patch({ expiryDate: '' });
+    }
     // Monitoring the record no longer offers must not stay switched on — it would keep
     // firing alerts from a config the form can no longer reach.
     if (r.hideMonitoring && (next ?? v).monitoring?.enabled) patch({ monitoring: { ...(next ?? v).monitoring, enabled: false } });
+    // A record that used to watch a STATUS and now watches a date (CVOR Level 2 gaining a
+    // renewal date) leaves stored configs pointed at 'status', which resolves to no date at
+    // all: the alert stays switched on and never fires, and the basis picker shows nothing
+    // selected. Repointed at whatever the record now monitors — and the reverse, since
+    // 'expiry' on a record with no date to expire is the same silent no-op.
+    {
+        const mon = (next ?? v).monitoring;
+        const dated = isDateMonitored(r);
+        if (mon && dated && mon.basis === 'status') {
+            patch({ monitoring: { ...mon, basis: (r.defaultMonitorBasis === 'issue' && r.tracksIssueDate) ? 'issue' : 'expiry' } });
+        } else if (mon && !dated && mon.basis === 'expiry') {
+            patch({ monitoring: { ...mon, basis: 'status' } });
+        }
+    }
     // "Record 2026" → "Driver License 2026" for records now named after themselves, and the
     // same for records already named after a PREVIOUS name of the record (a rename would
     // otherwise leave a list mixing both). Built from defaultVersionLabel so the migrated
     // name is exactly what a new record would be given today.
-    if (r.nameFromRecord || r.versionName) {
+    // A second record filed in the same year is named "… (2)" to keep it distinct, so that
+    // suffix has to survive the relabel — otherwise two records collapse onto one name, or
+    // (worse) the suffixed one is left behind reading "Record 2026 (2)" beside its renamed
+    // siblings. The year and the suffix are both carried across.
+    if (r.nameFromRecord || r.versionName || r.nameFromField) {
         const label = (next ?? v).label.trim();
+        // A record named after one of its own fields takes that field's value — a stored
+        // "Record 2025" on a safety fitness certificate becomes "NSC 2025", not the record's
+        // generic name, because the form it takes is what tells one of them from another.
+        const fromField = r.nameFromField ? ((next ?? v).fields?.[r.nameFromField] ?? '').trim() : '';
         const stale = ['Record', r.versionRenamedFrom].filter(Boolean) as string[];
         for (const from of stale) {
-            const m = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d{4})?$`, 'i').exec(label);
-            if (m) { patch({ label: defaultVersionLabel(r, m[1]) }); break; }
+            const m = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d{4})?(\\s*\\(\\d+\\))?$`, 'i').exec(label);
+            if (m) {
+                const base = fromField ? `${fromField}${m[1] ? ` ${m[1]}` : ''}` : defaultVersionLabel(r, m[1]);
+                patch({ label: base + (m[2] ? ` ${m[2].trim()}` : '') });
+                break;
+            }
         }
     }
     return next;
+}
+
+/**
+ * Records that were FOLDED INTO another one, and what they become there.
+ *
+ * The Québec NIR and Ontario's CVOR Level 2 are now two forms of the one Safety Fitness
+ * Certificate, chosen by its type field. Dropping them from the catalog alone would leave
+ * every certificate a carrier has already filed sitting in storage under an id nothing reads —
+ * present in the data, gone from the screen. So their entries are moved onto the surviving
+ * record, stamped with the type (and the province) that says which form they were.
+ */
+const MERGED_RECORDS: Record<string, { into: string; fields: Record<string, string>; country: string; stateProv: string; wasNamed: string }> = {
+    nir: { into: 'safety-fitness', fields: { certType: 'NIR' }, country: 'Canada', stateProv: 'Quebec', wasNamed: 'NIR Certificate' },
+    'cvor-level-2': { into: 'safety-fitness', fields: { certType: 'CVOR Level 2' }, country: 'Canada', stateProv: 'Ontario', wasNamed: 'CVOR Level 2' },
+    // The company's two founding papers, now the two types of one Company Documents record.
+    // No jurisdiction is stamped: either can be registered federally or in any province, so
+    // whatever was filed is what is kept.
+    articles: { into: 'company-docs', fields: { docType: 'Articles of Incorporation' }, country: '', stateProv: '', wasNamed: 'Articles of Incorporation' },
+    'operating-name': { into: 'company-docs', fields: { docType: 'Master Business License' }, country: '', stateProv: '', wasNamed: 'Operating Name Registration' },
+};
+
+/** Move one folded-in record's versions onto the record that absorbed it. */
+function mergeFoldedRecords(all: Store): boolean {
+    let moved = false;
+    for (const [key, entry] of Object.entries(all)) {
+        const [acct, subject, recordId] = key.split('::');
+        const spec = MERGED_RECORDS[recordId ?? ''];
+        if (!spec || !entry.versions?.length) continue;
+        const target = `${acct}::${subject}::${spec.into}`;
+        const rec = RECORD_BY_ID.get(spec.into);
+        // Exactly one record in a list may be pinned as THE current one. A pin the user set is
+        // kept where the destination has none — dropping it would silently un-choose their
+        // choice — and dropped where it would make a second.
+        let pinTaken = (all[target]?.versions ?? []).some(x => x.isCurrent);
+        const stamped = entry.versions.map(v => {
+            const keepPin = !!v.isCurrent && !pinTaken;
+            if (keepPin) pinTaken = true;
+            return {
+                ...v,
+                fields: { ...(v.fields ?? {}), ...spec.fields },
+                country: v.country || spec.country,
+                stateProv: v.stateProv || spec.stateProv,
+                // Named after the form it was: a generic "Record 2026" or the old record's own
+                // name becomes "NIR 2026" / "CVOR Level 2 2026". A typed name is kept.
+                label: relabelMerged(v.label, spec, rec),
+                isCurrent: keepPin || undefined,
+            };
+        });
+        const existing = all[target]?.versions ?? [];
+        all[target] = { ...(all[target] ?? {}), versions: [...existing, ...stamped].sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || '')) };
+        delete all[key];
+        moved = true;
+    }
+    return moved;
+}
+
+function relabelMerged(label: string, spec: { fields: Record<string, string>; wasNamed: string }, rec?: SafetyRecord): string {
+    const name = Object.values(spec.fields)[0] ?? label;
+    const auto = ['Record', spec.wasNamed, name, rec?.recordName].filter(Boolean) as string[];
+    for (const from of auto) {
+        const m = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d{4})?(\\s*\\(\\d+\\))?$`, 'i').exec(label.trim());
+        if (m) return `${name}${m[1] ? ` ${m[1]}` : ''}${m[2] ? ` ${m[2].trim()}` : ''}`;
+    }
+    return label;
 }
 
 function migrateStore(): void {
@@ -322,7 +486,15 @@ function migrateStore(): void {
     try {
         if (localStorage.getItem(MIGRATION_KEY)) return;
         const all = loadAll();
-        let changed = false;
+        // Merges first: the moved versions then go through the same per-record rules below as
+        // everything else, under the record that absorbed them.
+        let changed = mergeFoldedRecords(all);
+        // The two seeded demo custom records are gone from the catalog. Whatever was captured
+        // against them is unreachable now — no record to open it under — so it goes with them
+        // rather than sitting in storage forever.
+        for (const key of Object.keys(all)) {
+            if (/^[^:]+::[^:]+::custom-demo-[12]$/.test(key)) { delete all[key]; changed = true; }
+        }
         for (const [key, entry] of Object.entries(all)) {
             // Every entry is visited: the lifecycle-value cleanup applies to all of them, and
             // migrateVersion applies the per-record rules only where the catalog defines them.
@@ -335,6 +507,18 @@ function migrateStore(): void {
                 all[key] = instances ? { versions, instances } : { versions };
                 changed = true;
             }
+        }
+        // A record whose province depends on one of its own fields: fill in the one the
+        // stored type allows, so merged and pre-existing certificates read the same.
+        for (const [key, entry] of Object.entries(all)) {
+            const rec = RECORD_BY_ID.get(key.split('::')[2] ?? '');
+            if (!rec?.stateByField) continue;
+            const fixed = (entry.versions ?? []).map(v => {
+                const allowed = statesForRecord(rec, v.fields);
+                if (!allowed || (v.stateProv && allowed.includes(v.stateProv))) return v;
+                return allowed.length === 1 ? { ...v, stateProv: allowed[0], country: v.country || rec.defaultCountry || '' } : { ...v, stateProv: '' };
+            });
+            if (fixed.some((v, i) => v !== entry.versions?.[i])) { all[key] = { ...entry, versions: fixed }; changed = true; }
         }
         if (changed) persist(all);
         localStorage.setItem(MIGRATION_KEY, '1');

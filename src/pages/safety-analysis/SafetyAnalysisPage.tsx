@@ -2643,7 +2643,7 @@ export function SafetyAnalysisPage() {
           ) : (
             <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
               <table className="w-full min-w-[900px]">
-                <thead className="sticky top-0 z-10">
+                <thead className="sticky-head">
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2.5 w-8">#</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2.5">Driver</th>
@@ -3164,7 +3164,7 @@ export function SafetyAnalysisPage() {
           ) : (
             <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
               <table className="w-full min-w-[860px]">
-                <thead className="sticky top-0 z-10">
+                <thead className="sticky-head">
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2.5 w-8">#</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2.5">Asset</th>
@@ -3552,7 +3552,7 @@ export function SafetyAnalysisPage() {
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="overflow-x-auto max-h-72 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10">
+                        <thead className="sticky-head">
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">ID</th>
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Date</th>
@@ -3646,7 +3646,7 @@ export function SafetyAnalysisPage() {
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="overflow-x-auto max-h-72 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10">
+                        <thead className="sticky-head">
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">ID</th>
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Date</th>
@@ -3714,7 +3714,7 @@ export function SafetyAnalysisPage() {
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="overflow-x-auto max-h-72 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10">
+                        <thead className="sticky-head">
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Date</th>
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Driver</th>
@@ -3781,7 +3781,7 @@ export function SafetyAnalysisPage() {
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="overflow-x-auto max-h-72 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10">
+                        <thead className="sticky-head">
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Date</th>
                             <th className="text-left px-3 py-2.5 font-bold text-slate-600 text-[10px] uppercase tracking-wide">Driver</th>

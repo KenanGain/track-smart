@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle, Search, Plus,
     MapPin, Truck, Smartphone, Building2, Sparkles, Eye, Pencil, Trash2,
-    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns, Biohazard, HeartPulse, Skull, Layers, X, Ticket, Share2, type LucideIcon,
+    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns, Biohazard, HeartPulse, Skull, Layers, X, Ticket, Share2, ShieldAlert, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCondensingHeader, HEADER_TRANSITION } from "@/components/ui/use-condensing-header";
-import { TabScroller } from "@/components/ui/TabScroller";
-import { KpiChipStrip } from "@/components/ui/KpiChipStrip";
+import { useCondensingHeader } from "@/components/ui/use-condensing-header";
+import { ListPageHeader } from "@/components/ui/ListPageHeader";
 import { ShareToChat } from "@/components/share/ShareToChat";
 import { consumePendingRecord, setMessagesFocus, type RecordRef } from "@/pages/messages/messages-store";
 import {
@@ -402,14 +401,15 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", o
 
     // The same figures the KPI cards show, for the compact form the header keeps once
     // the cards themselves have scrolled away — including their click-to-filter.
+    // No Total: the count sits beside the title at every height, and the All Accidents tab
+    // is what clears the filters.
     const kpiChips = useMemo(() => [
-        { id: "all",        label: "Total",      value: recKpis.total,      tone: "text-blue-700",    active: recStatus === "all" && recFlag === "all", onClick: () => { setRecStatus("all"); setRecFlag("all"); } },
         { id: "hazmat",     label: "Hazmat",     value: recKpis.hazmat,     tone: "text-amber-700",   active: recFlag === "hazmat",     onClick: () => toggleFlag("hazmat") },
         { id: "towaway",    label: "Tow-away",   value: recKpis.towaway,    tone: "text-sky-700",     active: recFlag === "towaway",    onClick: () => toggleFlag("towaway") },
         { id: "injuries",   label: "Injuries",   value: recKpis.injuries,   tone: "text-rose-700",    active: recFlag === "injuries",   onClick: () => toggleFlag("injuries") },
         { id: "fatalities", label: "Fatalities", value: recKpis.fatalities, tone: "text-slate-900",   active: recFlag === "fatalities", onClick: () => toggleFlag("fatalities") },
         { id: "others",     label: "Others",     value: recKpis.others,     tone: "text-slate-700",   active: recFlag === "others",     onClick: () => toggleFlag("others") },
-    ], [recKpis, recFlag, recStatus]);
+    ], [recKpis, recFlag]);
 
     const filteredRecords = useMemo(
         () => (recSubType ? baseFiltered.filter(r => typeIdsOf(r).includes(recSubType)) : baseFiltered),
@@ -466,83 +466,37 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", o
 
     return (
         <div className="flex h-full flex-col bg-slate-50">
-            {/* Header — stays put and SHRINKS as the ledger scrolls; returns when you
-                scroll back up. Its own, rather than the shared PageHeader: ten other pages
-                use that one and none of them should gain a condense mode. Both buttons stay
-                in place and keep working the whole way down. */}
-            <header className={cn("z-30 shrink-0 border-b border-slate-200 bg-white", HEADER_TRANSITION, condensed ? "shadow-md" : "shadow-sm")}>
-                <div className={cn("flex flex-wrap items-center justify-between gap-4 px-4 sm:px-8", HEADER_TRANSITION, condensed ? "py-2" : "py-4")}>
-                    <div className="flex min-w-0 items-center gap-3">
-                        <div className={cn(
-                            "flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm",
-                            HEADER_TRANSITION, condensed ? "h-8 w-8" : "h-10 w-10",
-                        )}>
-                            <AlertTriangle size={condensed ? 16 : 20} />
-                        </div>
-                        <div className="min-w-0">
-                            <h1 className={cn("truncate font-semibold text-slate-900", HEADER_TRANSITION, condensed ? "text-base" : "text-xl")}>Default Accidents</h1>
-                            <p className={cn("overflow-hidden whitespace-nowrap text-xs text-slate-500", HEADER_TRANSITION,
-                                condensed ? "mt-0 max-h-0 opacity-0" : "mt-0.5 max-h-6 opacity-100")}>
-                                Reported accidents — driver-reported and office-entered, reviewed and verified here
-                            </p>
-                        </div>
-                    </div>
-                    <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={() => loadSample()}
-                            className={cn("inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100", condensed ? "h-8" : "h-9")}>
-                            <Sparkles size={15} /> <span className="hidden sm:inline">Load sample data</span>
-                        </button>
-                        <button type="button" onClick={() => setEditing({ rec: blankOfficeAccident(owner, records), isNew: true })}
-                            className={cn("inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}>
-                            <Plus size={15} /> Add accident
-                        </button>
-                    </div>
-                </div>
-
-                {/* The KPI numbers, small — they fade in exactly as the cards below
-                    scroll out of reach, and keep their click-to-filter. */}
-                <div className="px-4 sm:px-8">
-                    <KpiChipStrip items={kpiChips} condensed={condensed} />
-                </div>
-
-                {/* Category strip — part of the HEADER, not the list, so nothing scrolls
-                    underneath it and it is reachable from anywhere in the ledger. It does
-                    NOT condense with the title: navigation that disappears on scroll is not
-                    navigation. On the shared rail, so the scrollbar is hidden and a strip
-                    wider than the column gets edge chevrons rather than ending unannounced. */}
-                <div className="w-full border-t border-slate-100 px-4 sm:px-8">
-                    <TabScroller ariaLabel="Accident categories" activeKey={recFlag}>
-                        {[
-                            { id: "all", label: "All Accidents", Icon: AlertTriangle, count: recKpis.total },
-                            { id: "hazmat", label: "Hazmat", Icon: Biohazard, count: recKpis.hazmat },
-                            { id: "towaway", label: "Tow Away", Icon: Truck, count: recKpis.towaway },
-                            { id: "injuries", label: "Injuries", Icon: HeartPulse, count: recKpis.injuries },
-                            { id: "fatalities", label: "Fatalities", Icon: Skull, count: recKpis.fatalities },
-                            { id: "others", label: "Others", Icon: Layers, count: recKpis.others },
-                        ].map(tab => {
-                            const active = tab.id === "all" ? recFlag === "all" : recFlag === tab.id;
-                            return (
-                                <button key={tab.id} type="button"
-                                    onClick={() => setRecFlag(tab.id === "all" ? "all" : (tab.id as SeverityFlag))}
-                                    data-tab-active={active || undefined}
-                                    aria-current={active ? "page" : undefined}
-                                    className={cn(
-                                        // Selection is BLUE, as on every other tab bar in the app.
-                                        "inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 transition-colors",
-                                        active
-                                            ? "border-blue-600 text-blue-600"
-                                            : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800",
-                                    )}>
-                                    <tab.Icon size={14} className={active ? "" : "opacity-70"} />
-                                    <span className="text-sm font-semibold">{tab.label}</span>
-                                    <span className={cn("inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
-                                        active ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500")}>{tab.count}</span>
-                                </button>
-                            );
-                        })}
-                    </TabScroller>
-                </div>
-            </header>
+            {/* The app's standard list header (see `ListPageHeader`). */}
+            <ListPageHeader
+                Icon={ShieldAlert}
+                title="Default Accidents"
+                description="Reported accidents — driver-reported and office-entered, reviewed and verified here"
+                count={recKpis.total}
+                chips={kpiChips}
+                condensed={condensed}
+                tabsLabel="Accident categories"
+                showZeroCounts
+                tabs={[
+                    { id: "all", label: "All Accidents", icon: AlertTriangle, count: recKpis.total },
+                    { id: "hazmat", label: "Hazmat", icon: Biohazard, count: recKpis.hazmat },
+                    { id: "towaway", label: "Tow Away", icon: Truck, count: recKpis.towaway },
+                    { id: "injuries", label: "Injuries", icon: HeartPulse, count: recKpis.injuries },
+                    { id: "fatalities", label: "Fatalities", icon: Skull, count: recKpis.fatalities },
+                    { id: "others", label: "Others", icon: Layers, count: recKpis.others },
+                ]}
+                activeTab={recFlag}
+                onTabChange={id => setRecFlag(id === "all" ? "all" : (id as SeverityFlag))}
+                actions={<>
+                    <button type="button" onClick={() => loadSample()}
+                        className={cn("inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100", condensed ? "h-8" : "h-9")}>
+                        <Sparkles size={15} /> <span className="hidden sm:inline">Load sample data</span>
+                    </button>
+                    <button type="button" onClick={() => setEditing({ rec: blankOfficeAccident(owner, records), isNew: true })}
+                        className={cn("inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}>
+                        <Plus size={15} /> Add accident
+                    </button>
+                </>}
+            />
 
             {/* Scrollable content — its own scroller, so the header band above shrinks
                 instead of scrolling away. */}
@@ -631,7 +585,6 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", o
                                 );
                             })()}
 
-                            {/* Toolbar — search + filters (wraps on small screens) */}
                             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 sm:px-4">
                                 <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
                                     <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

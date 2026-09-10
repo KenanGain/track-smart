@@ -49,7 +49,7 @@ export const makeReviewStep = (idSeed: string, extra: string[] = []): TemplateSt
 export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" | "Policy" }[] = [
     { id: "application", name: "Application", group: "Core" },
     { id: "review", name: "Review", group: "Core" },
-    { id: "mvr", name: "MVR — Motor Vehicle Record", group: "Forms" },
+    { id: "mvr", name: "Driver Non-Commercial Abstract", group: "Forms" },
     { id: "driver-abstract", name: "Driver Abstract", group: "Forms" },
     { id: "psp", name: "PSP — Pre-Employment Screening", group: "Forms" },
     { id: "cvdr-cda", name: "CVDR / CDA", group: "Forms" },
@@ -69,7 +69,7 @@ export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" |
     { id: "license-compliance", name: "License Requirements Certification", group: "Policy" },
     { id: "on-duty-hours", name: "Statement of On-Duty Hours", group: "Policy" },
     { id: "other-compensated-work", name: "Other Compensated Work", group: "Policy" },
-    { id: "mvr-release", name: "MVR Release Consent", group: "Policy" },
+    { id: "mvr-release", name: "Non-Commercial Abstract Release Consent", group: "Policy" },
     { id: "clearinghouse-consent", name: "Clearinghouse Query Consent", group: "Policy" },
     { id: "substance-consent-release", name: "Substance Consent & Release", group: "Policy" },
 ];
@@ -99,12 +99,12 @@ const ALL_CATEGORY_QUIZZES: QuizPick[] = [
     { quizId: "quiz-hazmat-1", count: 20 },    // HazMat
 ];
 // A single-report step, titled by the report's short name (one form per step).
-const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "MVR", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA", "cvdr-cda": "CVDR / CDA" };
+const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "Non-Commercial Abstract", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA", "cvdr-cda": "CVDR / CDA" };
 const rep = (tplId: string, n: number, fid: string): TemplateStep => ({ id: `${tplId}-st${n}`, title: REPORT_TITLES[fid] ?? stepName(fid), formIds: [fid] });
 
 const DEFAULT_TEMPLATES: HiringTemplate[] = [
     {
-        id: "tpl-us", name: "US Driver", description: "Interstate US driver — PSP, MVR and DOT history.", locked: true, driverType: "us", checklistId: "cl-us",
+        id: "tpl-us", name: "US Driver", description: "Interstate US driver — PSP, abstract and DOT history.", locked: true, driverType: "us", checklistId: "cl-us",
         steps: [
             makeAppStep("tpl-us", ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             rep("tpl-us", 2, "psp"),
@@ -131,7 +131,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         ],
     },
     {
-        id: "tpl-cross", name: "Cross-Border (US–Canada)", description: "Cross-border driver — full PSP, MVR and DOT verification.", locked: true, driverType: "cross-border", checklistId: "cl-cross",
+        id: "tpl-cross", name: "Cross-Border (US–Canada)", description: "Cross-border driver — full PSP, abstract and DOT verification.", locked: true, driverType: "cross-border", checklistId: "cl-cross",
         steps: [
             makeAppStep("tpl-cross", ["fcra-disclosure", "mvr-release", "clearinghouse-consent"]),
             rep("tpl-cross", 2, "psp"),
@@ -146,7 +146,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         ],
     },
     {
-        id: "tpl-local", name: "Local / Domestic Driver", description: "Domestic CDL hire — MVR, background check and road test.", locked: true, driverType: "local", checklistId: "cl-local",
+        id: "tpl-local", name: "Local / Domestic Driver", description: "Domestic CDL hire — abstract, background check and road test.", locked: true, driverType: "local", checklistId: "cl-local",
         steps: [
             makeAppStep("tpl-local", ["mvr-release"]),
             rep("tpl-local", 2, "mvr"),
@@ -159,7 +159,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         ],
     },
     {
-        id: "tpl-us-fast", name: "US Driver — Fast Track", description: "Lean US pre-employment — MVR, drug test and DOT verification.", locked: true, driverType: "us", checklistId: "cl-us",
+        id: "tpl-us-fast", name: "US Driver — Fast Track", description: "Lean US pre-employment — abstract, drug test and DOT verification.", locked: true, driverType: "us", checklistId: "cl-us",
         steps: [
             makeAppStep("tpl-us-fast", ["mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             rep("tpl-us-fast", 2, "mvr"),
