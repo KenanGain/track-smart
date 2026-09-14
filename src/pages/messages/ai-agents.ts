@@ -324,7 +324,7 @@ const PANELS: Record<Exclude<AgentIntent, 'greeting' | 'help'>, AiPanel> = {
       { title: 'Safety Fitness Certificate', subtitle: 'NSC registration', badge: 'Due', tone: 'rose', meta: '7 days', tags: ['week', 'month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'safety-fitness' },
       { title: 'Medical Certificate — Maria Rodriguez', subtitle: 'DOT medical', badge: 'Due', tone: 'amber', meta: '12 days', tags: ['month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'medical-cert' },
       { title: 'CDL — Kevin O’Brien', subtitle: 'Driver license', badge: 'Renewal', tone: 'amber', meta: '21 days', tags: ['month', 'quarter'], path: '/default-compliance-monitoring', recordId: 'cdl' },
-      { title: 'IFTA Licence — Carrier', subtitle: 'Fuel tax', badge: 'Renewal', tone: 'blue', meta: '68 days', tags: ['quarter'], path: '/default-compliance-monitoring', recordId: 'ifta-license' },
+      { title: 'IFTA License — Carrier', subtitle: 'Fuel tax', badge: 'Renewal', tone: 'blue', meta: '68 days', tags: ['quarter'], path: '/default-compliance-monitoring', recordId: 'ifta-license' },
     ],
     footnote: 'Reminders auto-scheduled to each driver', link: { label: 'Open Compliance Monitoring', path: '/default-compliance-monitoring' },
   },

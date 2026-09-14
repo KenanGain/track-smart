@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/ListChrome';
 import { nextSort, type SortState } from '@/components/ui/list-chrome';
 import {
-    fetchMcAuthority, usd, type McAuthorityRecord, type McInsuranceFiling,
+    fetchMcAuthority, usd, type McAuthorityRecord, type McInsuranceFiling, type McProcessAgent,
 } from '@/pages/compliance/mc-authority.data';
 
 /**
@@ -155,17 +155,10 @@ export function McAuthorityFacts({ mcNumber, condensed = false }: { mcNumber: st
                             )}
                         </Fact>
                     </div>
-                    {/* The BOC-3 is a filing in its own right — who may be served for this
-                        carrier, and in which states — so it reads as its own group. */}
-                    <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t border-slate-100 px-4 py-3">
-                        <div className="flex items-center gap-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                            <ShieldCheck size={13} className="text-slate-400" /> Process agent (BOC-3)
-                        </div>
-                        <Fact label="Coverage type">{a.processAgent.coverageType}</Fact>
-                        <Fact label="Company name" className="min-w-[13rem]">{a.processAgent.companyName}</Fact>
-                        <Fact label="Company status"><AuthorityPill status={a.processAgent.companyStatus} /></Fact>
-                        <Fact label="Received date">{fmtDate(a.processAgent.receivedDate) || <Dash />}</Fact>
-                    </div>
+                    {/* The BOC-3 designations are NOT here. A carrier has several — the one
+                        in force plus whoever held it before — and four facts about one of
+                        them, chosen arbitrarily, is the kind of summary that reads as the
+                        whole answer. They have their own tab, as a list. */}
                 </>
             )}
         </div>
@@ -351,6 +344,158 @@ export function McInsuranceTab({ mcNumber }: { mcNumber: string }) {
                         onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
                     <p className="px-5 pb-3 text-[11px] text-slate-400">
                         Filed by the insurer with FMCSA — nothing here is entered or edited from this page.
+                    </p>
+                </>
+            )}
+        </>
+    );
+}
+
+
+// ── The BOC-3 designations ──────────────────────────────────────────────────
+
+type AgentCol = 'coverage' | 'company' | 'status' | 'received';
+
+/** Locked: the agent is what a row IS; without the company name there is no row. */
+const AGENT_COLUMNS: PickerColumn<AgentCol>[] = [
+    { id: 'coverage', label: 'Coverage type' },
+    { id: 'company', label: 'Company name', locked: true },
+    { id: 'status', label: 'Status' },
+    { id: 'received', label: 'Received date' },
+];
+
+const agentValue = (a: McProcessAgent, col: AgentCol): string => {
+    switch (col) {
+        case 'coverage': return a.coverageType.toLowerCase();
+        case 'company': return a.companyName.toLowerCase();
+        case 'status': return a.companyStatus.toLowerCase();
+        case 'received': return a.receivedDate;
+    }
+};
+
+/**
+ * Who may be served legal papers for this carrier, and where.
+ *
+ * Read-only, like the insurance filings beside it: a BOC-3 is filed with FMCSA by the agent,
+ * not entered here, so there is no Add. Superseded designations are hidden by default and one
+ * switch away — they are history, but an auditor checking for a gap in coverage needs them.
+ */
+export function McProcessAgentTab({ mcNumber }: { mcNumber: string }) {
+    const { data, loading, reload } = useMcAuthority(mcNumber);
+    const [search, setSearch] = useState('');
+    const [coverageFilter, setCoverageFilter] = useState('');
+    const [showInactive, setShowInactive] = useState(false);
+    const [sort, setSort] = useState<SortState<AgentCol> | null>(null);
+    const [hidden, setHidden] = useState<Set<AgentCol>>(new Set());
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
+
+    const all = useMemo(() => data?.authority.processAgents ?? [], [data]);
+    const inactive = all.filter(a => a.companyStatus !== 'Active');
+    const coverages = Array.from(new Set(all.map(a => a.coverageType))).sort();
+    const rows = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        const list = all.filter(a =>
+            (showInactive || a.companyStatus === 'Active')
+            && (!coverageFilter || a.coverageType === coverageFilter)
+            && (!q || `${a.companyName} ${a.coverageType} ${a.companyStatus}`.toLowerCase().includes(q)));
+        if (!sort) return list;
+        return [...list].sort((x, y) =>
+            agentValue(x, sort.col).localeCompare(agentValue(y, sort.col), undefined, { numeric: true, sensitivity: 'base' })
+            * (sort.dir === 'desc' ? -1 : 1));
+    }, [all, search, coverageFilter, showInactive, sort]);
+
+    const shown = (id: AgentCol) => !hidden.has(id);
+    const toggleCol = (id: AgentCol) => setHidden(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+    });
+    const visible = new Set(AGENT_COLUMNS.map(c => c.id).filter(shown));
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const th = (col: AgentCol, label: string, className?: string) =>
+        shown(col) && <SortTh col={col} label={label} sortable sort={sort} onSort={c => { setSort(s => nextSort(s, c)); setPage(1); }} className={className} />;
+
+    if (!mcNumber.trim()) return <div className="p-5"><NeedsNumber what="The process agent" /></div>;
+
+    return (
+        <>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+                <h3 className="flex items-center gap-2 text-[13px] font-bold text-slate-700">
+                    <ShieldCheck size={14} className="text-slate-400" /> Process agent (BOC-3)
+                    <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{all.length}</span>
+                </h3>
+                <div className="flex flex-wrap items-center gap-3">
+                    <HistoryToggle on={showInactive} onChange={setShowInactive} count={inactive.length}
+                        label="Show superseded" emptyTitle="No superseded designations" />
+                    <LookupNote syncedAt={data?.authority.syncedAt} loading={loading} onReload={reload} />
+                </div>
+            </div>
+
+            {loading && !data ? <LoadingRows rows={3} /> : all.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 px-5 py-12 text-[13px] text-amber-700">
+                    <AlertCircle size={14} /> No BOC-3 is on file for this authority.
+                </div>
+            ) : (
+                <>
+                    <ListToolbar
+                        search={search} onSearch={v => { setSearch(v); setPage(1); }}
+                        placeholder="Search agents, coverage, status…"
+                        filters={coverages.length > 1 ? (
+                            <FilterSelect value={coverageFilter} onChange={v => { setCoverageFilter(v); setPage(1); }}
+                                title="Filter by coverage type" allLabel="All coverage types" options={coverages} />
+                        ) : undefined}
+                        columns={<ColumnPicker columns={AGENT_COLUMNS} visible={visible} onToggle={toggleCol} />}
+                    />
+                    {pageRows.length === 0 ? (
+                        <div className="px-5 py-12 text-center text-sm text-slate-500">No designations match your search / filters.</div>
+                    ) : (
+                        <>
+                            <div className="hidden overflow-x-auto md:block">
+                                <table className="w-full min-w-[44rem]">
+                                    <thead className="border-b border-slate-200 bg-slate-50/50">
+                                        <tr>
+                                            {th('coverage', 'Coverage type', 'pl-5')}
+                                            <SortTh col="company" label="Company name" sortable sort={sort} onSort={c => setSort(s => nextSort(s, c))} className={shown('coverage') ? undefined : 'pl-5'} />
+                                            {th('status', 'Status')}
+                                            {th('received', 'Received date', 'pr-5')}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {pageRows.map(a => (
+                                            <tr key={a.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                                                {shown('coverage') && <td className="whitespace-nowrap py-2.5 pl-5 pr-4 text-[13px] text-slate-600">{a.coverageType}</td>}
+                                                <td className={cn('whitespace-nowrap py-2.5 pr-4 text-[13px] font-semibold text-slate-800', shown('coverage') ? 'px-4' : 'pl-5')}>{a.companyName}</td>
+                                                {shown('status') && <td className="whitespace-nowrap px-4 py-2.5"><AuthorityPill status={a.companyStatus} /></td>}
+                                                {shown('received') && <td className="whitespace-nowrap py-2.5 pl-4 pr-5 text-[13px] text-slate-600">{fmtDate(a.receivedDate) || <Dash />}</td>}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {/* The same rows as cards once four columns no longer fit. */}
+                            <div className="divide-y divide-slate-100 md:hidden">
+                                {pageRows.map(a => (
+                                    <div key={a.id} className="px-5 py-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="truncate text-[13px] font-semibold text-slate-800">{a.companyName}</div>
+                                                <div className="text-[12px] text-slate-500">{a.coverageType}</div>
+                                            </div>
+                                            <AuthorityPill status={a.companyStatus} />
+                                        </div>
+                                        <div className="mt-1.5 text-[12px] text-slate-500">Received {fmtDate(a.receivedDate) || '—'}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                    <TablePager page={safePage} pageSize={pageSize} total={rows.length}
+                        onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+                    <p className="px-5 pb-3 text-[11px] text-slate-400">
+                        Filed with FMCSA by the process agent — nothing here is entered or edited from this page.
                     </p>
                 </>
             )}

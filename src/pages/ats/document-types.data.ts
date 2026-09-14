@@ -289,7 +289,7 @@ function seedDocumentTypes(): DocumentType[] {
             status: 'Active', addedDate: d,
         },
         {
-            id: 'dt-offer-letter', name: 'Offer Letter', category: 'Other',
+            id: 'dt-offer-letter', name: 'Offer Letter / Contract', category: 'Other',
             required: false, allowMultiple: false,
             expiryRequired: false, issueDateRequired: true,
             issueStateRequired: false, issueCountryRequired: false,

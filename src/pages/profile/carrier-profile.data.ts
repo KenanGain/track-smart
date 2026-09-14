@@ -292,7 +292,10 @@ export const UI_DATA = {
     keyNumberCatalog: {
         categories: [
             { key: "regulatorySafety", label: "REGULATORY AND SAFETY NUMBER", types: ["DOT Number", "MC Number", "Safety Status", "CVOR"] },
-            { key: "taxBusiness", label: "TAX AND BUSINESS IDENTIFICATION NUMBERS", types: ["EIN Number", "Tax ID", "IFTA", "UCR Number"] },
+            // "IFTA License", not "IFTA" — IFTA is the agreement; what a carrier holds, files
+            // and renews is the licence issued under it, and that is what the record is called
+            // everywhere else (the default catalog, COMPLIANCE_NUMBERS below).
+            { key: "taxBusiness", label: "TAX AND BUSINESS IDENTIFICATION NUMBERS", types: ["EIN Number", "Tax ID", "IFTA License", "UCR Number"] },
             { key: "carrierIndustry", label: "CARRIER & INDUSTRY CODES", types: ["SCAC Code", "Carrier Code Number"] },
             { key: "bondRegistration", label: "BOND AND REGISTRATION NUMBERS", types: ["Fleet Bond Number", "Surety Bond Number"] },
             { key: "other", label: "OTHER", types: ["Company Registration #", "Incorporation #"] }
@@ -423,7 +426,7 @@ export const INITIAL_VIEW_DATA = {
                     },
                     {
                         key: "taxBusiness", label: "TAX AND BUSINESS IDENTIFICATION NUMBERS", collapsed: false, canAdd: true, items: [
-                            { type: "IFTA", value: "IFTA-DE-990", status: { text: "Active", tone: "success" }, expiryDate: "2024-12-31" }
+                            { type: "IFTA License", value: "IFTA-DE-990", status: { text: "Active", tone: "success" }, expiryDate: "2024-12-31" }
                         ]
                     },
                     { key: "carrierIndustry", label: "CARRIER & INDUSTRY CODES", collapsed: true, canAdd: true, items: [] },

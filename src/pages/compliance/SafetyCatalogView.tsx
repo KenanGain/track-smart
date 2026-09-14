@@ -6,11 +6,11 @@ import {
     ClipboardList, Table2, X, Eye, SquarePen, Sparkles, History, Plus, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, RECORD_TYPE_ORDER, RECORD_TYPE_LABEL,
     ENTITY_ORDER, isDateMonitored, UPLOAD_MODE_LABEL, DEFAULT_CUSTOM_FORM, defaultVersionLabel, recordFields,
     type SafetyRecord, type RecordTypeId, type EntityId, type UploadMode, type CustomFormConfig,
+    SAFETY_CATEGORIES_BY_ENTITY, type SafetyCategory,
 } from '@/pages/compliance/safety-software-catalog.data';
 import { useCustomSafetyRecords, newCustomRecordId } from '@/pages/compliance/safety-custom-records.data';
 import { useSafetyTags } from '@/pages/compliance/safety-tags.data';
@@ -39,7 +39,19 @@ const RECORD_TYPE_TONE: Record<RecordTypeId, string> = {
 };
 
 /** Short labels for the in-row Category column (the sub-tabs carry the full names). */
-const CATEGORY_SHORT: Record<KeyNumberGroup, string> = {
+const CATEGORY_SHORT: Record<SafetyCategory, string> = {
+    // Carrier
+    'Operating Authority': 'Operating Authority',
+    'Safety & Regulatory Permits': 'Safety & Permits',
+    'Carrier Codes & Certifications': 'Codes & Certifications',
+    'Insurance': 'Insurance',
+    // Driver
+    'Personal Documents': 'Personal',
+    'Travel Documents': 'Travel',
+    'Abstracts & Annual Reviews': 'Abstracts & Reviews',
+    'Pre-Employment': 'Pre-Employment',
+    'Disciplinary Records': 'Disciplinary',
+    // Asset
     'Regulatory and Safety Numbers': 'Regulatory & Safety',
     'Tax and Business Identification Numbers': 'Tax & Business ID',
     'Carrier & Industry Codes': 'Carrier & Industry',
@@ -389,7 +401,7 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
     const [entity, setEntity] = useState<EntityId>(initial?.entity ?? entityDefault);
     const [recordName, setRecordName] = useState(initial?.recordName ?? '');
     const [description, setDescription] = useState(initial?.description ?? '');
-    const [category, setCategory] = useState<KeyNumberGroup>(initial?.category ?? 'Other');
+    const [category, setCategory] = useState<SafetyCategory>(initial?.category ?? 'Other');
     const [numberName, setNumberName] = useState(initial?.numberName ?? '');
     const [documentName, setDocumentName] = useState(initial?.documentName ?? '');
     const [cf, setCf] = useState<CustomFormConfig>(() => initFormConfig(initial));
@@ -504,7 +516,13 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
                                     const Icon = ENTITY_ICON[e];
                                     const active = entity === e;
                                     return (
-                                        <button key={e} type="button" onClick={() => setEntity(e)}
+                                        <button key={e} type="button" onClick={() => {
+                                            setEntity(e);
+                                            // Categories are per entity: a heading the new one
+                                            // does not file under would put the record in a tab
+                                            // that never appears.
+                                            if (!SAFETY_CATEGORIES_BY_ENTITY[e].includes(category)) setCategory('Other');
+                                        }}
                                             className={cn('flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
                                                 active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
                                             <Icon size={13} /> {e}
@@ -515,8 +533,8 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
                         </div>
                         <div>
                             <label className={CM_LABEL}>Category</label>
-                            <select value={category} onChange={e => setCategory(e.target.value as KeyNumberGroup)} className={CM_INPUT}>
-                                {SAFETY_CATEGORY_ORDER.map(c => <option key={c} value={c}>{c}</option>)}
+                            <select value={category} onChange={e => setCategory(e.target.value as SafetyCategory)} className={CM_INPUT}>
+                                {SAFETY_CATEGORIES_BY_ENTITY[entity].map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                     </div>
@@ -622,7 +640,7 @@ function RecordsList({ rows, entity, visibleCols, onVisibleColsChange, onEditCus
     onEditCustom: (r: SafetyRecord) => void;
     onDeleteCustom: (r: SafetyRecord) => void;
 }) {
-    const [activeCategory, setActiveCategory] = useState<KeyNumberGroup | 'All'>('All');
+    const [activeCategory, setActiveCategory] = useState<SafetyCategory | 'All'>('All');
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
     const [sort, setSort] = useState<{ col: ColumnId; dir: 'asc' | 'desc' } | null>(null);
@@ -634,8 +652,8 @@ function RecordsList({ rows, entity, visibleCols, onVisibleColsChange, onEditCus
     const categoryTabs = useMemo(() => {
         const present = SAFETY_CATEGORY_ORDER.filter(c => rows.some(r => r.category === c));
         return [
-            { id: 'All' as KeyNumberGroup | 'All', label: 'All', count: rows.length },
-            ...present.map(c => ({ id: c as KeyNumberGroup | 'All', label: c, count: rows.filter(r => r.category === c).length })),
+            { id: 'All' as SafetyCategory | 'All', label: 'All', count: rows.length },
+            ...present.map(c => ({ id: c as SafetyCategory | 'All', label: c, count: rows.filter(r => r.category === c).length })),
         ];
     }, [rows]);
 
@@ -1139,9 +1157,9 @@ function DataView({ r }: { r: SafetyRecord }) {
 // ── Category sub-tabs ─────────────────────────────────────────────────
 
 function CardTabs({ tabs, active, onChange }: {
-    tabs: { id: KeyNumberGroup | 'All'; label: string; count: number }[];
-    active: KeyNumberGroup | 'All';
-    onChange: (t: KeyNumberGroup | 'All') => void;
+    tabs: { id: SafetyCategory | 'All'; label: string; count: number }[];
+    active: SafetyCategory | 'All';
+    onChange: (t: SafetyCategory | 'All') => void;
 }) {
     return (
         <div className="border-y border-slate-200 bg-slate-50/40 px-5 overflow-x-auto no-scrollbar">

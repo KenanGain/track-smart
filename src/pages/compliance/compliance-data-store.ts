@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SAFETY_RECORDS, recordFields, fieldPool, defaultVersionLabel, isDateMonitored, statesForRecord, recordForFields, pruneRecordFields, isAutoVersionLabel, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { SAFETY_RECORDS, recordFields, fieldPool, defaultVersionLabel, isDateMonitored, statesForRecord, recordForFields, pruneRecordFields, strandedFieldKeys, isAutoVersionLabel, type SafetyRecord, type EntityId } from '@/pages/compliance/safety-software-catalog.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
@@ -217,15 +217,31 @@ export function newVersion(label: string): DocVersion {
     };
 }
 
-/** A blank version with the record's own catalog defaults applied — today only the
- *  pre-selected country of a jurisdiction-fixed record (a US-federal report), but this is
- *  where any future per-record default belongs. */
+/**
+ * A record's fixed renewal day ('MM-DD') as a real date: the next one that has not passed.
+ *
+ * Filed in January, a KYU licence runs to this 31 December; filed on New Year's Eve, to the
+ * next. Taking the current year unconditionally would hand the user a date already behind
+ * them — a permit that arrives on the monitoring dashboard overdue on the day it is captured.
+ */
+export function fixedDateFor(mmdd: string, today = new Date()): string {
+    const y = today.getFullYear();
+    const iso = `${y}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return `${y}-${mmdd}` >= iso ? `${y}-${mmdd}` : `${y + 1}-${mmdd}`;
+}
+
+/** A blank version with the record's own catalog defaults applied — the pre-selected
+ *  jurisdiction of a record only one state can issue, and the fixed date a permit always
+ *  falls due on. Starting values only: every one of them is an ordinary editable field. */
 export function blankVersion(record: SafetyRecord, label: string): DocVersion {
     const v = newVersion(label);
     if (record.defaultCountry) v.country = record.defaultCountry;
     // Only alongside its country: the province list is derived from the country above it, so a
     // province set on its own would be a value the form cannot show.
     if (record.defaultStateProv && v.country) v.stateProv = record.defaultStateProv;
+    // Only where there is a date to hold it — a record monitored on a status has no expiry
+    // field to show it in, so the value would sit in the data unreachable.
+    if (record.defaultExpiry && isDateMonitored(record)) v.expiryDate = fixedDateFor(record.defaultExpiry);
     return v;
 }
 
@@ -272,6 +288,15 @@ export function fieldWritePatch(base: SafetyRecord, v: DocVersion, key: string, 
             : (allowed && !allowed.includes(v.stateProv)) ? '' : v.stateProv;
         if (next.stateProv && !v.country && base.defaultCountry) next.country = base.defaultCountry;
     }
+    // Un-ticking an answer takes whatever hung off it. Leaving the value behind means the
+    // record still carries a non-owned-trailer limit for cover it no longer claims, and the
+    // figure silently reappears the next time the box is ticked — a number nobody re-checked.
+    const stranded = strandedFieldKeys(rec, next.fields ?? fields);
+    if (stranded.length) {
+        const cleaned = { ...(next.fields ?? fields) };
+        for (const k of stranded) delete cleaned[k];
+        next.fields = cleaned;
+    }
     return next;
 }
 
@@ -304,7 +329,7 @@ function persist(all: Store) {
 // future rule change without another migration.
 // Bump this (not KEY) whenever the catalog's field rules change again — bumping KEY would
 // discard every record the user has captured.
-const MIGRATION_KEY = 'compliance-data-catalog-v33';
+const MIGRATION_KEY = 'compliance-data-catalog-v49';
 
 /** Deterministic pick so a migrated version keeps the same value on every reload. */
 function pickFor(seed: string, options: string[]): string {
@@ -334,6 +359,12 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
     // Jurisdiction fields the record no longer shows would otherwise stay in the data.
     if (r.hideCountry && ((next ?? v).country || (next ?? v).stateProv)) patch({ country: '', stateProv: '' });
     else if (r.hideState && (next ?? v).stateProv) patch({ stateProv: '' });
+    // A country the record's list no longer offers is a value the select cannot show: the field
+    // reads blank, and saving the form would write the blank back anyway. Cleared so it is
+    // asked again, along with the province, which is derived from whatever country is chosen.
+    if (r.countries?.length && (next ?? v).country && !r.countries.includes((next ?? v).country)) {
+        patch({ country: '', stateProv: '' });
+    }
     // A record with a fixed jurisdiction fills its country in rather than leaving it blank —
     // and its province too, where the record is issued by exactly one.
     if (r.defaultCountry && !(next ?? v).country) patch({ country: r.defaultCountry });
@@ -357,9 +388,24 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
         // question is one thing, deciding on a carrier's behalf that their filing is a
         // certificate of incorporation is another.
         if (r.variantByField?.from === f.key) continue;
+        if ((next ?? v).fields?.[f.key]) continue;
+        // …unless the old record could only have meant one thing. A WSIB record was Ontario's
+        // board, because that is all the record was, so its history takes that answer outright
+        // rather than one sampled from a list that now also offers WCB.
+        const prior = f.kind === 'select' ? f.priorValue : undefined;
         const pool = fieldPool(f);
-        if (pool.length && !(next ?? v).fields?.[f.key]) {
-            patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: pickFor(f.kind === 'date' ? v.id : v.id + f.key, pool) } });
+        if (!prior && !pool.length) continue;
+        patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: prior ?? pickFor(f.kind === 'date' ? v.id : v.id + f.key, pool) } });
+    }
+    // A record whose answer PINS its province — a WSIB is Ontario's board, and only Ontario's —
+    // fills it in for the history too. Run after the loop above, because the answer it reads
+    // may be the one that loop just seeded. Only where exactly one province is possible: where
+    // the record narrows to several (a WCB), choosing between them is not the migration's call.
+    if (r?.stateByField && !(next ?? v).stateProv) {
+        const only = statesForRecord(r, (next ?? v).fields);
+        if (only?.length === 1) {
+            patch({ stateProv: only[0] });
+            if (!(next ?? v).country && r.defaultCountry) patch({ country: r.defaultCountry });
         }
     }
     // Anything left over from a field, or a date, that THIS kind of document does not have.
@@ -370,9 +416,31 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
     if (r.variantByField) {
         const pruned = pruneRecordFields(r, (next ?? v).fields);
         if (pruned !== (next ?? v).fields) patch({ fields: pruned });
-        if (!r.tracksIssueDate && (next ?? v).issueDate) patch({ issueDate: '' });
-        if (!isDateMonitored(r) && (next ?? v).expiryDate) patch({ expiryDate: '' });
     }
+    // A field the record no longer declares AT ALL — one dropped from the catalog — is dead
+    // weight: the form cannot show it, nothing can correct it, and it still turns up in the
+    // list's search. Worse, re-using the key later would resurrect an answer nobody re-checked.
+    // The companion key a money field stores its currency under is NOT a field of its own, so
+    // it is kept deliberately — dropping it would leave an amount with no currency.
+    {
+        const stored = (next ?? v).fields;
+        if (stored) {
+            const declared = new Set<string>();
+            for (const f of recordFields(r)) {
+                declared.add(f.key);
+                if (f.kind === 'text' && f.money) declared.add(f.money.currencyKey);
+            }
+            const kept = Object.entries(stored).filter(([k]) => declared.has(k));
+            if (kept.length !== Object.keys(stored).length) patch({ fields: Object.fromEntries(kept) });
+        }
+    }
+    // A DATE the record no longer has is the same problem as a field it no longer has, and it
+    // is not confined to records with variants: a CSA authorization that stops being watched
+    // still carries the review date someone typed while it was. Invisible in the form, still
+    // read by the list's date column and by monitoring — a record sitting on the dashboard
+    // expiring on a date with nowhere left to correct it.
+    if (r && !r.tracksIssueDate && (next ?? v).issueDate) patch({ issueDate: '' });
+    if (r && !isDateMonitored(r) && (next ?? v).expiryDate) patch({ expiryDate: '' });
     // Monitoring the record no longer offers must not stay switched on — it would keep
     // firing alerts from a config the form can no longer reach.
     if (r.hideMonitoring && (next ?? v).monitoring?.enabled) patch({ monitoring: { ...(next ?? v).monitoring, enabled: false } });
@@ -592,13 +660,17 @@ export function entryStatus(r: SafetyRecord, entry: RecordDataEntry): DataStatus
     const cur = currentVersion(entry);
     const hasDoc = !!cur && cur.files.length > 0;
     const hasNumber = !!cur && cur.numberValue.trim().length > 0;
+    // Read as the kind this record actually IS: a non-bonded carrier code has no document, so
+    // judging it against the record's union would mark a complete record missing for want of a
+    // surety bond it does not carry. Records with one kind resolve to themselves.
+    const kind = recordForFields(r, cur?.fields);
 
     // Compliance-only records (type C, no document) are complete once the number is captured.
-    if (r.type === 'C' || r.docRequirement === 'none') {
-        return hasNumber ? 'complete' : (r.docRequirement === 'optional' ? 'optional' : 'missing');
+    if (kind.type === 'C' || kind.docRequirement === 'none') {
+        return hasNumber ? 'complete' : (kind.docRequirement === 'optional' ? 'optional' : 'missing');
     }
     // Document-bearing records are driven by the uploaded document.
-    if (r.docRequirement === 'required') return hasDoc ? 'complete' : 'missing';
+    if (kind.docRequirement === 'required') return hasDoc ? 'complete' : 'missing';
     return hasDoc ? 'complete' : 'optional';
 }
 

@@ -347,7 +347,7 @@ export const DOCUMENTS: DocumentRow[] = ([
     { id: 'd-df-resume',       name: 'Resume / CV',                                                                                             folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver' },
     { id: 'd-df-veh-reg',      name: 'Vehicle Registration',                                                                                    folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', e: 1, d: 1, s: 1, c: 1 },
     { id: 'd-df-lease',        name: 'Lease Agreement',                                                                                         folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', e: 1, d: 1 },
-    { id: 'd-df-offer',        name: 'Offer Letter',                                                                                            folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', d: 1 },
+    { id: 'd-df-offer',        name: 'Offer Letter / Contract',                                                                                 folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', d: 1 },
 
     // ── Violation ─────────────────────────────────────────────────────
     { id: 'd-offense-ticket',  name: 'Offense Ticket',                                                                                          folder: 'Authorities and Permits', status: 'Active', scope: 'violation', d: 1, s: 1 },

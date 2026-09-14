@@ -14,11 +14,20 @@
 // FMCSA Licensing & Insurance lookup returns.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The BOC-3 process agent on file — who may be served legal papers for this carrier. */
+/**
+ * One BOC-3 designation on file — who may be served legal papers for this carrier, and where.
+ *
+ * A carrier has SEVERAL of these, not one. The usual arrangement is a single blanket agent
+ * covering every state, but a carrier that has changed agents has the superseded designations
+ * still on file behind the current one, and some file state by state instead. The register
+ * returns the lot, which is why this is a list.
+ */
 export interface McProcessAgent {
+    id: string;
     /** 'Blanket Coverage' where one agent covers every state, else the state named. */
     coverageType: string;
     companyName: string;
+    /** 'Active' for the designation in force; superseded ones read 'Inactive'. */
     companyStatus: string;
     /** ISO date FMCSA received the BOC-3 filing. */
     receivedDate: string;
@@ -38,7 +47,8 @@ export interface McAuthority {
     bipdRequired: number;
     /** Minimum cargo insurance required, where the authority carries one. */
     cargoRequired: number;
-    processAgent: McProcessAgent;
+    /** Every BOC-3 designation on file, the one in force first. */
+    processAgents: McProcessAgent[];
     /** When this was last pulled. */
     syncedAt: string;
 }
@@ -77,7 +87,10 @@ function seedOf(mcNumber: string): number {
 
 const PROCESS_AGENTS = [
     'Registered Agents Inc.', 'Transportation Compliance Services', 'National Process Agents LLC',
+    'Interstate Agent Services', 'Blanket Filing Group',
 ];
+/** Where a carrier that files state by state actually files. */
+const STATE_FILINGS = ['California', 'Illinois', 'Michigan', 'New York', 'Ohio', 'Texas'];
 const INSURERS = [
     'Great West Casualty Company', 'Northland Insurance Company', 'Canal Insurance Company',
     'Progressive Casualty Insurance Co.', 'Sentry Select Insurance Company',
@@ -158,6 +171,36 @@ export function buildAuthority(mcNumber: string): McAuthorityRecord {
         cancellationDate: coveredTo,
     });
 
+    /**
+     * The BOC-3 designations. The one in force first, then whoever held it before — a carrier
+     * that moved agent does not have the old designation deleted, it is superseded, and an
+     * auditor reading the file wants to see that there was never a gap.
+     *
+     * Roughly a third of carriers file state by state rather than taking blanket coverage, so
+     * the draw produces both shapes: otherwise the Coverage type column only ever says one
+     * thing and the filter over it has nothing to do.
+     */
+    const agents: McProcessAgent[] = [];
+    const perState = seed % 3 === 1;
+    if (perState) {
+        STATE_FILINGS.forEach((st, i) => agents.push({
+            id: `pa-st-${i}`, coverageType: st, companyName: pick(PROCESS_AGENTS, i),
+            companyStatus: 'Active', receivedDate: daysBefore(now, 900 + (seed % 300) + i * 3),
+        }));
+    } else {
+        agents.push({
+            id: 'pa-0', coverageType: 'Blanket Coverage', companyName: pick(PROCESS_AGENTS, 2),
+            companyStatus: 'Active', receivedDate: daysBefore(now, 1500 + (seed % 400)),
+        });
+    }
+    // Whoever held the designation before — superseded, still on file.
+    for (let n = 1; n <= 1 + (seed % 2); n++) {
+        agents.push({
+            id: `pa-prev-${n}`, coverageType: 'Blanket Coverage', companyName: pick(PROCESS_AGENTS, 2 + n),
+            companyStatus: 'Inactive', receivedDate: daysBefore(now, 1500 + (seed % 400) + n * 1100),
+        });
+    }
+
     return {
         authority: {
             mcNumber,
@@ -165,12 +208,7 @@ export function buildAuthority(mcNumber: string): McAuthorityRecord {
             statusReason: reasonFor(seed),
             bipdRequired: 1000000,
             cargoRequired: cargo,
-            processAgent: {
-                coverageType: 'Blanket Coverage',
-                companyName: pick(PROCESS_AGENTS, 2),
-                companyStatus: 'Active',
-                receivedDate: daysBefore(now, 1500 + (seed % 400)),
-            },
+            processAgents: agents,
             syncedAt: new Date(now.getTime() - (seed % 20) * 3600000).toISOString(),
         },
         filings,

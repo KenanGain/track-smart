@@ -16,8 +16,14 @@
 import type { SafetyRecord } from '@/pages/compliance/safety-software-catalog.data';
 import type { MonitoringConfig, MonitorBasis } from '@/pages/compliance/compliance-data-store';
 
-/** Reminder offsets offered, in days before the monitored date. 0 = "On the date". */
-export const REMINDER_DAYS = [90, 60, 30, 15, 7, 0];
+/**
+ * Reminder offsets offered, in days before the monitored date. 0 = "On the date".
+ *
+ * 45 is here for the renewals that are WORK rather than a form — a CTPAT revalidation is a
+ * security profile to rewrite, not a date to copy — where 90 / 45 / on-the-day gives an even
+ * 45-day drumbeat instead of a flurry in the last month.
+ */
+export const REMINDER_DAYS = [90, 60, 45, 30, 15, 7, 0];
 export const reminderLabel = (d: number) => (d === 0 ? 'On the date' : `${d} Days Before`);
 
 /** Renewal cadence options (mirror the settings-catalog MonitoringSettings). */

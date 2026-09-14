@@ -223,7 +223,7 @@ const SEED_SECTIONS: SeedSection[] = [
         form("Fair Credit Reporting Act Disclosure", "consent:fcra-disclosure", "must", "status"),
         form("Non-Commercial Abstract Release Consent", "consent:mvr-release", "must", "status"),
         form("PSP Disclosure & Authorization", "consent:psp-disclosure-auth", "optional", "status", "fill", { note: "If going to USA" }),
-        doc("Job Offer Letter & Employment Contract", "offer-letter", "must", "status"),
+        doc("Offer Letter / Contract", "offer-letter", "must", "status"),
     ] },
     { title: "Driver License (Current & Historical)", items: [
         doc("Driver License", "cdl", "must", "expiry", { list: true }),

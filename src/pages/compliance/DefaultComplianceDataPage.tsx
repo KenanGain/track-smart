@@ -22,16 +22,19 @@ import { useRecordEnablement } from '@/pages/compliance/record-enablement';
 // The Monitoring & Notifications block lives on its own so the driver application can
 // render the SAME control — what it captures becomes a record here.
 import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
-import { McAuthorityFacts, McInsuranceTab } from '@/pages/compliance/McAuthorityPanel';
+import { McAuthorityFacts, McInsuranceTab, McProcessAgentTab } from '@/pages/compliance/McAuthorityPanel';
+import { InsuranceBrokerFacts } from '@/pages/compliance/InsuranceBrokerPanel';
+import { brokerIsEmpty, getInsuranceBroker, setInsuranceBroker, sampleBroker } from '@/pages/compliance/insurance-broker.data';
 import {
     basisLabel, recurrenceLabel, reminderLabel, monitoredDateFor,
 } from '@/pages/compliance/monitoring-schedule';
-import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, ENTITY_ORDER, isDateMonitored, RECORD_TYPE_LABEL, RECORD_TYPE_ORDER,
     defaultVersionLabel, MAX_RECORD_NAME, statusOptionsFor, recordFields, fieldPool, fieldValue,
     isAutoVersionLabel, statesForRecord, recordForFields, pruneRecordFields, type RecordFieldDef,
+    CHECKED, fieldApplies,
     type SafetyRecord, type EntityId, type RecordTypeId,
+    type SafetyCategory,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
     useComplianceData, computeStats, entryStatus, currentVersion, newVersion, blankVersion, newInstance, instancesOf, emptyEntry,
@@ -437,8 +440,10 @@ export function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEnt
     if (mode === 4) return { versions: [sampleVersion(record, defaultVersionLabel(record, 2026), { monitoring: { ...seedMonitoring(record), enabled: false } })] }; // filled, monitoring off, no tags
     const tags = mode === 0 ? ['Verified', 'Primary'] : mode === 1 ? ['Renewed'] : mode === 2 ? ['Pending Review'] : [];
     const current = sampleVersion(record, defaultVersionLabel(record, 2026), { tags });
-    // Every 3rd record keeps an older version too → an expandable multi-version row.
-    if (mode === 3) {
+    // Every 3rd record keeps an older version too → an expandable multi-version row. Never a
+    // record the carrier can only hold one of: a FEIN has no renewal, so a second row would be
+    // demonstrating a state the record cannot reach.
+    if (mode === 3 && !record.singleRecord) {
         return {
             versions: [
                 current,
@@ -464,15 +469,16 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
     if (record.multiInstance) {
         // Document tags used for the multi-document policy demo (each maps to a row in the table).
         const POLICY_DOC_TAGS = ['Certificate', 'Endorsement', 'Declaration page', 'Schedule of coverage'];
-        const PRODUCERS = ['Marsh McLennan', 'Aon Risk', 'Gallagher', 'HUB International', 'Lockton', 'Brown & Brown'];
-        const LIMITS = ['$1,000,000', '$2,000,000', '$100,000 deductible', '$5,000,000', '$1,000,000', '$750,000'];
         // One instance per concurrent policy, each with a few dated versions (current + renewal history).
-        const policy = (name: string, num: string, years: number[], pi: number): DocInstance => ({
-            ...newInstance(name),
+        // A policy is named after the cover it carries, and every renewal of it carries the
+        // SAME cover — so the type is set per policy, not sampled per version.
+        const policy = (type: string, insurer: string, num: string, years: number[], pi: number): DocInstance => ({
+            ...newInstance(type),
             versions: years.map((y, i) => {
-                const ver = sampleVersion(record, defaultVersionLabel(record, y), {
+                const ver = sampleVersion(record, type, {
                     numberValue: num, expiryDate: `${y}-12-31`,
-                    insurer: name.split('—')[1]?.trim() || name, producer: PRODUCERS[pi % PRODUCERS.length], policyLimit: LIMITS[pi % LIMITS.length],
+                    insurer,
+                    fields: { insuranceType: type },
                     // Insurance carries NO record-level tags — every tag lives on an individual document (below).
                     tags: [], monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
                 });
@@ -487,15 +493,13 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
                 return ver;
             }),
         });
-        const defs: [string, string, number[]][] = [
-            ['Liability — State Farm', 'POL-100', [2026, 2025, 2024]],
-            ['Cargo — Progressive', 'POL-200', [2027, 2026, 2025]],
-            ['Physical Damage — Northbridge', 'POL-300', [2026, 2025]],
-            ['Umbrella — Chubb', 'POL-400', [2026, 2025, 2024, 2023]],
-            ['General Liability — Travelers', 'POL-500', [2026, 2025]],
-            ['Non-Trucking Liability — Berkshire', 'POL-600', [2027, 2026]],
+        // One policy per cover the carrier buys, each with its renewal history behind it.
+        const defs: [string, string, string, number[]][] = [
+            ['CGL', 'Travelers', 'CGL-4471', [2026, 2025, 2024, 2023, 2022]],
+            ['Auto Liability', 'Northbridge Insurance', 'AL-8820', [2027, 2026, 2025, 2024, 2023]],
+            ['Motor Truck Cargo', 'Progressive Casualty', 'MTC-1193', [2026, 2025, 2024, 2023]],
         ];
-        return { versions: [], instances: defs.map(([n, num, yrs], pi) => policy(n, num, yrs, pi)) };
+        return { versions: [], instances: defs.map(([t, ins, num, yrs], pi) => policy(t, ins, num, yrs, pi)) };
     }
     // 14 dated versions (newest = current, the rest are renewal history) — a carrier that has
     // held its authority for over a decade, which is also the length that makes the list worth
@@ -504,7 +508,8 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
     // History versions deliberately carry realistic GAPS so "missing document / date / number" states are demonstrable
     // (the current version i===0 always stays complete, so the record still reads as up-to-date).
     const thisYear = new Date().getFullYear();
-    const years = Array.from({ length: 14 }, (_, i) => thisYear - i);
+    // …except where the carrier holds exactly one, which has no history to show.
+    const years = record.singleRecord ? [thisYear] : Array.from({ length: 14 }, (_, i) => thisYear - i);
     return {
         versions: years.map((y, i) => {
             const v = sampleVersion(record, defaultVersionLabel(record, y), {
@@ -1164,7 +1169,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     onActions?: (a: ListPageActions) => void;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
-    const [category, setCategory] = useState<KeyNumberGroup | 'All'>('All');
+    const [category, setCategory] = useState<SafetyCategory | 'All'>('All');
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | DataStatus>('all');
     const [tagFilter, setTagFilter] = useState<string>('all');
@@ -1217,6 +1222,9 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
         for (const ex of alsoSeedSubjects ?? [])
             records.filter(r => r.entity === ex.entity).forEach((r, i) => items.push({ subjectId: ex.subjectId, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
         setEntries(items);
+        // The broker lives beside the policies, not inside them, so seeding the policies
+        // without it would leave the header pointedly blank.
+        if (accountId && brokerIsEmpty(getInsuranceBroker(accountId))) setInsuranceBroker(accountId, sampleBroker());
         const subjectCount = 1 + (alsoSeedSubjects?.length ?? 0);
         emitToast(`Sample data loaded — ${items.length} records across ${subjectCount} ${subjectCount === 1 ? 'subject' : 'subjects'}`);
     };
@@ -1251,8 +1259,8 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const categoryTabs = useMemo(() => {
         const present = SAFETY_CATEGORY_ORDER.filter(c => entityRecords.some(r => r.category === c));
         return [
-            { id: 'All' as KeyNumberGroup | 'All', label: 'All', count: entityRecords.length },
-            ...present.map(c => ({ id: c as KeyNumberGroup | 'All', label: c, count: entityRecords.filter(r => r.category === c).length })),
+            { id: 'All' as SafetyCategory | 'All', label: 'All', count: entityRecords.length },
+            ...present.map(c => ({ id: c as SafetyCategory | 'All', label: c, count: entityRecords.filter(r => r.category === c).length })),
         ];
     }, [entityRecords]);
 
@@ -1309,6 +1317,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     detailExtra={detailExtraFor ? detailExtraFor(detailRecord) : detailExtra}
                     onNavigate={onNavigate}
                     showSubject={!embedded}
+                    accountId={accountId}
                 />
             ) : (
             <>
@@ -2416,17 +2425,17 @@ function UploaderCell({ name, at }: { name?: string; at: string }) {
 }
 
 // ── Detail document-table controls (search / filter / sort / column-select / pagination) ──
-type DocStaticColId = 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
+type DocStaticColId = 'insurer' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
 /** A record's own select fields get a column each, addressed as `sel:<field key>`. */
 type DocColId = DocStaticColId | `sel:${string}`;
-type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded' | `sel:${string}`;
-const DOC_STATIC_COLS: DocStaticColId[] = ['insurer', 'producer', 'limit', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
+type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded' | `sel:${string}`;
+const DOC_STATIC_COLS: DocStaticColId[] = ['insurer', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
 // Core columns that are always shown — cannot be toggled off (locked in the Columns menu).
 const DOC_LOCKED_COLS: DocColId[] = ['state', 'document'];
 // Insurance-only columns (shown only for multi-instance records).
-const DOC_INSURANCE_COLS: DocColId[] = ['insurer', 'producer', 'limit'];
+const DOC_INSURANCE_COLS: DocColId[] = ['insurer'];
 const DOC_COL_LABEL: Record<DocStaticColId, string> = {
-    insurer: 'Insurer', producer: 'Producer', limit: 'Policy Limit',
+    insurer: 'Insurance company',
     state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
 };
 const selKey = (id: DocColId) => (id.startsWith('sel:') ? id.slice(4) : '');
@@ -2463,8 +2472,6 @@ function docSortValue(col: DocSortCol, row: DocRow, record: SafetyRecord): strin
         case 'expiry': return v.expiryDate || '';
         case 'status': return (v.status || '').toLowerCase();
         case 'insurer': return (v.insurer || '').toLowerCase();
-        case 'producer': return (v.producer || '').toLowerCase();
-        case 'limit': return (v.policyLimit || '').toLowerCase();
         case 'uploaded': return `${v.uploadedBy || ''} ${v.uploadedAt || ''}`.toLowerCase();
         default: {
             if (!col.startsWith('sel:')) return '';
@@ -2475,7 +2482,7 @@ function docSortValue(col: DocSortCol, row: DocRow, record: SafetyRecord): strin
 }
 function docSearchBlob(row: DocRow, record: SafetyRecord): string {
     const v = row.version;
-    return [v.numberValue, v.label, row.instanceName, v.insurer, v.producer, v.policyLimit, v.status, DOC_STATE_META[effectiveState(row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
+    return [v.numberValue, v.label, row.instanceName, v.insurer, v.status, DOC_STATE_META[effectiveState(row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
         recordFields(record).map(f => fieldValue(f, v.fields)).join(' '),
         v.tags.join(' '), v.files.map(f => f.name).join(' '), v.files.map(f => f.tag ?? '').join(' ')]
         .filter(Boolean).join(' ').toLowerCase();
@@ -2570,18 +2577,34 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     };
     // Scoped single-version add / edit (opens VersionEditModal — "each row edit only shows that data").
     const freshVersion = () => ({ ...blankVersion(record, nextVersionLabel(record, entry)), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
+    // A carrier holds exactly one FEIN, so once it is on file there is nothing left to add:
+    // Add closes rather than staying open to capture a second of a number that cannot have one.
+    const atRecordLimit = !!record.singleRecord && entry.versions.length > 0;
     const startEdit = (row: DocRow) => setEditing({ version: row.version, mode: 'edit', instanceId: row.instanceId });
     const startAdd = () => setEditing({ version: freshVersion(), mode: 'add' });
     const startAddPolicy = () => setEditing({ version: freshVersion(), mode: 'add', newPolicy: true });
     const startAddToPolicy = (instanceId: string) => setEditing({ version: freshVersion(), mode: 'add', instanceId });
+    /**
+     * What to call a policy the user was never asked to name: the cover it carries. Two
+     * policies of the same kind — a carrier changing insurer mid-term holds both — are told
+     * apart by the insurer, because two rows both reading "Auto Liability" are not a list.
+     */
+    const policyNameFor = (v: DocVersion, ignoreId?: string): string => {
+        const base = (record.nameFromField ? v.fields?.[record.nameFromField] : '')?.trim();
+        if (!base) return `Policy ${(entry.instances?.length ?? 0) + 1}`;
+        const taken = instancesOf(entry).some(i => i.id !== ignoreId && i.name.toLowerCase() === base.toLowerCase());
+        return taken && v.insurer?.trim() ? `${base} — ${v.insurer.trim()}` : base;
+    };
     const saveVersion = (saved: DocVersion, policyName?: string) => {
         if (!editing) return;
         // Exactly one record can be the pinned current one — pinning this one releases the rest.
         const onlyCurrent = (list: DocVersion[]): DocVersion[] =>
             (saved.isCurrent ? list.map(x => (x.id === saved.id || !x.isCurrent ? x : { ...x, isCurrent: undefined })) : list);
         if (editing.newPolicy) {
-            // New insurance policy → a fresh instance holding this version as its current.
-            const inst = { ...newInstance((policyName || '').trim() || `Policy ${(entry.instances?.length ?? 0) + 1}`), versions: [saved] };
+            // New insurance policy → a fresh instance holding this version as its current,
+            // named after the cover it provides. A carrier can hold two of the same kind, so
+            // a name already in use is qualified by the insurer rather than duplicated.
+            const inst = { ...newInstance((policyName || '').trim() || policyNameFor(saved)), versions: [saved] };
             setEntry(subjectId, record.id, { ...entry, versions: [], instances: [...(entry.instances ?? []), inst] });
         } else if (editing.instanceId && editing.mode === 'add') {
             // Add-to-policy → prepend as that policy's new current.
@@ -2593,9 +2616,10 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             const targetName = policyName?.trim();
             const curInst = (entry.instances ?? []).find(i => i.id === editing.instanceId);
             const samePolicy = !targetName || targetName.toLowerCase() === (curInst?.name ?? '').toLowerCase();
+            const renamed = record.nameFromField && !policyName ? policyNameFor(saved, editing.instanceId) : null;
             if (samePolicy) {
                 const instances = (entry.instances ?? []).map(inst => inst.id === editing.instanceId
-                    ? { ...inst, name: targetName || inst.name, versions: onlyCurrent(inst.versions.map(x => (x.id === saved.id ? saved : x))) }
+                    ? { ...inst, name: targetName || renamed || inst.name, versions: onlyCurrent(inst.versions.map(x => (x.id === saved.id ? saved : x))) }
                     : inst);
                 setEntry(subjectId, record.id, { ...entry, instances });
             } else {
@@ -2684,8 +2708,10 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[12px] font-semibold text-violet-700 hover:bg-violet-100">
                         <Sparkles size={14} /> Sample data
                     </button>
-                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} title={isMulti ? 'Add a new policy record' : 'Add a new record'}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700">
+                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} disabled={atRecordLimit}
+                        title={atRecordLimit ? `Only one ${record.recordName} is held — edit the one on file`
+                            : isMulti ? 'Add a new policy record' : 'Add a new record'}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                         <Plus size={14} /> Add record
                     </button>
                 </div>
@@ -2741,10 +2767,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                     <tr>
                                         {showNumber && <DocTh col="number" label={record.numberName} sortable sort={docSort} onSort={toggleDocSort} className="pl-5" />}
                                         {isMulti && <DocTh col="policy" label={noun.charAt(0).toUpperCase() + noun.slice(1)} sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && 'pl-5')} />}
-                                        {showCol('insurer') && <DocTh col="insurer" label="Insurer" sortable sort={docSort} onSort={toggleDocSort} />}
-                                        {showCol('producer') && <DocTh col="producer" label="Producer" sortable sort={docSort} onSort={toggleDocSort} />}
-                                        {showCol('limit') && <DocTh col="limit" label="Policy Limit" sortable sort={docSort} onSort={toggleDocSort} />}
-                                        <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
+                                        {showCol('insurer') && <DocTh col="insurer" label="Insurance company" sortable sort={docSort} onSort={toggleDocSort} />}
+                                                                                <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
                                         {showCol('state') && <DocTh col="state" label="State" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showIssue && showCol('issue') && <DocTh col="issue" label="Issue date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showDate && showCol('expiry') && <DocTh col="expiry" label="Expiry date" sortable sort={docSort} onSort={toggleDocSort} />}
@@ -2771,8 +2795,6 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 {showNumber && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', 'pl-5')}>{v.numberValue || <span className="font-normal text-slate-400">—</span>}</td>}
                                                 {isMulti && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', !showNumber && 'pl-5')}>{row.instanceName || '—'}</td>}
                                                 {showCol('insurer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.insurer || <span className="text-slate-400">—</span>}</td>}
-                                                {showCol('producer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.producer || <span className="text-slate-400">—</span>}</td>}
-                                                {showCol('limit') && <td className="px-4 py-3 text-[13px] font-medium text-slate-700 whitespace-nowrap tabular-nums">{v.policyLimit || <span className="font-normal text-slate-400">—</span>}</td>}
                                                 <td className={cn('px-4 py-3 whitespace-nowrap', !showNumber && !isMulti && 'pl-5')}>
                                                     <span className="text-[13px] font-medium text-slate-700">{v.label}</span>
                                                 </td>
@@ -2842,8 +2864,6 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                         {showNumber && <td className={cn(cellPad, 'pl-5')} />}
                                                         {isMulti && <td className={cn(cellPad, !showNumber && 'pl-5')} />}
                                                         {showCol('insurer') && <td className={cellPad} />}
-                                                        {showCol('producer') && <td className={cellPad} />}
-                                                        {showCol('limit') && <td className={cellPad} />}
                                                         <td className={cn(cellPad, 'whitespace-nowrap', !showNumber && !isMulti && 'pl-5')}>
                                                             <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><CornerDownRight size={12} /> Document {idx + 1}</span>
                                                         </td>
@@ -2905,8 +2925,6 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         </div>
                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                                             {isInsurance && <MobileFact label="Insurer" value={v.insurer} />}
-                                            {isInsurance && <MobileFact label="Producer" value={v.producer} />}
-                                            {isInsurance && <MobileFact label="Policy Limit" value={v.policyLimit} />}
                                             {showIssue && <MobileFact label="Issue date" value={v.issueDate} />}
                                             {showDate && <MobileFact label="Expiry date" value={v.expiryDate} />}
                                             {showStatus && <MobileFact label={record.statusLabel ?? 'Status'} value={v.status} />}
@@ -2947,10 +2965,13 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     subjectLabel={subjectLabel}
                     version={editing.version}
                     mode={editing.mode}
-                    // Show the Policy select when creating a new policy OR editing an insurance version (so you can see / reassign it).
-                    askPolicyName={!!editing.newPolicy || (isMulti && editing.mode === 'edit')}
+                    // The Policy select appears when creating a policy or moving a version to
+                    // another one — but NOT on a record that names itself from a field, which
+                    // names its policies from it too: "Motor Truck Cargo" IS the policy, so
+                    // asking the user to invent a name for it is asking twice.
+                    askPolicyName={(!!editing.newPolicy || (isMulti && editing.mode === 'edit')) && !record.nameFromField}
                     initialPolicyName={editing.instanceId ? (instancesOf(entry).find(i => i.id === editing.instanceId)?.name ?? '') : ''}
-                    policyOptions={Array.from(new Set([...instancesOf(entry).map(i => i.name), ...(record.multiInstance ? INSURANCE_POLICY_SUGGESTIONS : [])]))}
+                    policyOptions={Array.from(new Set(instancesOf(entry).map(i => i.name)))}
                     policyPrefills={(() => { const m: Record<string, DocVersion> = {}; for (const i of instancesOf(entry)) { const c = i.versions[0]; if (c) m[i.name] = c; } return m; })()}
                     onSave={saveVersion}
                     onClose={() => setEditing(null)}
@@ -2986,10 +3007,12 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     );
 }
 
-type DetailTab = 'documents' | 'monitoring' | 'insurance';
-function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate, showSubject = true }: {
+type DetailTab = 'documents' | 'monitoring' | 'insurance' | 'agent';
+function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra, onNavigate, showSubject = true, accountId }: {
     record: SafetyRecord; entry: RecordDataEntry; entity: EntityId; subjectLabel: string;
     subjectId: string; setEntry: EntrySetter;
+    /** The carrier — the broker of record on an insurance policy belongs to it, not to a policy. */
+    accountId?: string;
     onBack: () => void;
     detailExtra?: ReactNode;
     onNavigate?: (path: string) => void;
@@ -3033,11 +3056,12 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
      * record — and from the newest one filed if that has none.
      */
     const isMc = record.id === 'mc';
+    const isInsurance = record.id === 'insurance';
     const mcNumber = isMc
         ? (cur?.numberValue?.trim() || entry.versions.find(v => v.numberValue?.trim())?.numberValue?.trim() || '')
         : '';
     const detailTabs: [DetailTab, string][] = isMc
-        ? [['documents', 'Documents'], ['insurance', 'Insurance details']]
+        ? [['documents', 'Documents'], ['insurance', 'Insurance details'], ['agent', 'Process Agent (BOC-3) Details']]
         : [['documents', isMulti ? `${noun.charAt(0).toUpperCase() + noun.slice(1)} filings` : 'Records'], ['monitoring', 'Monitoring']];
     const showTabs = isMc || showMonitoring;
 
@@ -3083,6 +3107,7 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                             </span>
                         )}
                         {condensed && isMc && <McAuthorityFacts mcNumber={mcNumber} condensed />}
+                        {condensed && isInsurance && <InsuranceBrokerFacts accountId={accountId} condensed />}
                     </div>
                     {/* Whose record this is and what kind of record it is — one muted line
                         under the name. Both used to be facts in the block below, where they
@@ -3193,6 +3218,10 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                     same authority the facts above were captured for, and two stacked header
                     cards saying "MC-103478" pushed the actual records off the screen. */}
                 {isMc && <McAuthorityFacts mcNumber={mcNumber} />}
+                {/* Who placed the cover. Part of THIS header for the same reason the MC
+                    authority is: it describes every policy listed below, so saying it once
+                    above them beats repeating it — differently — on each one. */}
+                {isInsurance && <InsuranceBrokerFacts accountId={accountId} />}
                 </div>
             </div>
 
@@ -3218,6 +3247,8 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
 
                 {tab === 'insurance' && isMc ? (
                     <McInsuranceTab mcNumber={mcNumber} />
+                ) : tab === 'agent' && isMc ? (
+                    <McProcessAgentTab mcNumber={mcNumber} />
                 ) : tab === 'monitoring' && showMonitoring ? (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
                 ) : (
@@ -3265,9 +3296,14 @@ export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion
         monitoring: { ...v.monitoring, enabled: !record.hideMonitoring },
     };
     if (record.multiInstance) {
-        merged.insurer = v.insurer || 'State Farm';
-        merged.producer = v.producer || 'Marsh McLennan';
-        merged.policyLimit = v.policyLimit || '$1,000,000';
+        merged.insurer = v.insurer || 'Northbridge Insurance';
+        // Motor truck cargo is the policy that carries the two optional covers, so the demo
+        // data exercises the conditional limit rather than leaving it permanently hidden.
+        const cargo = merged.fields?.insuranceType === 'Motor Truck Cargo';
+        merged.fields = {
+            ...merged.fields,
+            ...(cargo ? { nonOwnedTrailer: CHECKED, reeferBreakdown: CHECKED, nonOwnedLimit: '500,000', nonOwnedCurrency: 'CAD' } : {}),
+        };
     }
     if (record.type !== 'C' && record.docRequirement !== 'none' && merged.files.length === 0) merged.files = sampleDocFiles(record);
     // Insurance documents are tagged individually — give each demo document a system tag.
@@ -3278,8 +3314,10 @@ export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion
 /** Compact monitoring on/off toggle + reminders/channels for one version (used inside the version form). */
 /** The control for one of a record's extra fields — a dropdown, radios, a date, a computed
  *  read-out, a text area or a single line. `value` for a derived field is already computed. */
-function ExtraFieldInput({ def, value, onChange, inputCls, name }: {
+function ExtraFieldInput({ def, value, onChange, inputCls, name, currency, onCurrency }: {
     def: RecordFieldDef; value: string; onChange: (v: string) => void; inputCls: string; name: string;
+    /** For a money field only — the currency the amount is in, and how to change it. */
+    currency?: string; onCurrency?: (v: string) => void;
 }) {
     // Calculated from other fields — shown, never typed, so there is nothing to edit and
     // nothing to store: it is recomputed from its dates on every render.
@@ -3305,6 +3343,11 @@ function ExtraFieldInput({ def, value, onChange, inputCls, name }: {
             </select>
         );
     }
+    if (def.kind === 'check') {
+        // Rendered by the form as a row of its own (see `CheckRow`) — this branch exists so
+        // every field kind has one and the union stays exhaustive.
+        return <CheckRow label={def.label} hint={def.hint} checked={value === CHECKED} onChange={on => onChange(on ? CHECKED : '')} />;
+    }
     if (def.multiline) {
         return (
             <textarea value={value} onChange={e => onChange(e.target.value)} rows={2}
@@ -3312,9 +3355,58 @@ function ExtraFieldInput({ def, value, onChange, inputCls, name }: {
                 className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
         );
     }
+    if (def.money) {
+        return (
+            <MoneyInput value={value} onChange={onChange} placeholder={def.placeholder}
+                currencies={def.money.currencies} currency={currency ?? ''} onCurrency={onCurrency ?? (() => {})} />
+        );
+    }
     return (
         <input value={value} onChange={e => onChange(e.target.value)}
             placeholder={def.placeholder ?? `Enter ${def.label.toLowerCase()}`} className={inputCls} />
+    );
+}
+
+/**
+ * An amount and the currency it is in, as one control.
+ *
+ * Two separate fields let a policy be filed with a limit and no currency — which on a
+ * cross-border carrier is not a limit at all, since 2,000,000 CAD and 2,000,000 USD are
+ * different answers to "does this meet the US minimum". Joined, the currency is never the
+ * field someone forgot.
+ */
+function MoneyInput({ value, onChange, placeholder, currencies, currency, onCurrency }: {
+    value: string; onChange: (v: string) => void; placeholder?: string;
+    currencies: string[]; currency: string; onCurrency: (v: string) => void;
+}) {
+    return (
+        <div className="flex h-9 w-full overflow-hidden rounded-lg border border-slate-300 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/30">
+            <span className="flex shrink-0 items-center pl-3 pr-1 text-sm text-slate-400">$</span>
+            <input value={value} onChange={e => onChange(e.target.value)} inputMode="decimal"
+                placeholder={placeholder ?? 'e.g. 2,000,000'}
+                className="min-w-0 flex-1 bg-transparent pr-2 text-sm tabular-nums focus:outline-none" />
+            <select value={currency} onChange={e => onCurrency(e.target.value)} aria-label="Currency"
+                className="shrink-0 border-l border-slate-200 bg-slate-50 px-2 text-[12px] font-semibold text-slate-600 focus:outline-none">
+                {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+        </div>
+    );
+}
+
+/** A yes/no the record captures — the whole row is the target, so it is easy to hit. */
+function CheckRow({ label, hint, checked, onChange }: {
+    label: string; hint?: string; checked: boolean; onChange: (on: boolean) => void;
+}) {
+    return (
+        <label className={cn('flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors',
+            checked ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+            <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+            <span className="min-w-0">
+                <span className="block text-[13px] font-semibold text-slate-800">{label}</span>
+                {hint && <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">{hint}</span>}
+            </span>
+        </label>
     );
 }
 
@@ -3391,7 +3483,9 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
     const record = recordForFields(baseRecord, v.fields);
     const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
     const slots = record.slotLabels ?? [];
-    const countries = record.allCountries ? ALL_COUNTRIES : COUNTRIES;
+    // The whole world for a passport, the two countries that run the programme for a FAST
+    // certificate, and the three operating countries for everything else.
+    const countries = record.allCountries ? ALL_COUNTRIES : (record.countries ?? COUNTRIES);
     // Custom records carry an explicit per-field form definition; system records use the built-in rules.
     const cf = record.customForm;
     const isMultiDoc = cf ? (cf.upload.enabled && cf.upload.multi) : !!record.multiInstance;
@@ -3429,7 +3523,13 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
     // Single-line ones join the paired grid next to the number; the multiline ones come after
     // the dates, still paired — a taller box each, not a full-width band each.
     const extraFields = recordFields(record);
-    const inlineFields = extraFields.filter(f => !(f.kind === 'text' && f.multiline));
+    const inlineFields: RecordFieldDef[] = extraFields.filter(f => !(f.kind === 'text' && f.multiline));
+    // The field a record is NAMED after leads the form, ahead of the name and the number.
+    // The name below it is derived from the answer — pick WSIB and the record becomes "WSIB",
+    // and its province with it — so asking for the name first asks a question that is about to
+    // answer itself, and asking for the number first asks for a number under no heading.
+    const leadField = record.nameFromField ? inlineFields.find(f => f.key === record.nameFromField) : undefined;
+    const trailingFields = leadField ? inlineFields.filter(f => f !== leadField) : inlineFields;
     // Narrowed, not just filtered: only a text field can be multiline, and the block row
     // reads `required` — which a derived field has no notion of.
     const blockFields = extraFields.filter(
@@ -3488,13 +3588,61 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
     // (insurance policies: main certificate + endorsements; custom multi-document records).
     const setFileTag = (i: number, tag: string) => onChange({ ...v, files: v.files.map((f, idx) => (idx === i ? { ...f, tag } : f)) });
 
+    /** One of the record's own fields, wherever it sits in the form. */
+    const renderInlineField = (f: RecordFieldDef) => {
+        // A yes/no is its own label — wrapping it in a Field would print the label
+        // twice, once above an empty box and once beside the tick.
+        if (f.kind === 'check') {
+            return (
+                <div key={f.key} className={cn('self-end', extraRowStart(f))}>
+                    <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
+                </div>
+            );
+        }
+        const required = f.kind !== 'derived' && !!f.required;
+        const money = f.kind === 'text' ? f.money : undefined;
+        // A field that names a record elsewhere (a warning letter's Event reference)
+        // keeps its input — the number is still editable — and gains a way to open
+        // what it points at, which is the whole reason the number is recorded.
+        const link = onNavigate ? fieldSourceLink(f, v) : null;
+        return (
+            <Field key={f.key} label={f.label} required={required}
+                optional={f.kind !== 'derived' && !required} auto={f.kind === 'derived'}
+                className={extraRowStart(f)}>
+                {link ? (
+                    <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                            <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`}
+                                currency={money ? (v.fields?.[money.currencyKey] ?? money.defaultCurrency ?? money.currencies[0]) : undefined}
+                                onCurrency={money ? (val => setExtra(money.currencyKey, val)) : undefined} />
+                        </div>
+                        <button type="button" onClick={() => openSourceLink(link, onNavigate!)}
+                            title={link.id ? `Open the ${link.source.toLowerCase()} this record was filed from` : `Open ${link.source}`}
+                            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[12px] font-semibold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100">
+                            <ExternalLink size={13} /> View
+                        </button>
+                    </div>
+                ) : (
+                    <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`}
+                        currency={money ? (v.fields?.[money.currencyKey] ?? money.defaultCurrency ?? money.currencies[0]) : undefined}
+                        onCurrency={money ? (val => setExtra(money.currencyKey, val)) : undefined} />
+                )}
+            </Field>
+        );
+    };
+
     return (
         <div className="space-y-3">
             {/* DETAILS */}
             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {editableLabel && (
-                    <Field label="Record name" required>
+                {/* What the record IS comes before what it is called — see `leadField`. */}
+                {leadField && fieldApplies(leadField, v.fields) && renderInlineField(leadField)}
+                {editableLabel && !record.hideRecordName && (
+                    // Starts its own row when something leads the form, so the identity pair —
+                    // the name and the number — still reads as one line rather than the number
+                    // being pushed off on its own.
+                    <Field label="Record name" required className={leadField ? ROW_START : undefined}>
                         <div className="relative">
                             <input value={v.label} maxLength={MAX_RECORD_NAME}
                                 onChange={e => patch({ label: e.target.value })}
@@ -3508,47 +3656,19 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
                         <input value={v.numberValue} onChange={e => patch({ numberValue: e.target.value })} placeholder={`Enter ${record.numberName.toLowerCase()}`} className={inputCls} />
                     </Field>
                 )}
-                {inlineFields.map(f => {
-                    // A field that names a record elsewhere (a warning letter's Event reference)
-                    // keeps its input — the number is still editable — and gains a way to open
-                    // what it points at, which is the whole reason the number is recorded.
-                    const link = onNavigate ? fieldSourceLink(f, v) : null;
-                    return (
-                        <Field key={f.key} label={f.label} required={f.kind !== 'derived' && !!f.required}
-                            optional={f.kind !== 'derived' && !f.required} auto={f.kind === 'derived'}
-                            className={extraRowStart(f)}>
-                            {link ? (
-                                <div className="flex items-center gap-2">
-                                    <div className="min-w-0 flex-1">
-                                        <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
-                                    </div>
-                                    <button type="button" onClick={() => openSourceLink(link, onNavigate!)}
-                                        title={link.id ? `Open the ${link.source.toLowerCase()} this record was filed from` : `Open ${link.source}`}
-                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[12px] font-semibold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100">
-                                        <ExternalLink size={13} /> View
-                                    </button>
-                                </div>
-                            ) : (
-                                <ExtraFieldInput def={f} value={fieldValue(f, v.fields)} onChange={val => setExtra(f.key, val)} inputCls={inputCls} name={`${v.id}-${f.key}`} />
-                            )}
-                        </Field>
-                    );
-                })}
+                {trailingFields.filter(f => fieldApplies(f, v.fields)).map(renderInlineField)}
                 {isMultiDoc && !cf && (
-                    <Field label="Insurer">
-                        <input value={v.insurer ?? ''} onChange={e => patch({ insurer: e.target.value })} placeholder="Insurance carrier — e.g. State Farm" className={inputCls} />
+                    <Field label="Insurance company" required>
+                        <input value={v.insurer ?? ''} onChange={e => patch({ insurer: e.target.value })} placeholder="Insurance carrier — e.g. Northbridge" className={inputCls} />
                     </Field>
                 )}
-                {isMultiDoc && !cf && (
-                    <Field label="Producer">
-                        <input value={v.producer ?? ''} onChange={e => patch({ producer: e.target.value })} placeholder="Broker / producer of record" className={inputCls} />
-                    </Field>
-                )}
-                {isMultiDoc && !cf && (
-                    <Field label="Policy Limit">
-                        <input value={v.policyLimit ?? ''} onChange={e => patch({ policyLimit: e.target.value })} placeholder="e.g. $1,000,000" className={inputCls} />
-                    </Field>
-                )}
+                {/* The producer is NOT asked here. A carrier places its policies through one
+                    broker, and asking on every policy invited four spellings of the same
+                    brokerage across four rows. It is stated once in the page header, with the
+                    agent and how to reach them — see `InsuranceBrokerFacts`. */}
+                {/* No general coverage limit: the only limit this record captures is the
+                    non-owned-trailer one, and that is asked on the policies that carry that
+                    cover — see the record's `nonOwnedLimit` field. */}
                 {showCountry && (
                     <Field label="Country" required={countryRequired} optional={cf ? !countryRequired : undefined} className={pairJurisdiction ? ROW_START : undefined}>
                         <select value={v.country} onChange={e => setCountry(e.target.value)} className={inputCls}>
@@ -3698,10 +3818,6 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
 
 /** Modal that adds or edits ONE version in isolation — "each row edit only shows that data". Compact (no monitoring). */
 // Common insurance policy types offered as suggestions when naming a new policy.
-const INSURANCE_POLICY_SUGGESTIONS = [
-    'Liability', 'Cargo', 'Physical Damage', 'Umbrella',
-    'General Liability', 'Non-Trucking Liability', 'Trailer Interchange', 'Workers Compensation',
-];
 
 /** Searchable single-select with create — pick an existing / suggested option, or type a new one. Used for policy names + document tags. */
 function SearchCreateCombo({ value, onChange, onPick, options, placeholder, icon }: {

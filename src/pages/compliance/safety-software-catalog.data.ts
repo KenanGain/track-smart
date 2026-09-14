@@ -1,4 +1,3 @@
-import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import { CA_PROVINCES } from '@/pages/compliance/jurisdiction.data';
 
 /**
@@ -59,6 +58,15 @@ interface RecordFieldPlacement {
     /** Start a new grid row at this field, so what follows pairs with it rather than with
      *  whatever came before. */
     rowStart?: boolean;
+    /**
+     * Only ask this when another answer says it applies.
+     *
+     * A non-owned-trailer coverage limit is a real number on the policies that carry that
+     * cover and a meaningless one on the policies that do not — asking every time invites a
+     * figure to be filed against cover the carrier never bought. `field` names the other
+     * field's key; it must be ticked, or equal `is` when given.
+     */
+    showWhen?: { field: string; is?: string };
 }
 
 export interface RecordSelectField extends RecordFieldPlacement {
@@ -70,6 +78,15 @@ export interface RecordSelectField extends RecordFieldPlacement {
     placeholder?: string;
     /** How it is picked — a dropdown (default), or radio buttons for a short either/or set. */
     control?: 'select' | 'radio';
+    /**
+     * The value records filed BEFORE this field existed must have had.
+     *
+     * Adding a question to a record with history leaves every stored record unanswered, and a
+     * sampled answer is a guess presented as a fact. Where the old record could only have meant
+     * one thing — the WSIB record was Ontario's board, because that is all the record was — it
+     * takes that value instead. New records are unaffected: the field is still asked, blank.
+     */
+    priorValue?: string;
 }
 
 /**
@@ -94,11 +111,31 @@ export interface RecordFieldSourceLink {
  * A free-text field on a record's data-entry form, captured per version in
  * `DocVersion.fields[key]` exactly like a select field.
  */
+/**
+ * A yes/no the record captures — an optional cover a policy either includes or does not.
+ *
+ * Distinct from a two-option select: "did they buy reefer breakdown cover" has an answer even
+ * before anyone has been asked, and that answer is no. A select would sit empty and read as
+ * unanswered.
+ */
+export interface RecordCheckField extends RecordFieldPlacement {
+    key: string;
+    label: string;
+    /** One line under the label, saying what the cover actually is. */
+    hint?: string;
+}
+
 export interface RecordTextField extends RecordFieldPlacement {
     key: string;
     label: string;
     placeholder?: string;
     required?: boolean;
+    /**
+     * Capture an amount together with the currency it is in. A coverage limit of 2,000,000 is
+     * two different numbers on a cross-border carrier, and a policy filed without saying which
+     * cannot be checked against a US minimum. The currency lands under `currencyKey`.
+     */
+    money?: { currencyKey: string; currencies: string[]; defaultCurrency?: string };
     /** Render a text AREA rather than a single line — for values that run to a list or a note. */
     multiline?: boolean;
     /** This value names a record elsewhere in the app — show it as a link that opens it. */
@@ -145,8 +182,49 @@ export interface RecordDerivedField extends RecordFieldPlacement {
 export type RecordFieldDef =
     | ({ kind: 'select' } & RecordSelectField)
     | ({ kind: 'text' } & RecordTextField)
+    | ({ kind: 'check' } & RecordCheckField)
     | ({ kind: 'date' } & RecordDateField)
     | ({ kind: 'derived' } & RecordDerivedField);
+
+/** What a ticked check field stores. Anything non-empty reads as ticked. */
+export const CHECKED = 'yes';
+
+/**
+ * Does this field apply, given what has been answered so far?
+ *
+ * A field gated on an answer nobody has given yet does not apply — so the form asks the
+ * gating question first and the dependent one only once it has been answered that way.
+ */
+export function fieldApplies(f: { showWhen?: { field: string; is?: string } }, fields?: Record<string, string>): boolean {
+    const w = f.showWhen;
+    if (!w) return true;
+    const v = (fields?.[w.field] ?? '').trim();
+    return w.is === undefined ? v !== '' : v === w.is;
+}
+
+/** The fields a form should actually show for these answers (see `fieldApplies`). */
+export function visibleRecordFields(r: SafetyRecord, fields?: Record<string, string>): RecordFieldDef[] {
+    return recordFields(r).filter(f => fieldApplies(f, fields));
+}
+
+/**
+ * Values to clear because the answer they hung off has changed.
+ *
+ * Un-ticking "non-owned trailer" must take its coverage limit with it: left behind, the
+ * record still carries a limit for cover it no longer claims, and the figure reappears the
+ * moment the box is ticked again — with a number nobody re-checked.
+ */
+export function strandedFieldKeys(r: SafetyRecord, fields?: Record<string, string>): string[] {
+    const out: string[] = [];
+    for (const f of recordFields(r)) {
+        if (fieldApplies(f, fields)) continue;
+        if ((fields?.[f.key] ?? '') !== '') out.push(f.key);
+        // An amount takes its currency with it — a lone "CAD" is not a value.
+        const cur = f.kind === 'text' ? f.money?.currencyKey : undefined;
+        if (cur && (fields?.[cur] ?? '') !== '') out.push(cur);
+    }
+    return out;
+}
 
 /**
  * Every extra field a record captures, in form / column order: by default what it IS
@@ -158,6 +236,7 @@ export function recordFields(r: SafetyRecord): RecordFieldDef[] {
     const defs: RecordFieldDef[] = [
         ...(r.selectFields ?? []).map(f => ({ kind: 'select' as const, ...f })),
         ...(r.textFields ?? []).map(f => ({ kind: 'text' as const, ...f })),
+        ...(r.checkFields ?? []).map(f => ({ kind: 'check' as const, ...f })),
         ...(r.dateFields ?? []).map(f => ({ kind: 'date' as const, ...f })),
         ...(r.derivedFields ?? []).map(f => ({ kind: 'derived' as const, ...f })),
     ];
@@ -168,7 +247,8 @@ export function recordFields(r: SafetyRecord): RecordFieldDef[] {
 /** Demo values a generator may cycle through for one field (a derived field has none). */
 export function fieldPool(f: RecordFieldDef): string[] {
     if (f.kind === 'select') return f.options;
-    if (f.kind === 'derived') return [];
+    // A yes/no is drawn, not sampled from a list; a derived value is computed.
+    if (f.kind === 'derived' || f.kind === 'check') return [];
     return f.demoValues ?? [];
 }
 
@@ -292,6 +372,16 @@ export interface RecordVariant {
     recurring?: string;
     /** Keys of the record's extra fields this document does NOT capture. */
     hideFields?: string[];
+    /**
+     * Whether this kind has a document at all, and whether it is required. A non-bonded
+     * carrier code is a number and nothing else; the bonded one carries a surety bond. Set
+     * `type: 'C'` with `docRequirement: 'none'` to drop the upload entirely — the same pair
+     * that says so on a record.
+     */
+    type?: RecordTypeId;
+    docRequirement?: DocRequirement;
+    /** No monitored status on this kind (it has a date instead, or nothing to track). */
+    hideStatus?: boolean;
 }
 
 export interface SafetyRecord {
@@ -304,7 +394,7 @@ export interface SafetyRecord {
     numberName: string;
     /** Document Name — exact file/document label shown to users ('' if none). */
     documentName: string;
-    category: KeyNumberGroup;
+    category: SafetyCategory;
     entity: EntityId;
     type: RecordTypeId;
     /** Document upload requirement — separate from record type. */
@@ -375,6 +465,8 @@ export interface SafetyRecord {
     selectFields?: RecordSelectField[];
     /** Extra free-text fields the data-entry form captures (e.g. a licence's class / endorsements). */
     textFields?: RecordTextField[];
+    /** Yes/no fields the form captures (e.g. the optional covers on an insurance policy). */
+    checkFields?: RecordCheckField[];
     /**
      * Key of a select field that NAMES each record — a safety fitness certificate is called
      * after the form it takes (NIR, CVOR Level 2, NSC), because that is what distinguishes one
@@ -418,8 +510,39 @@ export interface SafetyRecord {
     hideMonitoring?: boolean;
     /** A new version defaults its display name to the RECORD's name rather than "Record <year>". */
     nameFromRecord?: boolean;
+    /**
+     * The form does not ask for a record name.
+     *
+     * A name earns its place where one record has to be told from another — several uploaded
+     * documents, a renewal history worth labelling. A state permit that holds no document is
+     * the only one of its kind on the record, so the field would be a box asking the user to
+     * type the record's own name back at it. Named after the record instead, which is why this
+     * always travels with `nameFromRecord`.
+     */
+    hideRecordName?: boolean;
+    /**
+     * The carrier holds exactly ONE of these, ever. A FEIN is issued once to a legal entity and
+     * never renewed, so there is no renewal history and no second number — Add is closed once
+     * one is on file rather than left open to capture a duplicate that cannot exist. (Different
+     * from `multiInstance`, which is about several CONCURRENT records of one kind.)
+     */
+    singleRecord?: boolean;
+    /**
+     * The monitored date a NEW record arrives with, as 'MM-DD', for a permit that always falls
+     * due on the same day — a KYU licence runs to 31 December whatever month it was filed in.
+     * The next such date that has not yet passed is used. Only ever a starting value: it is an
+     * ordinary editable date, and nothing back-fills it onto records already captured.
+     */
+    defaultExpiry?: string;
     /** Offer the full world country list (vs. the default US/Canada/Mexico) — e.g. Passport. */
     allCountries?: boolean;
+    /**
+     * Narrow the country list to the ones that can actually issue this record — FAST and
+     * SmartWay are joint US / Canada programmes, and offering Mexico invites a certificate to
+     * be filed against a country that does not run one. Narrows rather than pins: where a
+     * record has exactly one country, `defaultCountry` fills it in instead of asking.
+     */
+    countries?: string[];
     /**
      * Record holds MULTIPLE concurrent instances (e.g. several insurance policies), each independently
      * active and keeping its OWN current document + renewal history. When false/undefined the record is
@@ -455,6 +578,34 @@ export type SafetyFitnessType = typeof SAFETY_FITNESS_TYPES[number];
  * everywhere else, which narrows the list instead of pinning it: Ontario and Québec are left
  * out because those two provinces issue their own kind.
  */
+/**
+ * The two names one thing goes by. Ontario calls its workers' compensation board the WSIB;
+ * every other province and territory calls theirs a WCB (or WorkSafe, or the CNESST — all of
+ * them a WCB on the paperwork a carrier files).
+ */
+export const WORKERS_COMP_TYPES = ['WSIB', 'WCB'] as const;
+
+/**
+ * Whether a code is backed by a surety bond — asked the same way on the CBSA carrier code and
+ * on the SCAC, because it is the same question. Non-bonded first: it is the simpler of the two
+ * and the one that asks for nothing further.
+ */
+export const BOND_STATUS = ['Non-bonded', 'Bonded'] as const;
+
+/** Who wrote an experience letter — a previous employer, or the carrier's insurer. */
+export const EXPERIENCE_LETTER_TYPES = ['Employer', 'Insurance'] as const;
+
+/**
+ * Which province each board belongs to. WSIB pins Ontario — there is exactly one — so choosing
+ * the type fills the jurisdiction in. WCB covers everywhere else, which NARROWS the list to
+ * those provinces rather than choosing one: a carrier registered in Alberta and one in BC both
+ * file a WCB, and the form must not decide between them.
+ */
+export const WORKERS_COMP_STATES: Record<string, string[]> = {
+    WSIB: ['Ontario'],
+    WCB: CA_PROVINCES.filter(p => p !== 'Ontario'),
+};
+
 export const SAFETY_FITNESS_STATES: Record<string, string[]> = {
     NIR: ['Quebec'],
     'CVOR Level 2': ['Ontario'],
@@ -466,6 +617,14 @@ export const SAFETY_FITNESS_STATES: Record<string, string[]> = {
  * business licence registers the name it operates under. Declared here so the record, its
  * per-type form and the merge of the two old records all read from one list.
  */
+/**
+ * The covers a motor carrier's commercial policies are written for. Each is a separate policy
+ * with its own insurer, number and dates, which is why the Insurance record is multi-instance
+ * and each of its policies is named after the type it carries.
+ */
+export const INSURANCE_TYPES = ['CGL', 'Auto Liability', 'Motor Truck Cargo'] as const;
+export type InsuranceType = typeof INSURANCE_TYPES[number];
+
 export const COMPANY_DOC_TYPES = ['Articles of Incorporation', 'Master Business License'] as const;
 export type CompanyDocType = typeof COMPANY_DOC_TYPES[number];
 
@@ -488,7 +647,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // that is worth asking for. The record names itself, arrives as Ontario, Canada, and comes
     // with monitoring already on and pointed at the expiry date: for a certificate whose whole
     // purpose is to be valid on a date, monitoring switched off is never the right default.
-    { id: 'cvor', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    { id: 'cvor', category: 'Operating Authority', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'CVOR Certificate', description: "Commercial Vehicle Operator's Registration (CVOR)", numberName: 'CVOR Number', documentName: 'CVOR Certificate',
       recurring: 'Variable renewal/expiry', monitorType: 'Expiry date', tracksIssueDate: true, jurisdiction: 'Ontario, Canada',
       nameFromRecord: true, defaultCountry: 'Canada', defaultStateProv: 'Ontario', monitorByDefault: true,
@@ -502,7 +661,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // its own province) said the same thing three times, and a carrier had to know which of
     // them applied before it could file the certificate in its hand. Now it picks the type,
     // and the type settles the name and the province.
-    { id: 'safety-fitness', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    { id: 'safety-fitness', category: 'Operating Authority', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'Safety Fitness Certificate', description: 'Provincial safety fitness certificate — NIR (Québec), CVOR Level 2 (Ontario) or NSC', numberName: 'Certificate Number', documentName: 'Safety Fitness Certificate',
       recurring: 'Depends on Canadian jurisdiction', monitorType: 'Expiry date', jurisdiction: 'Canadian province / territory',
       defaultCountry: 'Canada', hideStatus: true, monitorByDefault: true,
@@ -520,25 +679,25 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // FMCSA does. So there is no status field here and nothing to alert on; the authority's
     // real status, the insurance it requires and the filings against it are looked up and shown
     // on the record's own page (see `mc-authority.data`).
-    { id: 'mc', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required', hideState: true,
+    { id: 'mc', category: 'Operating Authority', entity: 'Carrier', type: 'DC', docRequirement: 'required', hideState: true,
       recordName: 'MC Certificate', description: 'FMCSA Motor Carrier Operating Authority', numberName: 'MC Number', documentName: 'FMCSA Operating Authority Certificate (MC)',
       recurring: 'No fixed expiry', monitorType: 'Authority / status change', jurisdiction: 'United States, federal',
       nameFromRecord: true, defaultCountry: 'United States', tracksIssueDate: true,
       hideStatus: true, hideMonitoring: true,
       monitor: 'Authority status, revocation, suspension and the insurance filed against it come from FMCSA — read on the record, not alerted on here.' },
-    { id: 'dot-biennial', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'optional',
+    { id: 'dot-biennial', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'optional',
       recordName: 'DOT Biennial Update', description: 'FMCSA DOT Biennial Update', numberName: 'DOT Biennial Update (linked to USDOT)', documentName: 'MCS-150 / MCS-150B Filing Confirmation',
       recurring: 'Biennial', monitorType: 'Next filing due', jurisdiction: 'United States, federal',
       monitor: 'Next biennial filing due date calculated from the USDOT number and last filing/update date.',
       note: 'Optional MCS-150/MCS-150B upload; uses the USDOT number (no separate number).' },
-    { id: 'usdot', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'C', docRequirement: 'none',
+    { id: 'usdot', category: 'Other', entity: 'Carrier', type: 'C', docRequirement: 'none',
       recordName: 'DOT', description: 'USDOT Registration', numberName: 'USDOT Number', documentName: '',
       recurring: 'Number does not expire', monitorType: 'Active/inactive status', jurisdiction: 'United States, federal',
       monitor: 'Active/inactive status and linked next biennial filing due date.' },
     // A test is an event, not a credential: it captures WHY the driver was tested and the
     // outcome, plus the date it was taken. No jurisdiction fields — the test is federal
     // (or company) policy, not state-issued.
-    { id: 'drug-test', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'drug-test', category: 'Personal Documents', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'Drug Test Result', description: 'Drug and Alcohol Testing Record', numberName: '', documentName: 'Drug & Alcohol Test Result / Employer Testing Record',
       recurring: 'Per test', monitorType: 'On file', tracksIssueDate: true, hideCountry: true, hideState: true, nameFromRecord: true,
       // A result is final the day it is issued — nothing to monitor.
@@ -550,19 +709,19 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // PHMSA registers hazmat carriers federally, for a term that ends: so the record names
     // itself, arrives as the United States with no province to pick (there is no state-issued
     // version of this), and comes with monitoring already pointed at the expiry date.
-    { id: 'hazmat', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    { id: 'hazmat', category: 'Safety & Regulatory Permits', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'HAZMAT', description: 'PHMSA Hazardous Materials Registration', numberName: 'HAZMAT Registration Number', documentName: 'HAZMAT Certificate of Registration',
       recurring: 'Yes', monitorType: 'Expiry date', configuredDate: '2026-06-30', jurisdiction: 'United States, federal',
       nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
       monitor: 'Expiry date, monitored by default.' },
-    { id: 'mcs90', category: 'Regulatory and Safety Numbers', entity: 'Carrier', type: 'D', docRequirement: 'required',
+    { id: 'mcs90', category: 'Safety & Regulatory Permits', entity: 'Carrier', type: 'D', docRequirement: 'required',
       recordName: 'MCS-90', description: 'Motor Carrier Public Liability Endorsement', numberName: '', documentName: 'MCS-90 Endorsement',
       recurring: 'No independent expiry', monitorType: 'Linked to insurance policy', jurisdiction: 'United States, federal',
       monitor: 'Linked to the insurance policy — monitor policy effective/expiry dates & replacement/cancellation status.' },
     // A federal credential: card number + issuing country + the expiry it is monitored on.
     // No state/province (it is federal) and no issue date — only the card's own expiry drives
     // the alerts, which also means monitoring never offers a renewal cadence.
-    { id: 'twic', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
+    { id: 'twic', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'TWIC Card', description: 'Transportation Worker Identification Credential', numberName: 'TWIC Card Number', documentName: 'TWIC Card Copy',
       recurring: 'Variable expiry', monitorType: 'Card expiry date',
       hideState: true, nameFromRecord: true,
@@ -570,41 +729,95 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       monitor: 'Card expiry date.' },
 
     // ── 2. Tax and Business Identification Numbers ────────────────────
-    { id: 'ifta-license', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    // Issued by the carrier's BASE jurisdiction, so both the country and the province / state
+    // are asked — an Ontario IFTA licence and a Michigan one are different licences. No issue
+    // date: the licence runs to a fixed year end, and that expiry is the whole point of it.
+    { id: 'ifta-license', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'IFTA License', description: 'International Fuel Tax Agreement Registration', numberName: 'IFTA Account / License Number', documentName: 'IFTA License',
       recurring: 'Annual', monitorType: 'Expiry date', configuredDate: '2026-12-31', jurisdiction: 'Base IFTA jurisdiction (CA/US)',
+      // Named after itself, and watched by default: a licence that lapses at a year end and is
+      // not being watched is the exact thing this page exists to prevent.
+      nameFromRecord: true, monitorByDefault: true,
       monitor: 'Expiry date (annual).' },
     { id: 'ifta-decal', category: 'Tax and Business Identification Numbers', entity: 'Asset', type: 'DC', docRequirement: 'required',
       recordName: 'IFTA Decal', description: 'International Fuel Tax Agreement Vehicle Decal', numberName: 'IFTA Decal Number', documentName: 'IFTA Decal Record / Copy',
       recurring: 'Annual', monitorType: 'Expiry date', configuredDate: '2026-12-31', jurisdiction: 'Same base IFTA jurisdiction',
       monitor: 'Expiry date (annual).' },
-    { id: 'fein', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'FEIN', description: 'Federal Employer Identification', numberName: 'FEIN / EIN', documentName: 'IRS EIN Verification Letter (147C)',
+    // Issued ONCE to the legal entity and never renewed: no expiry, so nothing to monitor and
+    // no status to track, and no second one to file. Federal, so the state is not asked — but
+    // the country is, because a carrier operating both sides of the border files US and
+    // Canadian tax numbers side by side and they must not read as one kind. The 147C letter is
+    // a real document, which is why this record still carries a name and an upload.
+    { id: 'fein', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'FEIN', description: 'Federal Employer Identification', numberName: 'FEIN Number', documentName: 'IRS EIN Verification Letter (147C)',
       recurring: 'No normal expiry', monitorType: 'No expiry', jurisdiction: 'United States, federal',
+      nameFromRecord: true, defaultCountry: 'United States', hideState: true, hideStatus: true, hideMonitoring: true,
+      singleRecord: true,
       monitor: 'No expiry alert; monitor only when the legal entity or tax registration changes.' },
-    { id: 'nm-wdt', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'NM', description: 'New Mexico Weight Distance Tax Registration', numberName: 'New Mexico WDT Account / Permit Number', documentName: 'New Mexico Weight Distance Tax Permit / Certificate',
+    // ── The state weight-distance / highway-use permits ──────────────────
+    // WDT, KYU, HUT and Oregon are the same shape, and none of them is a document: the state
+    // issues a number and a date, and the carrier files a return against it. So each captures
+    // its number, the one jurisdiction that can issue it (filled in, not asked — there is no
+    // WDT outside New Mexico), and the date it falls due, which is the only thing worth an
+    // alert. Connecticut is the exception, and keeps its certificate and its name. With no
+    // document to tell one filing from another, there is nothing for a record name to
+    // distinguish, so the form does not ask for one and the permit is named after itself.
+    { id: 'nm-wdt', category: 'Other', entity: 'Carrier', type: 'C', docRequirement: 'none',
+      recordName: 'WDT Permit', versionRenamedFrom: 'NM', description: 'New Mexico Weight Distance Tax Registration', numberName: 'WDT Number', documentName: '',
       recurring: 'Recurring', monitorType: 'Expiry / renewal due', configuredDate: '2026-12-31', jurisdiction: 'New Mexico, United States',
+      nameFromRecord: true, hideRecordName: true, monitorByDefault: true,
+      defaultCountry: 'United States', defaultStateProv: 'New Mexico',
       monitor: 'Expiry/renewal due date.', note: 'Carrier master account; Asset when an asset-specific permit is issued.' },
-    { id: 'kyu', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'KYU', description: 'Kentucky Weight Distance Tax Registration', numberName: 'KYU Number', documentName: 'KYU License / Letter of Addition',
+    // Kentucky's renews on a fixed calendar — every licence runs to 31 December — so the date
+    // is filled in rather than looked up, and corrected on the rare filing that does not.
+    { id: 'kyu', category: 'Other', entity: 'Carrier', type: 'C', docRequirement: 'none',
+      recordName: 'KYU Permit', versionRenamedFrom: 'KYU', description: 'Kentucky Weight Distance Tax Registration', numberName: 'KYU Number', documentName: '',
       recurring: 'Recurring', monitorType: 'Renewal / filing due', configuredDate: '2026-12-31', jurisdiction: 'Kentucky, United States',
+      nameFromRecord: true, hideRecordName: true, monitorByDefault: true, defaultExpiry: '12-31',
+      defaultCountry: 'United States', defaultStateProv: 'Kentucky',
       monitor: 'Renewal/filing due date.', note: 'Carrier master account; Asset association where required.' },
-    { id: 'ny-hut', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'HUT', description: 'New York Highway Use Tax Registration', numberName: 'New York HUT Number', documentName: 'New York HUT Certificate of Registration',
+    { id: 'ny-hut', category: 'Other', entity: 'Carrier', type: 'C', docRequirement: 'none',
+      recordName: 'HUT Permit', versionRenamedFrom: 'HUT', description: 'New York Highway Use Tax Registration', numberName: 'NY PIN / HUT PIN', documentName: '',
       recurring: 'Recurring', monitorType: 'Expiry / renewal due', configuredDate: '2026-12-31', jurisdiction: 'New York, United States',
+      nameFromRecord: true, hideRecordName: true, monitorByDefault: true,
+      defaultCountry: 'United States', defaultStateProv: 'New York',
       monitor: 'Permit/certificate expiry or renewal due date.', note: 'Carrier account plus Asset-specific certificate/permit.' },
-    { id: 'ct-permit', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'CT', description: 'Connecticut Highway Use / Tax Registration', numberName: 'Connecticut Permit / Registration Number', documentName: 'Connecticut Permit / Tax Registration Certificate',
+    // Connecticut is the one of these that issues a CERTIFICATE, so it keeps its upload — and
+    // with a document to file, a record name earns its place again: it is what tells this
+    // year's certificate from the one it replaced. Renews on the same fixed calendar as the
+    // KYU, so the date arrives filled in.
+    { id: 'ct-permit', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'Connecticut Permit', versionRenamedFrom: 'CT', description: 'Connecticut Highway Use / Tax Registration', numberName: 'Registration Number', documentName: 'Connecticut Permit / Tax Registration Certificate',
       recurring: 'Recurring', monitorType: 'Expiry / renewal due', configuredDate: '2026-12-31', jurisdiction: 'Connecticut, United States',
-      monitor: 'Expiry/renewal due date.', note: 'Carrier account; Asset when asset-specific.' },
-    { id: 'oregon-wm', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Oregon', description: 'Oregon Weight-Mile Tax Registration', numberName: 'Oregon Weight-Mile Account Number', documentName: 'Oregon Weight-Mile / Motor Carrier Registration Certificate',
-      recurring: 'Recurring', monitorType: 'Renewal / status due', configuredDate: '2026-12-31', jurisdiction: 'Oregon, United States',
-      monitor: 'Renewal/status due date; allow "permanent / no expiry" when applicable.', note: 'Carrier master account; Asset association where required.' },
-    { id: 'wsib', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'WSIB', description: 'Ontario Workplace Safety and Insurance Registration', numberName: 'WSIB Account Number', documentName: 'WSIB Clearance Certificate',
-      recurring: 'Monthly', monitorType: 'Valid-to / clearance date', jurisdiction: 'Select jurisdiction',
+      nameFromRecord: true, monitorByDefault: true, defaultExpiry: '12-31',
+      defaultCountry: 'United States', defaultStateProv: 'Connecticut',
+      monitor: 'Expiry/renewal due date (31 December).', note: 'Carrier account; Asset when asset-specific.' },
+    // Oregon is the fourth of the no-document permits: an account number, the state that holds
+    // it, and the date the renewal falls due.
+    { id: 'oregon-wm', category: 'Other', entity: 'Carrier', type: 'C', docRequirement: 'none',
+      recordName: 'Oregon', description: 'Oregon Weight-Mile Tax Registration', numberName: 'Oregon Weight-Mile Account Number', documentName: '',
+      recurring: 'Recurring', monitorType: 'Renewal due', configuredDate: '2026-12-31', jurisdiction: 'Oregon, United States',
+      nameFromRecord: true, hideRecordName: true, monitorByDefault: true, defaultExpiry: '12-31',
+      defaultCountry: 'United States', defaultStateProv: 'Oregon',
+      monitor: 'Renewal due date (31 December). Where the registration is permanent, clear the date and switch the alert off.',
+      note: 'Carrier master account; Asset association where required.' },
+    // One record for the workers' compensation board a carrier is registered with, whichever
+    // province that is. The type is asked first and settles the rest: it names the record and
+    // pins the jurisdiction, because Ontario's board IS the WSIB — picking it is picking the
+    // province. A WCB is every other province's, so it narrows the list instead of choosing
+    // for the carrier, which board they are registered with being theirs to say.
+    { id: 'wsib', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'WSIB / WCB', versionRenamedFrom: 'WSIB', description: "Workers' Compensation Registration", numberName: 'Account Number', documentName: 'Clearance Certificate',
+      recurring: 'Monthly', monitorType: 'Valid-to / clearance date', jurisdiction: 'Canada, provincial',
+      defaultCountry: 'Canada',
+      nameFromField: 'boardType',
+      stateByField: { from: 'boardType', states: WORKERS_COMP_STATES },
+      selectFields: [
+          // Every record filed while this was "the WSIB record" was Ontario's board — that is
+          // all the record was — so the history reads WSIB rather than a coin toss.
+          { key: 'boardType', label: 'Board', required: true, order: -3, rowStart: true, control: 'radio',
+            options: [...WORKERS_COMP_TYPES], priorValue: 'WSIB' },
+      ],
       monitor: 'Certificate valid-to / clearance expiry date, not merely the issue date.' },
     // ONE record for the two papers that say the company exists: the certificate of
     // incorporation that created it, and the master business licence that registers the name it
@@ -613,7 +826,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // asked first and settles the rest: the record's name, which dates it asks for, and whether
     // there is anything to monitor at all. Records already filed under either are moved here
     // (see `MERGED_RECORDS`).
-    { id: 'company-docs', category: 'Tax and Business Identification Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    { id: 'company-docs', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'Company Documents', description: 'Incorporation and business-name registration documents', numberName: 'Corporation / Registration Number', documentName: 'Company Document',
       recurring: 'Depends on the document', monitorType: 'Expiry date', tracksIssueDate: true, jurisdiction: 'Federal / provincial / state registering jurisdiction',
       hideStatus: true,
@@ -648,30 +861,117 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       monitor: 'A master business licence is monitored on its expiry date (or a custom date where the province prints none). A certificate of incorporation does not expire — it carries an issue date only, and no alert.' },
 
     // ── 3. Carrier & Industry Codes ───────────────────────────────────
-    { id: 'carrier-code', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Carrier Code', description: 'CBSA Carrier Code Registration', numberName: 'Carrier Code', documentName: 'CBSA Carrier Code Approval Letter',
-      recurring: 'No fixed expiry', monitorType: 'Active status / replacement', jurisdiction: 'Canada, federal customs',
-      monitor: 'Active status or replacement/change — not the issue date.' },
-    { id: 'scac', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    // A carrier code is a number CBSA issues, and on its own it has nothing to expire: no
+    // document, no date, no alert. A BONDED code is a different thing — the bond behind it is
+    // a document with an expiry, and a bond that lapses takes the code with it, which is the
+    // whole reason to watch it. So the bond question is asked once and the rest of the record
+    // follows from it, rather than every carrier being shown surety fields they do not have.
+    //
+    // The record declares the UNION — a date, a document, the surety fields — because that is
+    // what the list and its columns describe; each answer then NARROWS it (see `variantByField`).
+    { id: 'carrier-code', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'Carrier Code', description: 'CBSA Carrier Code Registration', numberName: 'Carrier Code', documentName: 'Surety Bond',
+      recurring: 'No fixed expiry', monitorType: 'Surety bond expiry', jurisdiction: 'Canada, federal customs',
+      // Named after itself: a carrier holds ONE code, so "Record 2026" tells you nothing that
+      // the record it sits under does not already say. The bond does not name it — bonded or
+      // not, it is the same code, unlike a certificate whose type is what it IS.
+      nameFromRecord: true,
+      defaultCountry: 'Canada', hideStatus: true,
+      selectFields: [
+          { key: 'bondStatus', label: 'Bond', required: true, order: 1, rowStart: true, control: 'radio',
+            options: [...BOND_STATUS] },
+      ],
+      textFields: [
+          { key: 'suretyCompany', label: 'Surety bond company', order: 2, rowStart: true,
+            placeholder: 'e.g. Trisura Guarantee Insurance', demoValues: ['Trisura Guarantee Insurance', 'Intact Insurance', 'Aviva Canada', 'The Guarantee Company of North America'] },
+          { key: 'bondNumber', label: 'Surety bond number', order: 3,
+            placeholder: 'Bond number', demoValues: ['SB-4471902', 'SB-8820114', 'B-2290477'] },
+      ],
+      variantByField: {
+          from: 'bondStatus',
+          variants: {
+              // Not yet said. Nothing is demanded and no surety field is asked — but a document
+              // already on file stays visible, because a question nobody has answered is not a
+              // reason to hide what a carrier has already filed.
+              '': { documentName: 'Supporting document', docRequirement: 'optional',
+                    monitorType: 'No expiry', hideMonitoring: true, hideFields: ['suretyCompany', 'bondNumber'] },
+              // Just the code: a number, and where it was issued.
+              'Non-bonded': { documentName: '', type: 'C', docRequirement: 'none',
+                    monitorType: 'No expiry', hideMonitoring: true, hideFields: ['suretyCompany', 'bondNumber'] },
+              // The bond is the thing that expires, so it is the thing that is watched.
+              Bonded: { documentName: 'Surety Bond', type: 'DC', docRequirement: 'required',
+                    monitorType: 'Surety bond expiry', monitorByDefault: true },
+          },
+      },
+      monitor: 'A bonded carrier code is monitored on the surety bond expiry — the code lapses with the bond. A non-bonded code has no date and no alert.' },
+    // The same bond question as the carrier code, with one difference that decides the shape:
+    // a SCAC certificate has an expiry of its OWN. The bond behind a bonded SCAC expires on a
+    // separate schedule, and a version carries one date and one alert — so the bond cannot ride
+    // along inside this record. It is its own, "US Customs Bond", watched on its own expiry.
+    // This field is what says whether the carrier needs one.
+    { id: 'scac', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'SCAC Code', description: 'Standard Carrier Alpha Code Registration', numberName: 'SCAC Code', documentName: 'SCAC Certificate',
       recurring: 'Variable renewal/expiry', monitorType: 'Certificate expiry / renewal', jurisdiction: 'North American transportation industry',
-      monitor: 'Certificate/code expiry or renewal due date.' },
-    { id: 'ctpat', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'CTPAT', description: 'Customs Trade Partnership Against Terrorism Certification', numberName: 'CTPAT Account / Reference Number', documentName: 'CTPAT Certification / Approval Letter',
-      recurring: 'Periodic validation', monitorType: 'Next validation / review', jurisdiction: 'United States, federal customs',
-      monitor: 'Next validation/review due date + certification status; use expiry only when provided.' },
-    { id: 'pip', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'PIP', description: 'Partners in Protection Certification', numberName: 'PIP Account / Reference Number', documentName: 'PIP Certificate / Approval Letter',
-      recurring: 'Periodic review', monitorType: 'Next review / revalidation', jurisdiction: 'Canada, federal customs',
-      monitor: 'Next review/revalidation due date + active status; use expiry only when provided.' },
-    { id: 'csa', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'CSA', description: 'CBSA Customs Self-Assessment Authorization', numberName: 'CSA Account / Reference Number', documentName: 'CSA Approval / Authorization Letter',
-      recurring: 'Ongoing authorization', monitorType: 'Status / next review', jurisdiction: 'Canada, federal customs',
-      monitor: 'Authorization status and next review/revalidation date.', note: 'CBSA Customs Self-Assessment — not the FMCSA safety-score program.' },
-    { id: 'smartway', category: 'Carrier & Industry Codes', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
+      selectFields: [
+          { key: 'bondStatus', label: 'Bond', required: true, order: 1, rowStart: true, control: 'radio',
+            options: [...BOND_STATUS] },
+      ],
+      practiceNote: 'A bonded SCAC also needs the bond itself on file. It is filed as a US Customs Bond — its own record, with its own number and its own expiry to watch.',
+      monitor: 'Certificate/code expiry or renewal due date. The bond behind a bonded SCAC expires separately and is monitored on its own record.' },
+    // CTPAT does not expire — it comes due. The renewal is a security profile to rewrite and
+    // have accepted, which is weeks of work, so the alert runs on a 45-day drumbeat rather
+    // than the usual 90 / 60 / 30 flurry: 90 days out to start it, 45 to finish it, and on the
+    // day itself. Armed by default, because a membership that lapses un-renewed costs the
+    // carrier its FAST lanes.
+    { id: 'ctpat', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'CTPAT', description: 'Customs Trade Partnership Against Terrorism Certification', numberName: 'CTPAT Account Number', documentName: 'CTPAT Certification / Approval Letter',
+      recurring: 'Periodic validation', monitorType: 'Next renewal date', jurisdiction: 'United States, federal customs',
+      nameFromRecord: true, defaultCountry: 'United States', hideState: true,
+      monitorByDefault: true, defaultReminders: [90, 45, 0],
+      practiceNote: 'CTPAT renewal is a security profile to review and re-submit, not a date to copy across — so the reminder runs every 45 days (90 days before, 45 days before, and on the day) rather than leaving it to the last month.',
+      monitor: 'Next renewal date, monitored by default, with reminders every 45 days.' },
+    // CTPAT's counterpart, and shaped the same way: an account number, a date the review falls
+    // due, the approval letter, and an alert on that date. The difference is whose programme it
+    // is — Partners in Protection is CBSA's, so it defaults to Canada where CTPAT defaults to
+    // the United States. The two are mutually recognised, not interchangeable.
+    { id: 'pip', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'PIP', description: 'Partners in Protection Certification', numberName: 'PIP Account Number', documentName: 'PIP Certificate / Approval Letter',
+      recurring: 'Periodic review', monitorType: 'Next review date', jurisdiction: 'Canada, federal customs',
+      nameFromRecord: true, defaultCountry: 'Canada', hideState: true, monitorByDefault: true,
+      monitor: 'Next review date, monitored by default.' },
+    // The authorization arrives as TWO separate pieces of paper — the card a driver carries and
+    // the certificate the office files — and a carrier holds both at once. Named upload slots
+    // rather than a pile of attachments, so a missing card is visible as a gap instead of being
+    // lost among the files that are there.
+    // Nothing is watched: CSA is held, not renewed on a cycle, so there is no date and no alert.
+    { id: 'csa', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'CSA', description: 'CBSA Customs Self-Assessment Authorization', numberName: 'CSA Account Number', documentName: 'CSA Authorization',
+      slotLabels: ['CSA Card', 'CSA Certificate'],
+      recurring: 'Ongoing authorization', monitorType: 'On file', jurisdiction: 'Canada, federal customs',
+      nameFromRecord: true, defaultCountry: 'Canada', hideState: true, hideStatus: true, hideMonitoring: true,
+      monitor: 'Nothing to monitor — the authorization is held rather than renewed on a cycle, so there is no date and no alert.',
+      note: 'CBSA Customs Self-Assessment — not the FMCSA safety-score program.' },
+    // A joint US / Canada programme, so the country is ASKED rather than filled in — and the
+    // list is narrowed to the two that run it, because a SmartWay partnership filed against
+    // Mexico is a record nobody can act on. The renewal is annual and armed by default: a
+    // partnership that lapses is dropped from the EPA's published list.
+    { id: 'smartway', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'SmartWay', description: 'EPA SmartWay Partnership', numberName: 'SmartWay Partner ID / Account Number', documentName: 'SmartWay Partner Certificate / Approval',
-      recurring: 'Annual', monitorType: 'Annual submission / renewal', configuredDate: '2026-03-31', jurisdiction: 'US / North American freight program',
-      monitor: 'Annual submission/renewal due date.' },
+      recurring: 'Annual', monitorType: 'Next renewal date', configuredDate: '2026-03-31', jurisdiction: 'US / Canada freight program',
+      nameFromRecord: true, countries: ['United States', 'Canada'], hideState: true, monitorByDefault: true,
+      monitor: 'Next renewal date, monitored by default on an annual cycle.' },
+
+    // The company-level FAST approval, which is not the driver's card: one belongs to the
+    // carrier and one to the person, and a carrier holds one of these against many of those
+    // (see the driver FAST Card record). Approved jointly by CBP and CBSA, so the same two
+    // countries as SmartWay. Nothing is watched — the certificate is held, and the expiry that
+    // matters in practice is on each driver's card, where it is already monitored.
+    { id: 'fast-certificate', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'FAST Certificate', description: 'Free and Secure Trade (FAST) Carrier Approval', numberName: 'FAST ID', documentName: 'FAST Certificate',
+      recurring: 'Ongoing approval', monitorType: 'On file', jurisdiction: 'United States / Canada, joint customs program',
+      nameFromRecord: true, countries: ['United States', 'Canada'], hideState: true, hideStatus: true, hideMonitoring: true,
+      monitor: 'Nothing to monitor — the carrier approval is held, not renewed on a cycle. Each driver\'s FAST card carries its own expiry and is monitored there.' },
 
     // ── 4. Bond and Registration Numbers ──────────────────────────────
     { id: 'irp-plate', category: 'Bond and Registration Numbers', entity: 'Asset', type: 'C', docRequirement: 'none',
@@ -686,29 +986,71 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'Non-IRP Plates (Local Plates)', description: 'Non-IRP Vehicle Registration', numberName: 'Non-IRP / Local Plate Number', documentName: 'Vehicle Permit / Registration Certificate',
       recurring: 'Yes', monitorType: 'Plate / registration expiry', jurisdiction: 'Issuing province/state',
       monitor: 'Plate/registration expiry date for the individual vehicle — not IRP fleet expiry.', note: 'Store plate_type. No cab card required for a non-IRP plate.' },
-    { id: 'ucr', category: 'Bond and Registration Numbers', entity: 'Carrier', type: 'D', docRequirement: 'required',
+    { id: 'ucr', category: 'Safety & Regulatory Permits', entity: 'Carrier', type: 'D', docRequirement: 'required',
       recordName: 'UCR', description: 'Unified Carrier Registration', numberName: '', documentName: 'UCR Registration Certificate / Filing Confirmation',
       recurring: 'Annual', monitorType: 'Expiry / registration-year end', configuredDate: '2026-12-31', jurisdiction: 'United States, interstate registration',
       monitor: 'Expiry / registration-year end (annual).' },
-    { id: 'boc3', category: 'Bond and Registration Numbers', entity: 'Carrier', type: 'D', docRequirement: 'required',
+    { id: 'boc3', category: 'Other', entity: 'Carrier', type: 'D', docRequirement: 'required',
       recordName: 'BOC-3', description: 'Designation of Process Agents Filing', numberName: '', documentName: 'BOC-3 Filing Confirmation / Certificate',
       recurring: 'No scheduled expiry', monitorType: 'Filing status / change', jurisdiction: 'United States, federal',
       monitor: 'Filing status/change date — not expiry.' },
-    { id: 'us-bond', category: 'Bond and Registration Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'US Bond', description: 'United States Customs or Surety Bond', numberName: 'US Bond Number', documentName: 'US Bond Certificate',
-      recurring: 'Variable', monitorType: 'Bond expiry / renewal', jurisdiction: 'United States',
-      monitor: 'Bond expiry/termination/renewal date.', note: 'Store bond_type.' },
-    { id: 'canada-bond', category: 'Bond and Registration Numbers', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+    // The bond behind a bonded SCAC. It lives here rather than inside the SCAC record because
+    // it expires on its OWN schedule: a certificate valid to March and a bond valid to October
+    // are two dates and two alerts, and a version carries one of each. Optional, not required —
+    // only a bonded carrier holds one, and marking every other carrier "missing a customs bond"
+    // is noise on a page whose job is to say what is actually outstanding.
+    { id: 'us-bond', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'optional',
+      recordName: 'US Customs Bond', versionRenamedFrom: 'US Bond', description: 'United States Customs Surety Bond', numberName: 'US Bond Number', documentName: 'US Customs Bond',
+      recurring: 'Per bond term', monitorType: 'Surety bond expiry', jurisdiction: 'United States, federal customs',
+      nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
+      textFields: [
+          // The surety's own reference for the bond, which is what the surety company answers
+          // to — not the same number CBP knows it by, and both are printed on the bond.
+          { key: 'suretyReference', label: 'Surety reference number', order: 1,
+            placeholder: "The surety company's own reference",
+            demoValues: ['SUR-2291045', 'SUR-7714302', 'TRI-5580291'] },
+      ],
+      monitor: 'Surety bond expiry date, monitored by default — the bonded status lapses with the bond.' },
+    { id: 'canada-bond', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'Canada Bond', description: 'Canada Customs or Surety Bond', numberName: 'Canada Bond Number', documentName: 'Canada Bond Certificate',
       recurring: 'Variable', monitorType: 'Bond expiry / renewal', jurisdiction: 'Canada',
       monitor: 'Bond expiry/termination/renewal date.', note: 'Store bond_type.' },
 
     // ── 5. Others ─────────────────────────────────────────────────────
-    { id: 'insurance', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Insurance', description: 'Commercial Insurance Coverage', numberName: 'Insurance Policy Number', documentName: 'Certificate of Insurance / Insurance Policy',
-      recurring: 'Yes', monitorType: 'Policy expiry date', tracksIssueDate: true, jurisdiction: 'Policy-specific (CA/US)',
+    // A carrier does not hold "an insurance policy" — it holds several at once, each covering
+    // a different exposure, each with its own insurer, number and dates. So the record is
+    // multi-instance and every policy is NAMED after the cover it provides: "Auto Liability"
+    // and "Motor Truck Cargo" is what tells one row from another, where "Insurance 2026"
+    // three times over tells you nothing.
+    //
+    // The two optional covers are checkboxes rather than a select, because they have an answer
+    // before anyone is asked and that answer is no. Non-owned trailer cover then asks for its
+    // own limit — a separate figure from the policy's, and only a real one on the policies
+    // that carry it (see `showWhen`).
+    { id: 'insurance', category: 'Insurance', entity: 'Carrier', type: 'DC', docRequirement: 'required',
+      recordName: 'Insurance', description: 'Commercial Insurance Coverage', numberName: 'Policy Number', documentName: 'Certificate of Insurance / Insurance Policy',
+      recurring: 'Yes', monitorType: 'Policy expiry date', tracksIssueDate: true, jurisdiction: 'Company',
+      // No country, no province. A policy is written by an INSURER, not issued by a
+      // jurisdiction: there is no authority to pick and nothing the choice would change.
+      // Where the cross-border distinction actually bites — the size of a limit — it is
+      // carried by the limit's own currency.
+      hideCountry: true, hideState: true,
       multiInstance: true, instanceNoun: 'policy',
-      monitor: 'Policy expiry date. Store issue/effective date for history.', note: 'Insurance broker & company come from the Vendor list.' },
+      nameFromField: 'insuranceType',
+      selectFields: [
+          { key: 'insuranceType', label: 'Insurance type', options: [...INSURANCE_TYPES], required: true, order: -3 },
+      ],
+      checkFields: [
+          { key: 'nonOwnedTrailer', label: 'Non-owned trailer', hint: 'Covers trailers the carrier pulls but does not own', order: 3, rowStart: true },
+          { key: 'reeferBreakdown', label: 'Reefer breakdown', hint: 'Cargo lost to a refrigeration unit failure', order: 3 },
+      ],
+      textFields: [
+          { key: 'nonOwnedLimit', label: 'Non-owned trailer coverage limit', order: 4, rowStart: true,
+            placeholder: 'e.g. 500,000', money: { currencyKey: 'nonOwnedCurrency', currencies: ['CAD', 'USD'] },
+            showWhen: { field: 'nonOwnedTrailer' } },
+      ],
+      monitor: 'Policy expiry date. Store issue/effective date for history.',
+      note: 'The broker and agent who placed these policies are named once in the page header.' },
     { id: 'pink-slip', category: 'Other', entity: 'Asset', type: 'DC', docRequirement: 'required',
       recordName: 'Pink Slip', description: 'Vehicle Proof of Insurance', numberName: 'Insurance Policy Number', documentName: 'Proof of Automobile Insurance Card (Pink Slip)',
       recurring: 'Yes', monitorType: 'Insurance expiry date', jurisdiction: 'Issuing insurance jurisdiction',
@@ -748,7 +1090,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // The catalog entry is the formal licence class of record; what you file against a driver
     // is simply their driver licence, so new records are named that rather than after the
     // catalog heading.
-    { id: 'cdl', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', isLicense: true,
+    { id: 'cdl', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'required', isLicense: true,
       recordName: 'Commercial Driver License', description: "Commercial Driver's License (CDL)", numberName: 'CDL Number', documentName: "Driver's License / CDL", slotLabels: ['Front of License', 'Back of License'],
       recurring: 'Per licence term', monitorType: 'Licence expiry date', tracksIssueDate: true, nameFromRecord: true,
       versionName: 'Driver License', versionRenamedFrom: 'CDL',
@@ -762,7 +1104,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
             demoValues: ['L — No air brakes', 'Z — No full air brakes', 'L — No air brakes, Z — No full air brakes', 'E — No manual transmission'] },
       ],
       monitor: 'Licence expiry date. Store class, endorsements, restrictions and issue date.' },
-    { id: 'medical-cert', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
+    { id: 'medical-cert', category: 'Personal Documents', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'Medical Certificate', description: "Medical Examiner's Certificate (DOT Medical Card, MCSA-5876)", numberName: 'National Registry Number', documentName: "Medical Examiner's Certificate",
       recurring: 'Per medical term (≤ 24 months)', monitorType: 'Medical card expiry', tracksIssueDate: true, jurisdiction: 'United States, federal (FMCSA)',
       monitor: 'Medical certificate expiry date (max 24-month term, 49 CFR 391.41).' },
@@ -771,14 +1113,14 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // monitoring both call it. Known by its acronym, so MVR stays the short name and the full
     // name — the counterpart of the Driver Commercial Abstract below — is its description.
     // `versionRenamedFrom` relabels records filed under the full name back to the acronym.
-    { id: 'mvr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
+    { id: 'mvr', category: 'Abstracts & Annual Reviews', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'MVR', description: 'Driver Non-Commercial Abstract', numberName: 'Abstract Order / Reference Number', documentName: 'Driver Non-Commercial Abstract',
       recurring: 'Annual', monitorType: 'Next renew date', nameFromRecord: true, versionRenamedFrom: 'Driver Non-Commercial Abstract',
       jurisdiction: 'Driver licensing state / province',
       monitor: 'Reviewed at least every 12 months (§391.25).' },
     // An abstract is pulled and reviewed on a cycle rather than expiring, so monitoring runs
     // from the ISSUE date on an annual recurrence, and the date captured is the next review.
-    { id: 'driver-cvdr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', tracksIssueDate: true,
+    { id: 'driver-cvdr', category: 'Abstracts & Annual Reviews', entity: 'Driver', type: 'DC', docRequirement: 'required', tracksIssueDate: true,
       recordName: 'Driver Commercial Abstract', description: 'Provincial commercial driving record, reviewed annually', numberName: 'Abstract Reference Number', documentName: 'Driver Commercial Abstract',
       recurring: 'Annual', monitorType: 'Next review date', nameFromRecord: true,
       defaultMonitorBasis: 'issue', jurisdiction: 'Issuing province / state',
@@ -789,7 +1131,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // A PSP is pulled once per hire and filed: it has no expiry, no status to track and
     // nothing to alert on, so it captures only the date it was pulled and the report itself.
     // FMCSA is US-federal, so the country is fixed and there is no state.
-    { id: 'psp-report', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'psp-report', category: 'Abstracts & Annual Reviews', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'PSP Report', description: 'FMCSA Pre-Employment Screening Program Report', numberName: '', documentName: 'FMCSA PSP Report',
       recurring: 'Per hire', monitorType: 'Pre-employment / status',
       nameFromRecord: true, tracksIssueDate: true, defaultCountry: 'United States', hideState: true,
@@ -799,7 +1141,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // A query is run, comes back either restricted or not, and is re-run on a cycle. Both
     // answers are either/or, so they are radio pairs rather than dropdowns — and both are
     // worth filtering the list by. FMCSA is US-federal: country fixed, no state.
-    { id: 'clearinghouse-query', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
+    { id: 'clearinghouse-query', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'Clearinghouse Query', description: 'FMCSA Drug & Alcohol Clearinghouse Query', numberName: 'Query Reference Number', documentName: 'Clearinghouse Query Result',
       recurring: 'Annual', monitorType: 'Next review date',
       nameFromRecord: true, tracksIssueDate: true, defaultCountry: 'United States', hideState: true,
@@ -812,7 +1154,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // A review is performed on a date and the next one falls due 12 months later, so the
     // record captures both dates and can be monitored from either — or a custom date. The
     // review is of the driver's record as a whole, not of one state's, so there is no state.
-    { id: 'annual-review', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'annual-review', category: 'Abstracts & Annual Reviews', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'Annual Driver Review', description: 'Annual Review of Driving Record (§391.25)', numberName: '', documentName: 'Annual Review of Driving Record',
       recurring: 'Annual', monitorType: 'Next review date',
       nameFromRecord: true, tracksIssueDate: true, hideState: true, defaultMonitorBasis: 'issue',
@@ -824,7 +1166,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // jurisdiction: what is investigated is an employment, not a state's records. Nor is there
     // anything to track: the investigation is run once at hire and filed, so it carries no
     // recurring date to alert on and no status to watch — the record IS the finding.
-    { id: 'safety-perf-history', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'safety-perf-history', category: 'Pre-Employment', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'Safety Performance History', description: 'Previous Employer Safety Performance History (§391.23)', numberName: '', documentName: 'Safety Performance History Records',
       recurring: 'Once per hire', monitorType: 'Completion status',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
@@ -849,7 +1191,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // answers are either/or, so they are radio pairs and both are worth filtering the list
     // by. The certificate is filed once and does not expire, so the outcome IS the record's
     // result field — there is no separate status to watch and nothing to alert on.
-    { id: 'road-test', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'road-test', category: 'Pre-Employment', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'Road Test Certificate', description: 'Road Test Certificate (§391.31)', numberName: '', documentName: 'Road Test Certificate',
       recurring: 'Once (or accepted equivalent)', monitorType: 'Completion status',
       nameFromRecord: true, hideStatus: true, hideMonitoring: true,
@@ -866,7 +1208,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // document itself, and nothing else: it is applied FOR a job, not issued by a
     // jurisdiction, and it neither expires nor changes state — so no country, no state, no
     // status to watch and nothing to alert on.
-    { id: 'driver-application', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
+    { id: 'driver-application', category: 'Pre-Employment', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'Driver Application', description: 'Driver Application for Employment (§391.21)', numberName: '', documentName: 'Driver Application for Employment',
       recurring: 'Once per hire', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
@@ -876,7 +1218,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       ],
       jurisdiction: 'United States, federal (FMCSA)',
       monitor: 'Completed employment application retained in the DQ file (§391.21).' },
-    { id: 'passport', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'required', hideState: true, allCountries: true,
+    { id: 'passport', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'required', hideState: true, allCountries: true,
       nameFromRecord: true,
       recordName: 'Passport', description: 'Driver Passport', numberName: 'Passport Number', documentName: 'Passport',
       recurring: 'Per passport term', monitorType: 'Passport expiry', tracksIssueDate: true, jurisdiction: 'Issuing country',
@@ -885,7 +1227,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // issued by a country's border agency (CBP / CBSA), not by a state, so it keeps the
     // standard country selector — which already offers exactly the FAST lanes, US, Canada
     // and Mexico — and drops the state.
-    { id: 'fast-card', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional',
+    { id: 'fast-card', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional',
       recordName: 'FAST Card', description: 'Free and Secure Trade (FAST) Card', numberName: 'FAST Card Number', documentName: 'FAST Card',
       recurring: 'Per card term', monitorType: 'Card expiry',
       nameFromRecord: true, hideState: true,
@@ -893,7 +1235,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       monitor: 'FAST card expiry date. Monitored on the card expiry or a custom date — the card is replaced, not renewed on a cycle.' },
     // Both are granted by a COUNTRY, not by one of its states — so the country stays (it is
     // the whole point of the record: which country admitted the driver) and the state goes.
-    { id: 'visa', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
+    { id: 'visa', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
       hideState: true, nameFromRecord: true,
       selectFields: [
           { key: 'visaType', label: 'Visa type', options: ['B1/B2', 'TN', 'H-2B', 'L-1', 'Other'] },
@@ -901,7 +1243,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'Visa', description: 'Entry / Travel Visa (cross-border)', numberName: 'Visa Number', documentName: 'Visa',
       recurring: 'Per visa term', monitorType: 'Visa expiry', jurisdiction: 'Issuing country',
       monitor: 'Visa expiry date for cross-border drivers. Monitor the current (most recent) visa.' },
-    { id: 'work-permit', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
+    { id: 'work-permit', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
       hideState: true, nameFromRecord: true,
       selectFields: [
           { key: 'permitType', label: 'Permit type', options: ['Open Work Permit', 'Employer-Specific (LMIA)', 'Post-Graduation (PGWP)', 'Other'] },
@@ -914,12 +1256,12 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // alongside the one it replaces rather than overwriting it. The STATUS is permanent but
     // the CARD is not, so both are monitored on the card's expiry. The issuing country is
     // fixed for each (USCIS / IRCC), so it is pre-filled and there is no state.
-    { id: 'green-card', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
+    { id: 'green-card', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
       hideState: true, defaultCountry: 'United States', nameFromRecord: true,
       recordName: 'Green Card', description: 'US Permanent Resident Card (Form I-551)', numberName: 'Green Card Number', documentName: 'Green Card',
       recurring: 'Per card term', monitorType: 'Green card expiry', jurisdiction: 'United States (USCIS)',
       monitor: 'Permanent Resident Card expiry date. Monitor the current (most recent) card — the residence itself does not lapse with it.' },
-    { id: 'pr-documents', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
+    { id: 'pr-documents', category: 'Travel Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional', tracksIssueDate: true,
       hideState: true, defaultCountry: 'Canada', nameFromRecord: true,
       recordName: 'PR Documents', description: 'Permanent Residence Documents (PR Card / Confirmation of PR)', numberName: 'PR / UCI Number', documentName: 'PR Documents',
       recurring: 'Per card term', monitorType: 'PR card expiry', jurisdiction: 'Canada (IRCC)',
@@ -935,7 +1277,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // not expire so much as go stale, so monitoring runs from the issue date on a three-year
     // cycle and the date it works out is when the next one is due. Cleared by a police
     // service rather than by a state, so it captures no jurisdiction.
-    { id: 'criminal-record', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'optional',
+    { id: 'criminal-record', category: 'Pre-Employment', entity: 'Driver', type: 'D', docRequirement: 'optional',
       recordName: 'Police Clearance Check', description: 'Police Clearance Check (PCC) / Criminal Record Check', numberName: 'Reference Number', documentName: 'Police Clearance Check',
       recurring: 'Every 3 years', monitorType: 'Next review date', tracksIssueDate: true,
       // The next review is WORKED OUT from the issue date and the three-year cycle, so the
@@ -983,12 +1325,22 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // worked there — the period worked out from the two dates rather than typed. The same
     // shape as the safety performance history it supports: written by a past employer, not
     // issued by a jurisdiction, and filed once with nothing to alert on.
-    { id: 'experience-letter', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Employer Experience Letter', description: 'Previous Employer Experience / Reference Letter', numberName: '', documentName: 'Employer Experience Letter',
+    { id: 'experience-letter', category: 'Pre-Employment', entity: 'Driver', type: 'D', docRequirement: 'optional',
+      recordName: 'Experience Letter', versionRenamedFrom: 'Employer Experience Letter',
+      description: 'Previous Employer / Insurer Experience Letter', numberName: '', documentName: 'Experience Letter',
       recurring: 'Per prior employer', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
+      selectFields: [
+          // Two letters, one record: a previous employer vouching for the driver's history, and
+          // an insurer vouching for their claims record. They are asked for at the same point in
+          // hiring and filed the same way, so the difference is a field rather than a record.
+          // Every letter on file predates the question and was an employer's — that is all this
+          // record was — so the history reads Employer rather than a coin toss.
+          { key: 'letterType', label: 'Letter from', required: true, order: -1, rowStart: true, control: 'radio',
+            options: [...EXPERIENCE_LETTER_TYPES], priorValue: 'Employer' },
+      ],
       textFields: [
-          { key: 'employerName', label: 'Employer name', placeholder: 'Previous employer', required: true,
+          { key: 'employerName', label: 'Employer / insurer', placeholder: 'Previous employer or insurer', required: true,
             demoValues: ['Northline Transport Ltd.', 'Bison Freight Systems', 'Copperline Carriers Inc.'] },
       ],
       // Matched pools — the generators pick the SAME index for every date field on a record,
@@ -1007,7 +1359,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // The NUMBER is for life, but the CARD carries a term — a SIN issued to a temporary
     // resident expires with their permit — so the card is monitored on that expiry. Issued by
     // a national agency (SSA / Service Canada), so it keeps the country and drops the state.
-    { id: 'ssn-sin-card', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'optional', hideState: true, slotLabels: ['Front', 'Back'],
+    { id: 'ssn-sin-card', category: 'Personal Documents', entity: 'Driver', type: 'DC', docRequirement: 'optional', hideState: true, slotLabels: ['Front', 'Back'],
       recordName: 'SSN / SIN Card', description: 'Social Security Number (US) / Social Insurance Number (Canada) Card', numberName: 'SSN / SIN', documentName: 'SSN / SIN Card',
       recurring: 'Per card term', monitorType: 'Card expiry', tracksIssueDate: true, nameFromRecord: true,
       jurisdiction: 'United States (SSA) / Canada (Service Canada)',
@@ -1016,8 +1368,13 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // schedule and over what territory. All three terms are worth filtering the roster by.
     // Offered by the company, not issued by a jurisdiction, and signed once and filed — so no
     // country, no state, no status and nothing to alert on.
-    { id: 'offer-letter', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Offer Letter', description: 'Employment Offer Letter', numberName: '', documentName: 'Offer Letter',
+    { id: 'offer-letter', category: 'Personal Documents', entity: 'Driver', type: 'D', docRequirement: 'optional',
+      recordName: 'Offer Letter / Contract', description: 'Employment Offer Letter / Contract', numberName: '', documentName: 'Offer Letter / Contract',
+      // The offer and the contract are one filing here: the letter states the terms and the
+      // signed contract is the same terms accepted, and carriers file whichever they hold.
+      // `versionRenamedFrom` relabels records already captured under the old name, so a
+      // driver's list does not end up mixing "Offer Letter 2025" with "Offer Letter / Contract 2026".
+      versionRenamedFrom: 'Offer Letter',
       recurring: 'Once per hire', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
       // Read in this order: when they join, then the three terms — the joining date starts a
@@ -1032,9 +1389,9 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
           { key: 'operatingZone', label: 'Operating zone', options: ['City Driver', 'Long Haul', 'Cross-Border'], control: 'radio', required: true },
       ],
       jurisdiction: 'Company',
-      monitor: 'Signed employment offer letter retained in the hiring file.' },
+      monitor: 'Signed employment offer letter or contract retained in the hiring file.' },
     // The other end of the same employment. Filed once, with the date it took effect.
-    { id: 'termination-letter', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
+    { id: 'termination-letter', category: 'Personal Documents', entity: 'Driver', type: 'D', docRequirement: 'optional',
       recordName: 'Termination Letter', description: 'Employment Termination / Separation Letter', numberName: '', documentName: 'Termination Letter',
       recurring: 'Once', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
@@ -1051,7 +1408,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // hand when one is filed directly. Without that the driver file shows a stack of letters
     // and no way to tell what any of them was for. The detail of the event itself stays on
     // the source record, which the Event reference links to — it is not retyped here.
-    { id: 'warning-letter', category: 'Other', entity: 'Driver', type: 'DC', docRequirement: 'required',
+    { id: 'warning-letter', category: 'Disciplinary Records', entity: 'Driver', type: 'DC', docRequirement: 'required',
       recordName: 'Warning Letter', description: 'Driver Warning Letter (issued on review)', numberName: '', documentName: 'Warning Letter',
       recurring: 'Per incident', monitorType: 'On file',
       nameFromRecord: true, hideCountry: true, hideState: true, hideStatus: true, hideMonitoring: true,
@@ -1088,7 +1445,7 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
 // Event/replacement (multiple dated versions, no fixed schedule): Drug Test, MCS-90, and the toll/
 // transponder passes (reissued/replaced ad-hoc). Everything else with a document is recurring
 // (retain previous + new dated version on renew/reissue/review/replace). Compliance-only records
-// (USDOT, IRP Plate) have no document → no upload mode.
+// (USDOT, IRP Plate, the WDT / KYU / HUT / Oregon permits) have no document → no upload mode.
 // Single (one file; replaces) also covers the once-per-hire driver DQ paperwork.
 const SINGLE_UPLOAD_IDS = new Set(['mc', 'fein', 'carrier-code', 'boc3',
     'safety-perf-history', 'road-test', 'driver-application',
@@ -1110,14 +1467,51 @@ export const UPLOAD_MODE_LABEL: Record<UploadMode, string> = {
 
 // ── Ordering + labels used by the catalog view ────────────────────────
 
-/** The 5 categories in canonical order (matches the compliance category tabs). */
-export const SAFETY_CATEGORY_ORDER: KeyNumberGroup[] = [
+/**
+ * The categories, in the order their tabs appear.
+ *
+ * They are NOT one taxonomy stretched over three entities. A carrier files an operating
+ * authority and an insurance policy; a driver files a passport and a road test; the two have
+ * nothing to say to each other, and a shared list ("Regulatory and Safety Numbers") ends up
+ * holding a driver's medical certificate next to a carrier's MC number because both are
+ * regulatory. So each entity has its own headings, and the category tabs on a page are built
+ * from what that entity's records actually use — the rest simply never appear there.
+ *
+ * Carrier first, then driver, then the asset headings, with Other last everywhere.
+ */
+export const SAFETY_CATEGORY_ORDER = [
+    // Carrier
+    'Operating Authority',
+    'Safety & Regulatory Permits',
+    'Carrier Codes & Certifications',
+    'Insurance',
+    // Driver
+    'Personal Documents',
+    'Travel Documents',
+    'Abstracts & Annual Reviews',
+    'Pre-Employment',
+    'Disciplinary Records',
+    // Asset — unchanged, and still the home of custom records filed under them.
     'Regulatory and Safety Numbers',
     'Tax and Business Identification Numbers',
     'Carrier & Industry Codes',
     'Bond and Registration Numbers',
     'Other',
-];
+] as const;
+
+/** One category heading. */
+export type SafetyCategory = typeof SAFETY_CATEGORY_ORDER[number];
+
+/**
+ * The headings each entity files under — what the category picker offers when a carrier adds a
+ * custom record, and the reason no page shows an empty tab. "Other" is on every list: it is
+ * where anything that fits none of the headings above it belongs, on any entity.
+ */
+export const SAFETY_CATEGORIES_BY_ENTITY: Record<EntityId, SafetyCategory[]> = {
+    Carrier: ['Operating Authority', 'Safety & Regulatory Permits', 'Carrier Codes & Certifications', 'Insurance', 'Other'],
+    Driver: ['Personal Documents', 'Travel Documents', 'Abstracts & Annual Reviews', 'Pre-Employment', 'Disciplinary Records', 'Other'],
+    Asset: ['Regulatory and Safety Numbers', 'Tax and Business Identification Numbers', 'Carrier & Industry Codes', 'Bond and Registration Numbers', 'Other'],
+};
 
 // Display order for the record-type switch — "Compliance & Documents" first.
 export const RECORD_TYPE_ORDER: RecordTypeId[] = ['DC', 'C', 'D'];

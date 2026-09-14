@@ -278,9 +278,9 @@ export const DEFAULT_TEMPLATE: HiringTemplate = {
         },
         {
             ...stub('decision'),
-            instruction: 'Resolve every Critical alert before Hired can be saved. Generate the offer letter and book orientation.',
+            instruction: 'Resolve every Critical alert before Hired can be saved. Generate the offer letter / contract and book orientation.',
             documents: [
-                { id: 'doc-offer-letter', label: 'Offer Letter', category: 'Other', mode: 'conditional', source: 'Recruiter', condition: 'Generated only when status = Hired.', requiresSignature: true },
+                { id: 'doc-offer-letter', label: 'Offer Letter / Contract', category: 'Other', mode: 'conditional', source: 'Recruiter', condition: 'Generated only when status = Hired.', requiresSignature: true },
             ],
             bookings: [
                 { id: 'bk-orientation', label: 'Schedule Orientation',         type: 'orientation',   mode: 'required', helper: '2-day onboarding session. Triggers employee profile creation.', venue: 'Company terminal — Aberdeen training room' },
@@ -331,7 +331,7 @@ export const NON_CDL_TEMPLATE: HiringTemplate = {
         { ...stub('dot_employment_verification'), enabled: false },
         {
             ...stub('decision'),
-            documents: [{ id: 'doc-offer-letter', label: 'Offer Letter', category: 'Other', mode: 'conditional', source: 'Recruiter', condition: 'Generated only when status = Hired.', requiresSignature: true }],
+            documents: [{ id: 'doc-offer-letter', label: 'Offer Letter / Contract', category: 'Other', mode: 'conditional', source: 'Recruiter', condition: 'Generated only when status = Hired.', requiresSignature: true }],
             bookings: [{ id: 'bk-orientation', label: 'Schedule Orientation', type: 'orientation', mode: 'required', helper: '1-day onboarding session.' }],
         },
     ],
