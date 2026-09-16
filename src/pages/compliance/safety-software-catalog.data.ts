@@ -59,6 +59,16 @@ interface RecordFieldPlacement {
      *  whatever came before. */
     rowStart?: boolean;
     /**
+     * This field LEADS the form — ahead of the record name and the number.
+     *
+     * For the answer everything else hangs off: whether a plate is apportioned decides which
+     * date is being captured and which documents come with it, so asking for the plate number
+     * first is asking under a heading nobody has chosen yet. The field a record is NAMED after
+     * leads automatically, for the same reason; this is for the ones that settle the form
+     * without also naming it.
+     */
+    leads?: boolean;
+    /**
      * Only ask this when another answer says it applies.
      *
      * A non-owned-trailer coverage limit is a real number on the policies that carry that
@@ -362,6 +372,8 @@ export interface RecordVariant {
     documentName?: string;
     /** Whether this document carries an issue date. */
     tracksIssueDate?: boolean;
+    /** What that issue date is CALLED on this kind — a lease's start date. */
+    issueLabel?: string;
     /** What is monitored — a status-only value (e.g. 'No expiry') means no date is asked for. */
     monitorType?: string;
     /** Nothing to alert on for this document. */
@@ -372,6 +384,12 @@ export interface RecordVariant {
     recurring?: string;
     /** Keys of the record's extra fields this document does NOT capture. */
     hideFields?: string[];
+    /**
+     * The named upload slots THIS kind has. A local plate comes with an ownership copy and no
+     * cab card — leaving the cab-card slot on screen would show a permanent gap for a document
+     * that does not exist. Narrows the record's own list; never adds to it.
+     */
+    slotLabels?: string[];
     /**
      * Whether this kind has a document at all, and whether it is required. A non-bonded
      * carrier code is a number and nothing else; the bonded one carries a surety bond. Set
@@ -407,6 +425,14 @@ export interface SafetyRecord {
     configuredDate?: string;
     /** Whether an issue/effective date is captured for history. */
     tracksIssueDate?: boolean;
+    /**
+     * What that date is CALLED, where "Issue date" is not what is written on the document.
+     *
+     * A lease is not issued, it starts — and the pair of dates on one is the term it runs for,
+     * which is the whole point of filing it. Labelling the first of them "Issue date" asks for
+     * a date the agreement does not have, beside an end date it does. Defaults to 'Issue date'.
+     */
+    issueLabel?: string;
     jurisdiction: string;
     /** Full monitoring guidance (shown as helper text / tooltip). */
     monitor: string;
@@ -551,6 +577,18 @@ export interface SafetyRecord {
     multiInstance?: boolean;
     /** Noun for one instance of a multi-instance record (e.g. "policy"). Defaults to "document". */
     instanceNoun?: string;
+    /**
+     * A NEW record's number is filled in from a CARRIER record that already holds it.
+     *
+     * Every pink slip in a fleet carries the same auto liability policy number, and it is
+     * already captured once on the carrier's insurance. Asking for it again per vehicle is a
+     * hundred chances to mistype a number that is not in doubt. `whenField` picks which of a
+     * multi-policy record to read — the auto liability one, not the cargo cover.
+     *
+     * A starting value only: the field stays editable, and nothing is copied where the carrier
+     * record is empty or where the user has already typed something.
+     */
+    numberFrom?: { record: string; whenField?: { key: string; is: string } };
     /** True for user-created records (Settings ▸ New Compliance & Documents ▸ Add custom record) — these are editable & deletable. */
     custom?: boolean;
     /** Field-by-field data-entry form definition — present only on custom records (drives `VersionFields`). */
@@ -594,6 +632,40 @@ export const BOND_STATUS = ['Non-bonded', 'Bonded'] as const;
 
 /** Who wrote an experience letter — a previous employer, or the carrier's insurer. */
 export const EXPERIENCE_LETTER_TYPES = ['Employer', 'Insurance'] as const;
+
+/**
+ * The two kinds of plate a vehicle can carry. IRP is the apportioned plate a fleet runs
+ * interstate on; Non-IRP is the local plate for a vehicle that never leaves its own
+ * jurisdiction. IRP first — it is what most of a fleet carries.
+ */
+export const PLATE_TYPES = ['IRP', 'Non-IRP'] as const;
+
+/**
+ * How a vehicle the carrier does not own outright is held. Each is a contract with a company,
+ * each runs from a start date to an end date, and each costs the same fixed amount every month
+ * — so they are one record wearing three names rather than three records asking one question
+ * three times. Named in full, because the name of the record IS the answer: "Lease Agreement"
+ * is what the filed document is called.
+ */
+export const ASSET_AGREEMENT_TYPES = ['Lease Agreement', 'Finance Agreement', 'Rental Agreement'] as const;
+export type AssetAgreementType = typeof ASSET_AGREEMENT_TYPES[number];
+
+/**
+ * The other party's address, as the two ownership documents capture it.
+ *
+ * Only the lines the record's OWN jurisdiction selects cannot hold: the country and the
+ * province / state are already asked for by every record, and an address that answered them
+ * twice would let a bill of sale say Ontario in one field and Michigan in the other. A fresh
+ * copy per record, since a record owns its field list.
+ */
+const addressFields = (): RecordTextField[] => [
+    { key: 'addressLine', label: 'Street address', placeholder: 'e.g. 4120 Dundas Street West',
+      demoValues: ['4120 Dundas Street West', '8800 Airport Road', '1215 Michigan Avenue'] },
+    { key: 'addressCity', label: 'City', placeholder: 'e.g. Mississauga',
+      demoValues: ['Mississauga', 'Brampton', 'Detroit'] },
+    { key: 'addressPostal', label: 'ZIP / Postal code', placeholder: 'e.g. L5B 3C2',
+      demoValues: ['L5B 3C2', 'L6T 4M8', '48226'] },
+];
 
 /**
  * Which province each board belongs to. WSIB pins Ontario — there is exactly one — so choosing
@@ -739,10 +811,22 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       // not being watched is the exact thing this page exists to prevent.
       nameFromRecord: true, monitorByDefault: true,
       monitor: 'Expiry date (annual).' },
-    { id: 'ifta-decal', category: 'Tax and Business Identification Numbers', entity: 'Asset', type: 'DC', docRequirement: 'required',
-      recordName: 'IFTA Decal', description: 'International Fuel Tax Agreement Vehicle Decal', numberName: 'IFTA Decal Number', documentName: 'IFTA Decal Record / Copy',
+    // Decals come as a PAIR — one for each side of the cab, each with its own number — and the
+    // record is the pair, not one of them. Two numbers and two upload slots, left and right, so
+    // a truck carrying only one is a visible gap rather than a record that looks complete.
+    // They run to 31 December whatever month they were issued, which is why the date is filled
+    // in and watched: a decal that lapses is a roadside citation, per vehicle.
+    { id: 'ifta-decal', category: 'Ownership & Plating', entity: 'Asset', type: 'DC', docRequirement: 'required',
+      recordName: 'IFTA Decal', description: 'International Fuel Tax Agreement Vehicle Decal', numberName: 'Left Decal Number', documentName: 'IFTA Decal Record / Copy',
+      slotLabels: ['Left Decal', 'Right Decal'],
       recurring: 'Annual', monitorType: 'Expiry date', configuredDate: '2026-12-31', jurisdiction: 'Same base IFTA jurisdiction',
-      monitor: 'Expiry date (annual).' },
+      nameFromRecord: true, countries: ['United States', 'Canada'], monitorByDefault: true, defaultExpiry: '12-31',
+      textFields: [
+          { key: 'rightDecalNumber', label: 'Right Decal Number', required: true, order: 1,
+            placeholder: 'Number on the right-hand decal',
+            demoValues: ['ON-4471903', 'ON-8820115', 'MI-2290478'] },
+      ],
+      monitor: 'Decal expiry (31 December, annually), monitored by default — an expired decal is a citation on the vehicle carrying it.' },
     // Issued ONCE to the legal entity and never renewed: no expiry, so nothing to monitor and
     // no status to track, and no second one to file. Federal, so the state is not asked — but
     // the country is, because a carrier operating both sides of the border files US and
@@ -904,21 +988,54 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
           },
       },
       monitor: 'A bonded carrier code is monitored on the surety bond expiry — the code lapses with the bond. A non-bonded code has no date and no alert.' },
-    // The same bond question as the carrier code, with one difference that decides the shape:
-    // a SCAC certificate has an expiry of its OWN. The bond behind a bonded SCAC expires on a
-    // separate schedule, and a version carries one date and one alert — so the bond cannot ride
-    // along inside this record. It is its own, "US Customs Bond", watched on its own expiry.
-    // This field is what says whether the carrier needs one.
+    // The same bond question as the carrier code, and the bond is filed here with it: the
+    // surety's reference, the number CBP knows it by, when it runs out, and the bond itself in
+    // its own upload slot beside the certificate. It was a record of its own ("US Customs
+    // Bond") and no longer is — a carrier looking for its bonded status had two places to look
+    // and no way to tell, from either, whether the other had been filled in.
+    //
+    // What the split bought was a second alert, and folding it back costs exactly that: a
+    // version carries one date and one alert, and on a SCAC that is the CERTIFICATE's expiry —
+    // the date the code itself stands or falls on. The bond's own expiry is captured beside it
+    // and shown in the list, but it is not separately alerted.
     { id: 'scac', category: 'Carrier Codes & Certifications', entity: 'Carrier', type: 'DC', docRequirement: 'required',
       recordName: 'SCAC Code', description: 'Standard Carrier Alpha Code Registration', numberName: 'SCAC Code', documentName: 'SCAC Certificate',
       recurring: 'Variable renewal/expiry', monitorType: 'Certificate expiry / renewal', jurisdiction: 'North American transportation industry',
       nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
+      // Two named slots rather than a pile of attachments: a bonded carrier missing its bond is
+      // then a visible gap, not a record that looks complete because SOMETHING was uploaded.
+      slotLabels: ['SCAC Certificate', 'US Customs Bond'],
       selectFields: [
           { key: 'bondStatus', label: 'Bond', required: true, order: 1, rowStart: true, control: 'radio',
             options: [...BOND_STATUS] },
       ],
-      practiceNote: 'A bonded SCAC also needs the bond itself on file. It is filed as a US Customs Bond — its own record, with its own number and its own expiry to watch.',
-      monitor: 'Certificate/code expiry or renewal due date. The bond behind a bonded SCAC expires separately and is monitored on its own record.' },
+      textFields: [
+          // The surety's own reference for the bond, which is what the surety company answers
+          // to — not the same number CBP knows it by, and both are printed on the bond.
+          { key: 'suretyReference', label: 'Surety reference number', order: 2, rowStart: true,
+            placeholder: "The surety company's own reference",
+            demoValues: ['SUR-2291045', 'SUR-7714302', 'TRI-5580291'] },
+          { key: 'bondNumber', label: 'US bond number', order: 3,
+            placeholder: 'The number CBP knows the bond by',
+            demoValues: ['BND-4471902', 'BND-8820114', 'BND-2290477'] },
+      ],
+      dateFields: [
+          { key: 'bondExpiry', label: 'Surety bond expiry', order: 4,
+            demoValues: ['2026-10-31', '2027-03-31', '2026-06-30'] },
+      ],
+      variantByField: {
+          from: 'bondStatus',
+          variants: {
+              // Not yet said, and not yet bonded: no surety field is asked, and the bond slot is
+              // not shown — an upload box for a document that may not exist reads as a gap.
+              '': { hideFields: ['suretyReference', 'bondNumber', 'bondExpiry'], slotLabels: ['SCAC Certificate'] },
+              'Non-bonded': { hideFields: ['suretyReference', 'bondNumber', 'bondExpiry'], slotLabels: ['SCAC Certificate'] },
+              // Bonded is the record's full shape — both documents, and the bond's own details.
+              Bonded: {},
+          },
+      },
+      practiceNote: 'A bonded SCAC carries its customs bond on this record — the surety reference, the bond number, when it expires, and the bond itself. The alert here runs on the certificate expiry; check the bond expiry beside it.',
+      monitor: 'Certificate/code expiry or renewal due date, monitored by default. A bonded code also records the bond expiry beside it — captured and listed, but the alert on this record counts down to the certificate date.' },
     // CTPAT does not expire — it comes due. The renewal is a security profile to rewrite and
     // have accepted, which is weeks of work, so the alert runs on a 45-day drumbeat rather
     // than the usual 90 / 60 / 30 flurry: 90 days out to start it, 45 to finish it, and on the
@@ -974,18 +1091,39 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       monitor: 'Nothing to monitor — the carrier approval is held, not renewed on a cycle. Each driver\'s FAST card carries its own expiry and is monitored there.' },
 
     // ── 4. Bond and Registration Numbers ──────────────────────────────
-    { id: 'irp-plate', category: 'Bond and Registration Numbers', entity: 'Asset', type: 'C', docRequirement: 'none',
-      recordName: 'IRP Plates', description: 'International Registration Plan Vehicle Plate', numberName: 'IRP Plate Number', documentName: '',
-      recurring: 'Yes', monitorType: 'Fleet expiry (inherited)', jurisdiction: 'Base IRP jurisdiction',
-      monitor: 'Fleet expiry date inherited from the IRP fleet. Cab card is the related document.', note: 'Store plate_type. The cab card is the associated document.' },
-    { id: 'cab-card', category: 'Bond and Registration Numbers', entity: 'Asset', type: 'DC', docRequirement: 'required',
-      recordName: 'Cab Card', description: 'International Registration Plan Cab Card', numberName: 'Linked IRP Plate / Fleet Number', documentName: 'IRP Cab Card',
-      recurring: 'Yes', monitorType: 'Fleet expiry (inherited)', jurisdiction: 'Same as associated IRP fleet',
-      monitor: 'Fleet expiry inherited from the associated IRP fleet/plate.', note: 'When the IRP fleet/plate expires, all associated cab cards expire together.' },
-    { id: 'non-irp-plate', category: 'Bond and Registration Numbers', entity: 'Asset', type: 'DC', docRequirement: 'required',
-      recordName: 'Non-IRP Plates (Local Plates)', description: 'Non-IRP Vehicle Registration', numberName: 'Non-IRP / Local Plate Number', documentName: 'Vehicle Permit / Registration Certificate',
-      recurring: 'Yes', monitorType: 'Plate / registration expiry', jurisdiction: 'Issuing province/state',
-      monitor: 'Plate/registration expiry date for the individual vehicle — not IRP fleet expiry.', note: 'Store plate_type. No cab card required for a non-IRP plate.' },
+    // ONE record for the plate a vehicle carries, whichever kind it is. It was three — the
+    // apportioned plate, the local plate, and the cab card filed separately from the plate it
+    // belongs to — and a truck has exactly one set of plates, so three records to describe it
+    // meant three places to look and two of them usually empty.
+    //
+    // The kind is asked first and settles the rest: an apportioned plate runs to the FLEET's
+    // expiry and carries a cab card; a local plate has its own expiry and no cab card at all,
+    // so its slot is not shown rather than standing open as a permanent gap.
+    { id: 'irp-plate', category: 'Ownership & Plating', entity: 'Asset', type: 'DC', docRequirement: 'required',
+      recordName: 'Asset Plates', versionRenamedFrom: 'IRP Plates',
+      description: 'Vehicle Plate Registration (IRP / local)', numberName: 'Plate Number', documentName: 'Plate Registration',
+      slotLabels: ['Copy of Ownership', 'Cab Card'],
+      recurring: 'Yes', monitorType: 'Fleet expiry', jurisdiction: 'Issuing province / state',
+      nameFromRecord: true, monitorByDefault: true,
+      selectFields: [
+          // Leads the form: it decides which expiry is being captured and which documents come
+          // with the plate, so everything below it reads differently depending on the answer.
+          // Every plate on file was apportioned — that is all this record was — so the history
+          // reads IRP rather than a coin toss.
+          { key: 'plateType', label: 'Plate', required: true, leads: true, rowStart: true, control: 'radio',
+            options: [...PLATE_TYPES], priorValue: 'IRP' },
+      ],
+      variantByField: {
+          from: 'plateType',
+          variants: {
+              '': { monitorType: 'Fleet expiry' },
+              IRP: { monitorType: 'Fleet expiry', documentName: 'IRP Plate Registration' },
+              // A local plate expires on its own date and has no cab card to file.
+              'Non-IRP': { monitorType: 'Plate expiry', documentName: 'Vehicle Permit / Registration Certificate',
+                           slotLabels: ['Copy of Ownership'] },
+          },
+      },
+      monitor: 'An apportioned plate is monitored on the IRP fleet expiry it inherits; a local plate on its own registration expiry. Armed by default — the date belongs to one vehicle, and nobody arms a fleet of them by hand.' },
     { id: 'ucr', category: 'Safety & Regulatory Permits', entity: 'Carrier', type: 'D', docRequirement: 'required',
       recordName: 'UCR', description: 'Unified Carrier Registration', numberName: '', documentName: 'UCR Registration Certificate / Filing Confirmation',
       recurring: 'Annual', monitorType: 'Expiry / registration-year end', configuredDate: '2026-12-31', jurisdiction: 'United States, interstate registration',
@@ -994,27 +1132,12 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'BOC-3', description: 'Designation of Process Agents Filing', numberName: '', documentName: 'BOC-3 Filing Confirmation / Certificate',
       recurring: 'No scheduled expiry', monitorType: 'Filing status / change', jurisdiction: 'United States, federal',
       monitor: 'Filing status/change date — not expiry.' },
-    // The bond behind a bonded SCAC. It lives here rather than inside the SCAC record because
-    // it expires on its OWN schedule: a certificate valid to March and a bond valid to October
-    // are two dates and two alerts, and a version carries one of each. Optional, not required —
-    // only a bonded carrier holds one, and marking every other carrier "missing a customs bond"
-    // is noise on a page whose job is to say what is actually outstanding.
-    { id: 'us-bond', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'optional',
-      recordName: 'US Customs Bond', versionRenamedFrom: 'US Bond', description: 'United States Customs Surety Bond', numberName: 'US Bond Number', documentName: 'US Customs Bond',
-      recurring: 'Per bond term', monitorType: 'Surety bond expiry', jurisdiction: 'United States, federal customs',
-      nameFromRecord: true, defaultCountry: 'United States', hideState: true, monitorByDefault: true,
-      textFields: [
-          // The surety's own reference for the bond, which is what the surety company answers
-          // to — not the same number CBP knows it by, and both are printed on the bond.
-          { key: 'suretyReference', label: 'Surety reference number', order: 1,
-            placeholder: "The surety company's own reference",
-            demoValues: ['SUR-2291045', 'SUR-7714302', 'TRI-5580291'] },
-      ],
-      monitor: 'Surety bond expiry date, monitored by default — the bonded status lapses with the bond.' },
-    { id: 'canada-bond', category: 'Other', entity: 'Carrier', type: 'DC', docRequirement: 'required',
-      recordName: 'Canada Bond', description: 'Canada Customs or Surety Bond', numberName: 'Canada Bond Number', documentName: 'Canada Bond Certificate',
-      recurring: 'Variable', monitorType: 'Bond expiry / renewal', jurisdiction: 'Canada',
-      monitor: 'Bond expiry/termination/renewal date.', note: 'Store bond_type.' },
+    // The two customs-bond records that used to sit here are gone. A bond is not a thing a
+    // carrier holds on its own — it is what makes a code bonded — and filing it apart from the
+    // code it backs meant two records to keep in step and no way to read either one and know.
+    // The US customs bond is now part of the SCAC record; the Canadian bond was already what
+    // the Carrier Code's bonded answer captures. Anything filed under either is moved onto the
+    // code it belongs to (see `MERGED_RECORDS`).
 
     // ── 5. Others ─────────────────────────────────────────────────────
     // A carrier does not hold "an insurance policy" — it holds several at once, each covering
@@ -1051,11 +1174,79 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       ],
       monitor: 'Policy expiry date. Store issue/effective date for history.',
       note: 'The broker and agent who placed these policies are named once in the page header.' },
-    { id: 'pink-slip', category: 'Other', entity: 'Asset', type: 'DC', docRequirement: 'required',
-      recordName: 'Pink Slip', description: 'Vehicle Proof of Insurance', numberName: 'Insurance Policy Number', documentName: 'Proof of Automobile Insurance Card (Pink Slip)',
-      recurring: 'Yes', monitorType: 'Insurance expiry date', jurisdiction: 'Issuing insurance jurisdiction',
-      multiInstance: true, instanceNoun: 'policy',
-      monitor: 'Insurance expiry date; normally inherits/links to the related policy.' },
+    // The card in the cab proving the truck is insured. The policy number on it is the
+    // carrier's auto liability policy — the same number on every vehicle in the fleet — so it
+    // is filled in from the carrier's insurance record rather than retyped per truck, where a
+    // hundred chances to mistype it is a hundred pink slips that do not match the policy.
+    // Still an ordinary editable field: a vehicle insured separately says so by overtyping it.
+    { id: 'pink-slip', category: 'Insurance', entity: 'Asset', type: 'DC', docRequirement: 'required',
+      recordName: 'Pink Slip', description: 'Vehicle Proof of Insurance', numberName: 'Liability Policy Number', documentName: 'Proof of Automobile Insurance Card (Pink Slip)',
+      recurring: 'Yes', monitorType: 'Slip expiry', jurisdiction: 'Issuing insurance jurisdiction',
+      nameFromRecord: true, monitorByDefault: true,
+      numberFrom: { record: 'insurance', whenField: { key: 'insuranceType', is: 'Auto Liability' } },
+      practiceNote: 'The policy number is taken from the carrier\'s Auto Liability insurance when one is on file. Overtype it for a vehicle insured under a policy of its own.',
+      monitor: 'The slip\'s own expiry, monitored by default — it is carried in the cab and shown at the roadside, so a lapsed one is found by an officer rather than by the office.' },
+    // ── How the vehicle is held ──────────────────────────────────────────
+    // Every asset is on one of two footings: the carrier bought it, or it is running under an
+    // agreement with somebody else. Both are captured on the Add Asset form as the ownership
+    // structure, and both are answered by a document — which is why these are records rather
+    // than a pair of fields on the asset: a bill of sale and a lease are filed, produced on
+    // demand, and (for a lease) run out.
+    //
+    // The bill of sale is the paper that says the truck is the carrier's: what was paid, and
+    // who sold it. Nothing about it expires, so there is no date to watch and no status to
+    // track — the monitoring block is absent rather than switched off and permanently silent.
+    { id: 'bill-of-sale', category: 'Ownership & Plating', entity: 'Asset', type: 'D', docRequirement: 'required',
+      recordName: 'Bill of Sale', description: 'Proof of purchase for a vehicle the carrier owns', numberName: '', documentName: 'Bill of Sale',
+      recurring: 'Once — a vehicle is bought once', monitorType: 'On file', jurisdiction: "Seller's address",
+      nameFromRecord: true, hideStatus: true, hideMonitoring: true,
+      textFields: [
+          { key: 'purchasePrice', label: 'Purchase price', placeholder: 'e.g. 145,000',
+            money: { currencyKey: 'purchaseCurrency', currencies: ['USD', 'CAD'] },
+            demoValues: ['145,000', '98,500', '172,400'] },
+          { key: 'sellerName', label: 'Seller', placeholder: 'Dealer or seller as named on the bill',
+            demoValues: ['Ontario Truck Centre', 'Great Lakes Freightliner', 'Midtown Trailer Sales'] },
+          ...addressFields(),
+      ],
+      practiceNote: 'The price paid is what the bill of sale says — not the asset\'s current market value, which is kept on the asset itself and changes every year.',
+      monitor: 'Nothing to monitor: a bill of sale is filed once and kept. It is the proof of ownership produced at a sale, a claim or an audit, so what matters is that it is on file at all.' },
+    // ONE record for the three ways a vehicle is held on somebody else's paper. A lease, a
+    // finance agreement and a rental ask for exactly the same four things — who it is with,
+    // what it costs a month, and the two dates it runs between — so splitting them into three
+    // records would have been the same form three times, with two of them always empty.
+    //
+    // The type is asked first and settles the rest: it names the record, names the document
+    // being uploaded, and names both dates, because "lease start" and "rental start" is what
+    // is written on the agreement in hand.
+    { id: 'asset-agreement', category: 'Ownership & Plating', entity: 'Asset', type: 'D', docRequirement: 'required',
+      recordName: 'Lease / Finance / Rental Agreement', description: 'The agreement a vehicle is held under', numberName: '', documentName: 'Agreement',
+      recurring: 'Per agreement term', monitorType: 'Agreement end date', tracksIssueDate: true, issueLabel: 'Agreement start date',
+      jurisdiction: "Company's address",
+      nameFromField: 'agreementType', hideStatus: true, monitorByDefault: true,
+      selectFields: [
+          { key: 'agreementType', label: 'Agreement', required: true, rowStart: true, control: 'radio',
+            options: [...ASSET_AGREEMENT_TYPES] },
+      ],
+      textFields: [
+          { key: 'monthlyAmount', label: 'Monthly payment', placeholder: 'e.g. 2,450',
+            money: { currencyKey: 'monthlyCurrency', currencies: ['USD', 'CAD'] },
+            demoValues: ['2,450', '1,875', '3,120'] },
+          { key: 'counterparty', label: 'Company', placeholder: 'Lessor, lender or rental agency',
+            demoValues: ['Ryder System', 'Penske Truck Leasing', 'Fleet Finance LLC'] },
+          ...addressFields(),
+      ],
+      variantByField: {
+          from: 'agreementType',
+          variants: {
+              // Nothing picked yet: the dates are still the agreement's, in the only words that
+              // are true of all three.
+              '': { issueLabel: 'Agreement start date', monitorType: 'Agreement end date' },
+              'Lease Agreement': { documentName: 'Lease Agreement', issueLabel: 'Lease start date', monitorType: 'Lease end date' },
+              'Finance Agreement': { documentName: 'Finance Agreement', issueLabel: 'Finance start date', monitorType: 'Finance end date' },
+              'Rental Agreement': { documentName: 'Rental Agreement', issueLabel: 'Rental start date', monitorType: 'Rental end date' },
+          },
+      },
+      monitor: 'The date the agreement runs out, monitored by default — a lease that ends with nobody watching is a truck still on the road and off the books, and the renewal or the return has to be arranged before the day, not after it.' },
 
     // Toll / transponder / bypass pass programs (per-vehicle credentials).
     { id: 'dtops', category: 'Other', entity: 'Asset', type: 'DC', docRequirement: 'optional',
@@ -1491,7 +1682,14 @@ export const SAFETY_CATEGORY_ORDER = [
     'Abstracts & Annual Reviews',
     'Pre-Employment',
     'Disciplinary Records',
-    // Asset — unchanged, and still the home of custom records filed under them.
+    // Asset. What a vehicle files is about how it is HELD and how it is PLATED — the decals,
+    // the plates and the cab card that go on it, and the bill of sale or agreement that says
+    // whose it is — plus the proof of insurance carried in its cab. ('Insurance' is shared with
+    // the carrier: it is the same heading, one holding policies and the other the card.)
+    'Ownership & Plating',
+    // Retired asset headings. Nothing in the catalog files under these any more, and the picker
+    // no longer offers them — they are kept because a carrier's own custom record may already
+    // have been filed under one, and a category no list knows about loses its tab and its chip.
     'Regulatory and Safety Numbers',
     'Tax and Business Identification Numbers',
     'Carrier & Industry Codes',
@@ -1510,7 +1708,7 @@ export type SafetyCategory = typeof SAFETY_CATEGORY_ORDER[number];
 export const SAFETY_CATEGORIES_BY_ENTITY: Record<EntityId, SafetyCategory[]> = {
     Carrier: ['Operating Authority', 'Safety & Regulatory Permits', 'Carrier Codes & Certifications', 'Insurance', 'Other'],
     Driver: ['Personal Documents', 'Travel Documents', 'Abstracts & Annual Reviews', 'Pre-Employment', 'Disciplinary Records', 'Other'],
-    Asset: ['Regulatory and Safety Numbers', 'Tax and Business Identification Numbers', 'Carrier & Industry Codes', 'Bond and Registration Numbers', 'Other'],
+    Asset: ['Ownership & Plating', 'Insurance', 'Other'],
 };
 
 // Display order for the record-type switch — "Compliance & Documents" first.
@@ -1532,8 +1730,26 @@ const STATUS_ONLY = new Set([
     'Pre-employment / status', 'Completion status', 'On file',
 ]);
 
+/**
+ * The parts of a record the MONITORING block actually reads.
+ *
+ * The block is not really about compliance records — it is about a thing with dates and an
+ * alert. An inventory item has both, and it has to arrive on the monitoring page set the same
+ * way a document does: same bases, same reminder days, same wording. Narrowing the type is what
+ * lets one control serve both, rather than a second control that drifts. Every `SafetyRecord`
+ * satisfies it, so nothing that passes one had to change.
+ */
+export interface MonitoredRecord {
+    /** Distinguishes one block's radio group from another's on the same page. */
+    id: string;
+    /** What is being monitored — a date, or a status-only value like 'On file'. */
+    monitorType: string;
+    tracksIssueDate?: boolean;
+    issueLabel?: string;
+}
+
 /** True when the record monitors a real date (vs. a status). */
-export const isDateMonitored = (r: SafetyRecord): boolean => !STATUS_ONLY.has(r.monitorType);
+export const isDateMonitored = (r: MonitoredRecord): boolean => !STATUS_ONLY.has(r.monitorType);
 
 /** Character limit for a record's display name — the same wherever a record is named. */
 export const MAX_RECORD_NAME = 40;
@@ -1621,7 +1837,14 @@ export function recordForFields(r: SafetyRecord, fields?: Record<string, string>
  */
 export function pruneRecordFields(r: SafetyRecord, fields?: Record<string, string>): Record<string, string> | undefined {
     if (!r.variantByField || !fields) return fields;
-    const keys = new Set(recordFields(recordForFields(r, fields)).map(f => f.key));
+    const keys = new Set<string>();
+    for (const f of recordFields(recordForFields(r, fields))) {
+        keys.add(f.key);
+        // The key a money field keeps its currency under is not a field of its own, so it has
+        // to be named here: dropped, an amount the record still shows would lose the currency
+        // that says what it means — and 2,450 a month is two different figures.
+        if (f.kind === 'text' && f.money) keys.add(f.money.currencyKey);
+    }
     const out: Record<string, string> = {};
     for (const [k, val] of Object.entries(fields)) if (keys.has(k)) out[k] = val;
     return Object.keys(out).length === Object.keys(fields).length ? fields : out;

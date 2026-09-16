@@ -40,6 +40,7 @@ import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { AssetModal } from '@/pages/assets/AssetModal';
+import { commitOwnershipDoc } from '@/pages/assets/ownership-docs-bridge';
 import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled, calculateDriverComplianceStats } from '@/utils/compliance-utils';
 
 // --- HELPER COMPONENTS (Copied from CarrierProfilePage for consistency) ---
@@ -400,11 +401,16 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
         setIsSavingAsset(true);
         // Simulate API call
         setTimeout(() => {
+            // The id the ownership document is filed against — see the same call in
+            // AssetDirectoryPage: the bill of sale / agreement captured in the wizard becomes a
+            // compliance record on the asset, and only here is there an id to hang it on.
+            const id = editingAsset ? editingAsset.id : `a${Date.now()}`;
             if (editingAsset) {
                 setAssets(prev => prev.map(a => a.id === editingAsset.id ? { ...a, ...data } : a));
             } else {
-                setAssets(prev => [{ ...data, id: `a${Date.now()}`, complianceStatus: 'Compliant' }, ...prev]);
+                setAssets(prev => [{ ...data, id, complianceStatus: 'Compliant' }, ...prev]);
             }
+            commitOwnershipDoc(accountId, id, data);
             setIsSavingAsset(false);
             setIsAssetModalOpen(false);
             setEditingAsset(null);

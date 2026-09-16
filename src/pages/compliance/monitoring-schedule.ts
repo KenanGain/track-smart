@@ -13,7 +13,7 @@
 // fast refresh needs to reload it cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { SafetyRecord } from '@/pages/compliance/safety-software-catalog.data';
+import type { MonitoredRecord } from '@/pages/compliance/safety-software-catalog.data';
 import type { MonitoringConfig, MonitorBasis } from '@/pages/compliance/compliance-data-store';
 
 /**
@@ -48,8 +48,12 @@ export const MONITOR_BASIS_LABEL: Record<MonitorBasis, string> = {
  * anything that is reviewed or renewed rather than expiring — a driver abstract is monitored on its
  * next renew date, a CDL on its licence expiry — so the record's own `monitorType` names it.
  */
-export const basisLabel = (record: SafetyRecord, b: MonitorBasis): string =>
-    (b === 'expiry' ? (record.monitorType || MONITOR_BASIS_LABEL.expiry) : MONITOR_BASIS_LABEL[b]);
+export const basisLabel = (record: MonitoredRecord, b: MonitorBasis): string =>
+    b === 'expiry' ? (record.monitorType || MONITOR_BASIS_LABEL.expiry)
+        // Both dates are named by the record where "issue" is not what the document calls it:
+        // an alert counting down from a lease's start date should say so.
+        : b === 'issue' ? (record.issueLabel || MONITOR_BASIS_LABEL.issue)
+        : MONITOR_BASIS_LABEL[b];
 
 /** The date the alerts actually count back from, given the chosen basis. */
 export function monitoredDateFor(cfg: MonitoringConfig, v: { issueDate: string; expiryDate: string }): string {

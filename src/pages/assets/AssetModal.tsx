@@ -3,7 +3,7 @@ import {
     Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock
+    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock, FileSignature
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -12,6 +12,12 @@ import * as z from 'zod';
 import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 import { GvwrTag } from './GvwrTag';
+import { MAX_RECORD_NAME, isDateMonitored } from '@/pages/compliance/safety-software-catalog.data';
+import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
+import {
+    emptyOwnershipDoc, ownershipCardFields, ownershipDocLabel, ownershipRecordFor,
+    type OwnershipDocCapture,
+} from './ownership-docs-bridge';
 
 // --- UI Utilities & Primitives ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -471,6 +477,34 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
         return `${monthlyCurrency === 'CAD' ? 'CA$' : '$'}${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
     }, [termMonths, monthlyPayment, monthlyCurrency]);
 
+    // ── The document the ownership structure is proved by ──
+    // Owned files a bill of sale; leased, financed and rented file the agreement they run
+    // under. Both are Compliance & Documents records on the asset, so the catalog is what says
+    // what the form asks for, what the dates are called and what is being uploaded — this
+    // section only supplies the answers it has already collected (see `ownership-docs-bridge`).
+    const ownershipRecord = useMemo(() => ownershipRecordFor(financial), [financial]);
+    const ownershipFields = useMemo(() => ownershipCardFields(financial), [financial]);
+    const ownershipMonitored = !!ownershipRecord && isDateMonitored(ownershipRecord) && !ownershipRecord.hideMonitoring;
+    const [ownershipDoc, setOwnershipDoc] = useState<OwnershipDocCapture>(() => emptyOwnershipDoc(asset?.financialStructure ?? 'Owned'));
+    // The uploader's own file objects, kept beside the capture so the list can render them.
+    const [ownershipFiles, setOwnershipFiles] = useState<any[]>([]);
+    const patchDoc = (p: Partial<OwnershipDocCapture>) => setOwnershipDoc(d => ({ ...d, ...p }));
+    const setDocField = (key: string, val: string) => setOwnershipDoc(d => ({ ...d, fields: { ...d.fields, [key]: val } }));
+    const setDocFiles = (list: any[]) => {
+        setOwnershipFiles(list);
+        patchDoc({ files: list.map(f => ({ name: f.fileName, size: f.fileSize ?? 0 })) });
+    };
+    // Changing the ownership structure changes WHICH document is being filed — a bill of sale
+    // is not a lease agreement — so what was captured for the old one goes with it. Left behind,
+    // a purchase price would be filed onto a lease.
+    const lastStructure = useRef(financial);
+    useEffect(() => {
+        if (lastStructure.current === financial) return;
+        lastStructure.current = financial;
+        setOwnershipDoc(emptyOwnershipDoc(financial));
+        setOwnershipFiles([]);
+    }, [financial]);
+
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
         if (assetType === 'Trailer') return ['Dry Van', 'Flatbed', 'Reefer'];
@@ -542,7 +576,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
             case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
-            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment);
+            // The document counts too — it is asked for in this section, so a section that has
+            // one should not read the same as one that does not.
+            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined);
             case 'notes': return filledCount(allValues.notes);
             case 'insurance': return filledCount(allValues.operationalStatus, allValues.dateAdded, allValues.insuranceAddedDate, allValues.odometer, allValues.dateRemoved);
             default: return 0;
@@ -572,7 +608,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                 <WizardStepNav steps={STEPS} active={activeStep} onGo={go} completionFor={completionFor} />
 
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
-                    <form id="asset-form" onSubmit={handleSubmit(onSave)} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+                    {/* The ownership document rides along with the asset: the record can only be
+                        filed once the asset has an id, which is assigned by whoever saves it. */}
+                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc }))} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
 
                         {/* 1. Asset Class */}
                         <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
@@ -790,9 +828,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 </div>
                             </FormInput>
 
-                            {/* Counterparty → term → address, in that order.
-                                Leased and Financed carry an agreement term; Rented carries a
-                                monthly rent with no fixed end; Owned carries neither. */}
+                            {/* Counterparty → term → address → the document, in that order.
+                                Leased, Financed and Rented all run for a term, at a fixed amount
+                                a month; Owned has neither, and is proved by its bill of sale. */}
                             <div className="col-span-full border-t border-slate-100 pt-6 mt-2 space-y-6">
                                 {financial === 'Owned' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
@@ -813,44 +851,36 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 {financial === 'Rented' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
                                         <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
-                                        <FormInput label="Monthly Rent" hint="Open-ended rental — no fixed end date.">
-                                            <div className="flex gap-2">
-                                                <div className="relative flex-1">
-                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
-                                                    <Input type="number" step="0.01" min="0" {...register('monthlyPayment', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
-                                                </div>
-                                                <select {...register('monthlyPaymentCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
-                                                    <option value="USD">USD</option>
-                                                    <option value="CAD">CAD</option>
-                                                </select>
-                                            </div>
-                                        </FormInput>
                                     </div>
                                 )}
 
-                                {/* The agreement window and what it costs per month. */}
-                                {(financial === 'Leased' || financial === 'Financed') && (
+                                {/* The agreement window and what it costs per month. A rental runs
+                                    for a term the same way — its dates are on the rental agreement,
+                                    and it is the end of one that has to be seen coming. The two
+                                    dates are called what the agreement itself calls them, read off
+                                    the catalog record so this form and the filed document agree. */}
+                                {financial !== 'Owned' && (
                                     <div className="border-t border-slate-100 pt-6">
                                         <div className="mb-4 flex items-center gap-2">
                                             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><CalendarClock size={15} /></span>
                                             <div>
-                                                <p className="text-[12.5px] font-bold text-slate-800">{financial === 'Leased' ? 'Lease Term' : 'Finance Term'}</p>
+                                                <p className="text-[12.5px] font-bold text-slate-800">{financial === 'Leased' ? 'Lease Term' : financial === 'Financed' ? 'Finance Term' : 'Rental Term'}</p>
                                                 <p className="text-[11px] text-slate-500">Agreement dates and the monthly payment.</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                            <FormInput label="Start Date" error={errors.agreementStartDate?.message as string | undefined}>
+                                            <FormInput label={ownershipRecord?.issueLabel ?? 'Start Date'} error={errors.agreementStartDate?.message as string | undefined}>
                                                 <Input type="date" {...register('agreementStartDate')} />
                                             </FormInput>
                                             <FormInput
-                                                label="End Date"
+                                                label={ownershipRecord?.monitorType ?? 'End Date'}
                                                 error={termError}
                                                 hint={!termError && termMonths ? `${termMonths} month term` : undefined}
                                             >
                                                 <Input type="date" {...register('agreementEndDate')} />
                                             </FormInput>
                                             <FormInput
-                                                label={financial === 'Leased' ? 'Monthly Lease Payment' : 'Monthly Finance Payment'}
+                                                label={financial === 'Leased' ? 'Monthly Lease Payment' : financial === 'Financed' ? 'Monthly Finance Payment' : 'Monthly Installment'}
                                                 hint={termTotal ? `≈ ${termTotal} over the term` : undefined}
                                             >
                                                 <div className="flex gap-2">
@@ -868,11 +898,74 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     </div>
                                 )}
 
-                                {/* Counterparty address — everything except a self-owned asset. */}
-                                {financial !== 'Owned' && (
+                                {/* The other party's address — the seller a vehicle was bought
+                                    from, or the company it is held with. Asked on every structure:
+                                    a bill of sale names an address too, and it is the one thing on
+                                    it that says who to go back to. */}
+                                <div className="border-t border-slate-100 pt-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <AddressSection register={register} watch={watch} />
+                                    </div>
+                                </div>
+
+                                {/* THE DOCUMENT that proves all of the above — filed against this
+                                    asset as its own Compliance & Documents record, not as a field
+                                    on the asset. Everything it asks for comes from the catalog
+                                    record, minus what this section has already collected. */}
+                                {ownershipRecord && (
                                     <div className="border-t border-slate-100 pt-6">
+                                        <div className="mb-4 flex items-center gap-2">
+                                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileSignature size={15} /></span>
+                                            <div>
+                                                <p className="text-[12.5px] font-bold text-slate-800">{ownershipDocLabel(financial)}</p>
+                                                <p className="text-[11px] text-slate-500">Filed against this asset as a Compliance &amp; Documents record.</p>
+                                            </div>
+                                        </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                            <AddressSection register={register} watch={watch} />
+                                            <FormInput label="Record Name" hint="What this document is filed under.">
+                                                <Input value={ownershipDoc.label} maxLength={MAX_RECORD_NAME}
+                                                    placeholder={ownershipDocLabel(financial)}
+                                                    onChange={e => patchDoc({ label: e.target.value })} />
+                                            </FormInput>
+                                            {ownershipFields.map(f => (
+                                                <FormInput key={f.key} label={f.label}>
+                                                    {f.money ? (
+                                                        <div className="flex gap-2">
+                                                            <div className="relative flex-1">
+                                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                                                <Input type="number" step="0.01" min="0" className="pl-9" placeholder="0.00"
+                                                                    value={ownershipDoc.fields[f.key] ?? ''}
+                                                                    onChange={e => setDocField(f.key, e.target.value)} />
+                                                            </div>
+                                                            <select
+                                                                value={ownershipDoc.fields[f.money.currencyKey] ?? f.money.defaultCurrency ?? f.money.currencies[0]}
+                                                                onChange={e => setDocField(f.money!.currencyKey, e.target.value)}
+                                                                className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                                {f.money.currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    ) : (
+                                                        <Input value={ownershipDoc.fields[f.key] ?? ''} placeholder={f.placeholder}
+                                                            onChange={e => setDocField(f.key, e.target.value)} />
+                                                    )}
+                                                </FormInput>
+                                            ))}
+                                            <div className="col-span-full">
+                                                <DocumentUploadInput
+                                                    label={ownershipRecord.documentName || ownershipRecord.recordName}
+                                                    description="Attach the signed document — PDF, DOC, DOCX up to 10MB"
+                                                    files={ownershipFiles}
+                                                    onFilesChange={setDocFiles} />
+                                            </div>
+                                            {/* The alert on the end date, set here rather than
+                                                hunted down on the compliance page afterwards. */}
+                                            {ownershipMonitored && (
+                                                <div className="col-span-full">
+                                                    <MonitoringToggle record={ownershipRecord} monitoring={ownershipDoc.monitoring}
+                                                        issueDate={agreementStart ?? ''} expiryDate={agreementEnd ?? ''} status=""
+                                                        onChange={m => patchDoc({ monitoring: m })} />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}

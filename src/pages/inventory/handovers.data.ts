@@ -147,6 +147,37 @@ export function buildDemoHandovers(
     return [verified, handed];
 }
 
+/**
+ * Put the demo hand-overs in place for a carrier, once.
+ *
+ * The seeding used to live inside the Hand Over page, so a carrier that never opened it had
+ * no hand-over records at all — and the list's "Handed to driver" filter and Driver column
+ * had nothing to show. Both pages call this now, and it is a no-op once the carrier has any
+ * record of its own, so a real hand-over is never overwritten by demo data.
+ *
+ * Returns true when it actually wrote something.
+ */
+export function seedDemoHandovers(
+    accountId: string,
+    all: Record<string, DriverHandover>,
+    drivers: { id: string; name: string }[],
+    items: InventoryItem[],
+    issuerName: string,
+): boolean {
+    if (drivers.length === 0) return false;
+    if (Object.values(all).some((r) => r.accountId === accountId)) return false;
+    const handable = items.filter((it) => {
+        const v = VENDORS.find((x) => x.id === it.vendorId);
+        return v && HANDOVER_CATEGORIES.includes(v.categoryId);
+    });
+    const demos = buildDemoHandovers(accountId, drivers, handable.map((it) => it.id), issuerName);
+    if (demos.length === 0) return false;
+    const next = loadAll();
+    for (const rec of demos) next[keyOf(rec.accountId, rec.driverId)] = rec;
+    persist(next);
+    return true;
+}
+
 export function useDriverHandovers(accountId: string) {
     const [all, setAll] = useState<Record<string, DriverHandover>>(loadAll);
     useEffect(() => {

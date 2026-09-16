@@ -16,7 +16,7 @@ import {
     Search,
     Check,
 } from 'lucide-react';
-import { UI_DATA, DIRECTOR_UI } from '../profile/carrier-profile.data';
+import { UI_DATA, DIRECTOR_UI, safetyRegNumbers } from '../profile/carrier-profile.data';
 import { WizardSectionHeader as SectionHeader, WizardStepNav } from '@/components/ui/WizardEditor';
 import {
     addAccountRecord,
@@ -330,6 +330,20 @@ const FieldRenderer = ({ field, value, onChange, error, dotLookup }: FieldRender
 /** Has the user actually filled this field in? An empty multi-select array is empty. */
 const hasValue = (v: any): boolean => (Array.isArray(v) ? v.length > 0 : Boolean(v));
 
+/**
+ * A field whose label depends on an answer above it. One box takes the CVOR number or the NSC
+ * number, and which it is has just been chosen — so the box says which, rather than carrying
+ * both names and leaving the reader to work out that only one of them applies.
+ */
+export const fieldLabel = (field: any, values: Record<string, any>): string =>
+    (field.labelBy && field.labelFor?.[values?.[field.labelBy]]) || field.label;
+
+/** The same field with the placeholder that answer implies. */
+export const fieldFor = (field: any, values: Record<string, any>): any => {
+    const ph = field.labelBy && field.placeholderFor?.[values?.[field.labelBy]];
+    return ph ? { ...field, placeholder: ph } : field;
+};
+
 // ── Section grid (layout rows → form fields) ────────────────────────────────
 
 interface SectionGridProps {
@@ -354,11 +368,11 @@ const SectionGrid = ({ fields, layout, values, onChange, errors, dotLookup }: Se
                     return (
                         <div key={fieldKey}>
                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                                {field.label}
+                                {fieldLabel(field, values)}
                                 {field.required && <span className="text-red-500 ml-1">*</span>}
                             </label>
                             <FieldRenderer
-                                field={field}
+                                field={fieldFor(field, values)}
                                 value={values[fieldKey]}
                                 onChange={(v) => onChange(fieldKey, v)}
                                 error={errors[fieldKey]}
@@ -518,8 +532,9 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
             legalName: corpVals.legalName || 'New Carrier',
             dbaName: corpVals.dbaName || '',
             dotNumber: String(corpVals.dotNumber || ''),
-            cvorNumber: corpVals.cvorNumber || '',
-            nscNumber: corpVals.nscNumber || '',
+            // One box, one registration — filed under whichever of the two the account record
+            // keeps it in (see `safetyRegNumbers`).
+            ...safetyRegNumbers(corpVals),
             rinNumber: corpVals.rinNumber || '',
             status: ((corpVals.status as AccountStatus) || 'Pending'),
             city: legalVals.city || '',

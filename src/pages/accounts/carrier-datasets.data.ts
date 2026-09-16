@@ -21,6 +21,7 @@ import {
     OFFICE_LOCATIONS,
     MOCK_DRIVER_DETAILED_TEMPLATE,
     type Driver,
+    safetyRegOf,
 } from '@/pages/profile/carrier-profile.data';
 import { getDriversForAccount, getAssetsForAccount, getFleetCountsForAccount } from './carrier-fleet.data';
 
@@ -743,7 +744,9 @@ export function buildProfileBundle(accountId: string | undefined | null): Carrie
 
     // uiData override — patch the .values blocks that feed the visible fields.
     const uiData: typeof UI_DATA = JSON.parse(JSON.stringify(UI_DATA));
-    (uiData.editModals.corporateIdentity.values as any) = { ...seed.identity };
+    // The seeds still name the two registrations separately, which is how the account record
+    // stores them; the form asks for one of the two, so it is resolved on the way in.
+    (uiData.editModals.corporateIdentity.values as any) = { ...seed.identity, ...safetyRegOf(seed.identity) };
     (uiData.editModals.legalMainAddress.values as any) = { ...seed.legalAddress };
     (uiData.editModals.mailingAddress.values as any) = { ...seed.mailingAddress };
     (uiData.editModals.fleetDriverOverview.values as any) = {

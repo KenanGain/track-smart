@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Bell, CalendarClock, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isDateMonitored, type SafetyRecord } from '@/pages/compliance/safety-software-catalog.data';
+import { isDateMonitored, type MonitoredRecord } from '@/pages/compliance/safety-software-catalog.data';
 import type { MonitoringConfig, MonitorBasis } from '@/pages/compliance/compliance-data-store';
 import {
     MONITOR_BASIS_LABEL, RECURRENCE_OPTIONS, REMINDER_DAYS,
@@ -17,7 +17,7 @@ import {
 } from '@/pages/compliance/monitoring-schedule';
 
 export function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, onChange }: {
-    record: SafetyRecord; monitoring: MonitoringConfig; issueDate: string; expiryDate: string; status: string; onChange: (cfg: MonitoringConfig) => void;
+    record: MonitoredRecord; monitoring: MonitoringConfig; issueDate: string; expiryDate: string; status: string; onChange: (cfg: MonitoringConfig) => void;
 }) {
     const cfg = monitoring;
     const [open, setOpen] = useState(true);
@@ -28,7 +28,7 @@ export function MonitoringToggle({ record, monitoring, issueDate, expiryDate, st
     // Switching basis: seed the custom date from the current monitored date so it's never blank.
     const pickBasis = (b: MonitorBasis) => onChange({ ...cfg, basis: b, customDate: b === 'custom' && !cfg.customDate ? (expiryDate || issueDate || '') : cfg.customDate });
     const basisOptions: { id: MonitorBasis; label: string }[] = [
-        ...(record.tracksIssueDate ? [{ id: 'issue' as MonitorBasis, label: MONITOR_BASIS_LABEL.issue }] : []),
+        ...(record.tracksIssueDate ? [{ id: 'issue' as MonitorBasis, label: basisLabel(record, 'issue') }] : []),
         { id: 'expiry', label: basisLabel(record, 'expiry') },
         { id: 'custom', label: MONITOR_BASIS_LABEL.custom },
     ];

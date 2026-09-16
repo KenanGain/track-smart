@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
+import { commitOwnershipDoc } from './ownership-docs-bridge';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
@@ -299,11 +300,16 @@ export function AssetDirectoryPage({
     const handleSaveAsset = (data: any) => {
         setIsSaving(true);
         setTimeout(() => {
+            // The id the ownership document is filed against — an existing asset's, or the one
+            // this save assigns. The bill of sale / agreement captured in the wizard becomes a
+            // compliance record on the asset, and only here is there an id to hang it on.
+            const id = editingAsset ? editingAsset.id : `a${Date.now()}`;
             if (editingAsset) {
                 setAssets(prev => prev.map(a => a.id === editingAsset.id ? { ...a, ...data } : a));
             } else {
-                setAssets(prev => [{ ...data, id: `a${Date.now()}` }, ...prev]);
+                setAssets(prev => [{ ...data, id }, ...prev]);
             }
+            commitOwnershipDoc(accountId, id, data);
             setIsSaving(false);
             setIsModalOpen(false);
             setEditingAsset(null);

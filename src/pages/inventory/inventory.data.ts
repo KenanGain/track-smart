@@ -2,6 +2,9 @@ import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import type { Asset } from "@/pages/assets/assets.data";
 import type { Driver } from "@/data/mock-app-data";
+// Type only: the alert on an inventory item is the same shape a compliance record uses,
+// so the two cannot drift. No runtime dependency on the compliance store.
+import type { MonitoringConfig } from "@/pages/compliance/compliance-data-store";
 
 // Side-effect-free import of the per-carrier vendor seed. Combined with the
 // static VENDORS list at the bottom of this file via a re-export.
@@ -98,17 +101,42 @@ export type Assignment = {
     kind: AssignmentKind;
     /** id of the CMV asset, Non-CMV asset, or driver. */
     targetId: string;
+    /**
+     * The item goes with the VEHICLE, and is in the hands of whoever drives it.
+     *
+     * A fuel card issued to a truck is carried by that truck's driver; a spare key lives in the
+     * yard. Both are assigned to the vehicle, and only one of them is a person's
+     * responsibility — which is the difference this records. The driver is never stored: it is
+     * read off the vehicle, so a change of driver cannot leave the item pointing at the one
+     * who handed it back.
+     */
+    alsoDriverOfAsset?: boolean;
 };
 
 export type InventoryItem = {
     id: string;
     vendorId: string;
+    /**
+     * What this item is CALLED. Defaults to the vendor and the category it falls under
+     * ("Comdata — Fuel Card"), which is what tells one row from another where a carrier holds
+     * four cards from the same vendor. Editable; empty means the default (see `itemName`).
+     */
+    name?: string;
     serial: string;
     pin: string;
     issueDate: string; // YYYY-MM-DD
     expiryDate: string;
+    /** @deprecated The old two-field schedule, kept so seeded items still read. New items carry
+     *  a full `monitoring` config instead — see `inventoryMonitoring`. */
     recurrence: Recurrence;
+    /** @deprecated See `recurrence`. */
     reminder: Reminder;
+    /**
+     * The alert on this item — the same block, bases and reminder days the compliance records
+     * use, because a fuel card expiring is the same kind of event as a permit expiring and the
+     * office should not have to learn two of them.
+     */
+    monitoring?: MonitoringConfig;
     status: InventoryStatus;
     contactName?: string;
     contactInfo?: string;
@@ -116,6 +144,105 @@ export type InventoryItem = {
     assignedTo?: Assignment;
     notes?: string;
 };
+
+// ── What an item is called ───────────────────────────────────────
+
+/** The name a new item starts with: the vendor, and what kind of thing it issues. */
+export function defaultItemName(vendor: Vendor | undefined, categories: VendorCategory[] = VENDOR_CATEGORIES): string {
+    if (!vendor) return "";
+    const category = getCategoryLabel(vendor.categoryId, categories);
+    return category && category !== vendor.name ? `${vendor.name} — ${category}` : vendor.name;
+}
+
+/** What to show for an item: the name it was given, else the default for its vendor. */
+export function itemName(item: InventoryItem, vendors: Vendor[] = VENDORS, categories: VendorCategory[] = VENDOR_CATEGORIES): string {
+    const typed = (item.name ?? "").trim();
+    return typed || defaultItemName(vendors.find((v) => v.id === item.vendorId), categories);
+}
+
+/**
+ * True while the name is still the one the vendor chose — so picking a different vendor
+ * renames the item, and a name the user typed themselves is never overwritten.
+ */
+export function isAutoItemName(name: string | undefined, vendor: Vendor | undefined): boolean {
+    const typed = (name ?? "").trim();
+    return !typed || typed === defaultItemName(vendor);
+}
+
+// ── The alert on an item ────────────────────────────────────────
+
+/**
+ * The record the monitoring block reads its labels from. An inventory item is not a compliance
+ * record, but it has the same two dates and the same alert, so it borrows the block rather than
+ * growing a second one that drifts from it.
+ */
+export const INVENTORY_MONITOR_RECORD = {
+    id: "inventory-item",
+    monitorType: "Expiry date",
+    tracksIssueDate: true,
+    issueLabel: "Issue date",
+} as const;
+
+/** How many days before the date the old one-word reminder meant. */
+const LEGACY_REMINDER_DAYS: Record<Reminder, number[]> = {
+    None: [],
+    "1 day": [1],
+    "1 week": [7],
+    "1 month": [30],
+};
+
+/** The recurrence ids the monitoring block offers, from the old word. */
+const LEGACY_RECURRENCE: Record<Recurrence, string> = {
+    None: "none", Monthly: "monthly", Quarterly: "quarterly", Yearly: "annually",
+};
+
+export function defaultInventoryMonitoring(): MonitoringConfig {
+    return { enabled: false, basis: "expiry", customDate: "", recurrence: "annually", reminders: [30], channels: { email: true, inApp: true } };
+}
+
+/**
+ * The alert on an item, in whichever shape it was saved.
+ *
+ * Items captured before this block existed carry the old recurrence + reminder pair, and they
+ * are READ rather than rewritten, so a seeded card still shows the schedule it was given. An
+ * item with no expiry has nothing to count down to, so it reads as off rather than as an alert
+ * armed against a blank date.
+ */
+export function inventoryMonitoring(item: InventoryItem): MonitoringConfig {
+    if (item.monitoring) return item.monitoring;
+    const reminders = LEGACY_REMINDER_DAYS[item.reminder] ?? [];
+    return {
+        ...defaultInventoryMonitoring(),
+        enabled: !!item.expiryDate && reminders.length > 0,
+        recurrence: LEGACY_RECURRENCE[item.recurrence] ?? "annually",
+        reminders,
+    };
+}
+
+// ── Who is actually holding it ────────────────────────────────────
+
+/** One driver, as much of them as a label needs. */
+export type AssignedDriver = { id: string; name: string };
+
+/**
+ * The driver of a vehicle, right now — the assignment that has not ended, else the most recent
+ * one. Read live rather than stored on the item: a truck changes hands, and an item that
+ * remembered the old driver would be filed against somebody who handed it back.
+ */
+export function driverOfAsset(assetId: string, accountId?: string): AssignedDriver | null {
+    const assets = (accountId && CARRIER_ASSETS[accountId]) || ACME_ASSETS;
+    const asset = assets.find((a) => a.id === assetId) ?? ACME_ASSETS.find((a) => a.id === assetId);
+    const list = asset?.driverAssignments ?? [];
+    if (!list.length) return null;
+    const current = list.find((a) => !a.endDate)
+        ?? [...list].sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""))[0];
+    if (!current?.driverId) return null;
+    const drivers = (accountId && CARRIER_DRIVERS[accountId]) || ACME_DRIVERS;
+    const driver = drivers.find((d) => d.id === current.driverId) ?? ACME_DRIVERS.find((d) => d.id === current.driverId);
+    if (!driver) return null;
+    const name = driver.name || [driver.firstName, driver.lastName].filter(Boolean).join(" ");
+    return { id: driver.id, name: name || "—" };
+}
 
 export const ACME_NON_CMV_ASSETS = ACME_ASSETS.filter((a) => a.assetCategory === "Non-CMV");
 
@@ -369,12 +496,49 @@ function inventoryHash(s: string): number {
 }
 
 function dateString(year: number, month: number, day: number): string {
-    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    // Clamped, so a bad calculation upstream produces a real date rather than a string
+    // like "2023--5--20" that every reader downstream has to cope with.
+    const m = Math.min(12, Math.max(1, Math.round(month) || 1));
+    const d = Math.min(28, Math.max(1, Math.round(day) || 1));
+    return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function addYears(date: string, years: number): string {
     const [y, m, d] = date.split("-").map(Number);
     return dateString((y || 2026) + years, m || 1, d || 1);
+}
+
+/** Midnight today, fixed once per session so a list cannot re-bucket itself as you use it. */
+const TODAY = (() => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; })();
+
+/** A calendar date `days` from today (negative for the past), as YYYY-MM-DD. */
+function daysFromToday(days: number): string {
+    const d = new Date(TODAY);
+    d.setDate(d.getDate() + days);
+    return dateString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+/**
+ * How far from today a seeded expiry falls.
+ *
+ * The dates used to be pinned to 2023-2025, so the demo aged: run it in 2026 and every
+ * renewable item read as expired, with nothing in the "expiring soon" or "upcoming"
+ * windows the alerts and the Monitoring tab exist to show. Anchoring to today keeps one
+ * of each in view whenever the prototype is opened.
+ */
+function expiryOffsetDays(seed: number): number {
+    const bucket = seed % 10;
+    if (bucket < 2) return -(10 + (seed >>> 3) % 380);   // already overdue
+    if (bucket < 4) return 3 + (seed >>> 5) % 27;        // due within a month
+    if (bucket < 6) return 35 + (seed >>> 7) % 55;       // due within a quarter
+    return 120 + (seed >>> 9) % 580;                     // comfortably ahead
+}
+
+/** The pill on the row, read off the date it is about rather than off the row number. */
+function statusForExpiry(expiryDate: string): InventoryStatus {
+    if (!expiryDate) return "Active";
+    const days = Math.round((new Date(expiryDate + "T00:00:00").getTime() - TODAY.getTime()) / 86_400_000);
+    return days < 0 ? "Expired" : days <= 30 ? "Expiring Soon" : "Active";
 }
 
 function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undefined {
@@ -395,7 +559,14 @@ function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undef
     }
 
     const truck = trucks[offset % Math.max(trucks.length, 1)];
-    if (truck) return { kind: "cmv", targetId: truck.id };
+    // A fuel card and a toll transponder are assigned to the truck but used by whoever is
+    // driving it, so they carry the "also the driver of this vehicle" flag. A GPS unit bolted
+    // to a trailer is not in anybody's hands, and does not.
+    if (truck) return {
+        kind: "cmv",
+        targetId: truck.id,
+        alsoDriverOfAsset: vendor.categoryId === "cat-fuel-card" || vendor.categoryId === "cat-transponder",
+    };
 
     const anyAsset = assets[offset % Math.max(assets.length, 1)];
     if (anyAsset) {
@@ -412,15 +583,13 @@ function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undef
 function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
     const seed = inventoryHash(`${vendor.accountId}:${vendor.id}:${index}`);
     const prefix = SERIAL_PREFIX_BY_CATEGORY[vendor.categoryId] ?? "INV";
-    const issueYear = 2023 + (seed % 3);
-    const issueMonth = 1 + ((seed >> 4) % 12);
-    const issueDay = 1 + ((seed >> 9) % 27);
-    const issueDate = dateString(issueYear, issueMonth, issueDay);
+    // The expiry is placed first, relative to today, and the issue date is the term before
+    // it — so issue + term = expiry actually holds, which it did not when the two were
+    // hashed independently.
     const yearsOut = vendor.categoryId === "cat-repair-maintenance" ? 1 : 2 + (seed % 2);
-    const status: InventoryStatus =
-        index % 11 === 0 ? "Expired" :
-        index % 5 === 0 ? "Expiring Soon" :
-        "Active";
+    const expiryDate = daysFromToday(expiryOffsetDays(seed));
+    const issueDate = addYears(expiryDate, -yearsOut);
+    const status = statusForExpiry(expiryDate);
 
     return {
         id: `inv-${vendor.accountId.replace("acct-", "")}-${String(index + 1).padStart(3, "0")}`,
@@ -428,9 +597,12 @@ function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
         serial: `${prefix}-${String(seed % 999999).padStart(6, "0")}`,
         pin: String(1000 + (seed % 9000)),
         issueDate,
-        expiryDate: addYears(issueDate, yearsOut),
+        expiryDate,
         recurrence: CATEGORY_RECURRENCE[vendor.categoryId] ?? "Yearly",
-        reminder: status === "Expired" ? "None" : status === "Expiring Soon" ? "1 week" : "1 month",
+        // One renewable item is deliberately left with no reminder: an expiry date that
+        // nobody is alerted about is the row the Monitoring tab exists to surface, and a
+        // demo where every item is watched never shows it.
+        reminder: index % 5 === 2 ? "None" : status === "Expiring Soon" ? "1 week" : "1 month",
         status,
         contactName: vendor.contactName,
         contactInfo: vendor.contactInfo ?? vendor.email ?? vendor.phone,
@@ -456,31 +628,41 @@ for (const vendor of VENDORS) {
 // Every accessory is assigned to the VEHICLE (CMV) it belongs to. The driver
 // hand-over that issues these to a person is handled separately (onboarding) and
 // wired in at a later stage.
-type AccessorySeed = { catId: string; name: string };
+/**
+ * `toDriver`   — issued to a PERSON. PPE and a uniform are sized to a driver, not to a truck,
+ *                and go back when they leave rather than staying with the vehicle.
+ * `withDriver` — the item rides in the cab and is in the hands of whoever is driving. The
+ *                driver is read off the vehicle, never stored on the item.
+ * `yardStock`  — spare kit that belongs to the yard, not to any vehicle or person.
+ *
+ * Without these every accessory sat on a truck and nothing else: the Driver column had
+ * nothing to say, and the "assigned to driver" and "unassigned" filters matched no rows.
+ */
+type AccessorySeed = { catId: string; name: string; toDriver?: boolean; withDriver?: boolean; yardStock?: boolean };
 const COMPANY_ACCESSORIES: AccessorySeed[] = [
     // Keys & Access
-    { catId: "cat-keys", name: "Truck Keys" },
-    { catId: "cat-keys", name: "Trailer / Padlock Keys" },
-    { catId: "cat-keys", name: "Fuel Cap Key" },
-    { catId: "cat-keys", name: "Key Fob / Remote" },
+    { catId: "cat-keys", name: "Truck Keys", withDriver: true },
+    { catId: "cat-keys", name: "Trailer / Padlock Keys", withDriver: true },
+    { catId: "cat-keys", name: "Fuel Cap Key", withDriver: true },
+    { catId: "cat-keys", name: "Key Fob / Remote", withDriver: true },
     { catId: "cat-keys", name: "Yard / Gate Access Card" },
-    // Safety & PPE
-    { catId: "cat-safety-ppe", name: "Hi-Vis Safety Vest" },
-    { catId: "cat-safety-ppe", name: "Safety Gloves" },
-    { catId: "cat-safety-ppe", name: "Safety Boots" },
+    // Safety & PPE — sized to a person, so issued to one.
+    { catId: "cat-safety-ppe", name: "Hi-Vis Safety Vest", toDriver: true },
+    { catId: "cat-safety-ppe", name: "Safety Gloves", toDriver: true },
+    { catId: "cat-safety-ppe", name: "Safety Boots", toDriver: true },
     { catId: "cat-safety-ppe", name: "First-Aid Kit" },
     // Equipment & Supplies
-    { catId: "cat-equipment", name: "Company Uniform" },
-    { catId: "cat-equipment", name: "Load Bars" },
-    { catId: "cat-equipment", name: "Load Straps / Chains" },
-    { catId: "cat-equipment", name: "Winter Emergency Kit" },
+    { catId: "cat-equipment", name: "Company Uniform", toDriver: true },
+    { catId: "cat-equipment", name: "Load Bars", yardStock: true },
+    { catId: "cat-equipment", name: "Load Straps / Chains", yardStock: true },
+    { catId: "cat-equipment", name: "Winter Emergency Kit", yardStock: true },
     // Devices & Electronics
     { catId: "cat-devices", name: "Reefer Temperature Sensor" },
     { catId: "cat-devices", name: "Tire Pressure Sensor (TPMS)" },
-    { catId: "cat-devices", name: "Company Phone" },
+    { catId: "cat-devices", name: "Company Phone", withDriver: true },
     // Cards & Documents
-    { catId: "cat-cards-docs", name: "Insurance Card" },
-    { catId: "cat-cards-docs", name: "Vehicle Registration & Permits" },
+    { catId: "cat-cards-docs", name: "Insurance Card", withDriver: true },
+    { catId: "cat-cards-docs", name: "Vehicle Registration & Permits", withDriver: true },
     { catId: "cat-cards-docs", name: "IFTA / IRP Documents" },
 ];
 
@@ -488,14 +670,20 @@ for (const accountId of Object.keys(CARRIER_ASSETS)) {
     const assets = CARRIER_ASSETS[accountId] ?? [];
     const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");
     if (trucks.length === 0) continue;
+    const activeDrivers = (CARRIER_DRIVERS[accountId] ?? []).filter((d) => d.status === "Active");
     const list = CARRIER_INVENTORY_ITEMS[accountId] ??= [];
     COMPANY_ACCESSORIES.forEach((def, i) => {
         const vendorId = `v-acc-${accountId}-${i}`;
         VENDORS.push({ id: vendorId, name: def.name, companyName: "Company Issued", categoryId: def.catId, accountId, status: "Active" });
         const seed = inventoryHash(`${accountId}:acc:${def.name}`);
-        const issueDate = dateString(2024 + (seed % 2), 1 + ((seed >> 4) % 12), 1 + ((seed >> 9) % 27));
         const rec = CATEGORY_RECURRENCE[def.catId] ?? "None";
         const hasExpiry = rec !== "None";
+        // Keys and PPE never run out, so they keep a plain issue date in the past. Anything
+        // renewable is placed against today the same way vendor inventory is.
+        const expiryDate = hasExpiry ? daysFromToday(expiryOffsetDays(seed)) : "";
+        const issueDate = hasExpiry
+            ? addYears(expiryDate, -(1 + (seed % 2)))
+            : daysFromToday(-(30 + (seed >>> 4) % 900));
         const truck = trucks[i % trucks.length];
         const prefix = SERIAL_PREFIX_BY_CATEGORY[def.catId] ?? "ACC";
         list.push({
@@ -504,11 +692,17 @@ for (const accountId of Object.keys(CARRIER_ASSETS)) {
             serial: `${prefix}-${String(seed % 999999).padStart(6, "0")}`,
             pin: def.catId === "cat-keys" || def.catId === "cat-cards-docs" ? String(1000 + (seed % 9000)) : "",
             issueDate,
-            expiryDate: hasExpiry ? addYears(issueDate, 1 + (seed % 2)) : "",
+            expiryDate,
             recurrence: rec,
-            reminder: hasExpiry ? "1 month" : "None",
-            status: "Active",
-            assignedTo: { kind: "cmv", targetId: truck.id },
+            reminder: hasExpiry && i % 8 !== 5 ? "1 month" : "None",
+            status: statusForExpiry(expiryDate),
+            // Yard stock is on nobody; personal issue is on a driver; everything else is on
+            // a truck, and some of that is in the hands of whoever drives it.
+            assignedTo: def.yardStock
+                ? undefined
+                : def.toDriver && activeDrivers.length
+                    ? { kind: "driver", targetId: activeDrivers[i % activeDrivers.length].id }
+                    : { kind: "cmv", targetId: truck.id, alsoDriverOfAsset: !!def.withDriver },
         });
     });
 }

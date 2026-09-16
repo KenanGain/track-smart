@@ -32,6 +32,31 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
     const [open, setOpen] = React.useState(false);
     const [search, setSearch] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
+    const resultsRef = React.useRef<HTMLDivElement>(null);
+
+    /**
+     * Opening the picker scrolls it into view.
+     *
+     * The panel opens in flow rather than floating, so a picker near the foot of a long form
+     * pushed its own search box and list below the fold: you clicked "Select a vehicle" and
+     * nothing appeared to happen. `block: "nearest"` scrolls the least it can, and where the
+     * panel is taller than the view it brings the TOP into line — the search field first,
+     * with as much of the list under it as fits.
+     */
+    React.useEffect(() => {
+        if (!open) return;
+        const id = requestAnimationFrame(() => {
+            ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+        return () => cancelAnimationFrame(id);
+    }, [open]);
+
+    // Typing a search puts you back at the top of the results. Having scrolled down the list
+    // and then narrowed it, you would otherwise be looking at the middle of a shorter list —
+    // or past the end of it, at nothing.
+    React.useEffect(() => {
+        if (resultsRef.current) resultsRef.current.scrollTop = 0;
+    }, [search, kind]);
 
     React.useEffect(() => {
         if (!open) return;
@@ -142,7 +167,10 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
             </button>
 
             {open && (
-                <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                // Opens IN FLOW rather than floating over the page: the picker sits inside a
+                // section card, and an absolutely-positioned panel was clipped by it — you
+                // could see the search box and none of the vehicles under it.
+                <div className="mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                     <div className="p-2 border-b border-slate-100">
                         <div className="relative">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -161,7 +189,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                         </div>
                     </div>
 
-                    <div className="max-h-80 overflow-y-auto p-1">
+                    <div ref={resultsRef} className="max-h-80 overflow-y-auto p-1">
                         {filtered.length === 0 ? (
                             <div className="py-8 text-center text-xs text-slate-400">
                                 No {kindLabel.toLowerCase()}{kind === "driver" ? "s" : " assets"} match "{search}"

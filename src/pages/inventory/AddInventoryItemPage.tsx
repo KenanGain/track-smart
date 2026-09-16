@@ -1,18 +1,34 @@
-import { useMemo, useState } from "react";
-import { ArrowLeft, Building2, Check, Truck } from "lucide-react";
+// ─────────────────────────────────────────────────────────────────────────────
+// Adding an inventory item — a page rather than a pop-up.
+//
+// It was a dialog, and the form outgrew it: a vendor, a name, two numbers, two
+// dates, the whole monitoring block and an assignment that branches into a
+// vehicle and its driver do not belong in a box the page has to scroll behind.
+// So it is the same wizard chrome the Add Asset and Add Account pages use — a
+// left-hand rail of sections, each a card.
+//
+// The same page opens an existing item for editing (`editId`), against the same
+// draft, so nothing captured one way is dropped by the other.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Boxes, Check } from "lucide-react";
+import { WizardHeader, WizardSection, WizardStepNav, type WizardStep } from "@/components/ui/WizardEditor";
 import {
     VENDORS,
-    VENDOR_CATEGORIES,
-    getCategoryLabel,
-    CARRIER_NAME,
     INVENTORY_ITEMS,
-    type Recurrence,
-    type Reminder,
-    type InventoryStatus,
-    type AssignmentKind,
+    itemName,
+    inventoryMonitoring,
     type Assignment,
+    type InventoryItem,
+    type InventoryStatus,
 } from "./inventory.data";
-import { AssignmentTargetPicker } from "./AssignmentTargetPicker";
+import {
+    InventoryItemSection, INVENTORY_SECTIONS, emptyInventoryDraft, draftAssignment, draftIsValid,
+    sectionFilled, type InventoryItemDraft, type InventorySectionId,
+} from "./InventoryItemFields";
+import { useInventoryAdditions } from "./inventory-store";
+import { logInventoryEvent, describeChanges } from "./inventory-activity";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -25,288 +41,192 @@ type Props = {
 
 export type InventoryFormPayload = {
     vendorId: string;
+    name?: string;
     serial: string;
     pin: string;
     issueDate: string;
     expiryDate: string;
-    recurrence: Recurrence;
-    reminder: Reminder;
     status: InventoryStatus;
+    monitoring: InventoryItemDraft["monitoring"];
     assignedTo?: Assignment;
 };
 
-const RECURRENCE_OPTIONS: Recurrence[] = ["None", "Monthly", "Quarterly", "Yearly"];
-const REMINDER_OPTIONS: Reminder[] = ["None", "1 day", "1 week", "1 month"];
-const STATUS_OPTIONS: InventoryStatus[] = ["Active", "Expiring Soon", "Expired"];
+/** The prototype has no session; a real signed-in user replaces this. */
+const CAPTURED_BY = "Fleet Manager";
 
-// Inventory items are assigned to an asset (CMV / Non-CMV). Direct driver
-// assignment lives in the Hand Over flow, so it's not offered here.
-const KIND_OPTIONS: { value: AssignmentKind; label: string; helper: string }[] = [
-    { value: "cmv",     label: "CMV",     helper: "Power units (trucks)" },
-    { value: "non-cmv", label: "Non-CMV", helper: "Trailers / vans / other" },
-];
+const STEPS: readonly WizardStep[] = INVENTORY_SECTIONS.map((s) => ({ id: s.id, label: s.label, icon: s.icon }));
 
 export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
-    // Vendor dropdown is scoped to the active carrier. Each Vendor row in
-    // VENDORS carries an accountId, so we filter directly. Falls back to
-    // the global list when no carrier is active.
+    // Vendor dropdown is scoped to the active carrier. Each Vendor row in VENDORS carries an
+    // accountId, so we filter directly. Falls back to the global list when no carrier is active.
     const vendors = useMemo(() => {
         if (!accountId) return VENDORS;
-        const carrierVendors = VENDORS.filter(v => v.accountId === accountId);
+        const carrierVendors = VENDORS.filter((v) => v.accountId === accountId);
         return carrierVendors.length > 0 ? carrierVendors : VENDORS;
     }, [accountId]);
 
-    // In edit mode, prefill every field from the existing inventory item.
-    const editing = useMemo(() => (editId ? INVENTORY_ITEMS.find((i) => i.id === editId) : undefined), [editId]);
+    const { additions, add, update, applyEdit } = useInventoryAdditions(accountId);
 
-    // §1 Inventory Details
-    const [vendorId, setVendorId] = useState(editing?.vendorId ?? vendors[0]?.id ?? "");
-    const [serial, setSerial] = useState(editing?.serial ?? "");
-    const [pin, setPin] = useState(editing?.pin ?? "");
-    const [issueDate, setIssueDate] = useState(editing?.issueDate ?? "");
-    const [expiryDate, setExpiryDate] = useState(editing?.expiryDate ?? "");
-    const [recurrence, setRecurrence] = useState<Recurrence>(editing?.recurrence ?? "Yearly");
-    const [reminder, setReminder] = useState<Reminder>(editing?.reminder ?? "1 month");
-    const [status, setStatus] = useState<InventoryStatus>(editing?.status ?? "Active");
+    const editing = useMemo(() => {
+        if (!editId) return undefined;
+        const found = additions.find((i) => i.id === editId) ?? INVENTORY_ITEMS.find((i) => i.id === editId);
+        // `additions` already has edits applied; a seeded row needs them laid over it here,
+        // or the form opens on the original values and saving quietly undoes the last change.
+        return found && applyEdit(found);
+    }, [editId, additions, applyEdit]);
 
-    // §2 Assignment (one-to-one). Driver assignment is no longer offered, so an
-    // item previously assigned to a driver falls back to an unassigned CMV.
-    const editKind = editing?.assignedTo?.kind;
-    const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>(editKind === "driver" ? "cmv" : (editKind ?? "cmv"));
-    const [targetId, setTargetId] = useState<string>(editKind === "driver" ? "" : (editing?.assignedTo?.targetId ?? ""));
+    // Opening an item reads it into the SAME draft the add form fills in, so nothing captured
+    // one way is dropped by the other — including an item filed against a driver, which this
+    // page used to silently turn back into an unassigned truck.
+    const [draft, setDraft] = useState<InventoryItemDraft>(() => {
+        const blank = emptyInventoryDraft(vendors.find((v) => v.id === editing?.vendorId) ?? vendors[0]);
+        if (!editing) return blank;
+        return {
+            ...blank,
+            vendorId: editing.vendorId,
+            name: itemName(editing),
+            serial: editing.serial,
+            pin: editing.pin,
+            issueDate: editing.issueDate,
+            expiryDate: editing.expiryDate,
+            status: editing.status,
+            monitoring: inventoryMonitoring(editing),
+            assignmentKind: editing.assignedTo?.kind ?? "cmv",
+            targetId: editing.assignedTo?.targetId ?? "",
+            alsoDriverOfAsset: !!editing.assignedTo?.alsoDriverOfAsset,
+        };
+    });
 
-    const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId), [vendorId, vendors]);
+    const isValid = draftIsValid(draft);
 
-    const isValid =
-        !!vendorId && serial.trim().length > 0 && !!issueDate && !!expiryDate;
+    // ── Section navigator ── the form scrolls inside `scrollRef`, and the rail follows it
+    // (scroll-spy), exactly as the Add Asset wizard does.
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [activeStep, setActiveStep] = useState<string>(STEPS[0].id);
+
+    useEffect(() => {
+        const root = scrollRef.current;
+        if (!root) return;
+        const obs = new IntersectionObserver(
+            (entries) => {
+                const visible = entries.filter((e) => e.isIntersecting)
+                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+                if (visible[0]) setActiveStep(visible[0].target.id.replace("section-", ""));
+            },
+            { root, rootMargin: "-12px 0px -55% 0px", threshold: 0 },
+        );
+        for (const s of STEPS) {
+            const sec = document.getElementById(`section-${s.id}`);
+            if (sec) obs.observe(sec);
+        }
+        return () => obs.disconnect();
+    }, []);
+
+    const go = (id: string) => {
+        const sec = document.getElementById(`section-${id}`);
+        const el = scrollRef.current;
+        if (!sec || !el) return;
+        el.scrollTo({ top: el.scrollTop + (sec.getBoundingClientRect().top - el.getBoundingClientRect().top) - 12, behavior: "smooth" });
+        setActiveStep(id);
+    };
 
     const handleSave = () => {
         if (!isValid) return;
         const payload: InventoryFormPayload = {
-            vendorId, serial, pin,
-            issueDate, expiryDate,
-            recurrence, reminder, status,
-            assignedTo: targetId ? { kind: assignmentKind, targetId } : undefined,
+            vendorId: draft.vendorId,
+            name: draft.name.trim() || undefined,
+            serial: draft.serial.trim(),
+            pin: draft.pin.trim(),
+            issueDate: draft.issueDate,
+            expiryDate: draft.expiryDate,
+            status: draft.status,
+            monitoring: draft.monitoring,
+            assignedTo: draftAssignment(draft),
         };
-        console.log("Inventory item saved:", payload);
-        onNavigate("/inventory");
+        if (!editing) {
+            // A new item goes straight into the list the way the pop-up's did — the page
+            // replaced the dialog, not what it was for.
+            const item: InventoryItem = {
+                id: `inv-add-${Date.now()}`,
+                ...payload,
+                // The old two-word schedule is what the seeded rows carry; a new item is
+                // described by its monitoring config, so these stay neutral rather than
+                // reading as a cadence nobody set.
+                recurrence: "None",
+                reminder: "None",
+            };
+            add(item);
+            logInventoryEvent({
+                itemId: item.id, accountId: accountId ?? "acct-001", kind: "created",
+                title: "Added to inventory", by: CAPTURED_BY, role: "Office",
+                detail: [payload.serial && `Number ${payload.serial}`, `Status ${payload.status}`]
+                    .filter(Boolean).join(" · "),
+            });
+            onNavigate("/inventory");
+        } else {
+            const next: InventoryItem = { ...editing, ...payload };
+            update(editing.id, payload);
+            // An "Updated" entry that does not say WHAT changed is why audit trails get
+            // ignored, so the fields are diffed and named. Nothing changed, nothing logged.
+            const changes = describeChanges(editing, next);
+            if (changes.length) {
+                logInventoryEvent({
+                    itemId: editing.id, accountId: accountId ?? "acct-001", kind: "updated",
+                    title: changes.length === 1 ? "Item updated" : `Item updated — ${changes.length} changes`,
+                    detail: changes.join(" · "), by: CAPTURED_BY, role: "Office",
+                });
+            }
+            // Back to the item, not to the list: you came from it, and you want to see the
+            // change you just made land.
+            onNavigate(`/inventory/items/${editing.id}`);
+        }
     };
 
+    const title = editing ? `Edit Inventory — ${itemName(editing)}` : "Add Inventory";
+
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-30 bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shadow-sm">
-                <div>
-                    <button
-                        onClick={() => onNavigate("/inventory")}
-                        className="text-xs text-slate-500 hover:text-slate-900 inline-flex items-center gap-1 mb-1"
-                    >
-                        <ArrowLeft size={12} /> Back to Inventory
-                    </button>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                        <Building2 size={12} />
-                        <span className="font-medium">{CARRIER_NAME}</span>
-                        <span>/</span>
-                        <span>Inventory</span>
-                        <span>/</span>
-                        <span>{editing ? "Edit Inventory" : "Add Inventory"}</span>
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-900">{editing ? "Edit Inventory" : "Add Inventory"}</h1>
-                </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => onNavigate("/inventory")}
-                        className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={!isValid}
-                        className={`px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm flex items-center gap-2 ${isValid ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'}`}
-                    >
-                        <Check size={16} /> {editing ? "Update Inventory" : "Save Inventory"}
-                    </button>
-                </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-8 py-8 space-y-6 max-w-5xl mx-auto w-full">
-
-                {/* §1 Inventory Details */}
-                <Section number={1} title="Inventory Details" subtitle="Identify the item and its lifecycle dates.">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <Field label="Vendor" required>
-                            <SelectInput value={vendorId} onChange={setVendorId}>
-                                {VENDORS.map((v) => (
-                                    <option key={v.id} value={v.id}>
-                                        {v.name} — {getCategoryLabel(v.categoryId, VENDOR_CATEGORIES)}
-                                    </option>
-                                ))}
-                            </SelectInput>
-                            {selectedVendor && (
-                                <p className="text-xs text-slate-500 mt-1.5">
-                                    Category: <span className="font-medium text-slate-700">{getCategoryLabel(selectedVendor.categoryId, VENDOR_CATEGORIES)}</span>
-                                </p>
+        <div className="flex h-full flex-col bg-[#F8FAFC] text-slate-900">
+            <WizardHeader
+                backLabel="Back to Inventory"
+                onBack={() => onNavigate("/inventory")}
+                icon={Boxes}
+                title={title}
+                subtitle="Item details, dates, alert and assignment."
+                actions={
+                    <>
+                        <button
+                            onClick={() => onNavigate("/inventory")}
+                            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={!isValid}
+                            className={cn(
+                                "flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white shadow-md transition-colors",
+                                isValid ? "bg-blue-600 hover:bg-blue-700" : "cursor-not-allowed bg-slate-300",
                             )}
-                        </Field>
-                        <Field label="Status" required>
-                            <SelectInput value={status} onChange={(v) => setStatus(v as InventoryStatus)}>
-                                {STATUS_OPTIONS.map((s) => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
-                            </SelectInput>
-                        </Field>
-                        <Field label="Serial #" required>
-                            <TextInput value={serial} onChange={setSerial} placeholder="e.g. FC-558271" />
-                        </Field>
-                        <Field label="PIN #">
-                            <TextInput value={pin} onChange={setPin} placeholder="e.g. 4421" />
-                        </Field>
-                        <Field label="Issue Date" required>
-                            <TextInput value={issueDate} onChange={setIssueDate} type="date" />
-                        </Field>
-                        <Field label="Expiry Date" required>
-                            <TextInput value={expiryDate} onChange={setExpiryDate} type="date" />
-                        </Field>
-                        <Field label="Recurrence">
-                            <SelectInput value={recurrence} onChange={(v) => setRecurrence(v as Recurrence)}>
-                                {RECURRENCE_OPTIONS.map((r) => (
-                                    <option key={r} value={r}>{r}</option>
-                                ))}
-                            </SelectInput>
-                        </Field>
-                        <Field label="Reminder">
-                            <SelectInput value={reminder} onChange={(v) => setReminder(v as Reminder)}>
-                                {REMINDER_OPTIONS.map((r) => (
-                                    <option key={r} value={r}>{r}</option>
-                                ))}
-                            </SelectInput>
-                        </Field>
+                        >
+                            <Check size={16} /> {editing ? "Update Inventory" : "Save Inventory"}
+                        </button>
+                    </>
+                }
+            />
+
+            <div className="flex flex-1 overflow-hidden">
+                <WizardStepNav steps={STEPS} active={activeStep} onGo={go} completionFor={(id) => sectionFilled(id as InventorySectionId, draft)} />
+
+                <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
+                    <div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
+                        {INVENTORY_SECTIONS.map((s) => (
+                            <WizardSection key={s.id} id={s.id} icon={s.icon} title={s.title} subtitle={s.subtitle}>
+                                <InventoryItemSection id={s.id} draft={draft} onChange={setDraft} accountId={accountId} vendors={vendors} />
+                            </WizardSection>
+                        ))}
                     </div>
-                </Section>
-
-                {/* §2 Assignment (one-to-one) */}
-                <Section number={2} title="Assignment" subtitle="Assign this inventory item to a CMV or Non-CMV asset. One item, one target.">
-                    <div className="space-y-5">
-                        {/* Kind picker */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Assign To</label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {KIND_OPTIONS.map((opt) => {
-                                    const active = assignmentKind === opt.value;
-                                    const Icon = Truck;
-                                    return (
-                                        <button
-                                            key={opt.value}
-                                            type="button"
-                                            onClick={() => { setAssignmentKind(opt.value); setTargetId(""); }}
-                                            className={cn(
-                                                "p-4 rounded-lg border-2 text-left transition-all flex items-start gap-3",
-                                                active
-                                                    ? "border-blue-500 bg-blue-50 shadow-sm"
-                                                    : "border-slate-200 bg-white hover:border-slate-300"
-                                            )}
-                                        >
-                                            <div className={cn(
-                                                "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
-                                                active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
-                                            )}>
-                                                <Icon size={16} />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className={cn("text-sm font-bold", active ? "text-blue-700" : "text-slate-900")}>{opt.label}</div>
-                                                <div className="text-xs text-slate-500 mt-0.5">{opt.helper}</div>
-                                            </div>
-                                            {active && (
-                                                <div className="h-5 w-5 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
-                                                    <Check size={12} strokeWidth={3} />
-                                                </div>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Searchable, rich target picker */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                {assignmentKind === "cmv" ? "Select CMV" : "Select Non-CMV asset"}
-                            </label>
-                            <AssignmentTargetPicker
-                                kind={assignmentKind}
-                                selectedId={targetId}
-                                onSelect={setTargetId}
-                            />
-                            <p className="text-xs text-slate-500 mt-1.5">
-                                Each inventory item can be assigned to exactly one asset. Type to search.
-                            </p>
-                        </div>
-                    </div>
-                </Section>
-
-            </div>
-        </div>
-    );
-}
-
-function Section({
-    number, title, subtitle, children,
-}: { number: number; title: string; subtitle?: string; children: React.ReactNode }) {
-    return (
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <div className="flex items-center gap-3 mb-5">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
-                    {number}
-                </div>
-                <div>
-                    <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-                    {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
                 </div>
             </div>
-            <div className="pl-11">{children}</div>
-        </section>
-    );
-}
-
-function Field({
-    label, required, className, children,
-}: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
-    return (
-        <div className={className}>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-                {label}
-                {required && <span className="text-red-500 ml-0.5">*</span>}
-            </label>
-            {children}
         </div>
-    );
-}
-
-function TextInput({
-    value, onChange, placeholder, type = "text",
-}: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-    return (
-        <input
-            type={type}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-        />
-    );
-}
-
-function SelectInput({
-    value, onChange, children,
-}: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
-    return (
-        <select
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-        >
-            {children}
-        </select>
     );
 }

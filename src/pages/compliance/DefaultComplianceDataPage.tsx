@@ -37,7 +37,7 @@ import {
     type SafetyCategory,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
-    useComplianceData, computeStats, entryStatus, currentVersion, newVersion, blankVersion, newInstance, instancesOf, emptyEntry,
+    prefilledNumberFor, useComplianceData, computeStats, entryStatus, currentVersion, newVersion, blankVersion, newInstance, instancesOf, emptyEntry,
     defaultMonitoring, fieldWritePatch, CARRIER_SUBJECT,
     type RecordDataEntry, type DocVersion, type DocInstance, type DataDocFile, type DataStatus, type MonitoringConfig,
 } from '@/pages/compliance/compliance-data-store';
@@ -2458,6 +2458,9 @@ const docDefaultColsFor = (record: SafetyRecord): DocColId[] => docColsFor(recor
 function docColLabel(record: SafetyRecord, id: DocColId): string {
     if (id.startsWith('sel:')) return recordFields(record).find(f => f.key === selKey(id))?.label ?? 'Field';
     if (id === 'status') return record.statusLabel ?? DOC_COL_LABEL.status;
+    // Named by the record wherever "Issue date" is not what the document calls it — a lease
+    // starts, it is not issued. Read by the header AND the column picker, so both agree.
+    if (id === 'issue') return record.issueLabel ?? DOC_COL_LABEL.issue;
     return DOC_COL_LABEL[id as DocStaticColId];
 }
 const DOC_TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
@@ -2519,9 +2522,11 @@ function DocColumnsDropdown({ record, cols, visible, onToggle }: { record: Safet
  * Rendered in TWO places: the record detail page's Documents tab, and INLINE inside the list's
  * expandable row. Reads `entry` live from the store, so Load-sample / Fill-demo data reflect here.
  */
-function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate, showTitle = true }: {
+function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate, showTitle = true, accountId }: {
     record: SafetyRecord; entry: RecordDataEntry; subjectId: string; setEntry: EntrySetter;
     compact?: boolean; subjectLabel?: string; entity?: EntityId; onNavigate?: (path: string) => void;
+    /** The carrier — a record whose number is held once for the whole fleet reads it from there. */
+    accountId?: string;
     /** False when a tab strip above already names this section. */
     showTitle?: boolean;
 }) {
@@ -2576,7 +2581,14 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         emitToast('Document removed', 'success');
     };
     // Scoped single-version add / edit (opens VersionEditModal — "each row edit only shows that data").
-    const freshVersion = () => ({ ...blankVersion(record, nextVersionLabel(record, entry)), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
+    // A number the carrier holds once for the whole fleet — the auto liability policy on a
+    // pink slip — starts filled in rather than retyped per vehicle. Still editable: a truck
+    // insured separately says so by overtyping it.
+    const freshVersion = () => ({
+        ...blankVersion(record, nextVersionLabel(record, entry)),
+        numberValue: prefilledNumberFor(record, accountId),
+        monitoring: seedMonitoring(record), uploadedBy: currentUserName(),
+    });
     // A carrier holds exactly one FEIN, so once it is on file there is nothing left to add:
     // Add closes rather than staying open to capture a second of a number that cannot have one.
     const atRecordLimit = !!record.singleRecord && entry.versions.length > 0;
@@ -2770,7 +2782,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         {showCol('insurer') && <DocTh col="insurer" label="Insurance company" sortable sort={docSort} onSort={toggleDocSort} />}
                                                                                 <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
                                         {showCol('state') && <DocTh col="state" label="State" sortable sort={docSort} onSort={toggleDocSort} />}
-                                        {showIssue && showCol('issue') && <DocTh col="issue" label="Issue date" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showIssue && showCol('issue') && <DocTh col="issue" label={docColLabel(record, 'issue')} sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showDate && showCol('expiry') && <DocTh col="expiry" label="Expiry date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showStatus && showCol('status') && <DocTh col="status" label={docColLabel(record, 'status')} sortable sort={docSort} onSort={toggleDocSort} />}
                                         {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && (
@@ -2925,7 +2937,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         </div>
                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                                             {isInsurance && <MobileFact label="Insurer" value={v.insurer} />}
-                                            {showIssue && <MobileFact label="Issue date" value={v.issueDate} />}
+                                            {showIssue && <MobileFact label={docColLabel(record, 'issue')} value={v.issueDate} />}
                                             {showDate && <MobileFact label="Expiry date" value={v.expiryDate} />}
                                             {showStatus && <MobileFact label={record.statusLabel ?? 'Status'} value={v.status} />}
                                             {extraFieldDefs.map(f => <MobileFact key={f.key} label={f.label} value={fieldValue(f, v.fields)} />)}
@@ -3187,7 +3199,7 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                                 {dated ? (monitoredDate || <Dash />) : (cur.status || <Dash />)}
                             </Fact>
                         )}
-                        {curRec.tracksIssueDate && <Fact label="Issue date">{cur.issueDate || <Dash />}</Fact>}
+                        {curRec.tracksIssueDate && <Fact label={curRec.issueLabel ?? 'Issue date'}>{cur.issueDate || <Dash />}</Fact>}
                         <Fact label="Document" className="min-w-[12rem] max-w-[20rem]">
                             {cur.files.length === 0
                                 ? <span className="font-normal text-amber-600">No document</span>
@@ -3252,7 +3264,7 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                 ) : tab === 'monitoring' && showMonitoring ? (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
                 ) : (
-                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showTabs} />
+                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showTabs} accountId={accountId} />
                 )}
             </div>
         </div>
@@ -3524,11 +3536,13 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
     // the dates, still paired — a taller box each, not a full-width band each.
     const extraFields = recordFields(record);
     const inlineFields: RecordFieldDef[] = extraFields.filter(f => !(f.kind === 'text' && f.multiline));
-    // The field a record is NAMED after leads the form, ahead of the name and the number.
-    // The name below it is derived from the answer — pick WSIB and the record becomes "WSIB",
-    // and its province with it — so asking for the name first asks a question that is about to
-    // answer itself, and asking for the number first asks for a number under no heading.
-    const leadField = record.nameFromField ? inlineFields.find(f => f.key === record.nameFromField) : undefined;
+    // One field may LEAD the form, ahead of the name and the number: the one everything else
+    // hangs off. The name below it is derived from the answer — pick WSIB and the record becomes
+    // "WSIB", and its province with it — so asking for the name first asks a question that is
+    // about to answer itself, and asking for the number first asks for a number under no
+    // heading. A field the record is NAMED after leads for that reason; `leads` says so for the
+    // ones that settle the form (which expiry, which documents) without also naming it.
+    const leadField = inlineFields.find(f => f.leads || (!!record.nameFromField && f.key === record.nameFromField));
     const trailingFields = leadField ? inlineFields.filter(f => f !== leadField) : inlineFields;
     // Narrowed, not just filtered: only a text field can be multiline, and the block row
     // reads `required` — which a derived field has no notion of.
@@ -3702,7 +3716,7 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
                     </Field>
                 )}
                 {showIssue && (
-                    <Field label="Issue date" required={issueRequired} optional={!issueRequired} className={pairDates ? ROW_START : undefined}>
+                    <Field label={cf ? 'Issue date' : (record.issueLabel ?? 'Issue date')} required={issueRequired} optional={!issueRequired} className={pairDates ? ROW_START : undefined}>
                         <input type="date" value={v.issueDate} onChange={e => patch({ issueDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}

@@ -27,6 +27,7 @@ import { AccountsTabsPage } from '@/pages/accounts/AccountsTabsPage'
 import { AddServiceProfilePage } from '@/pages/accounts/AddServiceProfilePage'
 import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
 import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
+import { InventoryItemDetailPage } from '@/pages/inventory/InventoryItemDetailPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
 import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
 import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
@@ -448,11 +449,20 @@ function App() {
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} />
         }
+        // An item id on its own opens the item; "/edit" opens the form that changes it.
+        // Clicking a row used to drop you straight into the editor, which is the wrong
+        // default: most of the time you want to read the thing, not change it.
+        if (path.startsWith("/inventory/items/") && path.endsWith("/edit")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const editId = path.slice("/inventory/items/".length, -"/edit".length)
+            return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} editId={editId} />
+        }
         if (path.startsWith("/inventory/items/")) {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            const editId = path.slice("/inventory/items/".length)
-            return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} editId={editId} />
+            const itemId = path.slice("/inventory/items/".length)
+            return <InventoryItemDetailPage onNavigate={handleNavigate} accountId={account?.id} itemId={itemId} />
         }
         if (path === "/inventory/vendors") {
             const account = selectedAccount

@@ -82,6 +82,41 @@ export const DIRECTOR_UI = {
     }
 };
 
+/**
+ * The provincial safety registration a carrier holds — one of two, never both.
+ *
+ * Ontario issues a CVOR; the other provinces issue an NSC number under the National Safety
+ * Code. The form asks WHICH and then asks for that number once, but the stored account record
+ * keeps them in separate fields (and years of seeded carriers were written that way), so these
+ * two translate between the shapes rather than every reader knowing about both.
+ */
+export const SAFETY_REG_TYPES = ['CVOR', 'NSC'] as const;
+export type SafetyRegType = typeof SAFETY_REG_TYPES[number];
+
+/** Legacy `{ cvorNumber, nscNumber }` — or the new pair — as the pair the form asks for. */
+export function safetyRegOf(v: Record<string, any> | undefined): { safetyRegType: string; safetyRegNumber: string } {
+    const type = (v?.safetyRegType ?? '').trim();
+    const num = (v?.safetyRegNumber ?? '').trim();
+    if (type || num) return { safetyRegType: type, safetyRegNumber: num };
+    // A carrier filed under the old two-field shape. Whichever number is actually there says
+    // which registration it is; a carrier with both (there should be none) keeps the CVOR,
+    // since that is the one Ontario enforces against.
+    const cvor = (v?.cvorNumber ?? '').trim();
+    const nsc = (v?.nscNumber ?? '').trim();
+    if (cvor) return { safetyRegType: 'CVOR', safetyRegNumber: cvor };
+    if (nsc) return { safetyRegType: 'NSC', safetyRegNumber: nsc };
+    return { safetyRegType: '', safetyRegNumber: '' };
+}
+
+/** …and back, for the account record and anything else still storing the two fields. */
+export function safetyRegNumbers(v: Record<string, any> | undefined): { cvorNumber: string; nscNumber: string } {
+    const { safetyRegType, safetyRegNumber } = safetyRegOf(v);
+    return {
+        cvorNumber: safetyRegType === 'CVOR' ? safetyRegNumber : '',
+        nscNumber: safetyRegType === 'NSC' ? safetyRegNumber : '',
+    };
+}
+
 export const UI_DATA = {
     editModals: {
         corporateIdentity: {
@@ -92,8 +127,17 @@ export const UI_DATA = {
             saveLabel: "Save Changes",
             fields: [
                 { key: "dotNumber",  label: "DOT Number",  type: "dotLookup", required: false, placeholder: "1234567",   helperText: "US Federal Motor Carrier Safety Administration (FMCSA) USDOT #. Click Lookup to pull SAFER record." },
-                { key: "cvorNumber", label: "CVOR Number", type: "text",      required: false, placeholder: "CVOR-00123", helperText: "Ontario Commercial Vehicle Operator's Registration number." },
-                { key: "nscNumber",  label: "NSC Number",  type: "text",      required: false, placeholder: "AB-12345",   helperText: "Canadian National Safety Code carrier identifier issued by the home province." },
+                // A carrier holds ONE of these, not both: Ontario issues a CVOR, every other
+                // province an NSC number. Two boxes side by side invited the same number to be
+                // typed into both, or one of them to be left blank with nothing saying why.
+                // So the registration is named first, and the number below it is whichever one
+                // that answer means — the field relabels itself to say so.
+                { key: "safetyRegType",   label: "Safety Registration", type: "select", required: false, options: ["CVOR", "NSC"],
+                  helperText: "Ontario issues a CVOR; every other province issues an NSC number." },
+                { key: "safetyRegNumber", label: "CVOR / NSC Number",   type: "text",   required: false, placeholder: "CVOR-00123",
+                  labelBy: "safetyRegType", labelFor: { CVOR: "CVOR Number", NSC: "NSC Number" },
+                  placeholderFor: { CVOR: "CVOR-00123", NSC: "AB-12345" },
+                  helperText: "The number on the registration chosen above." },
                 { key: "rinNumber",  label: "RIN",         type: "text",      required: false, placeholder: "RIN-0099",   helperText: "Registered Importer / Registration Identification Number." },
                 { key: "legalName",  label: "Legal Name",  type: "text",      required: true,  placeholder: "Acme Trucking Inc." },
                 { key: "dbaName",    label: "DBA Name",    type: "text",      required: false, placeholder: "Acme Logistics" },
@@ -102,8 +146,8 @@ export const UI_DATA = {
                 { key: "extraProvincial", label: "Extra-Provincial", type: "select", required: false, options: ["Yes", "No"], helperText: "Operates commercial vehicles across provincial or federal borders." },
                 { key: "status", label: "Status", type: "select", required: true, options: ["Active", "Inactive", "Suspended", "Pending"], helperText: "Current operating status of the carrier record." }
             ],
-            layout: [["dotNumber", "cvorNumber"], ["nscNumber", "rinNumber"], ["legalName", "dbaName"], ["businessType", "stateOfInc"], ["extraProvincial"]],
-            values: { dotNumber: "3421765", cvorNumber: "CVOR-00123", nscNumber: "AB-12345", rinNumber: "RIN-0099", legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware", extraProvincial: "Yes", status: "Active" }
+            layout: [["dotNumber", "rinNumber"], ["safetyRegType", "safetyRegNumber"], ["legalName", "dbaName"], ["businessType", "stateOfInc"], ["extraProvincial"]],
+            values: { dotNumber: "3421765", safetyRegType: "CVOR", safetyRegNumber: "CVOR-00123", rinNumber: "RIN-0099", legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware", extraProvincial: "Yes", status: "Active" }
         },
         legalMainAddress: {
             id: "editLegalMainAddress",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AccidentRiskType } from '@/data/accident-types.data';
 import { buildProfileBundle } from '@/pages/accounts/carrier-datasets.data';
+import { safetyRegOf } from '@/pages/profile/carrier-profile.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriverById, getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 
@@ -618,7 +619,7 @@ export function carrierOwnerInfo(accountId?: string): AccidentOwnerInfo {
     const ad = b?.uiData?.editModals?.legalMainAddress?.values ?? {};
     const street = [ad.street, ad.apt].filter(Boolean).join(', ');
     const addr = [street, ad.city, [ad.state, ad.zip].filter(Boolean).join(' '), ad.country].filter(Boolean).join(', ');
-    const nscCvor = [id.cvorNumber, id.nscNumber, id.rinNumber].filter(Boolean).join(' / ') || id.dotNumber || '';
+    const nscCvor = [safetyRegOf(id).safetyRegNumber, id.rinNumber].filter(Boolean).join(' / ') || id.dotNumber || '';
     return {
         ownerName: id.legalName || b?.viewData?.page?.carrierHeader?.name || '',
         ownerAddress: addr,

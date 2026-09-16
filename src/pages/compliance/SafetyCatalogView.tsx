@@ -52,6 +52,8 @@ const CATEGORY_SHORT: Record<SafetyCategory, string> = {
     'Pre-Employment': 'Pre-Employment',
     'Disciplinary Records': 'Disciplinary',
     // Asset
+    'Ownership & Plating': 'Ownership & Plating',
+    // Retired asset headings, kept so a custom record filed under one still reads.
     'Regulatory and Safety Numbers': 'Regulatory & Safety',
     'Tax and Business Identification Numbers': 'Tax & Business ID',
     'Carrier & Industry Codes': 'Carrier & Industry',
@@ -534,7 +536,14 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
                         <div>
                             <label className={CM_LABEL}>Category</label>
                             <select value={category} onChange={e => setCategory(e.target.value as SafetyCategory)} className={CM_INPUT}>
-                                {SAFETY_CATEGORIES_BY_ENTITY[entity].map(c => <option key={c} value={c}>{c}</option>)}
+                                {/* A record already filed under a heading this entity no longer
+                                    offers keeps it as an option of its own: dropped from the
+                                    list it would show as a blank select, and saving would
+                                    re-file the record somewhere the user never chose. */}
+                                {(SAFETY_CATEGORIES_BY_ENTITY[entity].includes(category)
+                                    ? SAFETY_CATEGORIES_BY_ENTITY[entity]
+                                    : [...SAFETY_CATEGORIES_BY_ENTITY[entity], category]
+                                ).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                     </div>

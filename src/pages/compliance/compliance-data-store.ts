@@ -230,6 +230,31 @@ export function fixedDateFor(mmdd: string, today = new Date()): string {
     return `${y}-${mmdd}` >= iso ? `${y}-${mmdd}` : `${y + 1}-${mmdd}`;
 }
 
+/**
+ * The number a new record starts with, taken from a carrier record that already holds it.
+ *
+ * Every pink slip in a fleet carries the carrier's auto liability policy number, captured once
+ * on the insurance record. `whenField` says WHICH of a multi-policy record to read, so the
+ * cargo cover's number is not copied onto a truck's proof of liability.
+ *
+ * '' whenever there is nothing to copy — no account, no such record, no matching policy, or no
+ * number on it. The caller leaves the field blank and asks, rather than filling in a guess.
+ */
+export function prefilledNumberFor(record: SafetyRecord, accountId?: string): string {
+    const spec = record.numberFrom;
+    if (!spec || !accountId) return '';
+    const entry = loadAll()[`${accountId}::${CARRIER_SUBJECT}::${spec.record}`];
+    if (!entry) return '';
+    // A multi-instance record (insurance) holds one current version per policy; a single-current
+    // record holds one. Both are read the same way: the versions that are current right now.
+    const currents = entry.instances?.length
+        ? instancesOf(entry).map(instanceCurrent)
+        : [currentVersion(entry)];
+    const match = currents.find((v): v is DocVersion => !!v
+        && (!spec.whenField || (v.fields?.[spec.whenField.key] ?? '') === spec.whenField.is));
+    return match?.numberValue?.trim() ?? '';
+}
+
 /** A blank version with the record's own catalog defaults applied — the pre-selected
  *  jurisdiction of a record only one state can issue, and the fixed date a permit always
  *  falls due on. Starting values only: every one of them is an ordinary editable field. */
@@ -329,7 +354,7 @@ function persist(all: Store) {
 // future rule change without another migration.
 // Bump this (not KEY) whenever the catalog's field rules change again — bumping KEY would
 // discard every record the user has captured.
-const MIGRATION_KEY = 'compliance-data-catalog-v49';
+const MIGRATION_KEY = 'compliance-data-catalog-v53';
 
 /** Deterministic pick so a migrated version keeps the same value on every reload. */
 function pickFor(seed: string, options: string[]): string {
@@ -387,15 +412,23 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
         // Never the field that says WHICH document this is: a plausible value for an unanswered
         // question is one thing, deciding on a carrier's behalf that their filing is a
         // certificate of incorporation is another.
-        if (r.variantByField?.from === f.key) continue;
+        // …unless the record SAYS what the old one could only have been. Every plate filed
+        // while this was "the IRP plate record" was apportioned; that is not a guess, it is the
+        // record's own history, and `priorValue` is where it is stated.
+        if (r.variantByField?.from === f.key && !(f.kind === 'select' && f.priorValue)) continue;
         if ((next ?? v).fields?.[f.key]) continue;
         // …unless the old record could only have meant one thing. A WSIB record was Ontario's
         // board, because that is all the record was, so its history takes that answer outright
         // rather than one sampled from a list that now also offers WCB.
         const prior = f.kind === 'select' ? f.priorValue : undefined;
-        const pool = fieldPool(f);
+        // Only a CLASSIFICATION may be chosen on the carrier's behalf — a value from the closed
+        // list the field itself offers. Everything else on these forms is read OFF a document:
+        // the number on a decal, a surety's reference, an employer's name, the dates someone
+        // worked there. A plausible value for one of those is fiction, and once written it is
+        // indistinguishable from a figure somebody actually checked.
+        const pool = f.kind === 'select' ? fieldPool(f) : [];
         if (!prior && !pool.length) continue;
-        patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: prior ?? pickFor(f.kind === 'date' ? v.id : v.id + f.key, pool) } });
+        patch({ fields: { ...((next ?? v).fields ?? {}), [f.key]: prior ?? pickFor(v.id + f.key, pool) } });
     }
     // A record whose answer PINS its province — a WSIB is Ontario's board, and only Ontario's —
     // fills it in for the history too. Run after the loop above, because the answer it reads
@@ -432,6 +465,21 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
             }
             const kept = Object.entries(stored).filter(([k]) => declared.has(k));
             if (kept.length !== Object.keys(stored).length) patch({ fields: Object.fromEntries(kept) });
+        }
+    }
+    // A document uploaded BEFORE the record's uploads were named has no slot, and a form that
+    // renders one box per slot has nowhere to show it: the file is in the data and on no screen.
+    // It is the record's own primary document — the certificate, the ownership copy, the left
+    // decal — so loose files take the free slots in order. Anything past the last free slot is
+    // left as it is rather than displacing a document that IS filed where it belongs.
+    {
+        const slots = r.slotLabels ?? [];
+        const files = (next ?? v).files ?? [];
+        if (slots.length && files.some(f => !f.slot)) {
+            const taken = new Set(files.map(f => f.slot).filter(Boolean));
+            const free = slots.filter(x => !taken.has(x));
+            let i = 0;
+            if (free.length) patch({ files: files.map(f => (f.slot || i >= free.length ? f : { ...f, slot: free[i++] })) });
         }
     }
     // A DATE the record no longer has is the same problem as a field it no longer has, and it
@@ -494,7 +542,30 @@ function migrateVersion(base: SafetyRecord | undefined, v: DocVersion): DocVersi
  * present in the data, gone from the screen. So their entries are moved onto the surviving
  * record, stamped with the type (and the province) that says which form they were.
  */
-const MERGED_RECORDS: Record<string, { into: string; fields: Record<string, string>; country: string; stateProv: string; wasNamed: string }> = {
+const MERGED_RECORDS: Record<string, {
+    into: string; fields: Record<string, string>; country: string; stateProv: string;
+    /** What the folded record used to be called — several names where it has been renamed. */
+    wasNamed: string | string[];
+    /** Put the folded record's documents in this named slot on the record that absorbed them. */
+    slot?: string;
+    /** The folded record's number means something else on the destination — a cab card number
+     *  is not a plate number — so it is dropped rather than filed under the wrong label. */
+    clearNumber?: boolean;
+    /**
+     * The folded record's number / expiry belong to a FIELD on the destination rather than to
+     * its built-ins. A customs bond's number is not the SCAC code and its expiry is not the
+     * certificate's: left where they were they would read as both, on a record that shows one
+     * of each. Moved across, and the built-in cleared.
+     */
+    numberTo?: string;
+    expiryTo?: string;
+    /**
+     * What folded versions are CALLED, where the destination's own name would be a lie. A bond
+     * folded onto the SCAC record is still a bond — naming it "SCAC Code 2026" beside the
+     * actual certificate leaves two rows claiming to be the same document.
+     */
+    namedAs?: string;
+}> = {
     nir: { into: 'safety-fitness', fields: { certType: 'NIR' }, country: 'Canada', stateProv: 'Quebec', wasNamed: 'NIR Certificate' },
     'cvor-level-2': { into: 'safety-fitness', fields: { certType: 'CVOR Level 2' }, country: 'Canada', stateProv: 'Ontario', wasNamed: 'CVOR Level 2' },
     // The company's two founding papers, now the two types of one Company Documents record.
@@ -502,6 +573,28 @@ const MERGED_RECORDS: Record<string, { into: string; fields: Record<string, stri
     // whatever was filed is what is kept.
     articles: { into: 'company-docs', fields: { docType: 'Articles of Incorporation' }, country: '', stateProv: '', wasNamed: 'Articles of Incorporation' },
     'operating-name': { into: 'company-docs', fields: { docType: 'Master Business License' }, country: '', stateProv: '', wasNamed: 'Operating Name Registration' },
+    // The three plate records are one now. A local plate is the same record with the other
+    // answer; a cab card is not a record at all — it is the document that comes with an
+    // apportioned plate, so what was filed under it becomes that plate's cab-card upload. Its
+    // number is left behind deliberately: a cab card number is not the number on the plate.
+    'non-irp-plate': { into: 'irp-plate', fields: { plateType: 'Non-IRP' }, country: '', stateProv: '', wasNamed: 'Non-IRP Plates (Local Plates)' },
+    'cab-card': { into: 'irp-plate', fields: { plateType: 'IRP' }, country: '', stateProv: '', wasNamed: 'Cab Card',
+                  slot: 'Cab Card', clearNumber: true },
+    // The customs bonds, folded onto the codes they back. A carrier that filed one IS bonded —
+    // that is not a guess about their paperwork, it is what the record it was filed under meant.
+    //
+    // The US bond keeps everything it had: its number and its expiry move to the SCAC record's
+    // own bond fields (they are not the SCAC code and not the certificate expiry), and the bond
+    // itself lands in the slot beside the certificate.
+    'us-bond': { into: 'scac', fields: { bondStatus: 'Bonded' }, country: 'United States', stateProv: '',
+                 wasNamed: ['US Customs Bond', 'US Bond'], namedAs: 'US Customs Bond',
+                 slot: 'US Customs Bond', numberTo: 'bondNumber', expiryTo: 'bondExpiry' },
+    // The Canadian one needs no such move: a bonded Carrier Code IS monitored on the bond's
+    // expiry, so the date lands on the built-in it already belongs to, and the number on the
+    // surety-bond-number field the record asks for.
+    'canada-bond': { into: 'carrier-code', fields: { bondStatus: 'Bonded' }, country: 'Canada', stateProv: '',
+                     wasNamed: 'Canada Bond', namedAs: 'Canada Bond',
+                     numberTo: 'bondNumber' },
 };
 
 /** Move one folded-in record's versions onto the record that absorbed it. */
@@ -517,6 +610,21 @@ function mergeFoldedRecords(all: Store): boolean {
         // kept where the destination has none — dropping it would silently un-choose their
         // choice — and dropped where it would make a second.
         let pinTaken = (all[target]?.versions ?? []).some(x => x.isCurrent);
+        // A folded document that lands in a NAMED SLOT is a COMPANION to the record's own
+        // document, not a newer version of it: a cab card is not a newer plate, a customs bond
+        // is not a newer SCAC certificate. Left to position, one uploaded last week would become
+        // the record's current version — and monitoring reads the current version, so the
+        // certificate's expiry would quietly stop being watched. So the destination's own newest
+        // document is pinned first, and the companion rows can never take the pin.
+        if (spec.slot && !pinTaken) {
+            const own = all[target]?.versions ?? [];
+            const newest = own.reduce<DocVersion | null>((best, v) =>
+                (!best || (v.uploadedAt || '') > (best.uploadedAt || '') ? v : best), null);
+            if (newest) {
+                all[target] = { ...all[target], versions: own.map(v => (v === newest ? { ...v, isCurrent: true } : v)) };
+                pinTaken = true;
+            }
+        }
         const stamped = entry.versions.map(v => {
             const keepPin = !!v.isCurrent && !pinTaken;
             if (keepPin) pinTaken = true;
@@ -529,6 +637,29 @@ function mergeFoldedRecords(all: Store): boolean {
                 // name becomes "NIR 2026" / "CVOR Level 2 2026". A typed name is kept.
                 label: relabelMerged(v.label, spec, rec),
                 isCurrent: keepPin || undefined,
+                // A folded record whose whole content was ONE document lands as that document,
+                // in the slot it belongs to — not as a loose attachment on a record whose
+                // uploads are named.
+                ...(spec.slot ? { files: v.files.map(f => ({ ...f, slot: spec.slot })) } : {}),
+                ...(spec.clearNumber ? { numberValue: '' } : {}),
+                // A number / date that means something else on the destination is moved to the
+                // field that does mean it, and the built-in cleared — never left to be read as
+                // the destination's own.
+                ...(spec.numberTo ? {
+                    numberValue: '',
+                    fields: { ...(v.fields ?? {}), ...spec.fields, ...(v.numberValue.trim() ? { [spec.numberTo]: v.numberValue } : {}) },
+                } : {}),
+                ...(spec.expiryTo ? {
+                    expiryDate: '',
+                    fields: {
+                        ...(v.fields ?? {}), ...spec.fields,
+                        ...(v.numberValue.trim() && spec.numberTo ? { [spec.numberTo]: v.numberValue } : {}),
+                        ...(v.expiryDate.trim() ? { [spec.expiryTo]: v.expiryDate } : {}),
+                    },
+                    // An alert counting down to a date the record no longer holds fires on
+                    // nothing; the destination's own expiry is what it watches now.
+                    monitoring: { ...v.monitoring, enabled: false },
+                } : {}),
             };
         });
         const existing = all[target]?.versions ?? [];
@@ -539,9 +670,16 @@ function mergeFoldedRecords(all: Store): boolean {
     return moved;
 }
 
-function relabelMerged(label: string, spec: { fields: Record<string, string>; wasNamed: string }, rec?: SafetyRecord): string {
-    const name = Object.values(spec.fields)[0] ?? label;
-    const auto = ['Record', spec.wasNamed, name, rec?.recordName].filter(Boolean) as string[];
+function relabelMerged(label: string, spec: { fields: Record<string, string>; wasNamed: string | string[]; namedAs?: string }, rec?: SafetyRecord): string {
+    // What the moved record is CALLED where it lands. Where the destination names its records
+    // after the answer — a safety fitness certificate is called NIR or NSC — that answer is the
+    // name. Where it does not, the destination's own name is: a cab card folded into the plates
+    // record is a plate record, and calling it "IRP" would name it after a field nobody reads.
+    // `namedAs` overrides both, for a document that keeps its own identity on the record that
+    // absorbed it — a customs bond filed onto a SCAC is still a customs bond.
+    const name = spec.namedAs ?? (rec?.nameFromField ? Object.values(spec.fields)[0] : rec?.recordName) ?? label;
+    const wasNamed = Array.isArray(spec.wasNamed) ? spec.wasNamed : [spec.wasNamed];
+    const auto = ['Record', ...wasNamed, name, rec?.recordName].filter(Boolean) as string[];
     for (const from of auto) {
         const m = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d{4})?(\\s*\\(\\d+\\))?$`, 'i').exec(label.trim());
         if (m) return `${name}${m[1] ? ` ${m[1]}` : ''}${m[2] ? ` ${m[2].trim()}` : ''}`;
@@ -562,6 +700,30 @@ function migrateStore(): void {
         // rather than sitting in storage forever.
         for (const key of Object.keys(all)) {
             if (/^[^:]+::[^:]+::custom-demo-[12]$/.test(key)) { delete all[key]; changed = true; }
+        }
+        // A record that no longer holds SEVERAL concurrent things — a pink slip is one card per
+        // truck, not a shelf of policies — leaves whatever was filed as instances unreachable:
+        // the list builds its rows from `versions` for a single-current record, so the documents
+        // are in storage and on no screen. Flattened into the version history instead, newest
+        // first, which is exactly what a single-current record shows.
+        for (const [key, entry] of Object.entries(all)) {
+            const rec = RECORD_BY_ID.get(key.split('::')[2] ?? '');
+            if (!rec || rec.multiInstance || !entry.instances?.length) continue;
+            const freed = instancesOf(entry).flatMap(i => i.versions ?? []);
+            if (!freed.length) { all[key] = { versions: entry.versions ?? [] }; changed = true; continue; }
+            // Only one version in a single-current record may be pinned; the rest fall back to
+            // position, which is what the newest-first sort below decides.
+            let pinTaken = (entry.versions ?? []).some(v => v.isCurrent);
+            const kept = freed.map(v => {
+                const keepPin = !!v.isCurrent && !pinTaken;
+                if (keepPin) pinTaken = true;
+                return { ...v, isCurrent: keepPin || undefined };
+            });
+            all[key] = {
+                versions: [...(entry.versions ?? []), ...kept]
+                    .sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || '')),
+            };
+            changed = true;
         }
         for (const [key, entry] of Object.entries(all)) {
             // Every entry is visited: the lifecycle-value cleanup applies to all of them, and

@@ -5,7 +5,8 @@ import {
     Fuel, Radio, Activity, Map as MapIcon, Camera, Wrench, Layers,
     KeyRound, ShieldCheck, Package, Cpu, CreditCard,
     CircleCheck, Clock, AlertTriangle, CircleSlash,
-    PackageCheck, ChevronDown, ChevronRight, Undo2, UserRound, ListChecks,
+    PackageCheck, ChevronDown, ChevronRight, Undo2, UserRound, ListChecks, Share2,
+    Bell, BellOff, ChevronRight as RowChevron,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,34 +14,54 @@ import {
     getInventoryForCarrier,
     VENDORS,
     VENDOR_CATEGORIES,
-    ACME_ASSETS,
     ACME_DRIVERS,
     CARRIER_NAME,
+    itemName,
+    inventoryMonitoring,
     type InventoryItem,
     type InventoryStatus,
-    type Assignment,
 } from "./inventory.data";
-import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
+import { MONITOR_BASIS_LABEL } from "@/pages/compliance/monitoring-schedule";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import {
-    useDriverHandovers, itemsHandedElsewhere, handoverStatusOf,
+    useDriverHandovers, handoverStatusOf, seedDemoHandovers,
     buildDriverGroups, type HandoverStatus,
 } from "./handovers.data";
+import {
+    resolveAsset, resolveDriver, KIND_TONE, fmtDate,
+} from "./inventory-assignment";
+import { KebabMenu } from "@/components/ui/KebabMenu";
+import { ShareToChat } from "@/components/share/ShareToChat";
+import { setMessagesFocus, consumePendingRecord, type RecordRef } from "@/pages/messages/messages-store";
 import { INVENTORY_TABS } from "./InventoryTabs";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { TablePager } from "./TablePager";
 import { KpiTile } from "./InventoryKpi";
-import { AddInventoryModule } from "./AddInventoryModule";
 import { DirectHandoverDialog, ChecklistHandoverPicker } from "./HandoverDialogs";
 import { useInventoryAdditions } from "./inventory-store";
 import { cn } from "@/lib/utils";
 
-type HandoverFilter = "all" | "handed" | "not";
-const HANDOVER_FILTERS: { id: HandoverFilter; label: string }[] = [
+/**
+ * Where an item is — the question the Asset and Driver columns answer, asked as a filter.
+ *
+ * One switch rather than the dropdown-plus-switch this replaced. Those were two controls
+ * asking the same question in two shapes, and they could be set against each other:
+ * "Assigned to asset" AND "Not handed over" is a pair of filters, not a place an item is.
+ *
+ * The five options ARE mutually exclusive as far as the reader is concerned, but they are
+ * not five values of one stored field: "assigned" is on the item, "handed" is a separate
+ * signed checklist. A fuel card can be assigned to a truck and handed to its driver, and it
+ * is filed here under the checklist, because that is the more specific fact about where the
+ * thing physically is.
+ */
+type AssignFilter = "all" | "asset" | "driver" | "handed" | "none";
+const ASSIGN_FILTERS: { id: AssignFilter; label: string }[] = [
     { id: "all", label: "All" },
-    { id: "handed", label: "Handed over" },
-    { id: "not", label: "Not handed over" },
+    { id: "asset", label: "Assigned to asset" },
+    { id: "driver", label: "Assigned to driver" },
+    { id: "handed", label: "Handed to driver" },
+    { id: "none", label: "Not assigned" },
 ];
 
 type Props = {
@@ -84,13 +105,6 @@ const visualFor = (categoryId: string) => CATEGORY_VISUAL[categoryId] ?? DEFAULT
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const fmtDate = (d: string) => {
-    if (!d) return "—";
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return d;
-    return dt.toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "2-digit" });
-};
-
 // The category id an item resolves to, or null when it maps to no known
 // category (surfaced under the "Other" tab).
 const categoryIdOf = (item: InventoryItem): string | null => {
@@ -99,97 +113,106 @@ const categoryIdOf = (item: InventoryItem): string | null => {
     return VENDOR_CATEGORIES.some((c) => c.id === vendor.categoryId) ? vendor.categoryId : null;
 };
 
+// Sticky, so the column you are reading still has a name three screens down a long list.
 const TH = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-    <th className={cn("px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap", className)}>
+    <th className={cn(
+        "sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap",
+        className,
+    )}>
         {children}
     </th>
 );
-const TD = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-    <td className={cn("px-4 py-3 text-sm whitespace-nowrap align-middle", className)}>{children}</td>
+const TD = ({ children, className, onClick }: {
+    children?: React.ReactNode;
+    className?: string;
+    /** Set on cells whose own controls must not also trigger the row's click. */
+    onClick?: React.MouseEventHandler<HTMLTableCellElement>;
+}) => (
+    <td className={cn("px-4 py-3 text-sm whitespace-nowrap align-middle", className)} onClick={onClick}>{children}</td>
 );
-
-function resolveAssignment(
-    a: Assignment | undefined,
-    accountId: string | undefined,
-) {
-    if (!a) return null;
-    // Carrier-scoped lookup: prefer the active carrier's drivers / assets,
-    // fall back to Acme's so the display continues to work for the legacy
-    // hand-curated INVENTORY_ITEMS that are seeded against Acme ids.
-    const drivers = (accountId && CARRIER_DRIVERS[accountId]) || ACME_DRIVERS;
-    const assets = (accountId && CARRIER_ASSETS[accountId]) || ACME_ASSETS;
-
-    if (a.kind === "driver") {
-        const driver = drivers.find((d: any) => d.id === a.targetId)
-            ?? ACME_DRIVERS.find((d) => d.id === a.targetId);
-        if (!driver) return { label: "—", sub: "Unknown driver", icon: IdCard, kindLabel: "Driver", tone: "slate" as const };
-        const fullName = (driver as any).name
-            ?? `${(driver as any).firstName ?? ""} ${(driver as any).lastName ?? ""}`.trim();
-        return {
-            label: fullName || "—",
-            sub: (driver as any).licenseNumber ? `License ${(driver as any).licenseNumber}` : "—",
-            icon: IdCard,
-            kindLabel: "Driver",
-            tone: "emerald" as const,
-        };
-    }
-    const asset = assets.find((x: any) => x.id === a.targetId)
-        ?? ACME_ASSETS.find((x) => x.id === a.targetId);
-    if (!asset) return { label: "—", sub: "Unknown asset", icon: Truck, kindLabel: a.kind === "cmv" ? "CMV" : "Non-CMV", tone: "slate" as const };
-    return {
-        label: asset.unitNumber,
-        sub: `${asset.year} ${asset.make} ${asset.model}`,
-        icon: Truck,
-        kindLabel: a.kind === "cmv" ? "CMV" : "Non-CMV",
-        tone: a.kind === "cmv" ? ("indigo" as const) : ("orange" as const),
-    };
-}
-
-const KIND_TONE: Record<string, string> = {
-    indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
-    orange: "bg-orange-50 text-orange-700 border-orange-200",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    slate: "bg-slate-100 text-slate-600 border-slate-200",
-};
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export function InventoryListPage({ onNavigate, accountId, accountName }: Props) {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState<InventoryStatus | "all">("all");
-    const [handoverFilter, setHandoverFilter] = useState<HandoverFilter>("all");
+    const [assignFilter, setAssignFilter] = useState<AssignFilter>("all");
+    // Under "Handed to driver" the same rows can be read grouped by the person holding them,
+    // which is where the take-back and checklist actions live. It is a view of that filter,
+    // not a sixth filter, so it is a separate flag rather than another switch option.
+    const [byDriver, setByDriver] = useState(false);
     const [activeCat, setActiveCat] = useState<string>("All");
-    const [addOpen, setAddOpen] = useState(false);
     const [directOpen, setDirectOpen] = useState(false);
     const [checklistOpen, setChecklistOpen] = useState(false);
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
-    const handed = handoverFilter === "handed";
+    const handed = assignFilter === "handed" && byDriver;
 
-    // Items added inline via the Add Inventory pop-up (localStorage overlay).
-    const { additions, add } = useInventoryAdditions(accountId);
+    // The two localStorage overlays on the frozen seed: items added in the app, and edits
+    // made to any item. Without the second, saving a change to a seeded row did nothing
+    // visible here — the list re-read the module and showed the original values.
+    const { additions, applyEdit } = useInventoryAdditions(accountId);
 
     // Inventory items are scoped to the active carrier, with any inline-added
     // items layered on top. With no `accountId` we fall back to the global
     // INVENTORY_ITEMS list so super-admin first-mount still renders.
     const items = useMemo<InventoryItem[]>(() => {
-        const base = accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS;
-        return additions.length ? [...base, ...additions] : base;
-    }, [accountId, additions]);
+        const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyEdit);
+        return additions.length ? [...additions, ...base] : base;
+    }, [accountId, additions, applyEdit]);
 
     // Item ids currently on some driver's hand-over list (from the Hand Over
     // module) — drives the Handed over / Not handed over switch.
     const { records } = useDriverHandovers(accountId ?? "acct-001");
-    const handedSet = useMemo(
-        () => itemsHandedElsewhere(records, accountId ?? "acct-001"),
-        [records, accountId],
-    );
+
+    // Which driver holds which item, off the same hand-over records. `itemsHandedElsewhere`
+    // answers "is it out?"; the Driver column has to say WHO, so the lines are read again
+    // here into an item → driver map.
+    const handedTo = useMemo(() => {
+        const scope = accountId ?? "acct-001";
+        const m = new Map<string, { driverId: string; status: HandoverStatus }>();
+        for (const rec of Object.values(records)) {
+            if (rec.accountId !== scope) continue;
+            const status = handoverStatusOf(rec);
+            for (const line of rec.lines) m.set(line.itemId, { driverId: rec.driverId, status });
+        }
+        return m;
+    }, [records, accountId]);
+
+    // The demo hand-overs used to be written only when the Hand Over page was opened, so a
+    // carrier that came straight here had none — and the Driver column and the
+    // "Handed to driver" filter had nothing to show. Seeding is a no-op once the carrier has
+    // any record of its own.
+    useEffect(() => {
+        const scope = accountId ?? "acct-001";
+        const roster = (CARRIER_DRIVERS[scope] ?? ACME_DRIVERS)
+            .filter((d: any) => d.status === "Active")
+            .map((d: any) => ({ id: d.id, name: d.name ?? `${d.firstName ?? ""} ${d.lastName ?? ""}`.trim() }));
+        seedDemoHandovers(scope, records, roster, items, "Fleet Manager");
+    }, [accountId, records, items]);
+
+    // An item being shared into a chat. Null when the dialog is closed.
+    const [shareItem, setShareItem] = useState<InventoryItem | null>(null);
+    const itemRef = (it: InventoryItem): RecordRef => {
+        const vendor = VENDORS.find((v) => v.id === it.vendorId);
+        return {
+            type: "inventory", id: it.id, label: itemName(it),
+            sublabel: [vendor?.companyName || vendor?.name, it.serial].filter(Boolean).join(` · `) || undefined,
+            path: "/inventory",
+        };
+    };
+    // Clicking the shared record link in a chat lands here and opens that item.
+    useEffect(() => {
+        const id = consumePendingRecord("/inventory");
+        if (id) onNavigate(`/inventory/items/${id}`);
+    }, []);
 
     // Reset filters when the carrier changes.
     useEffect(() => {
         setSearch("");
         setStatusFilter("all");
-        setHandoverFilter("all");
+        setAssignFilter("all");
+        setByDriver(false);
         setActiveCat("All");
     }, [accountId]);
 
@@ -206,7 +229,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     }, [items]);
 
     // The header stays put and shrinks as the list scrolls; the body is its own scroller.
-    const { scrollRef, condensed, onScroll } = useCondensingHeader(handoverFilter);
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(assignFilter);
     const kpiChips = useMemo(() => [
         { id: 'total', label: 'Items', value: counts.total, tone: 'text-blue-700' },
         { id: 'active', label: 'Active', value: counts.active, tone: 'text-emerald-700' },
@@ -219,11 +242,18 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     const baseFiltered = useMemo(
         () => items.filter((it) => {
             if (statusFilter !== "all" && it.status !== statusFilter) return false;
-            if (handoverFilter === "handed" && !handedSet.has(it.id)) return false;
-            if (handoverFilter === "not" && handedSet.has(it.id)) return false;
+            const kind = it.assignedTo?.kind;
+            const isHanded = handedTo.has(it.id);
+            // "Assigned" is read off the item; "handed" off the signed checklist. An item can
+            // be both, and a hand-over wins — it is the more specific answer to where the
+            // thing physically is, and it is what the Driver column shows for that row.
+            if (assignFilter === "asset" && (isHanded || (kind !== "cmv" && kind !== "non-cmv"))) return false;
+            if (assignFilter === "driver" && (isHanded || kind !== "driver")) return false;
+            if (assignFilter === "handed" && !isHanded) return false;
+            if (assignFilter === "none" && (it.assignedTo || isHanded)) return false;
             return true;
         }),
-        [items, statusFilter, handoverFilter, handedSet],
+        [items, statusFilter, assignFilter, handedTo],
     );
 
     const tabs = useMemo(() => {
@@ -253,6 +283,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                 if (!q) return true;
                 const vendor = VENDORS.find((v) => v.id === it.vendorId);
                 return (
+                    itemName(it).toLowerCase().includes(q) ||
                     (vendor?.name ?? "").toLowerCase().includes(q) ||
                     it.serial.toLowerCase().includes(q) ||
                     it.pin.toLowerCase().includes(q)
@@ -261,7 +292,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     }, [baseFiltered, activeCat, search]);
 
     // Pagination over the filtered item rows.
-    useEffect(() => { setPage(0); }, [search, statusFilter, handoverFilter, activeCat, accountId]);
+    useEffect(() => { setPage(0); }, [search, statusFilter, assignFilter, activeCat, accountId]);
     const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
     const pagedRows = rows.slice(safePage * perPage, safePage * perPage + perPage);
@@ -282,26 +313,6 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                 tabs={INVENTORY_TABS.map(t => ({ id: t.id, label: t.label, icon: t.Icon }))}
                 activeTab="list"
                 onTabChange={id => onNavigate(INVENTORY_TABS.find(t => t.id === id)?.path ?? '/inventory')}
-                actions={
-                    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-                        {HANDOVER_FILTERS.map((o) => (
-                            <button
-                                key={o.id}
-                                type="button"
-                                onClick={() => setHandoverFilter(o.id)}
-                                className={cn(
-                                    "rounded-md px-3 text-sm font-semibold whitespace-nowrap transition-colors",
-                                    condensed ? "py-1" : "py-1.5",
-                                    handoverFilter === o.id
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-600 hover:text-slate-900",
-                                )}
-                            >
-                                {o.label}
-                            </button>
-                        ))}
-                    </div>
-                }
             />
 
             {/* Body */}
@@ -322,13 +333,13 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
 
                 {/* Toolbar */}
                 <div className={cn("px-5 py-3 flex items-center gap-2 flex-wrap", handed && "border-b border-slate-100")}>
-                    <div className="relative flex-1 min-w-[240px] max-w-md">
+                    <div className="relative min-w-[190px] max-w-xs flex-1">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         <input
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder={handed ? "Search drivers by name or license…" : "Search vendor, serial, or PIN…"}
+                            placeholder={handed ? "Search drivers by name or license…" : "Search item, vendor, number or PIN…"}
                             className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
@@ -344,18 +355,46 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             <option value="Expired">Expired</option>
                         </select>
                     )}
+                    {/* Where the item is, as one switch. This replaced a dropdown and a separate
+                        All / Handed over switch that asked the same question twice and could be
+                        set against each other. */}
+                    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5">
+                        {ASSIGN_FILTERS.map((o) => (
+                            <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => { setAssignFilter(o.id); if (o.id !== "handed") setByDriver(false); }}
+                                className={cn(
+                                    "rounded-md px-2.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors",
+                                    assignFilter === o.id
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-600 hover:text-slate-900",
+                                )}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
                     <div className="ml-auto flex items-center gap-2">
-                        {handed && (
-                            <Button variant="outline" size="sm" onClick={() => setDirectOpen(true)}>
-                                <PackageCheck size={15} /> Hand over to driver
-                            </Button>
+                        {assignFilter === "handed" && (
+                            <>
+                                {/* The per-driver view, with its take-back and checklist actions.
+                                    Only reachable from the filter it belongs to. */}
+                                <Button variant={byDriver ? "default" : "outline"} size="sm" onClick={() => setByDriver((v) => !v)}>
+                                    <UserRound size={15} /> By driver
+                                </Button>
+                                {byDriver && (
+                                    <Button variant="outline" size="sm" onClick={() => setDirectOpen(true)}>
+                                        <PackageCheck size={15} /> Hand over to driver
+                                    </Button>
+                                )}
+                                <Button size="sm" onClick={() => setChecklistOpen(true)}>
+                                    <ListChecks size={15} /> Create checklist
+                                </Button>
+                            </>
                         )}
-                        {handoverFilter !== "all" ? (
-                            <Button size="sm" onClick={() => setChecklistOpen(true)}>
-                                <ListChecks size={15} /> Create checklist
-                            </Button>
-                        ) : (
-                            <Button size="sm" onClick={() => setAddOpen(true)}>
+                        {assignFilter !== "handed" && (
+                            <Button size="sm" onClick={() => onNavigate("/inventory/items/new")}>
                                 <Plus size={15} /> Add Inventory
                             </Button>
                         )}
@@ -367,80 +406,161 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                 ) : rows.length === 0 ? (
                     <div className="border-t border-slate-100 p-12 text-center">
                         <Layers size={28} className="mx-auto text-slate-300 mb-2" />
-                        <p className="text-sm font-medium text-slate-600">No inventory items match your filters</p>
-                        <p className="text-xs text-slate-500 mt-1">Try a different category, status, or search.</p>
+                        <p className="text-sm font-semibold text-slate-700">No inventory items match your filters</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                            {search.trim()
+                                ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
+                                : "Try a different category, status, or assignment."}
+                        </p>
+                        {(search.trim() || statusFilter !== "all" || assignFilter !== "all" || activeCat !== "All") && (
+                            <button
+                                type="button"
+                                onClick={() => { setSearch(""); setStatusFilter("all"); setAssignFilter("all"); setActiveCat("All"); }}
+                                className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                            >
+                                Clear filters
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="border-t border-slate-100">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-slate-200">
+                            <thead>
                                 <tr>
-                                    <TH>Vendor</TH>
-                                    <TH>Serial #</TH>
-                                    <TH>PIN #</TH>
-                                    <TH>Issued</TH>
-                                    <TH>Expires</TH>
-                                    <TH>Schedule</TH>
-                                    <TH>Assigned To</TH>
+                                    <TH>Item</TH>
+                                    <TH>Number / PIN</TH>
+                                    {/* The alert is a bell beside the date it counts back from — a whole
+                                        column for it pushed Asset, Driver and Status off the right edge,
+                                        and the detail page's Monitoring tab has the full schedule. */}
+                                    <TH>Issued / Expires</TH>
+                                    <TH>Asset</TH>
+                                    <TH>Driver</TH>
                                     <TH>Status</TH>
-                                    <TH className="text-right">Actions</TH>
+                                    <TH className="w-px text-right">Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {pagedRows.map((item) => {
                                     const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                     const visual = visualFor(categoryIdOf(item) ?? "");
-                                    const target = resolveAssignment(item.assignedTo, accountId);
-                                    const vInitials = (vendor?.name ?? "?")
-                                        .replace(/[^a-zA-Z0-9\s]/g, "")
-                                        .split(/\s+/).filter(Boolean).slice(0, 2)
-                                        .map((p) => p[0]!.toUpperCase()).join("");
+                                    const onAsset = resolveAsset(item.assignedTo, accountId);
+                                    const withDriver = resolveDriver(item.assignedTo, accountId, handedTo.get(item.id));
                                     return (
-                                        <tr key={item.id} className="even:bg-slate-50/40 hover:bg-blue-50/40 transition-colors">
-                                            {/* Vendor with avatar */}
-                                            <TD>
-                                                <div className="flex items-center gap-2.5 min-w-0">
-                                                    <div className={cn(
-                                                        "h-8 w-8 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0",
-                                                        visual.avatarBg, visual.avatarText
+                                        <tr
+                                            key={item.id}
+                                            // The row opens the item. Reading one used to mean opening the EDITOR,
+                                            // which is the wrong default: most of the time you want to look at the
+                                            // thing, not change it.
+                                            onClick={() => onNavigate(`/inventory/items/${item.id}`)}
+                                            tabIndex={0}
+                                            role="link"
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                    e.preventDefault();
+                                                    onNavigate(`/inventory/items/${item.id}`);
+                                                }
+                                            }}
+                                            className="group cursor-pointer transition-colors even:bg-slate-50/40 hover:bg-blue-50/50 focus:bg-blue-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40"
+                                        >
+                                            <TD className="max-w-[22rem]">
+                                                <div className="flex min-w-0 items-center gap-2.5">
+                                                    {/* The category's icon rather than the vendor's initials: "CI" told you
+                                                        nothing twelve times over on a list of company-issued kit, while the
+                                                        icon says at a glance whether a row is a key, a card or a camera. */}
+                                                    <span className={cn(
+                                                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                                                        visual.avatarBg, visual.avatarText,
                                                     )}>
-                                                        {vInitials}
-                                                    </div>
+                                                        <visual.icon size={15} />
+                                                    </span>
                                                     <div className="min-w-0">
-                                                        <div className="text-sm font-semibold text-slate-900 truncate leading-tight">{vendor?.name ?? "—"}</div>
-                                                        {vendor?.companyName && (
-                                                            <div className="text-[11px] text-slate-500 truncate">{vendor.companyName}</div>
-                                                        )}
+                                                        {/* What the item is called, then who it is from — a carrier
+                                                            holding four cards from one vendor tells them apart by
+                                                            the first line, not the second. */}
+                                                        <div className="truncate text-sm font-semibold leading-tight text-slate-900 group-hover:text-blue-700">{itemName(item)}</div>
+                                                        <div className="truncate text-[11px] text-slate-500">{vendor?.companyName || vendor?.name || "—"}</div>
                                                     </div>
                                                 </div>
                                             </TD>
-                                            <TD className="font-mono text-xs text-slate-700">{item.serial}</TD>
-                                            <TD className="font-mono text-xs text-slate-700">{item.pin || <span className="text-slate-300">—</span>}</TD>
-                                            <TD className="text-slate-600 text-xs">{fmtDate(item.issueDate)}</TD>
-                                            <TD className="text-slate-600 text-xs">{fmtDate(item.expiryDate)}</TD>
                                             <TD>
-                                                <div className="text-xs text-slate-600 leading-tight">{item.recurrence === "None" ? "One-time" : item.recurrence}</div>
-                                                {item.reminder !== "None" && <div className="text-[11px] text-slate-400 leading-tight">remind {item.reminder.toLowerCase()}</div>}
+                                                <div className="font-mono text-xs leading-tight text-slate-700">{item.serial}</div>
+                                                {item.pin && <div className="font-mono text-[11px] leading-tight text-slate-400">PIN {item.pin}</div>}
                                             </TD>
                                             <TD>
-                                                {target ? (
+                                                <div className="text-xs leading-tight text-slate-600">{fmtDate(item.issueDate)}</div>
+                                                {/* An item with no expiry is not missing one — a yard key never runs out.
+                                                    Where there IS one, the bell says whether anybody gets told: a date with
+                                                    a muted bell is the row that will quietly lapse. */}
+                                                <div className="flex items-center gap-1 text-[11px] leading-tight text-slate-400">
+                                                    {item.expiryDate ? (
+                                                        <>
+                                                            <span>→ {fmtDate(item.expiryDate)}</span>
+                                                            {(() => {
+                                                                const mon = inventoryMonitoring(item);
+                                                                const days = [...mon.reminders].sort((a, b) => b - a);
+                                                                return mon.enabled ? (
+                                                                    <span
+                                                                        className="inline-flex shrink-0"
+                                                                        title={`Alert on ${MONITOR_BASIS_LABEL[mon.basis].toLowerCase()}${days.length ? ` · remind ${days.map((d) => (d === 0 ? "on the day" : `${d}d`)).join(", ")}` : ""}`}
+                                                                    >
+                                                                        <Bell size={11} className="text-emerald-500" aria-label="Alert set" />
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex shrink-0" title="No alert set">
+                                                                        <BellOff size={11} className="text-slate-300" aria-label="No alert set" />
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                        </>
+                                                    ) : (
+                                                        <span>no expiry</span>
+                                                    )}
+                                                </div>
+                                            </TD>
+                                            {/* The vehicle — blank when the item is on a person, or on nobody. */}
+                                            <TD>
+                                                {onAsset ? (
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <span className={cn(
                                                             "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0",
-                                                            KIND_TONE[target.tone]
+                                                            KIND_TONE[onAsset.tone]
                                                         )}>
-                                                            <target.icon size={10} /> {target.kindLabel}
+                                                            <Truck size={10} /> {onAsset.kindLabel}
                                                         </span>
                                                         <div className="min-w-0 leading-tight">
-                                                            <div className="text-sm font-semibold text-slate-900 truncate">{target.label}</div>
-                                                            <div className="text-[11px] text-slate-500 truncate">{target.sub}</div>
+                                                            <div className="text-sm font-semibold text-slate-900 truncate">{onAsset.label}</div>
+                                                            <div className="text-[11px] text-slate-500 truncate">{onAsset.sub}</div>
                                                         </div>
                                                     </div>
                                                 ) : (
+                                                    <span className="text-xs text-slate-300">—</span>
+                                                )}
+                                            </TD>
+                                            {/* The person — assigned to them, driving the vehicle it is on, or
+                                                holding it on a signed hand-over. */}
+                                            <TD>
+                                                {withDriver ? (
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className={cn(
+                                                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0",
+                                                            withDriver.via === "handed" ? KIND_TONE.violet : KIND_TONE.emerald
+                                                        )}>
+                                                            {withDriver.via === "handed" ? <PackageCheck size={10} /> : <IdCard size={10} />}
+                                                            {withDriver.via === "handed" ? "Handed" : "Driver"}
+                                                        </span>
+                                                        <div className="min-w-0 leading-tight">
+                                                            <div className="text-sm font-semibold text-slate-900 truncate">{withDriver.label}</div>
+                                                            <div className="text-[11px] text-slate-500 truncate">{withDriver.sub}</div>
+                                                        </div>
+                                                    </div>
+                                                ) : !onAsset ? (
+                                                    // Nobody and nothing — said once, in the column where a holder would be.
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-bold uppercase tracking-wider">
                                                         Unassigned
                                                     </span>
+                                                ) : (
+                                                    <span className="text-xs text-slate-300">—</span>
                                                 )}
                                             </TD>
                                             <TD>
@@ -452,16 +572,27 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     {item.status}
                                                 </span>
                                             </TD>
-                                            <TD className="text-right">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onNavigate(`/inventory/items/${item.id}`)}
-                                                    title="Edit"
-                                                    aria-label="Edit"
-                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"
-                                                >
-                                                    <Pencil size={14} />
-                                                </button>
+                                            {/* The row opens the item, so every control in here stops the click
+                                                reaching it — otherwise Edit would open the item and then the editor. */}
+                                            <TD className="w-px text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-0.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onNavigate(`/inventory/items/${item.id}/edit`)}
+                                                        title="Edit"
+                                                        aria-label="Edit"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600"
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                    {/* Everything past editing goes behind the three dots, the way it does on
+                                                        Tickets and the compliance records — one overflow menu per row rather
+                                                        than a widening strip of icons. */}
+                                                    <KebabMenu items={[
+                                                        { label: "Share to chat", icon: Share2, onClick: () => setShareItem(item) },
+                                                    ]} />
+                                                    <RowChevron size={14} className="ml-0.5 shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" aria-hidden />
+                                                </div>
                                             </TD>
                                         </tr>
                                     );
@@ -483,12 +614,18 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             </div>
             </div>
 
-            {addOpen && (
-                <AddInventoryModule
-                    items={items}
-                    accountId={accountId}
-                    onAdd={add}
-                    onClose={() => setAddOpen(false)}
+            {shareItem && (
+                <ShareToChat
+                    open
+                    onClose={() => setShareItem(null)}
+                    title={`Share ${itemName(shareItem)}`}
+                    subtitle="Send the item in a chat, or to an outsider by email"
+                    source={{ type: "manual", id: shareItem.id, label: itemName(shareItem) }}
+                    items={[]}
+                    record={itemRef(shareItem)}
+                    defaultChannel="in-app"
+                    defaultSubject={itemName(shareItem)}
+                    onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate("/messages"); }}
                 />
             )}
             {directOpen && (

@@ -8,6 +8,7 @@
 // details — enough to populate the Asset Detail view.
 
 import { ACCOUNTS_DB, type AccountRecord } from './accounts.data';
+import { getDriversForAccount } from './carrier-drivers.data';
 import { type Asset } from '@/pages/assets/assets.data';
 import { hash, mulberry32, pick, pad } from './carrier-fleet-shared.data';
 
@@ -252,6 +253,27 @@ export const CARRIER_ASSETS: Record<string, Asset[]> = {};
 
 for (const account of ACCOUNTS_DB) {
     CARRIER_ASSETS[account.id] = buildAssetsForCarrier(account, account.assets);
+}
+
+// ─── Who drives what ─────────────────────────────────────────────────────────
+// A power unit is driven by somebody, and several parts of the app ask which: the
+// asset form's Driver Assignment card, the fleet export, and an inventory item
+// handed to "the driver of this vehicle". Without a link they all answered the
+// same way — nobody — which reads as a bug rather than as an empty fleet. So each
+// in-service truck is paired with one of the carrier's active drivers, in order,
+// wrapping round where there are more trucks than drivers (a spare-board driver
+// really does cover more than one unit). Trailers and vans are not driven.
+for (const account of ACCOUNTS_DB) {
+    const drivers = getDriversForAccount(account.id).filter((d) => d.status === 'Active');
+    if (!drivers.length) continue;
+    let seat = 0;
+    for (const asset of CARRIER_ASSETS[account.id] ?? []) {
+        if (asset.assetType !== 'Truck' || asset.operationalStatus === 'Deactivated') continue;
+        const driver = drivers[seat++ % drivers.length];
+        // Started the day the truck joined the fleet, and still running: an assignment
+        // with no end date is the one every reader takes as current.
+        asset.driverAssignments = [{ driverId: driver.id, startDate: asset.dateAdded ?? '' }];
+    }
 }
 
 export const getAssetsForAccount = (accountId: string): Asset[] =>

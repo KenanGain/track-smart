@@ -54,7 +54,7 @@ import { StatusSelect } from '@/pages/accounts/AddAccountPage';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
-import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS, MOCK_DRIVER_DETAILED_TEMPLATE } from './carrier-profile.data';
+import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS, MOCK_DRIVER_DETAILED_TEMPLATE, safetyRegOf } from './carrier-profile.data';
 import { buildProfileBundle } from '@/pages/accounts/carrier-datasets.data';
 import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import { useAppData } from '@/context/AppDataContext';
@@ -312,9 +312,12 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
                                     if (!field) return null;
                                     return (
                                         <div key={fieldKey}>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
+                                            {/* A field can be named by an answer above it — one box
+                                                for the CVOR or the NSC number, labelled as whichever
+                                                registration was chosen. */}
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">{(field.labelBy && field.labelFor?.[formData[field.labelBy]]) || field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
                                             {field.type === 'text' || field.type === 'number' || field.type === 'date' ? (
-                                                <input type={field.type} className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow ${errors[fieldKey] ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`} placeholder={field.placeholder} value={formData[fieldKey] || ''} onChange={(e) => handleChange(fieldKey, field.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)} />
+                                                <input type={field.type} className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow ${errors[fieldKey] ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`} placeholder={(field.labelBy && field.placeholderFor?.[formData[field.labelBy]]) || field.placeholder} value={formData[fieldKey] || ''} onChange={(e) => handleChange(fieldKey, field.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)} />
                                             ) : field.type === 'dotLookup' ? (
                                                 <div>
                                                     <div className="flex items-stretch gap-2">
@@ -1368,7 +1371,7 @@ export function CarrierProfilePage({
                                             <h2 className="text-2xl font-bold text-slate-900 mb-2">General Information</h2>
                                             <h1 className="text-3xl font-bold text-slate-800 mb-3">{viewData.page.carrierHeader.name}</h1>
                                             {(() => {
-                                                const combinedCvorNscRin = [corporateData.cvorNumber, corporateData.nscNumber, corporateData.rinNumber]
+                                                const combinedCvorNscRin = [safetyRegOf(corporateData).safetyRegNumber, corporateData.rinNumber]
                                                     .map((v: string | undefined) => (v ?? '').trim())
                                                     .filter((v: string) => v.length > 0)
                                                     .join(' / ');
