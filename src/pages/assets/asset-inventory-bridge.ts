@@ -215,7 +215,11 @@ export function commitAssetInventory(input: {
         ...(draft.carried ? { alsoDriverOfAsset: true } : {}),
     };
 
-    for (const item of picked) {
+    // Anything signed across is filed against the vehicle as well: a hand-over is about who
+    // has it in their hands, not about who owns it. Filing only one of the two left a handed
+    // item on no vehicle at all.
+    const filing = [...picked, ...handed.filter((h) => !picked.some((pk) => pk.id === h.id))];
+    for (const item of filing) {
         updateInventoryItem(item.id, { assignedTo });
         logInventoryEvent({
             itemId: item.id, accountId: acct, kind: 'assigned',

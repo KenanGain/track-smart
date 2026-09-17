@@ -6,10 +6,17 @@
 // that ends up meaning different things in different places — and the two ticks are
 // the one control in this module a user has to learn.
 //
-// Two destinations, one answer per row: ticking one end clears the other, because a
-// row is a destination rather than four states. A blocked tick carries its reason,
-// since "why can I not hand this over" is the question a dimmed box provokes and
-// never answers.
+// How the two ticks relate depends on who is holding it, and it is not cosmetic:
+//
+//   a driver  — exclusive. Filed against the person, or signed across to the person, are
+//               two records of the same fact; both is one of them twice.
+//   a vehicle — stacked. Something handed to a driver off a truck is still the truck's:
+//               assigned to the vehicle AND signed across to whoever drives it. Making
+//               these exclusive filed a handed item against nobody, so it fell off the
+//               vehicle the moment somebody signed for it.
+//
+// A blocked tick carries its reason, since "why can I not hand this over" is the question
+// a dimmed box provokes and never answers.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from "react";
@@ -50,7 +57,7 @@ export function Tick({ on, tone, label, disabledReason, onToggle }: {
 
 export function ItemPickList({
     items, assigned, handed, onAssign, onHand, holderNoun, handDriverName, handBlockedBecause,
-    emptyAll, maxHeight = "max-h-96",
+    emptyAll, maxHeight = "max-h-96", stacked = false,
 }: {
     items: InventoryItem[];
     assigned: Set<string>;
@@ -65,6 +72,12 @@ export function ItemPickList({
     handBlockedBecause: (it: InventoryItem) => string | null;
     emptyAll?: React.ReactNode;
     maxHeight?: string;
+    /**
+     * Handing it over also files it against the holder, rather than instead of.
+     *
+     * True on a vehicle: the truck keeps the item, its driver signs for it.
+     */
+    stacked?: boolean;
 }) {
     const [search, setSearch] = useState("");
 
@@ -118,10 +131,12 @@ export function ItemPickList({
                         <span className="pr-1 text-right">
                             <span className={cn("flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider",
                                 handDriverName ? "text-violet-600" : "text-slate-300")}>
-                                Hand over → <PenLine size={10} />
+                                {stacked ? "\u2026and hand over" : "Hand over"} → <PenLine size={10} />
                             </span>
                             <span className="block text-[10px] text-slate-500">
-                                {handDriverName ? `${handDriverName} signs for it` : "No driver to sign"}
+                                {!handDriverName ? "No driver to sign"
+                                    : stacked ? `Stays on the ${holderNoun}, ${handDriverName} signs`
+                                    : `${handDriverName} signs for it`}
                             </span>
                         </span>
                     </div>
@@ -154,7 +169,9 @@ export function ItemPickList({
                                 </span>
                                 <Tick
                                     on={handPicked} tone="violet" disabledReason={blocked}
-                                    label={`Hand ${itemName(item)} over to ${handDriverName ?? "the driver"}`}
+                                    label={stacked
+                                        ? `Keep ${itemName(item)} on this ${holderNoun} and have ${handDriverName ?? "the driver"} sign for it`
+                                        : `Hand ${itemName(item)} over to ${handDriverName ?? "the driver"}`}
                                     onToggle={() => onHand(item.id)}
                                 />
                             </div>

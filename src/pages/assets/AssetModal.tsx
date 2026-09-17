@@ -554,18 +554,27 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
 
     const [inventoryDraft, setInventoryDraft] = useState<AssetInventoryDraft>(emptyAssetInventoryDraft);
     const setInv = (p: Partial<AssetInventoryDraft>) => setInventoryDraft(d => ({ ...d, ...p }));
-    const toggleItem = (id: string) => setInventoryDraft(d => ({
-        ...d,
-        itemIds: d.itemIds.includes(id) ? d.itemIds.filter(x => x !== id) : [...d.itemIds, id],
-        // One answer per row: a thing is either filed against the truck or signed across
-        // to its driver, and a row that could be both is a row nobody can read.
-        handIds: d.handIds.filter(x => x !== id),
-    }));
-    const toggleHand = (id: string) => setInventoryDraft(d => ({
-        ...d,
-        handIds: d.handIds.includes(id) ? d.handIds.filter(x => x !== id) : [...d.handIds, id],
-        itemIds: d.itemIds.filter(x => x !== id),
-    }));
+    /**
+     * The two ticks stack here, because this is a vehicle: something handed to a driver off
+     * a truck is still the truck's. Un-assigning it takes the hand-over with it, since a
+     * hand-over of something the vehicle does not own is a record of nothing.
+     */
+    const toggleItem = (id: string) => setInventoryDraft(d => {
+        const on = d.itemIds.includes(id);
+        return {
+            ...d,
+            itemIds: on ? d.itemIds.filter(x => x !== id) : [...d.itemIds, id],
+            handIds: on ? d.handIds.filter(x => x !== id) : d.handIds,
+        };
+    });
+    const toggleHand = (id: string) => setInventoryDraft(d => {
+        const on = d.handIds.includes(id);
+        return {
+            ...d,
+            handIds: on ? d.handIds.filter(x => x !== id) : [...d.handIds, id],
+            itemIds: on || d.itemIds.includes(id) ? d.itemIds : [...d.itemIds, id],
+        };
+    });
 
     // Whoever is driving it according to THIS form, not the saved record: on a new asset
     // there is no saved record, and on an edit the driver may be changing in this very
@@ -1195,6 +1204,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                             : !canBeHandedOver(item) ? "Hand-overs cover company-issued kit — assign this instead"
                                             : null
                                     )}
+                                    stacked
                                     maxHeight="max-h-80"
                                     emptyAll={<>Every item in this carrier’s inventory is already on a vehicle, a person or a hand-over.</>}
                                 />
@@ -1242,7 +1252,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     emptyHint={
                                         inventoryDraft.itemIds.length === 0 && inventoryDraft.handIds.length === 0
                                             && inventoryDraft.removeIds.length === 0 && movingItems.length === 0
-                                            ? <>Nothing is changing hands yet. Pick something below, or change the driver above, and the messages it needs will be drafted here.</>
+                                            ? <>Nothing is changing hands yet. Pick something from the list above, or change the driver, and the messages it needs will be drafted here.</>
                                             : !currentDriver
                                                 ? <>Nobody drives this vehicle yet. Assign a driver in <span className="font-semibold">Driver Assignment</span> above and the messages can go out with the save.</>
                                                 : <>This kit stays with the vehicle, so nobody has to collect or return anything. Tick <span className="font-semibold">Carried by whoever drives this vehicle</span> if it rides in the cab.</>

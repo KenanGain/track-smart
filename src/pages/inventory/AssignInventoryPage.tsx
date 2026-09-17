@@ -186,12 +186,22 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     // One answer per row: ticking one end clears the other. The two are destinations, not a
     // pair of boxes to fill in.
+    /**
+     * On a vehicle the two ticks stack: an item handed to a driver off a truck is still the
+     * truck's, so handing it over files it against the vehicle too, and un-assigning it takes
+     * the hand-over with it. On a driver they stay exclusive — filed against the person and
+     * signed across to the person are two records of one fact.
+     */
     const pickAssign = (id: string) => {
-        if (toHand.has(id)) setToHand((p) => { const n = new Set(p); n.delete(id); return n; });
+        if (isDriver && toHand.has(id)) setToHand((p) => { const n = new Set(p); n.delete(id); return n; });
+        if (!isDriver && toAssign.has(id) && toHand.has(id)) {
+            setToHand((p) => { const n = new Set(p); n.delete(id); return n; });
+        }
         toggle(toAssign, id, setToAssign);
     };
     const pickHand = (id: string) => {
-        if (toAssign.has(id)) setToAssign((p) => { const n = new Set(p); n.delete(id); return n; });
+        if (isDriver && toAssign.has(id)) setToAssign((p) => { const n = new Set(p); n.delete(id); return n; });
+        if (!isDriver && !toHand.has(id)) setToAssign((p) => new Set(p).add(id));
         toggle(toHand, id, setToHand);
     };
 
@@ -309,7 +319,10 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
             ? { kind: "driver", targetId: holderId }
             : { kind: assetKind, targetId: holderId, alsoDriverOfAsset: carried };
 
-        for (const itemId of toAssign) update(itemId, { assignedTo });
+        // A handed item on a vehicle is assigned to it as well, so it does not fall off the
+        // truck the moment somebody signs for it.
+        const filing = isDriver ? [...toAssign] : [...new Set([...toAssign, ...toHand])];
+        for (const itemId of filing) update(itemId, { assignedTo });
         for (const itemId of unassigning) update(itemId, { assignedTo: undefined });
 
         if (handDriver && (toHand.size + unhanding.length > 0 || receiptChanged)) {
@@ -339,7 +352,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         }
 
         // ── The trail ────────────────────────────────────────────────────────
-        for (const itemId of toAssign) {
+        for (const itemId of filing) {
             logInventoryEvent({
                 itemId, accountId: acct, kind: "assigned",
                 title: isDriver ? "Assigned to driver" : "Assigned to vehicle",
@@ -554,144 +567,128 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                                 </p>
                             ) : (
                                 <div className="space-y-3">
-                                    {VIA_ORDER.map((groupVia) => {
-                                        const group = rows.filter((r) => r.via === groupVia);
-                                        if (group.length === 0) return null;
-                                        const isHandedGroup = groupVia === "handed";
-                                        return (
-                                            <div key={groupVia} className={cn(
-                                                "overflow-hidden rounded-xl border",
-                                                isHandedGroup ? "border-violet-200" : "border-slate-200",
-                                            )}>
-                                                {/* The route, once, for everything under it. */}
-                                                <div className={cn(
-                                                    "flex flex-wrap items-center gap-2 border-b px-3 py-2",
-                                                    isHandedGroup ? "border-violet-100 bg-violet-50/60" : "border-slate-100 bg-slate-50/80",
+                                <div className="overflow-hidden rounded-xl border border-slate-200">
+                                    {/* One list. The route is one word, and one word does not need a
+                                        container of its own — it goes on the row, next to the thing
+                                        it describes. */}
+                                    <div className="divide-y divide-slate-100">
+                                        {VIA_ORDER.flatMap((groupVia) => rows.filter((r) => r.via === groupVia)).map(({ item, via, action }) => {
+                                            const picked = toRemove.has(item.id);
+                                            const got = verified.has(item.id);
+                                            return (
+                                                <div key={item.id} className={cn(
+                                                    "flex items-center gap-2.5 px-3 py-2 transition-colors",
+                                                    picked ? "bg-rose-50/60" : got ? "bg-emerald-50/40" : "bg-white",
                                                 )}>
-                                                    <span className={cn("h-3.5 w-1 shrink-0 rounded-full", VIA_TONE[groupVia].bar)} />
-                                                    <span className={cn("text-[11px] font-bold uppercase tracking-wider", VIA_TONE[groupVia].text)}>
-                                                        {VIA_LABEL[kind][groupVia]}
+                                                    <span className={cn("h-7 w-1 shrink-0 rounded-full", VIA_TONE[via].bar)} />
+                                                    <span className={cn(
+                                                        "w-[5.5rem] shrink-0 rounded border px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider",
+                                                        VIA_TONE[via].chip,
+                                                    )}>
+                                                        {VIA_LABEL[kind][via]}
                                                     </span>
-                                                    <span className="text-[11px] font-semibold text-slate-400">{group.length}</span>
-                                                    {isHandedGroup && handedRows.length > 0 && (
-                                                        <span className="ml-auto flex items-center gap-2">
-                                                            <span className={cn("text-[11px] font-bold", allConfirmed ? "text-emerald-600" : "text-amber-600")}>
-                                                                {confirmedCount} of {handedRows.length} confirmed
-                                                            </span>
-                                                            {/* Only worth a button once there is more than one to do. */}
-                                                            {handedRows.length > 1 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        if (allConfirmed) { setVerified(new Set()); setDriverConfirmed(false); }
-                                                                        else setVerified(new Set([...verified, ...handedRows.map((r) => r.item.id)]));
-                                                                    }}
-                                                                    className="rounded-md border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-50"
-                                                                >
-                                                                    {allConfirmed ? "Clear" : "Confirm all"}
-                                                                </button>
-                                                            )}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                <div className="divide-y divide-slate-100">
-                                                    {group.map(({ item, via, action }) => {
-                                                        const picked = toRemove.has(item.id);
-                                                        const got = verified.has(item.id);
-                                                        return (
-                                                            <div key={item.id} className={cn(
-                                                                "flex items-center gap-3 px-3 py-2 transition-colors",
-                                                                picked ? "bg-rose-50/60" : got ? "bg-emerald-50/40" : "bg-white",
-                                                            )}>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className={cn(
-                                                                        "truncate text-[13px] font-semibold",
-                                                                        action ? "text-slate-800" : "text-slate-600",
-                                                                        picked && "line-through",
-                                                                    )}>
-                                                                        {itemName(item)}
-                                                                    </div>
-                                                                    <div className="truncate text-[11px] text-slate-500">
-                                                                        {vendorOf(item)}{item.serial && <span className="font-mono"> · {item.serial}</span>}
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="flex shrink-0 items-center gap-1.5">
-                                                                    {/* One receipt per item — a hand-over of five things is rarely
-                                                                        five things received — and labelled with what it does,
-                                                                        because a bare tick beside a Return button says nothing
-                                                                        about which of the two it is. Something going back has
-                                                                        nothing to confirm. */}
-                                                                    {via === "handed" && !picked && (
-                                                                        <button
-                                                                            type="button" onClick={() => toggleReceived(item.id)} aria-pressed={got}
-                                                                            className={cn(
-                                                                                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors",
-                                                                                got ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                                                    : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50",
-                                                                            )}
-                                                                        >
-                                                                            {got ? <><CheckCheck size={12} /> Received</> : <><Check size={12} /> Confirm receipt</>}
-                                                                        </button>
-                                                                    )}
-                                                                    {action && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => toggle(toRemove, item.id, setToRemove)}
-                                                                            className={cn(
-                                                                                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors",
-                                                                                picked ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                                                                                    : "border-rose-200 bg-white text-rose-600 hover:bg-rose-50",
-                                                                            )}
-                                                                        >
-                                                                            {picked ? <><Undo2 size={12} /> Keep</>
-                                                                                : action === "unhand" ? <><Undo2 size={12} /> Return</>
-                                                                                : <><X size={12} /> Unassign</>}
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-
-                                                {/* The signature sits with the ticks it depends on, rather than in a
-                                                    card underneath restating the same count a third time. */}
-                                                {isHandedGroup && handedRows.length > 0 && (
-                                                    <div className="border-t border-violet-100 bg-violet-50/40 px-3 py-2.5">
-                                                        <label className={cn(
-                                                            "flex items-start gap-2.5",
-                                                            allConfirmed ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className={cn(
+                                                            "block truncate text-[13px] font-semibold",
+                                                            action ? "text-slate-800" : "text-slate-600",
+                                                            picked && "line-through",
                                                         )}>
-                                                            <input
-                                                                type="checkbox" checked={driverConfirmed} disabled={!allConfirmed}
-                                                                onChange={(e) => setDriverConfirmed(e.target.checked)}
-                                                                className="mt-0.5 h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-500/30"
-                                                            />
-                                                            <span className="min-w-0">
-                                                                <span className="block text-[12px] font-semibold text-slate-800">
-                                                                    {handDriver?.name ?? "The driver"} signed for {handedRows.length === 1 ? "this" : `all ${handedRows.length}`}
-                                                                </span>
-                                                                <span className="block text-[11px] leading-snug text-slate-500">
-                                                                    {allConfirmed
-                                                                        ? "Records the driver sign-off and moves the hand-over to verified."
-                                                                        : `Available once all ${handedRows.length} are confirmed — the signature covers the whole list, not part of it.`}
-                                                                </span>
-                                                            </span>
-                                                        </label>
-                                                        {/* Two ways a receipt gets recorded, and the office should not be
-                                                            re-keying the one the driver already did themselves. */}
-                                                        <p className="mt-2 flex items-start gap-1.5 border-t border-violet-100 pt-2 text-[11px] leading-snug text-slate-500">
-                                                            <Smartphone size={12} className="mt-0.5 shrink-0 text-violet-400" />
-                                                            {handDriver?.name ?? "The driver"} ticks these off in the driver app when they collect
-                                                            them, and that lands here. Confirm by hand only for kit handed across the desk.
-                                                        </p>
-                                                    </div>
+                                                            {itemName(item)}
+                                                        </span>
+                                                        <span className="block truncate text-[11px] text-slate-500">
+                                                            {vendorOf(item)}{item.serial && <span className="font-mono"> · {item.serial}</span>}
+                                                        </span>
+                                                    </span>
+
+                                                    <span className="flex shrink-0 items-center gap-1.5">
+                                                        {/* One receipt per item — a hand-over of five things is rarely
+                                                            five things received — and labelled with what it does,
+                                                            because a bare tick beside a Return button says nothing
+                                                            about which of the two it is. */}
+                                                        {via === "handed" && !picked && (
+                                                            <button
+                                                                type="button" onClick={() => toggleReceived(item.id)} aria-pressed={got}
+                                                                className={cn(
+                                                                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors",
+                                                                    got ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50",
+                                                                )}
+                                                            >
+                                                                {got ? <><CheckCheck size={12} /> Received</> : <><Check size={12} /> Confirm receipt</>}
+                                                            </button>
+                                                        )}
+                                                        {action && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggle(toRemove, item.id, setToRemove)}
+                                                                className={cn(
+                                                                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors",
+                                                                    picked ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                                                                        : "border-rose-200 bg-white text-rose-600 hover:bg-rose-50",
+                                                                )}
+                                                            >
+                                                                {picked ? <><Undo2 size={12} /> Keep</>
+                                                                    : action === "unhand" ? <><Undo2 size={12} /> Return</>
+                                                                    : <><X size={12} /> Unassign</>}
+                                                            </button>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* The signature sits under the list it depends on. */}
+                                    {handedRows.length > 0 && (
+                                        <div className="border-t border-violet-100 bg-violet-50/40 px-3 py-2.5">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <span className={cn("text-[11px] font-bold", allConfirmed ? "text-emerald-600" : "text-amber-600")}>
+                                                    {confirmedCount} of {handedRows.length} handed item{handedRows.length === 1 ? "" : "s"} confirmed
+                                                </span>
+                                                {handedRows.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (allConfirmed) { setVerified(new Set()); setDriverConfirmed(false); }
+                                                            else setVerified(new Set([...verified, ...handedRows.map((r) => r.item.id)]));
+                                                        }}
+                                                        className="rounded-md border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-50"
+                                                    >
+                                                        {allConfirmed ? "Clear" : "Confirm all"}
+                                                    </button>
                                                 )}
                                             </div>
-                                        );
-                                    })}
+                                            <label className={cn(
+                                                "mt-2 flex items-start gap-2.5",
+                                                allConfirmed ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+                                            )}>
+                                                <input
+                                                    type="checkbox" checked={driverConfirmed} disabled={!allConfirmed}
+                                                    onChange={(e) => setDriverConfirmed(e.target.checked)}
+                                                    className="mt-0.5 h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-500/30"
+                                                />
+                                                <span className="min-w-0">
+                                                    <span className="block text-[12px] font-semibold text-slate-800">
+                                                        {handDriver?.name ?? "The driver"} signed for {handedRows.length === 1 ? "this" : `all ${handedRows.length}`}
+                                                    </span>
+                                                    <span className="block text-[11px] leading-snug text-slate-500">
+                                                        {allConfirmed
+                                                            ? "Records the driver sign-off and moves the hand-over to verified."
+                                                            : `Available once all ${handedRows.length} are confirmed — the signature covers the whole list, not part of it.`}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                            {/* Two ways a receipt gets recorded, and the office should not be
+                                                re-keying the one the driver already did themselves. */}
+                                            <p className="mt-2 flex items-start gap-1.5 border-t border-violet-100 pt-2 text-[11px] leading-snug text-slate-500">
+                                                <Smartphone size={12} className="mt-0.5 shrink-0 text-violet-400" />
+                                                {handDriver?.name ?? "The driver"} ticks these off in the driver app when they collect
+                                                them, and that lands here. Confirm by hand only for kit handed across the desk.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
 
                                     {fixed.length > 0 && (
                                         <p className="flex items-start gap-1.5 pt-1 text-[11px] leading-snug text-slate-500">
@@ -715,6 +712,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                                 holderNoun={isDriver ? "driver" : "vehicle"}
                                 handDriverName={handDriver?.name}
                                 handBlockedBecause={handBlockedBecause}
+                                stacked={!isDriver}
                             />
 
                             {/* Who is doing it. Taken from the signed-in user rather than typed. */}
