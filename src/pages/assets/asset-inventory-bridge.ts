@@ -20,9 +20,10 @@
 
 import { updateInventoryItem, currentInventoryItems } from '@/pages/inventory/inventory-store';
 import { logInventoryEvent } from '@/pages/inventory/inventory-activity';
+import { planMovements, sendMovements, type Movement } from '@/pages/inventory/inventory-movements';
 import {
-    requestCollection, requestReturn, collectionLineFor, draftReturnNote, draftCollectionNote,
-} from '@/pages/inventory/inventory-collection';
+    counterpartyOf, planKey, sendablePlans, emptyNotifyState, type NotifyState,
+} from '@/pages/inventory/notify-state';
 import {
     loadHandover, saveHandover, appendLines, removeLines, HANDOVER_CATEGORIES,
 } from '@/pages/inventory/handovers.data';
@@ -70,12 +71,13 @@ export interface AssetInventoryDraft {
     removeIds: string[];
     /** Ask whoever is holding the removed kit to bring it in. */
     askBack: boolean;
-    askBackNote: string;
     /** The assigned ones ride with whoever drives it, rather than staying with the vehicle. */
     carried: boolean;
-    /** Message the driver to come and collect them. */
-    notify: boolean;
-    note: string;
+    /**
+     * The "tell them" block, shared with the Add Inventory form and the assign page: whether
+     * to send, where the other end of the trip is, when by, and any wording somebody typed.
+     */
+    notify: NotifyState;
     /**
      * The driver is changing, and what is in the cab has to move with them.
      *
@@ -95,10 +97,8 @@ export interface AssetInventoryDraft {
         itemIds: string[];
         /** Ask the outgoing driver to bring them in. */
         askReturn: boolean;
-        returnNote: string;
         /** Tell the incoming driver to pick them up. */
         tellIncoming: boolean;
-        incomingNote: string;
     };
 }
 
@@ -107,14 +107,9 @@ export const emptyAssetInventoryDraft = (): AssetInventoryDraft => ({
     handIds: [],
     removeIds: [],
     askBack: true,
-    askBackNote: '',
     carried: false,
-    notify: true,
-    note: '',
-    changeover: {
-        outgoing: null, itemIds: [], askReturn: true, returnNote: '',
-        tellIncoming: true, incomingNote: '',
-    },
+    notify: emptyNotifyState(),
+    changeover: { outgoing: null, itemIds: [], askReturn: true, tellIncoming: true },
 });
 
 export interface AssetInventoryResult {
@@ -259,66 +254,56 @@ export function commitAssetInventory(input: {
     // truck is nobody's to come and collect.
     const outgoing = draft.changeover.outgoing;
     const askedBack = draft.changeover.askReturn && outgoing && moving.length > 0;
-    if (askedBack) {
-        const lines = moving.map((it) => collectionLineFor(it, 'carried'));
-        requestReturn({
-            accountId: acct,
-            driverId: outgoing!.id, driverName: outgoing!.name,
-            holderLabel: assetLabel,
-            lines,
-            issuedBy: capturedBy,
-            note: draft.changeover.returnNote.trim()
-                || draftReturnNote(outgoing!.name, lines, `${assetLabel} is changing driver`),
-        });
-    }
 
-    // Something that was in the cab or signed across is in somebody's pocket. Taking it off
-    // the vehicle does not move it, so the person holding it is asked to bring it in — the
-    // same card, pointed the other way.
+    // Everything this save moves, in the one vocabulary that decides who gets told. The
+    // planner groups it: a driver taking two things and handing back a third is two
+    // messages, not three.
     const physical = removing.filter((it) => (
         removedRoutes.get(it.id) === 'unhand' || it.assignedTo?.alsoDriverOfAsset
     ));
     const askedBackHolder = draft.askBack && driver && physical.length > 0 ? driver : null;
+
+    const movements: Movement[] = [];
+    if (askedBack) {
+        for (const item of moving) {
+            movements.push({ kind: 'unassign-vehicle', item, person: outgoing, holderLabel: assetLabel, carried: true });
+        }
+    }
+    if (draft.changeover.tellIncoming) {
+        for (const item of moving) {
+            movements.push({ kind: 'assign-vehicle', item, person: driver, holderLabel: assetLabel, carried: true });
+        }
+    }
+    for (const item of picked) {
+        movements.push({ kind: 'assign-vehicle', item, person: driver, holderLabel: assetLabel, carried: draft.carried });
+    }
+    for (const item of handed) {
+        movements.push({ kind: 'hand-over', item, person: driver, holderLabel: assetLabel });
+    }
     if (askedBackHolder) {
-        const lines = physical.map((it) => collectionLineFor(
-            it, removedRoutes.get(it.id) === 'unhand' ? 'handed' : 'carried',
-        ));
-        requestReturn({
-            accountId: acct,
-            driverId: askedBackHolder.id, driverName: askedBackHolder.name,
-            holderLabel: assetLabel,
-            lines,
-            issuedBy: capturedBy,
-            note: draft.askBackNote.trim()
-                || draftReturnNote(askedBackHolder.name, lines, `it is coming off ${assetLabel}`),
-        });
+        for (const item of physical) {
+            movements.push({
+                kind: removedRoutes.get(item.id) === 'unhand' ? 'take-back' : 'unassign-vehicle',
+                item, person: askedBackHolder, holderLabel: assetLabel, carried: true,
+            });
+        }
     }
 
-    // What the driver is being asked to pick up: the cab's kit coming the other way, plus
-    // anything given out in this same save. One message, because it is one trip to the office.
-    const toCollect: InventoryItem[] = [
-        ...(draft.changeover.tellIncoming ? moving : []),
-        ...(draft.carried ? picked : []),
-        ...handed,
-    ];
-    const deduped = toCollect.filter((it, i) => toCollect.findIndex((x) => x.id === it.id) === i);
-    const canTell = draft.notify && !!driver && deduped.length > 0;
-    if (canTell) {
-        const handedIds = new Set(handed.map((it) => it.id));
-        const movingIds = new Set(moving.map((it) => it.id));
-        const lines = deduped.map((it) => collectionLineFor(
-            it,
-            handedIds.has(it.id) ? 'handed' : movingIds.has(it.id) ? 'carried' : 'assigned',
-        ));
-        requestCollection({
-            accountId: acct,
-            driverId: driver!.id, driverName: driver!.name,
-            holderLabel: assetLabel,
-            lines,
-            issuedBy: capturedBy,
-            note: draft.note.trim() || draftCollectionNote(driver!.name, lines, handed.length > 0),
-        });
-    }
+    // Nothing is sent about kit that never leaves the yard: a spare key in a parked truck
+    // is nobody's to come and collect, which the planner knows rather than each caller.
+    // `notify` is the "tell them to collect it" tick, so it silences collections only. A
+    // hand-back has its own tick and its own reason to exist: somebody is holding something
+    // the office has just taken off the record, and not asking for it back is how a fuel
+    // card stays in a pocket with the record saying otherwise.
+    const plans = sendablePlans(
+        planMovements(movements, {
+            counterparty: counterpartyOf(draft.notify),
+            dueAt: draft.notify.dueAt || undefined,
+        }).map((p) => ({ ...p, note: draft.notify.notes[planKey(p)] ?? p.note })),
+        draft.notify,
+    );
+    sendMovements(plans, { accountId: acct, issuedBy: capturedBy });
+    const canTell = plans.some((p) => p.direction === 'collect');
 
     return {
         assigned: picked.length,

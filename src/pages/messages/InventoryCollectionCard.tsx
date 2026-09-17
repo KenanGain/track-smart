@@ -21,9 +21,11 @@
 import { useMemo, useState } from 'react';
 import {
     Boxes, Check, CheckCircle2, PackageCheck, ClipboardList, PenLine, Clock, Truck, Undo2,
+    Building2, UserRound, CalendarClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InventoryCollection } from './messages-store';
+import { formatDue } from '@/pages/inventory/inventory-collection';
 
 const ROUTE_META = {
     assigned: { label: 'Assigned', cls: 'border-blue-200 bg-blue-50 text-blue-700', Icon: ClipboardList },
@@ -57,6 +59,7 @@ const DIRECTION_COPY = {
     },
 } as const;
 
+
 export function InventoryCollectionCard({ collection, preview, onConfirm }: {
     collection: InventoryCollection;
     /** The office's own copy — shows the state, offers no buttons. */
@@ -66,6 +69,15 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
     const done = collection.status === 'collected';
     const back = collection.direction === 'return';
     const copy = DIRECTION_COPY[back ? 'return' : 'collect'];
+
+    // Where the other end of the trip is. "The office" is the usual answer and the default,
+    // but a card that says it when the thing is in Mike's cab sends somebody on a wasted trip.
+    const person = collection.counterparty?.kind === 'person' ? collection.counterparty.name : null;
+    const place = person || 'the office';
+    const title = back
+        ? (person ? `Hand to ${person}` : copy.title)
+        : (person ? `Collect from ${person}` : copy.title);
+    const due = collection.dueAt ? formatDue(collection.dueAt) : null;
     const confirmed = useMemo(() => new Set(collection.collectedItemIds ?? []), [collection.collectedItemIds]);
 
     // Everything starts ticked: the common case is that they picked up the lot, and making
@@ -96,7 +108,7 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-bold text-slate-900">
-                        {done ? copy.titleDone : copy.title}
+                        {done ? copy.titleDone : title}
                     </p>
                     <p className="mt-0.5 truncate text-[11px] text-slate-500">
                         {all} item{all === 1 ? '' : 's'} · issued by {collection.issuedBy}
@@ -104,6 +116,21 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
                             <> · <span className="inline-flex items-center gap-1"><Truck size={10} />{collection.holderLabel}</span></>
                         )}
                     </p>
+                    {/* The two things a driver actually needs: where to go, and by when. */}
+                    {(person || due) && !done && (
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className={cn('inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold',
+                                person ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600')}>
+                                {person ? <UserRound size={9} /> : <Building2 size={9} />}
+                                {back ? 'to' : 'from'} {place}
+                            </span>
+                            {due && (
+                                <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                    <CalendarClock size={9} /> by {due}
+                                </span>
+                            )}
+                        </p>
+                    )}
                 </div>
                 {!done && !preview && (
                     <button

@@ -107,6 +107,17 @@ export interface InventoryCollection {
   driverName: string;
   /** The vehicle, when the items were put on one rather than on the person. */
   holderLabel?: string;
+  /**
+   * The other end of the trip: who has it now, or who is to receive it.
+   *
+   * The office is the usual answer and the default, but not the only one — kit moving from
+   * one driver to the next goes hand to hand as often as it goes through a counter, and a
+   * card that says "collect it from the office" when it is in Mike's cab sends somebody on
+   * a wasted trip.
+   */
+  counterparty?: { kind: 'office' | 'person'; name?: string };
+  /** When it needs to have happened by. Date, or date and time. */
+  dueAt?: string;
   lines: CollectionLine[];
   issuedBy: string;
   note?: string;

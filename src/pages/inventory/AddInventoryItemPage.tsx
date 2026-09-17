@@ -31,7 +31,8 @@ import {
 import { useInventoryAdditions } from "./inventory-store";
 import { logInventoryEvent, describeChanges } from "./inventory-activity";
 import { currentUserName } from "@/data/users.data";
-import { requestCollection, collectionLineFor } from "./inventory-collection";
+import { planMovements, sendMovements } from "./inventory-movements";
+import { counterpartyOf, planKey, sendablePlans } from "./notify-state";
 import { driverNameOf } from "./inventory-assignment";
 import { cn } from "@/lib/utils";
 
@@ -183,15 +184,21 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
                 : draft.alsoDriverOfAsset && draft.targetId
                     ? driverOfAsset(draft.targetId, accountId)
                     : null;
-            if (draft.notifyDriver && target) {
-                requestCollection({
-                    accountId: accountId ?? "acct-001",
-                    driverId: target.id,
-                    driverName: target.name,
-                    lines: [collectionLineFor(item, "assigned")],
-                    issuedBy: capturedBy(),
-                    note: draft.collectNote.trim() || undefined,
-                });
+            if (target) {
+                // Through the planner, like every other surface that moves kit: one rule
+                // about who gets told, and one wording, however the item got here. The
+                // wording and the where / when come off the same block all three forms show.
+                const plans = planMovements([{
+                    kind: draft.assignmentKind === "driver" ? "assign-driver" : "assign-vehicle",
+                    item,
+                    person: target,
+                    carried: draft.assignmentKind !== "driver",
+                }], {
+                    counterparty: counterpartyOf(draft.notify),
+                    dueAt: draft.notify.dueAt || undefined,
+                }).map((p) => ({ ...p, note: draft.notify.notes[planKey(p)] ?? p.note }));
+                sendMovements(sendablePlans(plans, draft.notify),
+                    { accountId: accountId ?? "acct-001", issuedBy: capturedBy() });
             }
             logInventoryEvent({
                 itemId: item.id, accountId: accountId ?? "acct-001", kind: "created",

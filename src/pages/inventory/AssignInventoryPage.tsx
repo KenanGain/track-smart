@@ -19,9 +19,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Boxes, Check, Search, Plus, Undo2, Truck, IdCard, Info, AlertTriangle,
-    PackageCheck, PenLine, ClipboardList, CheckCheck, Ban, X, MessageSquare,
-    ListChecks, Send, CircleSlash, Smartphone,
+    Boxes, Check, Undo2, Truck, IdCard, Info, PenLine, CheckCheck, X, MessageSquare,
+    ListChecks, CircleSlash, Smartphone, UserRound, ArrowUpRight,
 } from "lucide-react";
 import { WizardHeader, WizardSection, WizardStepNav, type WizardStep } from "@/components/ui/WizardEditor";
 import {
@@ -29,7 +28,7 @@ import {
     driverOfAsset, itemName, type Assignment, type InventoryItem,
 } from "./inventory.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
-import { assetsFor, fmtDate } from "./inventory-assignment";
+import { assetsFor } from "./inventory-assignment";
 import {
     rollupByDriver, rollupByAsset, unassignedItems,
     VIA_TONE, VIA_LABEL, removeActionFor as removeActionFor_,
@@ -42,7 +41,11 @@ import {
 import { logInventoryEvent } from "./inventory-activity";
 import { useInventoryAdditions } from "./inventory-store";
 import { getOrCreateDriverConversation, setMessagesFocus } from "@/pages/messages/messages-store";
-import { requestCollection, draftCollectionNote, collectionLineFor } from "./inventory-collection";
+import { sendMovements, type Movement } from "./inventory-movements";
+import {
+    MovementNotify, useMovementPlans, sendablePlans, emptyNotifyState, type NotifyState,
+} from "./MovementNotify";
+import { ItemPickList } from "./ItemPickList";
 import { currentUserName } from "@/data/users.data";
 import { todayISO } from "../hiring-process/FormKit";
 import { cn } from "@/lib/utils";
@@ -81,35 +84,6 @@ const initialsOf = (name: string) => {
     return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 };
 
-/**
- * One of the two ticks on a row.
- *
- * A disabled tick carries its reason rather than just greying out: "why can I not hand this
- * over" is the question a dimmed box provokes and never answers.
- */
-function Tick({ on, tone, label, disabledReason, onToggle }: {
-    on: boolean; tone: "blue" | "violet"; label: string;
-    disabledReason?: string | null; onToggle: () => void;
-}) {
-    const blocked = !!disabledReason;
-    return (
-        <button
-            type="button" onClick={onToggle} disabled={blocked}
-            title={disabledReason ?? label} aria-label={label} aria-pressed={on}
-            className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
-                blocked ? "cursor-not-allowed border-slate-200 bg-slate-100"
-                    : on
-                        ? tone === "blue" ? "border-blue-600 bg-blue-600 text-white" : "border-violet-600 bg-violet-600 text-white"
-                        : "border-slate-300 bg-white hover:border-slate-400",
-            )}
-        >
-            {blocked ? <Ban size={11} className="text-slate-300" />
-                : on ? <Check size={13} />
-                : <Plus size={12} className="text-slate-400" />}
-        </button>
-    );
-}
 
 export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: Props) {
     const isDriver = kind === "driver";
@@ -150,7 +124,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     // ── Draft ────────────────────────────────────────────────────────────────
     const me = currentUserName();
-    const [addSearch, setAddSearch] = useState("");
     const [toAssign, setToAssign] = useState<Set<string>>(new Set());
     const [toHand, setToHand] = useState<Set<string>>(new Set());
     const [toRemove, setToRemove] = useState<Set<string>>(new Set());
@@ -163,9 +136,10 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     // ── The message ──────────────────────────────────────────────────────────
     // Off until there is something to tell them about, and editable, because "come and get
     // it" is a different sentence depending on what it is and when the office is open.
-    const [notify, setNotify] = useState(true);
-    const [noteTouched, setNoteTouched] = useState(false);
-    const [note, setNote] = useState("");
+    // The whole "tell them" block is one piece of state, shared with the other two forms
+    // that ask the same question.
+    const [notifyState, setNotifyState] = useState<NotifyState>(emptyNotifyState);
+    const setNotifyPart = (next: Partial<NotifyState>) => setNotifyState((n) => ({ ...n, ...next }));
 
     const assetKind = useMemo<"cmv" | "non-cmv">(() => {
         if (isDriver) return "cmv";
@@ -180,20 +154,29 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     const rows = (row?.items ?? []).map((h) => ({ ...h, action: removeActionFor(h) }));
     const fixed = rows.filter((r) => r.action === null);
 
+    /**
+     * Everything the person driving this vehicle is holding — including what is not on it.
+     *
+     * Read off the driver rollup rather than this vehicle's, because a hand-over is made to a
+     * PERSON: kit signed across to them rides in whatever they are driving, and from the truck
+     * there was no way to know it existed.
+     */
+    const driverRow = useMemo(() => {
+        if (isDriver || !handDriver) return undefined;
+        return rollupByDriver(items, accountId, handedTo).find((r) => r.id === handDriver.id);
+    }, [isDriver, handDriver?.id, items, accountId, handedTo]);
+
+    // What they have signed for, split by whether this vehicle is the one it is filed against.
+    const onThisVehicle = new Set((row?.items ?? []).map((h) => h.item.id));
+    const driverHanded = (driverRow?.items ?? []).filter((h) => h.via === "handed");
+    const driverElsewhere = (driverRow?.items ?? []).filter((h) => !onThisVehicle.has(h.item.id));
+
     const handBlockedBecause = (it: InventoryItem): string | null => {
         if (!handDriver) return "No driver is assigned to this vehicle";
         if (!isHandoverCategory(it)) return "Hand-overs cover company-issued kit — assign this instead";
         return null;
     };
 
-    const addable = useMemo(() => {
-        const q = addSearch.trim().toLowerCase();
-        if (!q) return available;
-        return available.filter((it) =>
-            itemName(it).toLowerCase().includes(q)
-            || it.serial.toLowerCase().includes(q)
-            || vendorOf(it).toLowerCase().includes(q));
-    }, [available, addSearch]);
 
     const toggle = (set: Set<string>, id: string, apply: (s: Set<string>) => void) => {
         const next = new Set(set);
@@ -236,27 +219,50 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     const givingIds = [...toAssign, ...toHand];
     const changeCount = givingIds.length + toRemove.size + (receiptChanged ? 1 : 0);
 
-    // The default message names what is waiting, and stops naming it once you have typed
-    // your own — an edit somebody made is theirs.
-    // What is going out, as the checklist the driver will tick.
-    const lines = useMemo(
-        () => givingIds
-            .map((id) => available.find((it) => it.id === id))
-            .filter(Boolean)
-            .map((it) => collectionLineFor(it!, toHand.has(it!.id) ? "handed" : "assigned")),
-        [givingIds.join(","), available, toHand],
-    );
+    /**
+     * What this save changes, said in the one vocabulary that decides who gets told.
+     *
+     * The page used to work that out itself, and knew about exactly one case: a collection
+     * list for whatever was being given out. Taking something back told nobody, so the office
+     * unassigned a fuel card and it stayed in the driver's pocket.
+     */
+    const movements = useMemo<Movement[]>(() => {
+        const free = (id: string) => available.find((it) => it.id === id);
+        const heldRow = (id: string) => rows.find((r) => r.item.id === id);
+        const self = { id: holderId, name: holderLabel };
+        const out: Movement[] = [];
 
-    const suggested = useMemo(
-        () => (lines.length === 0 || !handDriver
-            ? ""
-            : draftCollectionNote(handDriver.name, lines, toHand.size > 0)),
-        [lines, handDriver, toHand.size],
-    );
+        for (const id of toAssign) {
+            const item = free(id);
+            if (!item) continue;
+            out.push(isDriver
+                ? { kind: "assign-driver", item, person: self }
+                : { kind: "assign-vehicle", item, person: handDriver, holderLabel, carried });
+        }
+        for (const id of toHand) {
+            const item = free(id);
+            if (item && handDriver) out.push({ kind: "hand-over", item, person: handDriver, holderLabel: isDriver ? undefined : holderLabel });
+        }
+        for (const id of unassigning) {
+            const r = heldRow(id);
+            if (!r) continue;
+            out.push(isDriver
+                ? { kind: "unassign-driver", item: r.item, person: self }
+                // Only somebody carrying it has to do anything: a spare key coming off a
+                // parked truck moves on paper only.
+                : { kind: "unassign-vehicle", item: r.item, person: handDriver, holderLabel, carried: r.via === "carried" });
+        }
+        for (const id of unhanding) {
+            const r = heldRow(id);
+            if (r && handDriver) out.push({ kind: "take-back", item: r.item, person: handDriver, holderLabel: isDriver ? undefined : holderLabel });
+        }
+        return out;
+    }, [toAssign, toHand, toRemove, available, rows, isDriver, holderId, holderLabel, handDriver?.id, carried]);
 
-    useEffect(() => { if (!noteTouched) setNote(suggested); }, [suggested, noteTouched]);
+    /** The messages this save would send, with any wording somebody has typed. */
+    const plans = useMovementPlans(movements, notifyState);
+    const sending = sendablePlans(plans, notifyState);
 
-    const canNotify = !!handDriver && givingIds.length > 0;
 
     // ── Section rail ─────────────────────────────────────────────────────────
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -291,7 +297,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         switch (id) {
             case "holding": return toRemove.size + (receiptChanged ? 1 : 0);
             case "give": return givingIds.length;
-            case "notify": return notify && canNotify && note.trim() ? 1 : 0;
+            case "notify": return sending.length;
         }
     };
 
@@ -381,19 +387,11 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         // ── …and tell them ───────────────────────────────────────────────────
         // A driver cannot collect what nobody told them about, which is why this sits in the
         // same save rather than being a thing to remember afterwards.
-        if (notify && canNotify && lines.length) {
-            // The checklist, not a paragraph: text tells them what to collect and leaves them
-            // no way to say they got it, which puts the receipt back on the office to tick by
-            // hand from a conversation it has to go and read.
-            requestCollection({
-                accountId: acct,
-                driverId: handDriver!.id,
-                driverName: handDriver!.name,
-                holderLabel: isDriver ? undefined : holderLabel,
-                lines,
-                issuedBy: issuedBy.trim() || me,
-                note: note.trim() || undefined,
-            });
+        // The checklist, not a paragraph: text tells somebody what to do and leaves them no
+        // way to say they did it, which puts the receipt back on the office to tick by hand
+        // from a conversation it has to go and read.
+        if (sending.length) {
+            sendMovements(sending, { accountId: acct, issuedBy: issuedBy.trim() || me });
         }
 
         onNavigate(back);
@@ -465,6 +463,91 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
                         {/* ── Holding ──────────────────────────────────────── */}
                         <WizardSection id="holding" icon={ListChecks} title="Currently holding" subtitle={SECTIONS[0].subtitle}>
+                            {/* Who is in it today. A vehicle signs for nothing itself, so every
+                                hand-over on this page is really to this person — and what else they
+                                are carrying is the context for whatever you are about to give them. */}
+                            {!isDriver && handDriver && driverRow && (
+                                <div className="mb-3 overflow-hidden rounded-xl border border-slate-200">
+                                    <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
+                                            {initialsOf(handDriver.name)}
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block truncate text-[13px] font-bold text-slate-800">{handDriver.name}</span>
+                                            <span className="block text-[11px] text-slate-500">
+                                                Driving {holderLabel} · holding {driverRow.items.length} item{driverRow.items.length === 1 ? "" : "s"} in total
+                                            </span>
+                                        </span>
+                                        <span className="ml-auto flex items-center gap-2">
+                                            {driverHanded.length > 0 && (
+                                                <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                    status === "verified" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                        : "border-amber-200 bg-amber-50 text-amber-700")}>
+                                                    {status === "verified" ? "Hand-over verified" : "Awaiting driver"}
+                                                </span>
+                                            )}
+                                            <button type="button"
+                                                onClick={() => onNavigate(`/inventory/drivers/${handDriver.id}/assign`)}
+                                                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50">
+                                                Their page <ArrowUpRight size={11} />
+                                            </button>
+                                        </span>
+                                    </div>
+
+                                    {driverHanded.length === 0 ? (
+                                        <p className="flex items-start gap-2 px-3 py-2.5 text-[11px] leading-snug text-slate-500">
+                                            <UserRound size={12} className="mt-0.5 shrink-0 text-slate-400" />
+                                            Nothing has been signed across to {handDriver.name}. Anything handed over below goes
+                                            onto their checklist, not onto the vehicle.
+                                        </p>
+                                    ) : (
+                                        <div className="divide-y divide-slate-100">
+                                            <p className="px-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-violet-600">
+                                                Signed across to them · {driverHanded.length}
+                                            </p>
+                                            {/* The whole checklist, because it is one checklist. Which of them
+                                                this page can act on is a different question, and the chip on
+                                                each row answers it. */}
+                                            <p className="px-3 pb-1 text-[11px] leading-snug text-slate-500">
+                                                Their whole signed list. The ones on this vehicle can be confirmed or
+                                                returned below.
+                                            </p>
+                                            {driverHanded.map((h) => {
+                                                const here = onThisVehicle.has(h.item.id);
+                                                const got = verified.has(h.item.id);
+                                                return (
+                                                    <div key={h.item.id} className="flex items-center gap-2.5 px-3 py-2">
+                                                        <span className={cn("h-6 w-1 shrink-0 rounded-full", VIA_TONE.handed.bar)} />
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block truncate text-[12px] font-semibold text-slate-800">{itemName(h.item)}</span>
+                                                            <span className="block truncate text-[11px] text-slate-500">
+                                                                {vendorOf(h.item)}{h.item.serial && <span className="font-mono"> · {h.item.serial}</span>}
+                                                            </span>
+                                                        </span>
+                                                        {/* Where it sits, so "why can I not touch this one" answers itself. */}
+                                                        <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                            here ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-500")}>
+                                                            {here ? "On this vehicle" : "Not on this vehicle"}
+                                                        </span>
+                                                        <span className={cn("shrink-0 text-[11px] font-semibold", got ? "text-emerald-600" : "text-amber-600")}>
+                                                            {got ? "received" : "not confirmed"}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                            {driverElsewhere.length > 0 && (
+                                                <p className="flex items-start gap-1.5 bg-slate-50/70 px-3 py-2 text-[11px] leading-snug text-slate-500">
+                                                    <Info size={12} className="mt-0.5 shrink-0" />
+                                                    {driverElsewhere.length} of what {handDriver.name} holds is not filed against
+                                                    {" "}{holderLabel}. Those belong to them rather than to this vehicle — change
+                                                    them from their page.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {rows.length === 0 ? (
                                 <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-400">
                                     Nothing is assigned to this {isDriver ? "driver" : "asset"} yet.
@@ -623,90 +706,16 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
                         {/* ── Give out ─────────────────────────────────────── */}
                         <WizardSection id="give" icon={Boxes} title="Give out" subtitle={SECTIONS[1].subtitle}>
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                                    Unassigned <span className="ml-1 text-slate-400">({available.length} free)</span>
-                                </h3>
-                                <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
-                                    <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                                    <input
-                                        value={addSearch}
-                                        onChange={(e) => setAddSearch(e.target.value)}
-                                        placeholder="Search unassigned items…"
-                                        className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 text-[13px] text-slate-700 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                                    />
-                                </div>
-                            </div>
-
-                            {available.length === 0 ? (
-                                <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-[12px] leading-snug text-amber-800">
-                                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                                    Every item in this carrier's inventory is already on a vehicle, a person, or a
-                                    hand-over. Take one back first, or add a new item.
-                                </p>
-                            ) : addable.length === 0 ? (
-                                <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-400">
-                                    No free item matches “{addSearch.trim()}”.
-                                </p>
-                            ) : (
-                                <div className="mt-3 max-h-96 space-y-1.5 overflow-y-auto pr-1">
-                                    {/* What the two ticks mean, on the columns they label. It used to be two
-                                        paragraphs of prose above the list, as far from the ticks as it could get. */}
-                                    <div className="sticky top-0 z-[1] flex items-start justify-between gap-4 bg-white pb-1.5">
-                                        <span className="pl-1">
-                                            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">
-                                                <ClipboardList size={10} /> ← Assign
-                                            </span>
-                                            <span className="block text-[10px] text-slate-500">
-                                                Filed against this {isDriver ? "driver" : "vehicle"} · nobody signs
-                                            </span>
-                                        </span>
-                                        <span className="pr-1 text-right">
-                                            <span className={cn("flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider",
-                                                handDriver ? "text-violet-600" : "text-slate-300")}>
-                                                Hand over → <PackageCheck size={10} />
-                                            </span>
-                                            <span className="block text-[10px] text-slate-500">
-                                                {handDriver ? `${handDriver.name} signs for it` : "No driver on this vehicle"}
-                                            </span>
-                                        </span>
-                                    </div>
-                                    {addable.map((item) => {
-                                        const assignPicked = toAssign.has(item.id);
-                                        const handPicked = toHand.has(item.id);
-                                        const handBlocked = handBlockedBecause(item);
-                                        return (
-                                            <div key={item.id} className={cn(
-                                                "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-                                                handPicked ? "border-violet-300 bg-violet-50/70"
-                                                    : assignPicked ? "border-blue-300 bg-blue-50/70"
-                                                    : "border-slate-200 bg-white",
-                                            )}>
-                                                <Tick
-                                                    on={assignPicked} tone="blue"
-                                                    label={`Assign ${itemName(item)} to this ${isDriver ? "driver" : "vehicle"}`}
-                                                    onToggle={() => pickAssign(item.id)}
-                                                />
-                                                <Boxes size={14} className="ml-1 shrink-0 text-slate-400" />
-                                                <span className="min-w-0 flex-1">
-                                                    <span className="block truncate text-[13px] font-semibold text-slate-800">{itemName(item)}</span>
-                                                    <span className="block truncate text-[11px] text-slate-500">
-                                                        {vendorOf(item)}{item.serial && <span className="font-mono"> · {item.serial}</span>}
-                                                    </span>
-                                                </span>
-                                                <span className="shrink-0 text-right text-[11px] text-slate-400">
-                                                    {item.expiryDate ? fmtDate(item.expiryDate) : "no expiry"}
-                                                </span>
-                                                <Tick
-                                                    on={handPicked} tone="violet" disabledReason={handBlocked}
-                                                    label={`Hand ${itemName(item)} over to ${handDriver?.name ?? "the driver"}`}
-                                                    onToggle={() => pickHand(item.id)}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                            <ItemPickList
+                                items={available}
+                                assigned={toAssign}
+                                handed={toHand}
+                                onAssign={pickAssign}
+                                onHand={pickHand}
+                                holderNoun={isDriver ? "driver" : "vehicle"}
+                                handDriverName={handDriver?.name}
+                                handBlockedBecause={handBlockedBecause}
+                            />
 
                             {/* Who is doing it. Taken from the signed-in user rather than typed. */}
                             {toHand.size > 0 && (
@@ -766,75 +775,19 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
                         {/* ── Notify ───────────────────────────────────────── */}
                         <WizardSection id="notify" icon={MessageSquare} title="Tell them" subtitle={SECTIONS[2].subtitle}>
-                            {!handDriver ? (
-                                <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-500">
-                                    <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                                    There is nobody to message — no driver is assigned to this vehicle. Assign one on
-                                    the asset and the message can go to them.
-                                </p>
-                            ) : givingIds.length === 0 ? (
-                                <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-500">
-                                    <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                                    Nothing is being given out yet. Pick something in <span className="font-semibold">Give out</span> and
-                                    a message to collect it will be drafted here.
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
-                                        <input
-                                            type="checkbox" checked={notify}
-                                            onChange={(e) => setNotify(e.target.checked)}
-                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="block text-[13px] font-semibold text-slate-800">
-                                                Message {handDriver.name} to collect from the office
-                                            </span>
-                                            {/* A driver cannot collect what nobody told them about, which is why
-                                                this sends with the save rather than being a thing to remember. */}
-                                            <span className="block text-[11px] leading-snug text-slate-500">
-                                                Goes into their chat in Messages when you save. They can reply there.
-                                            </span>
-                                        </span>
-                                    </label>
-
-                                    {notify && (
-                                        <>
-                                            <textarea
-                                                value={note}
-                                                onChange={(e) => { setNote(e.target.value); setNoteTouched(true); }}
-                                                rows={7}
-                                                className="w-full rounded-lg border border-slate-200 bg-white p-3 text-[13px] leading-relaxed text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                                            />
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                <p className="text-[11px] text-slate-500">
-                                                    {/* Edits are the sender's; the draft stops rewriting itself once
-                                                        somebody has typed. */}
-                                                    {noteTouched
-                                                        ? "Your wording — it will not be rewritten if the list changes."
-                                                        : "Drafted from what you picked. Type to make it yours."}
-                                                </p>
-                                                {noteTouched && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => { setNoteTouched(false); setNote(suggested); }}
-                                                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50"
-                                                    >
-                                                        Reset to draft
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => { setMessagesFocus(getOrCreateDriverConversation(handDriver.name)); onNavigate("/messages"); }}
-                                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 hover:underline"
-                                            >
-                                                <Send size={11} /> Open {handDriver.name}'s chat
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            )}
+                            <MovementNotify
+                                plans={plans}
+                                state={notifyState}
+                                onChange={setNotifyPart}
+                                onOpenChat={(name) => { setMessagesFocus(getOrCreateDriverConversation(name)); onNavigate("/messages"); }}
+                                emptyHint={
+                                    !handDriver && !isDriver
+                                        ? <>Nobody drives this vehicle, so there is no one to message. Assign a driver on the asset and anything that rides in the cab can be asked for.</>
+                                        : givingIds.length === 0 && toRemove.size === 0
+                                            ? <>Nothing is changing hands yet. Give something out or take something back, and the messages it needs will be drafted here.</>
+                                            : <>Nothing here has to move: what you have picked stays with the vehicle rather than travelling with anybody.</>
+                                }
+                            />
                         </WizardSection>
                     </div>
                 </div>

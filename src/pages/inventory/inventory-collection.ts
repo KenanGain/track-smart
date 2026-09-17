@@ -38,29 +38,63 @@ export const collectionLineFor = (item: InventoryItem, route: CollectionLine["ro
     route,
 });
 
-/** The default wording. Editable everywhere it is offered — the office knows its own yard. */
-export function draftCollectionNote(driverName: string, lines: CollectionLine[], anyHanded: boolean): string {
-    const who = driverName.trim().split(/\s+/)[0] || "there";
-    const what = lines.length === 1 ? "an item" : `${lines.length} items`;
-    const list = lines.map((l) => `• ${l.name}${l.serial ? ` (${l.serial})` : ""}`).join("\n");
-    return `Hi ${who} — you've been assigned ${what}. Please collect ${lines.length === 1 ? "it" : "them"} from the office:\n${list}\n\n`
-        + (anyHanded
-            ? "You'll be asked to sign for these when you pick them up."
-            : "Tick them off below once you have them.");
+/** Where the other end of the trip is. The office unless somebody else has it. */
+export type Counterparty = { kind: "office" | "person"; name?: string };
+export const OFFICE: Counterparty = { kind: "office" };
+
+/** "2026-09-18T09:00" — "Fri 18 Sep, 09:00". Blank rather than wrong on junk input. */
+export function formatDue(dueAt?: string): string {
+    if (!dueAt) return "";
+    const [date, time] = dueAt.split("T");
+    const d = new Date(`${date}T00:00:00`);
+    if (isNaN(d.getTime())) return "";
+    const day = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    return time ? `${day}, ${time}` : day;
 }
 
 /**
- * The default wording when the office wants kit BACK.
+ * The default wording for anything moving between a person and somewhere else.
  *
- * Usually because the vehicle is changing hands: what is in the cab has to come through the
- * office, or the next driver is chasing a fuel card that is in somebody else's pocket.
+ * One drafter rather than one per surface: the same request worded two ways reads to a
+ * driver like two different requests. Editable everywhere it is offered — the office
+ * knows its own yard.
  */
-export function draftReturnNote(driverName: string, lines: CollectionLine[], reason?: string): string {
-    const who = driverName.trim().split(/\s+/)[0] || "there";
-    const what = lines.length === 1 ? "an item" : `${lines.length} items`;
-    const list = lines.map((l) => `• ${l.name}${l.serial ? ` (${l.serial})` : ""}`).join("\n");
-    return `Hi ${who} — could you drop ${what} back to the office${reason ? `, ${reason}` : ""}:\n${list}\n\n`
+export function draftMovementNote(input: {
+    driverName: string;
+    direction: "collect" | "return";
+    lines: CollectionLine[];
+    counterparty?: Counterparty;
+    dueAt?: string;
+}): string {
+    const who = input.driverName.trim().split(/\s+/)[0] || "there";
+    const n = input.lines.length;
+    const what = n === 1 ? "an item" : `${n} items`;
+    const it = n === 1 ? "it" : "them";
+    const list = input.lines.map((l) => `• ${l.name}${l.serial ? ` (${l.serial})` : ""}`).join("\n");
+    const person = input.counterparty?.kind === "person" ? input.counterparty.name?.trim() : "";
+    const by = input.dueAt ? ` by ${formatDue(input.dueAt)}` : "";
+    const signing = input.lines.some((l) => l.route === "handed");
+
+    if (input.direction === "collect") {
+        return `Hi ${who} — you’ve been assigned ${what}. Please collect ${it} from ${person || "the office"}${by}:\n${list}\n\n`
+            + (signing
+                ? "You’ll be asked to sign for these when you pick them up."
+                : "Tick them off below once you have them.");
+    }
+    const drop = person ? `hand ${it} to ${person}` : `drop ${it} back to the office`;
+    return `Hi ${who} — could you ${drop}${by}:\n${list}\n\n`
         + "Tick them off below once you have handed them in.";
+}
+
+/** "Please collect these." A named shortcut for the collect half of the drafter. */
+export function draftCollectionNote(driverName: string, lines: CollectionLine[], _anyHanded?: boolean): string {
+    return draftMovementNote({ driverName, direction: "collect", lines });
+}
+
+/** "Could you drop these back." The return half, with an optional reason. */
+export function draftReturnNote(driverName: string, lines: CollectionLine[], reason?: string): string {
+    const base = draftMovementNote({ driverName, direction: "return", lines });
+    return reason ? base.replace("could you", `could you`).replace(":\n", `, ${reason}:\n`) : base;
 }
 
 /** Send the checklist. Returns the conversation it landed in. */
@@ -74,8 +108,15 @@ export function requestCollection(input: {
     note?: string;
     /** Which way it is going. Collecting from the office unless said otherwise. */
     direction?: "collect" | "return";
+    /** Who has it, or who is to receive it. The office unless said otherwise. */
+    counterparty?: { kind: "office" | "person"; name?: string };
+    /** When it has to have happened by. */
+    dueAt?: string;
 }): string {
     const back = input.direction === "return";
+    const where = input.counterparty?.kind === "person" && input.counterparty.name
+        ? input.counterparty.name
+        : "the office";
     const collection: InventoryCollection = {
         id: newId(),
         accountId: input.accountId,
@@ -86,16 +127,19 @@ export function requestCollection(input: {
         issuedBy: input.issuedBy,
         note: input.note,
         direction: back ? "return" : "collect",
+        counterparty: input.counterparty,
+        dueAt: input.dueAt,
         status: "pending",
     };
     const convId = sendInventoryCollection(collection, input.note);
     for (const line of input.lines) {
         logInventoryEvent({
             itemId: line.itemId, accountId: input.accountId, kind: "message",
-            title: back ? "Asked to hand back to the office" : "Asked to collect from the office",
-            detail: back
-                ? `${input.driverName} was asked to bring this in`
-                : `${input.driverName} was sent a collection list`,
+            title: back ? "Asked to hand it in" : "Asked to collect it",
+            detail: (back
+                ? `${input.driverName} was asked to hand this to ${where}`
+                : `${input.driverName} was asked to collect this from ${where}`)
+                + (input.dueAt ? ` by ${input.dueAt.replace("T", " ")}` : ""),
             by: input.issuedBy, role: "Office",
         });
     }
@@ -111,6 +155,8 @@ export function requestReturn(input: {
     lines: CollectionLine[];
     issuedBy: string;
     note?: string;
+    counterparty?: { kind: "office" | "person"; name?: string };
+    dueAt?: string;
 }): string {
     return requestCollection({ ...input, direction: "return" });
 }

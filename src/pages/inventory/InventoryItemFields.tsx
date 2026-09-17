@@ -21,8 +21,9 @@ import { cn } from "@/lib/utils";
 import { MonitoringToggle } from "@/pages/compliance/MonitoringToggle";
 import type { MonitoringConfig } from "@/pages/compliance/compliance-data-store";
 import { AssignmentTargetPicker } from "./AssignmentTargetPicker";
-import { CircleSlash, MessageSquare, Info } from "lucide-react";
-import { draftCollectionNote } from "./inventory-collection";
+import { CircleSlash, MessageSquare } from "lucide-react";
+import { MovementNotify, useMovementPlans, emptyNotifyState, type NotifyState } from "./MovementNotify";
+import type { Movement } from "./inventory-movements";
 import { driverNameOf } from "./inventory-assignment";
 import {
     VENDORS, VENDOR_CATEGORIES, getCategoryLabel, defaultItemName, isAutoItemName,
@@ -53,10 +54,7 @@ export interface InventoryItemDraft {
      * Part of the draft rather than a step afterwards: an assignment nobody is told about is
      * an assignment that surprises somebody later.
      */
-    notifyDriver: boolean;
-    collectNote: string;
-    /** Once somebody types, the draft stops rewriting itself — their wording is theirs. */
-    noteTouched: boolean;
+    notify: NotifyState;
 }
 
 /** The sections, in order — the rail's steps and the cards on the page. */
@@ -86,9 +84,7 @@ export function emptyInventoryDraft(vendor?: Vendor): InventoryItemDraft {
         assignmentKind: "cmv",
         targetId: "",
         alsoDriverOfAsset: false,
-        notifyDriver: true,
-        collectNote: "",
-        noteTouched: false,
+        notify: emptyNotifyState(),
     };
 }
 
@@ -116,7 +112,7 @@ export function sectionFilled(id: InventorySectionId, d: InventoryItemDraft): nu
         // Deliberately unassigned is an answered question, not a blank one.
         case "assignment": return count(d.assignmentKind === "" || d.targetId, d.alsoDriverOfAsset);
         // One question, and "no, I'll hand it to them myself" answers it.
-        case "notify": return 1;
+        case "notify": return d.notify.notify ? 1 : 0;
     }
 }
 
@@ -205,13 +201,27 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
             ? { id: assetDriver.id, name: assetDriver.name }
             : null;
 
-    const suggestedNote = React.useMemo(() => {
-        if (!notifyTarget) return "";
-        return draftCollectionNote(notifyTarget.name, [{
-            itemId: "new", name: draft.name.trim() || defaultItemName(vendor), serial: draft.serial.trim() || undefined,
-            route: "assigned",
-        }], false);
-    }, [notifyTarget?.id, notifyTarget?.name, draft.name, draft.serial, vendor]);
+    /**
+     * The item as it stands, so the planner can draft a message about something that does
+     * not exist yet. It gets its real id on save; nothing here is stored.
+     */
+    const previewMovements = React.useMemo<Movement[]>(() => {
+        if (!notifyTarget) return [];
+        const preview = {
+            id: "preview", vendorId: draft.vendorId, name: draft.name.trim() || defaultItemName(vendor),
+            serial: draft.serial.trim(), pin: draft.pin.trim(),
+            issueDate: draft.issueDate, expiryDate: draft.expiryDate, status: draft.status,
+        } as never;
+        return [{
+            kind: draft.assignmentKind === "driver" ? "assign-driver" : "assign-vehicle",
+            item: preview,
+            person: notifyTarget,
+            carried: draft.assignmentKind !== "driver",
+        }];
+    }, [notifyTarget?.id, notifyTarget?.name, draft.vendorId, draft.name, draft.serial, draft.pin,
+        draft.issueDate, draft.expiryDate, draft.status, draft.assignmentKind, vendor]);
+
+    const notifyPlans = useMovementPlans(previewMovements, draft.notify);
 
     if (id === "item") {
         return (
@@ -288,92 +298,25 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
 
     if (id === "notify") {
         return (
-            <div className="space-y-3">
-                {notifyTarget ? (
-                    <>
-                        {/* Who it goes to, said plainly — the office should not have to work out
-                            from the Assignment section who is about to get a message. */}
-                        <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
-                                {notifyTarget.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
-                            </span>
-                            <span className="min-w-0">
-                                <span className="block truncate text-[13px] font-semibold text-slate-800">{notifyTarget.name}</span>
-                                <span className="block text-[11px] text-slate-500">
-                                    {draft.assignmentKind === "driver"
-                                        ? "Issued to them directly"
-                                        : "Drives the vehicle this rides in"}
-                                </span>
-                            </span>
-                        </div>
-
-                        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
-                            <input
-                                type="checkbox"
-                                checked={draft.notifyDriver}
-                                onChange={(e) => set({ notifyDriver: e.target.checked })}
-                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
-                            />
-                            <span className="min-w-0">
-                                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800">
-                                    <MessageSquare size={13} className="text-blue-600" />
-                                    Send {notifyTarget.name.split(/\s+/)[0]} a list to collect from the office
-                                </span>
-                                <span className="block text-[11px] leading-snug text-slate-500">
-                                    Lands in their chat when you save, as a checklist they tick off in the driver
-                                    app. What they confirm comes back onto this item.
-                                </span>
-                            </span>
-                        </label>
-
-                        {draft.notifyDriver ? (
-                            <>
-                                <textarea
-                                    value={draft.collectNote || suggestedNote}
-                                    onChange={(e) => set({ collectNote: e.target.value, noteTouched: true })}
-                                    rows={6}
-                                    className="w-full rounded-lg border border-slate-200 bg-white p-3 text-[13px] leading-relaxed text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                                />
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-[11px] text-slate-500">
-                                        {draft.noteTouched
-                                            ? "Your wording — it will not be rewritten if the item changes."
-                                            : "Drafted from the item. Type to make it yours."}
-                                    </p>
-                                    {draft.noteTouched && (
-                                        <button type="button"
-                                            onClick={() => set({ collectNote: "", noteTouched: false })}
-                                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50">
-                                            Use the drafted wording
-                                        </button>
-                                    )}
-                                </div>
-                            </>
-                        ) : (
-                            <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[11px] leading-snug text-slate-500">
-                                <Info size={13} className="mt-0.5 shrink-0 text-slate-400" />
-                                Nothing is sent. The item is still filed against {notifyTarget.name} — you are
-                                just handing it over in person.
-                            </p>
-                        )}
-                    </>
-                ) : (
-                    /* No one to tell, and WHY — each of these is a different thing to go and fix,
-                       and a blank section would have made all three look like the same nothing. */
-                    <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-600">
-                        <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                        {holder === "none"
-                            ? <>This is yard stock, so there is nobody to tell. File it against a driver or a vehicle in <span className="font-semibold">Assignment</span> and the message can go out with it.</>
-                            : !draft.targetId
-                                ? <>Pick who holds it in <span className="font-semibold">Assignment</span> first — the message goes to whoever ends up carrying it.</>
-                                : !draft.alsoDriverOfAsset
-                                    ? <>This sits with the vehicle rather than travelling with its driver, so nobody needs to collect it. Tick <span className="font-semibold">Carried by the driver of this vehicle</span> if it rides in the cab.</>
-                                    : <>Nobody drives this vehicle yet, so there is no one to tell. Assign a driver on the asset and the message can go to them.</>}
-                    </p>
-                )}
-            </div>
+            <MovementNotify
+                plans={notifyPlans}
+                state={draft.notify}
+                onChange={(next) => set({ notify: { ...draft.notify, ...next } })}
+                emptyHint={
+                    /* Why there is nobody to tell — each of these is a different thing to go
+                       and fix, and a blank step would have made all four look the same. */
+                    holder === "none"
+                        ? <>This is yard stock, so there is nobody to tell. File it against a driver or a vehicle in <span className="font-semibold">Assignment</span> and the message can go out with it.</>
+                        : !draft.targetId
+                            ? <>Pick who holds it in <span className="font-semibold">Assignment</span> first — the message goes to whoever ends up carrying it.</>
+                            : holder === "vehicle" && !draft.alsoDriverOfAsset
+                                ? <>This sits with the vehicle rather than travelling with its driver, so nobody needs to collect it. Tick <span className="font-semibold">Carried by the driver of this vehicle</span> if it rides in the cab.</>
+                                : <>Nobody drives this vehicle yet, so there is no one to tell. Assign a driver on the asset and the message can go to them.</>
+                }
+            />
         );
     }
+
 
     return (
         <div>
