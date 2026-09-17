@@ -157,6 +157,24 @@ export function buildDemoHandovers(
  *
  * Returns true when it actually wrote something.
  */
+/**
+ * Which items are out on a hand-over, and to whom.
+ *
+ * Every surface that shows who holds what needs this, and each one working it out for
+ * itself is how two screens start disagreeing about whether an item is out.
+ */
+export function handedToMap(
+    records: Record<string, DriverHandover>, accountId: string,
+): Map<string, { driverId: string; status: HandoverStatus }> {
+    const m = new Map<string, { driverId: string; status: HandoverStatus }>();
+    for (const rec of Object.values(records)) {
+        if (rec.accountId !== accountId) continue;
+        const status = handoverStatusOf(rec);
+        for (const line of rec.lines) m.set(line.itemId, { driverId: rec.driverId, status });
+    }
+    return m;
+}
+
 export function seedDemoHandovers(
     accountId: string,
     all: Record<string, DriverHandover>,
@@ -176,6 +194,27 @@ export function seedDemoHandovers(
     for (const rec of demos) next[keyOf(rec.accountId, rec.driverId)] = rec;
     persist(next);
     return true;
+}
+
+/**
+ * One driver's hand-over, read outside React.
+ *
+ * The chat's collection card writes a receipt back, and it is not inside the hook's tree —
+ * so the store needs a plain get/save pair beside the hook rather than a second copy of the
+ * key format somewhere else.
+ */
+export function loadHandover(accountId: string, driverId: string): DriverHandover | undefined {
+    return loadAll()[keyOf(accountId, driverId)];
+}
+
+/** Every hand-over on file, read outside React — for the pages that need the whole map. */
+export function loadAllHandovers(): Record<string, DriverHandover> {
+    return loadAll();
+}
+
+export function saveHandover(rec: DriverHandover) {
+    const next = { ...loadAll(), [keyOf(rec.accountId, rec.driverId)]: rec };
+    persist(next);
 }
 
 export function useDriverHandovers(accountId: string) {

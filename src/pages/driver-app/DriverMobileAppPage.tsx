@@ -3,7 +3,7 @@ import {
     Smartphone, Bell, ChevronRight, ChevronLeft, ChevronDown, UploadCloud, PenLine, MessageSquare,
     Truck, ShieldCheck, AlertTriangle, CheckCircle2, Clock, FileText, User,
     Home as HomeIcon, Phone, Mail, Settings, LogOut, Wifi, Signal, BatteryFull,
-    MapPin, IdCard, CircleHelp, Camera, Send, X, CalendarClock, Building2,
+    MapPin, IdCard, CircleHelp, Camera, Send, X, CalendarClock, Building2, PackageCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/pages/ats/ats-ui";
@@ -14,6 +14,9 @@ import { buildProfileBundle } from "@/pages/accounts/carrier-datasets.data";
 import { MOCK_DRIVERS } from "@/pages/profile/carrier-profile.data";
 import type { Driver } from "@/data/mock-app-data";
 import { useDriverDqHealth, type Health } from "@/pages/ats/DqFilesPage";
+import { useConversations, type InventoryCollection } from "@/pages/messages/messages-store";
+import { InventoryCollectionCard } from "@/pages/messages/InventoryCollectionCard";
+import { collectionsForDriver, confirmCollection } from "@/pages/inventory/inventory-collection";
 
 /**
  * Driver Mobile App — the TrackSmart companion app drivers carry, driven by the
@@ -100,10 +103,20 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
     const owner = useMemo(() => carrierOwnerInfo(accountId), [accountId]);
     const driverInfo = driver ? driverAccidentInfo(driver) : null;
 
+    // Kit the office has asked this driver to come and collect. Read from the same
+    // conversations the office is looking at — one record, two ends.
+    const convs = useConversations();
+    const collections = useMemo(
+        () => (driver ? collectionsForDriver(convs, driver.id) : []),
+        [convs, driver?.id],
+    );
+    const toCollect = collections.filter((c) => c.status === "pending");
+
     const [tab, setTab] = useState<TabId>("home");
     const [reporting, setReporting] = useState(false);
-    // Switching driver resets the phone to a clean Home + closes any open report.
-    useEffect(() => { setReporting(false); setTab("home"); }, [driverId]);
+    const [collecting, setCollecting] = useState(false);
+    // Switching driver resets the phone to a clean Home + closes anything open over it.
+    useEffect(() => { setReporting(false); setCollecting(false); setTab("home"); }, [driverId]);
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -142,6 +155,7 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
                                 { Icon: ShieldCheck, tone: "text-emerald-600 bg-emerald-50", title: "Live DQ compliance", body: vm ? `${vm.dqPct}% of ${vm.first}'s file complete.` : "Real-time completion and expiry alerts." },
                                 { Icon: UploadCloud, tone: "text-blue-600 bg-blue-50", title: "Upload & e-sign", body: "Snap a photo or sign a form on the go." },
                                 { Icon: AlertTriangle, tone: "text-rose-600 bg-rose-50", title: "Report an accident", body: "Filed under the driver, verified by the office." },
+                                { Icon: PackageCheck, tone: "text-indigo-600 bg-indigo-50", title: "Collect your kit", body: "Tick off what you picked up from the office — it updates inventory." },
                                 { Icon: Clock, tone: "text-amber-600 bg-amber-50", title: "Hours of service", body: "Drive / shift / cycle clocks and daily logs." },
                             ].map((f) => (
                                 <li key={f.title} className="flex items-start gap-3">
@@ -167,11 +181,25 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
                         <PhoneFrame>
                             {vm && (
                                 <>
-                                    {tab === "home" && <HomeScreen d={vm} health={health} onReport={() => setReporting(true)} />}
+                                    {tab === "home" && (
+                                        <HomeScreen
+                                            d={vm} health={health}
+                                            onReport={() => setReporting(true)}
+                                            toCollect={toCollect.length}
+                                            onCollect={() => setCollecting(true)}
+                                        />
+                                    )}
                                     {tab === "docs" && <DocsScreen health={health} />}
                                     {tab === "hours" && <HoursScreen />}
                                     {tab === "profile" && <ProfileScreen d={vm} />}
                                     <BottomNav tab={tab} onChange={setTab} />
+                                    {collecting && (
+                                        <CollectScreen
+                                            key={vm.id}
+                                            collections={collections}
+                                            onClose={() => setCollecting(false)}
+                                        />
+                                    )}
                                     {reporting && driverInfo && (
                                         <AccidentReportScreen key={vm.id} d={vm} driverInfo={driverInfo} owner={owner} onClose={() => setReporting(false)} onSubmit={add} />
                                     )}
@@ -290,7 +318,9 @@ const TASK_TONE: Record<string, { icon: string; chip: string }> = {
     blue: { icon: "text-blue-600 bg-blue-50", chip: "bg-blue-600 text-white" },
 };
 
-function HomeScreen({ d, health, onReport }: { d: DriverVM; health: Health | null; onReport: () => void }) {
+function HomeScreen({ d, health, onReport, toCollect, onCollect }: {
+    d: DriverVM; health: Health | null; onReport: () => void; toCollect: number; onCollect: () => void;
+}) {
     // Build the "needs attention" list from the driver's real DQ health + license expiry.
     const tasks: { Icon: React.ElementType; tone: string; title: string; sub: string; chip: string }[] = [];
     if (health) {
@@ -335,6 +365,23 @@ function HomeScreen({ d, health, onReport }: { d: DriverVM; health: Health | nul
                     View my file <ChevronRight size={15} />
                 </button>
             </div>
+
+            {/* Kit waiting at the office. Above the accident button because it is the one
+                thing here with a deadline somebody else is waiting on. */}
+            {toCollect > 0 && (
+                <button onClick={onCollect} className="mx-5 mt-4 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-left transition-colors hover:bg-blue-100">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><PackageCheck size={20} /></span>
+                    <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-blue-900">
+                            Collect from the office
+                        </span>
+                        <span className="block text-xs text-blue-700/80">
+                            {toCollect === 1 ? "1 list" : `${toCollect} lists`} waiting — tick off what you pick up
+                        </span>
+                    </span>
+                    <ChevronRight size={18} className="text-blue-400" />
+                </button>
+            )}
 
             {/* Report an accident */}
             <button onClick={onReport} className="mx-5 mt-4 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left transition-colors hover:bg-rose-100">
@@ -662,6 +709,71 @@ function AutoInfo({ title, icon: Icon, rows }: { title: string; icon: React.Elem
                     </div>
                 ))}
             </dl>
+        </div>
+    );
+}
+
+/**
+ * What the office has asked the driver to pick up.
+ *
+ * The same card the office sees in the thread, with the ticks live: confirming here is the
+ * only thing that writes a receipt back without somebody in the office typing it.
+ */
+function CollectScreen({ collections, onClose }: { collections: InventoryCollection[]; onClose: () => void }) {
+    const pending = collections.filter((c) => c.status === "pending");
+    const done = collections.filter((c) => c.status === "collected");
+
+    return (
+        <div className="absolute inset-x-0 bottom-0 top-11 z-40 flex flex-col bg-slate-50">
+            <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
+                <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"><ChevronLeft size={22} /></button>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><PackageCheck size={16} /></span>
+                <h3 className="text-base font-bold text-slate-900">Collect from the office</h3>
+                <button onClick={onClose} className="ml-auto rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+                {pending.length === 0 && done.length === 0 ? (
+                    <div className="flex flex-col items-center px-6 py-16 text-center">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400"><PackageCheck size={30} /></div>
+                        <p className="mt-4 text-sm font-semibold text-slate-700">Nothing to collect</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                            When the office assigns you kit, the list turns up here and in your messages.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        {pending.map((c) => (
+                            <div key={c.id} className="mb-3">
+                                {c.note && (
+                                    <p className="whitespace-pre-line rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-2.5 text-[12px] leading-relaxed text-slate-700">
+                                        {c.note}
+                                    </p>
+                                )}
+                                <InventoryCollectionCard
+                                    collection={c}
+                                    onConfirm={(ids) => confirmCollection(c.id, ids)}
+                                />
+                            </div>
+                        ))}
+
+                        {done.length > 0 && (
+                            <>
+                                <p className="mb-1 mt-5 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                    Already collected
+                                </p>
+                                {/* Kept, not cleared: a driver who is asked twice for the same key
+                                    needs to be able to point at the day they picked it up. */}
+                                {done.map((c) => (
+                                    <div key={c.id} className="mb-3">
+                                        <InventoryCollectionCard collection={c} onConfirm={() => {}} />
+                                    </div>
+                                ))}
+                            </>
+                        )}
+                    </>
+                )}
+            </div>
         </div>
     );
 }

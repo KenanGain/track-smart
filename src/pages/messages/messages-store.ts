@@ -68,6 +68,54 @@ export interface ChatWidget {
   meta?: Record<string, string>;
 }
 
+// ── inventory collection ─────────────────────────────────────────────────────
+// The office assigns or hands kit to a driver and asks them to collect it. The driver
+// gets an interactive checklist right in the chat: they tick what they actually walked
+// away with — one at a time or all of it — and confirming writes the receipt back onto
+// the hand-over record.
+//
+// Ticking per item rather than one "got it" button because a collection of five things
+// is rarely five things collected: two were on the shelf and the third is still on order.
+
+export interface CollectionLine {
+  itemId: string;
+  name: string;
+  serial?: string;
+  /**
+   * How they came to hold it: filed against them or their vehicle, riding in the cab of
+   * a vehicle they drive, or signed across on a hand-over checklist.
+   */
+  route: 'assigned' | 'carried' | 'handed';
+}
+
+export interface InventoryCollection {
+  /** Shared id, so a confirmation flips every copy of the card. */
+  id: string;
+  accountId: string;
+  /**
+   * Which way the kit is moving.
+   *
+   * `collect` — the office has it, the driver comes and gets it.
+   * `return`  — the driver has it, the office wants it back — the half of a driver
+   *             change that used to happen by phone call and get forgotten.
+   *
+   * Optional so the cards sent before this existed still read as collections.
+   */
+  direction?: 'collect' | 'return';
+  /** Who is holding the list, and where it is going. */
+  driverId: string;
+  driverName: string;
+  /** The vehicle, when the items were put on one rather than on the person. */
+  holderLabel?: string;
+  lines: CollectionLine[];
+  issuedBy: string;
+  note?: string;
+  status: 'pending' | 'collected';
+  /** Which lines the driver confirmed. A partial answer is a real answer. */
+  collectedItemIds?: string[];
+  collectedAt?: string;
+}
+
 export interface ChatMessage {
   id: string;
   fromMe: boolean;
@@ -83,6 +131,7 @@ export interface ChatMessage {
   action?: AiAction;          // an AI-agent action-result card (mail sent, training assigned …)
   resource?: AiResource;      // a tappable resource widget (upload / form / sign / view)
   compliance?: ComplianceRequest; // an interactive "fill the data & upload" compliance request
+  collection?: InventoryCollection; // an interactive "tick what you collected" inventory list
   dashboard?: AiDashboard;    // a tagged driver's / asset's interactive mini dashboard
   suggestions?: string[];     // AI-agent follow-up quick prompts
 }
@@ -732,6 +781,81 @@ export function submitComplianceRequest(convId: string, requestId: string, submi
   };
   patch(convId, c => ({ ...c, lastAt: at, messages: [...c.messages, line] }), true);
   return { label, name };
+}
+
+/**
+ * Put a collection checklist into a driver's chat. Returns the conversation id.
+ *
+ * Sent with the assignment rather than after it: a driver cannot collect what nobody told
+ * them about, and an office that has to remember a second step will forget it.
+ */
+export function sendInventoryCollection(collection: InventoryCollection, text?: string): string {
+  const convId = getOrCreateDriverConversation(collection.driverName);
+  const at = nowTime();
+  const msg: ChatMessage = {
+    id: uid('col'), fromMe: true, at, iso: nowIso(),
+    text: text?.trim() || (collection.direction === 'return'
+      ? `${collection.lines.length} item${collection.lines.length === 1 ? '' : 's'} to hand back to the office.`
+      : `${collection.lines.length} item${collection.lines.length === 1 ? '' : 's'} to collect from the office.`),
+    collection,
+  };
+  patch(convId, c => ({ ...c, lastAt: at, messages: [...c.messages, msg] }), true);
+  return convId;
+}
+
+/**
+ * The driver confirmed what they walked away with.
+ *
+ * Flips every copy of the card and posts their reply into the thread, so the conversation
+ * reads like one — the office should not have to open a record to learn the answer.
+ * Returns the card as it now stands, for the caller to write back against.
+ */
+export function settleInventoryCollection(collectionId: string, collectedItemIds: string[]): InventoryCollection | null {
+  let settled: InventoryCollection | null = null;
+  let convId = '';
+  for (const c of conversations) {
+    if (!c.messages.some(m => m.collection?.id === collectionId)) continue;
+    convId = c.id;
+    patch(c.id, x => ({
+      ...x,
+      messages: x.messages.map(m => (m.collection?.id === collectionId
+        ? {
+            ...m,
+            collection: {
+              ...m.collection,
+              status: 'collected' as const,
+              collectedItemIds,
+              collectedAt: nowIso(),
+            },
+          }
+        : m)),
+    }));
+    const hit = c.messages.find(m => m.collection?.id === collectionId);
+    if (hit?.collection) settled = { ...hit.collection, status: 'collected', collectedItemIds, collectedAt: nowIso() };
+  }
+  if (!settled || !convId) return null;
+
+  const got = collectedItemIds.length;
+  const total = settled.lines.length;
+  const at = nowTime();
+  const line: ChatMessage = {
+    id: uid('in'), fromMe: false, at, iso: nowIso(),
+    // A partial collection says so: "picked up 2 of 4" is the fact, and rounding it to
+    // "collected" would leave the office believing the other two are out.
+    text: settled.direction === 'return'
+      ? (got === total
+          ? `Dropped ${total === 1 ? 'it' : `all ${total}`} at the office.`
+          : got === 0
+            ? `I haven't been able to drop these off yet.`
+            : `Dropped off ${got} of ${total}. I still have the rest.`)
+      : (got === total
+          ? `Picked up${total === 1 ? ' it' : ` all ${total}`} from the office — thanks.`
+          : got === 0
+            ? `I haven't been able to pick these up yet.`
+            : `Picked up ${got} of ${total}. I'll come back for the rest.`),
+  };
+  patch(convId, c => ({ ...c, lastAt: at, messages: [...c.messages, line] }), true);
+  return settled;
 }
 
 /** Advance a widget's status (the recipient acting on the task). */

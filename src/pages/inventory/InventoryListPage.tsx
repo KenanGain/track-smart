@@ -6,7 +6,7 @@ import {
     KeyRound, ShieldCheck, Package, Cpu, CreditCard,
     CircleCheck, Clock, AlertTriangle, CircleSlash,
     PackageCheck, ChevronDown, ChevronRight, Undo2, UserRound, ListChecks, Share2,
-    Bell, BellOff, ChevronRight as RowChevron,
+    Bell, BellOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -591,7 +591,6 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     <KebabMenu items={[
                                                         { label: "Share to chat", icon: Share2, onClick: () => setShareItem(item) },
                                                     ]} />
-                                                    <RowChevron size={14} className="ml-0.5 shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" aria-hidden />
                                                 </div>
                                             </TD>
                                         </tr>

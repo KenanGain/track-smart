@@ -1697,6 +1697,7 @@ export function CarrierProfilePage({
                 {activeTab === 'assets' && (
                     <div className={isAssetFormActive ? "h-full" : "w-full"}>
                         <AssetDirectoryPage
+                            onNavigate={onNavigate}
                             isEmbedded={true}
                             assets={profileBundle?.assets}
                             onDetailViewChange={setIsAssetDetailActive}

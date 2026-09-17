@@ -28,6 +28,8 @@ import { AddServiceProfilePage } from '@/pages/accounts/AddServiceProfilePage'
 import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
 import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
 import { InventoryItemDetailPage } from '@/pages/inventory/InventoryItemDetailPage'
+import { InventoryHoldersPage } from '@/pages/inventory/InventoryHoldersPage'
+import { AssignInventoryPage } from '@/pages/inventory/AssignInventoryPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
 import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
 import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
@@ -444,6 +446,46 @@ function App() {
                 />
             )
         }
+        // "/inventory/drivers/<id>/assign" — tested before the bare tab paths so the tab
+        // route does not swallow it.
+        if (/^\/inventory\/(drivers|assets)\/[^/]+\/assign$/.test(path)) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const [, , seg, id] = path.split("/")
+            return (
+                <AssignInventoryPage
+                    onNavigate={handleNavigate}
+                    kind={seg === "drivers" ? "driver" : "asset"}
+                    holderId={id}
+                    accountId={account?.id}
+                />
+            )
+        }
+        // ".../<id>/add" opens the Add Inventory form already pointed at that holder.
+        if (/^\/inventory\/(drivers|assets)\/[^/]+\/add$/.test(path)) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const [, , seg, id] = path.split("/")
+            return (
+                <AddInventoryItemPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    preset={{ kind: seg === "drivers" ? "driver" : "asset", targetId: id }}
+                />
+            )
+        }
+        if (path === "/inventory/drivers" || path === "/inventory/assets") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <InventoryHoldersPage
+                    onNavigate={handleNavigate}
+                    kind={path === "/inventory/drivers" ? "driver" : "asset"}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
+        }
         if (path === "/inventory/items/new") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
@@ -621,7 +663,7 @@ function App() {
             return <IntegrationsSettingsPage accountId={account?.id} />
         }
         if (path === "/assets/directory") {
-            return <AssetDirectoryPage />
+            return <AssetDirectoryPage onNavigate={handleNavigate} />
         }
         if (path === "/maintenance") {
             const account = selectedAccount

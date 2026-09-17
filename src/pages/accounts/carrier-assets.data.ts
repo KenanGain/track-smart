@@ -276,6 +276,39 @@ for (const account of ACCOUNTS_DB) {
     }
 }
 
+// — Assets added through the UI ─────────────────────────────────────────────
+// Mirrors addCarrierDriver: the Register Asset wizard dropped a new asset into one
+// page's React state, so every other reader — the inventory list's Asset column,
+// "the driver of this vehicle", the fleet counts — could not see it, and anything
+// filed against it read as an unknown asset.
+const EXTRA_ASSETS_KEY = 'ts_extra_carrier_assets_v1';
+
+function loadExtraAssets(): Record<string, Asset[]> {
+    try { return JSON.parse(localStorage.getItem(EXTRA_ASSETS_KEY) || '{}'); } catch { return {}; }
+}
+
+try {
+    const extra = loadExtraAssets();
+    for (const [acct, list] of Object.entries(extra)) {
+        const base = CARRIER_ASSETS[acct] ?? [];
+        const ids = new Set(list.map(a => a.id));
+        CARRIER_ASSETS[acct] = [...list, ...base.filter(a => !ids.has(a.id))];
+    }
+} catch { /* ignore */ }
+
+/** Register an asset added through the UI so the shared fleet — and every consumer of
+ *  it — can see it. Upserts by id and persists. */
+export function addCarrierAsset(accountId: string | undefined, asset: Asset): void {
+    if (!accountId || !asset?.id) return;
+    const base = CARRIER_ASSETS[accountId] ?? [];
+    CARRIER_ASSETS[accountId] = [asset, ...base.filter(a => a.id !== asset.id)];
+    try {
+        const extra = loadExtraAssets();
+        extra[accountId] = [asset, ...(extra[accountId] ?? []).filter(a => a.id !== asset.id)];
+        localStorage.setItem(EXTRA_ASSETS_KEY, JSON.stringify(extra));
+    } catch { /* ignore */ }
+}
+
 export const getAssetsForAccount = (accountId: string): Asset[] =>
     CARRIER_ASSETS[accountId] ?? [];
 

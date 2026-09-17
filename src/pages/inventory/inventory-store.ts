@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { InventoryItem } from "./inventory.data";
+import { getInventoryForCarrier, INVENTORY_ITEMS, type InventoryItem } from "./inventory.data";
 
 // Inventory items shipped in inventory.data.ts are static seed data. Two overlays sit on
 // top of it, both in localStorage:
@@ -42,6 +42,31 @@ export function applyEdit(item: InventoryItem, edits: EditStore): InventoryItem 
     return patch ? { ...item, ...patch } : item;
 }
 
+/**
+ * File a change against an item from outside React.
+ *
+ * The hook below makes the same call — this exists because the asset wizard's save path
+ * runs after the form has closed, at the point the asset finally has an id, which is not a
+ * place a hook can be called from.
+ */
+export function updateInventoryItem(itemId: string, patch: Partial<InventoryItem>): void {
+    const cur = loadEdits();
+    persist(loadAll(), { ...cur, [itemId]: { ...(cur[itemId] ?? {}), ...patch } });
+}
+
+/**
+ * Every item this carrier has right now: the seeded rows with their saved edits laid
+ * over them, plus anything created in the app. The same list the pages build through
+ * the hook — kept here so a save path outside React cannot build a different one.
+ */
+export function currentInventoryItems(accountId: string | undefined): InventoryItem[] {
+    const edits = loadEdits();
+    const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS)
+        .map((it) => applyEdit(it, edits));
+    const added = (loadAll()[accountId ?? "acct-001"] ?? []).map((it) => applyEdit(it, edits));
+    return added.length ? [...added, ...base] : base;
+}
+
 export function useInventoryAdditions(accountId?: string) {
     const acct = accountId ?? "acct-001";
     const [all, setAll] = useState<Store>(loadAll);
@@ -64,10 +89,7 @@ export function useInventoryAdditions(accountId?: string) {
         persist({ ...cur, [acct]: [...(cur[acct] ?? []), item] }, loadEdits());
     };
 
-    const update = (itemId: string, patch: Partial<InventoryItem>) => {
-        const cur = loadEdits();
-        persist(loadAll(), { ...cur, [itemId]: { ...(cur[itemId] ?? {}), ...patch } });
-    };
+    const update = updateInventoryItem;
 
     return { additions, edits, add, update, applyEdit: (it: InventoryItem) => applyEdit(it, edits) };
 }

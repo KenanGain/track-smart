@@ -19,6 +19,7 @@ import {
     INVENTORY_ITEMS,
     itemName,
     inventoryMonitoring,
+    driverOfAsset,
     type Assignment,
     type InventoryItem,
     type InventoryStatus,
@@ -29,6 +30,9 @@ import {
 } from "./InventoryItemFields";
 import { useInventoryAdditions } from "./inventory-store";
 import { logInventoryEvent, describeChanges } from "./inventory-activity";
+import { currentUserName } from "@/data/users.data";
+import { requestCollection, collectionLineFor } from "./inventory-collection";
+import { driverNameOf } from "./inventory-assignment";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -37,6 +41,14 @@ type Props = {
     accountId?: string;
     /** When set, the page opens in edit mode, prefilled from this inventory item. */
     editId?: string;
+    /**
+     * Who it is for, when the form was opened from their page.
+     *
+     * A starting point, not a lock: the Assignment section still shows it and can
+     * still be changed, because "add this to that truck" is a guess about intent and
+     * a guess you cannot undo is worse than no guess at all.
+     */
+    preset?: { kind: "driver" | "asset"; targetId: string };
 };
 
 export type InventoryFormPayload = {
@@ -51,12 +63,12 @@ export type InventoryFormPayload = {
     assignedTo?: Assignment;
 };
 
-/** The prototype has no session; a real signed-in user replaces this. */
-const CAPTURED_BY = "Fleet Manager";
+/** Who the trail records as the author: whoever is signed in. */
+const capturedBy = () => currentUserName();
 
 const STEPS: readonly WizardStep[] = INVENTORY_SECTIONS.map((s) => ({ id: s.id, label: s.label, icon: s.icon }));
 
-export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
+export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: Props) {
     // Vendor dropdown is scoped to the active carrier. Each Vendor row in VENDORS carries an
     // accountId, so we filter directly. Falls back to the global list when no carrier is active.
     const vendors = useMemo(() => {
@@ -80,7 +92,15 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
     // page used to silently turn back into an unassigned truck.
     const [draft, setDraft] = useState<InventoryItemDraft>(() => {
         const blank = emptyInventoryDraft(vendors.find((v) => v.id === editing?.vendorId) ?? vendors[0]);
-        if (!editing) return blank;
+        if (!editing) {
+            // Opened from a driver's or a vehicle's page: start it pointed at them. On a
+            // vehicle the default is that it rides in the cab, because that is what most
+            // things opened from a truck are — and both are still editable below.
+            if (!preset) return blank;
+            return preset.kind === "driver"
+                ? { ...blank, assignmentKind: "driver" as const, targetId: preset.targetId }
+                : { ...blank, assignmentKind: "cmv" as const, targetId: preset.targetId, alsoDriverOfAsset: true };
+        }
         return {
             ...blank,
             vendorId: editing.vendorId,
@@ -156,9 +176,26 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
                 reminder: "None",
             };
             add(item);
+            // …and tell whoever it went to. An assignment nobody is told about is an
+            // assignment that surprises somebody later, so the message goes with the save.
+            const target = draft.assignmentKind === "driver" && draft.targetId
+                ? { id: draft.targetId, name: driverNameOf(draft.targetId, accountId) ?? "Driver" }
+                : draft.alsoDriverOfAsset && draft.targetId
+                    ? driverOfAsset(draft.targetId, accountId)
+                    : null;
+            if (draft.notifyDriver && target) {
+                requestCollection({
+                    accountId: accountId ?? "acct-001",
+                    driverId: target.id,
+                    driverName: target.name,
+                    lines: [collectionLineFor(item, "assigned")],
+                    issuedBy: capturedBy(),
+                    note: draft.collectNote.trim() || undefined,
+                });
+            }
             logInventoryEvent({
                 itemId: item.id, accountId: accountId ?? "acct-001", kind: "created",
-                title: "Added to inventory", by: CAPTURED_BY, role: "Office",
+                title: "Added to inventory", by: capturedBy(), role: "Office",
                 detail: [payload.serial && `Number ${payload.serial}`, `Status ${payload.status}`]
                     .filter(Boolean).join(" · "),
             });
@@ -173,7 +210,7 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
                 logInventoryEvent({
                     itemId: editing.id, accountId: accountId ?? "acct-001", kind: "updated",
                     title: changes.length === 1 ? "Item updated" : `Item updated — ${changes.length} changes`,
-                    detail: changes.join(" · "), by: CAPTURED_BY, role: "Office",
+                    detail: changes.join(" · "), by: capturedBy(), role: "Office",
                 });
             }
             // Back to the item, not to the list: you came from it, and you want to see the

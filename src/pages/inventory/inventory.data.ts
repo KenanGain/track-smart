@@ -664,6 +664,32 @@ const COMPANY_ACCESSORIES: AccessorySeed[] = [
     { catId: "cat-cards-docs", name: "Insurance Card", withDriver: true },
     { catId: "cat-cards-docs", name: "Vehicle Registration & Permits", withDriver: true },
     { catId: "cat-cards-docs", name: "IFTA / IRP Documents" },
+
+    // ── Yard stock ───────────────────────────────────────────────────────────
+    // Spares the office holds and issues as they are needed. These are what the assign and
+    // hand-over pickers offer: with only three of them the pools were too thin to tell
+    // whether the filters, the category rule and the take-back actually worked.
+    { catId: "cat-keys", name: "Spare Truck Keys (set)", yardStock: true },
+    { catId: "cat-keys", name: "Spare Yard Gate Fob", yardStock: true },
+    { catId: "cat-safety-ppe", name: "Spare Hi-Vis Vests (box)", yardStock: true },
+    { catId: "cat-safety-ppe", name: "Spare Safety Gloves (box)", yardStock: true },
+    { catId: "cat-safety-ppe", name: "Spare First-Aid Kits", yardStock: true },
+    { catId: "cat-equipment", name: "Wheel Chocks", yardStock: true },
+    { catId: "cat-equipment", name: "Spare Ratchet Straps", yardStock: true },
+    { catId: "cat-equipment", name: "Snow Chains", yardStock: true },
+    { catId: "cat-devices", name: "Spare Dashcam", yardStock: true },
+    { catId: "cat-devices", name: "Spare Tablet", yardStock: true },
+    { catId: "cat-cards-docs", name: "Blank Logbooks", yardStock: true },
+
+    // ── Personal issue ───────────────────────────────────────────────────────
+    // Sized to a person, so filed against one. Without a few more of these the Drivers tab
+    // showed a single item on most rows and nothing to compare.
+    { catId: "cat-safety-ppe", name: "Hard Hat", toDriver: true },
+    { catId: "cat-safety-ppe", name: "Safety Glasses", toDriver: true },
+    { catId: "cat-safety-ppe", name: "Hearing Protection", toDriver: true },
+    { catId: "cat-equipment", name: "Winter Jacket", toDriver: true },
+    { catId: "cat-devices", name: "Driver Tablet", toDriver: true },
+    { catId: "cat-cards-docs", name: "Fuel Card PIN Sleeve", toDriver: true },
 ];
 
 for (const accountId of Object.keys(CARRIER_ASSETS)) {

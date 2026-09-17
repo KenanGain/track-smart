@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Send, Paperclip, Phone, Video, MoreVertical, ChevronLeft, Plus,
+  Search, Send, Paperclip, Phone, Video, MoreVertical, ChevronLeft, Plus, PackageCheck,
   CheckCheck, Smile, MessageSquare, ArrowLeftRight,
   Image as ImageIcon, Play, FileText, Mail, Hash, Download, Eye, Share2, X, Clock,
   Bot, Users, Link2, Copy, Ban, RotateCcw, ShieldCheck, ExternalLink,
@@ -23,6 +23,8 @@ import {
 } from './ai-agents';
 import { AiPanelCard, AiDashboardCard, AI_TONE, type RowTarget } from './AiWidgets';
 import { ComplianceRequestCard } from './ComplianceRequestCard';
+import { InventoryCollectionCard } from './InventoryCollectionCard';
+import { confirmCollection } from '@/pages/inventory/inventory-collection';
 import {
   ChatPicker, ComposerChips,
   type PickerItem, type PickerMode, type PickerSubject, type PickerCompliance, type PickerTask,
@@ -260,12 +262,13 @@ const WIDGET_VERB: Record<WidgetKind, string> = {
 // compliance request renders its own fill-in & upload widget.
 export type MsgKind =
   | 'system' | 'text' | 'files' | 'record' | 'task'
-  | 'panel' | 'dashboard' | 'compliance' | 'action' | 'resource';
+  | 'panel' | 'dashboard' | 'compliance' | 'collection' | 'action' | 'resource';
 
 export function messageKind(m: ChatMessage): MsgKind {
   if (m.system) return 'system';
   if (m.dashboard) return 'dashboard';
   if (m.compliance) return 'compliance';
+  if (m.collection) return 'collection';
   if (m.panel) return 'panel';
   if (m.widget) return 'task';
   if (m.resource) return 'resource';
@@ -293,6 +296,7 @@ const MSG_KIND: Record<MsgKind, MsgKindMeta> = {
   panel:      { icon: BarChart3,      verbCls: 'text-violet-700',  label: () => 'Live data' },
   dashboard:  { icon: LayoutDashboard, verbCls: 'text-violet-700', label: (m) => `${m.dashboard?.subject.kind === 'asset' ? 'Asset' : 'Driver'} dashboard`, breakout: true },
   compliance: { icon: Upload,         verbCls: 'text-emerald-700', label: (m) => (m.compliance?.status === 'submitted' ? 'Submitted' : m.compliance?.ask.needsUpload ? 'Document request' : 'Data request') },
+  collection: { icon: PackageCheck,   verbCls: 'text-blue-700',    label: (m) => (m.collection?.status === 'collected' ? 'Collected' : 'Collect from office') },
   action:     { icon: CheckCircle2,   verbCls: 'text-emerald-700', label: () => 'Task run' },
   resource:   { icon: ExternalLink,   verbCls: 'text-blue-700',    label: () => 'Secure link sent' },
 };
@@ -1157,6 +1161,30 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                           </div>
                         </div>
                       );
+                    }
+
+                    // ── an inventory collection checklist ──
+                    if (kind === 'collection' && m.collection) {
+                        const col = m.collection;
+                        // The office side is a read-only mirror; the driver gets the ticks. `mine`
+                        // is the office's own outgoing message, which is exactly that mirror.
+                        return (
+                          <div key={m.id}>
+                            {dayRule}
+                            <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                              <div className={cn('w-full max-w-[92%] rounded-2xl px-3.5 py-3 shadow-sm ring-1 ring-inset sm:max-w-[76%]',
+                                col.status === 'collected' ? 'bg-emerald-50/60 ring-emerald-100' : mine ? 'bg-blue-50 ring-blue-100' : 'bg-amber-50/70 ring-amber-100')}>
+                                {header}
+                                {lead}
+                                <InventoryCollectionCard
+                                  collection={col}
+                                  preview={mine}
+                                  onConfirm={(ids) => confirmCollection(col.id, ids)}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
                     }
 
                     // ── everything else: the chat bubble, with the right card inside ──

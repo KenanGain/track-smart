@@ -486,6 +486,27 @@ export function findUserById(id: string): AppUser | undefined {
     return APP_USERS.find((u) => u.id === id);
 }
 
+/**
+ * Who is signed in, read from where App.tsx puts it.
+ *
+ * Anything that stamps an action with an author needs this, and the one-liner had been
+ * copied into three files before it was written down anywhere. Wrapped in try/catch because
+ * localStorage throws in a private window rather than returning null.
+ */
+export const CURRENT_USER_KEY = "app_current_user_id";
+
+export function currentUser(): AppUser | undefined {
+    try {
+        const id = localStorage.getItem(CURRENT_USER_KEY);
+        return id ? findUserById(id) : undefined;
+    } catch { return undefined; }
+}
+
+/** The signed-in user's display name, or "You" when nobody is. */
+export function currentUserName(): string {
+    return currentUser()?.name || "You";
+}
+
 export function findUserByEmail(email: string): AppUser | undefined {
     const e = email.trim().toLowerCase();
     return APP_USERS.find((u) => u.email.toLowerCase() === e);

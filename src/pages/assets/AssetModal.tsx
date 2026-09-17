@@ -3,7 +3,8 @@ import {
     Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock, FileSignature
+    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock, FileSignature,
+    Boxes, Search, MessageSquare, PackageCheck, PenLine, Undo2, ArrowRight, Ban, X
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -11,6 +12,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
+import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
+import { useInventoryAdditions } from '@/pages/inventory/inventory-store';
+import { useDriverHandovers, handedToMap } from '@/pages/inventory/handovers.data';
+import { unassignedItems, rollupByAsset, VIA_LABEL, VIA_TONE } from '@/pages/inventory/inventory-rollup';
+import { getInventoryForCarrier, INVENTORY_ITEMS, itemName, VENDORS } from '@/pages/inventory/inventory.data';
+import { draftCollectionNote, collectionLineFor } from '@/pages/inventory/inventory-collection';
+import { emptyAssetInventoryDraft, canBeHandedOver, type AssetInventoryDraft } from './asset-inventory-bridge';
+import { removeActionFor } from '@/pages/inventory/inventory-rollup';
+import { draftReturnNote } from '@/pages/inventory/inventory-collection';
 import { GvwrTag } from './GvwrTag';
 import { MAX_RECORD_NAME, isDateMonitored } from '@/pages/compliance/safety-software-catalog.data';
 import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
@@ -415,6 +425,8 @@ const STEPS: readonly WizardStep[] = [
     { id: 'plate', label: 'Registration & plate', icon: Globe },
     { id: 'yard', label: 'Yard / terminal', icon: Warehouse },
     { id: 'drivers', label: 'Driver assignment', icon: Users },
+    // After the driver, because who carries what depends on who is driving.
+    { id: 'inventory', label: 'Inventory', icon: Boxes },
     { id: 'ownership', label: 'Ownership & financial', icon: KeyRound },
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'insurance', label: 'Insurance & status', icon: Shield },
@@ -424,11 +436,13 @@ const STEPS: readonly WizardStep[] = [
 interface AssetModalProps {
     asset: any;
     onClose: () => void;
-    onSave: (data: any) => void;
+    /** Saved with the asset: the inventory picked for it, committed once it has an id. */
+    onSave: (data: any, inventory?: AssetInventoryDraft) => void;
     isSaving: boolean;
+    accountId?: string;
 }
 
-export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps) {
+export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: AssetModalProps) {
     const isEdit = !!asset;
     const { register, handleSubmit, watch, setValue, control, formState: { errors, isDirty } } = useForm({
         resolver: zodResolver(assetSchema),
@@ -443,6 +457,19 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
     });
 
     const { fields: driverFields, append: appendDriver, remove: removeDriver } = useFieldArray({ control, name: "driverAssignments" });
+
+    /**
+     * The drivers this carrier actually has.
+     *
+     * It used to offer MOCK_DRIVERS — a global demo list whose ids exist in no carrier
+     * roster — so assigning one left the inventory list showing no driver for the truck
+     * and "carried by the driver of this vehicle" pointing at nobody. MOCK_DRIVERS stays as
+     * the fallback for a carrier with an empty roster, so the picker is never blank.
+     */
+    const drivers = useMemo(() => {
+        const roster = accountId ? getDriversForAccount(accountId) : [];
+        return roster.length ? roster : MOCK_DRIVERS;
+    }, [accountId]);
 
     const assetType = watch('assetType');
     const financial = watch('financialStructure');
@@ -504,6 +531,178 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
         setOwnershipDoc(emptyOwnershipDoc(financial));
         setOwnershipFiles([]);
     }, [financial]);
+
+    // — Inventory for this vehicle ──────────────────────────────
+    // The items, the ones already spoken for, and the ones free to hand out — read
+    // exactly the way the Inventory tabs read them, so the two cannot disagree about what
+    // is free to give away.
+    const { additions, applyEdit: applyItemEdit } = useInventoryAdditions(accountId);
+    const { records: handoverRecords } = useDriverHandovers(accountId ?? 'acct-001');
+    const inventoryItems = useMemo(() => {
+        const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyItemEdit);
+        return additions.length ? [...additions, ...base] : base;
+    }, [accountId, additions, applyItemEdit]);
+    const handedTo = useMemo(() => handedToMap(handoverRecords, accountId ?? 'acct-001'), [handoverRecords, accountId]);
+    const freeItems = useMemo(() => unassignedItems(inventoryItems, handedTo), [inventoryItems, handedTo]);
+    // What it already holds — only ever on an edit, since a new asset holds nothing.
+    const heldRow = useMemo(() => (
+        asset?.id
+            ? rollupByAsset(inventoryItems, accountId, handedTo).find(r => r.id === asset.id)
+            : undefined
+    ), [asset?.id, inventoryItems, handedTo, accountId]);
+
+    const [inventoryDraft, setInventoryDraft] = useState<AssetInventoryDraft>(emptyAssetInventoryDraft);
+    const [inventorySearch, setInventorySearch] = useState('');
+    const setInv = (p: Partial<AssetInventoryDraft>) => setInventoryDraft(d => ({ ...d, ...p }));
+    const toggleItem = (id: string) => setInventoryDraft(d => ({
+        ...d,
+        itemIds: d.itemIds.includes(id) ? d.itemIds.filter(x => x !== id) : [...d.itemIds, id],
+        // One answer per row: a thing is either filed against the truck or signed across
+        // to its driver, and a row that could be both is a row nobody can read.
+        handIds: d.handIds.filter(x => x !== id),
+    }));
+    const toggleHand = (id: string) => setInventoryDraft(d => ({
+        ...d,
+        handIds: d.handIds.includes(id) ? d.handIds.filter(x => x !== id) : [...d.handIds, id],
+        itemIds: d.itemIds.filter(x => x !== id),
+    }));
+
+    // Whoever is driving it according to THIS form, not the saved record: on a new asset
+    // there is no saved record, and on an edit the driver may be changing in this very
+    // session. The current assignment is the one with no end date.
+    const driverAssignments = watch('driverAssignments');
+    const currentDriver = useMemo(() => {
+        const list: any[] = driverAssignments ?? [];
+        const current = list.find(a => a?.driverId && !a.endDate) ?? list.find(a => a?.driverId);
+        if (!current) return null;
+        const d = drivers.find(x => x.id === current.driverId);
+        return d ? { id: d.id, name: d.name } : null;
+    }, [driverAssignments, drivers]);
+
+    const pickedItems = useMemo(
+        () => freeItems.filter(it => inventoryDraft.itemIds.includes(it.id)),
+        [freeItems, inventoryDraft.itemIds],
+    );
+
+    // — The driver is changing —
+    // Who was driving it according to the SAVED record, against who the form now names.
+    // The kit in the cab does not follow by itself: a fuel card is in somebody’s pocket,
+    // and until it comes back through the office the next driver has not got it.
+    const previousDriver = useMemo(() => {
+        const list: any[] = asset?.driverAssignments ?? [];
+        const current = list.find(a => a?.driverId && !a.endDate) ?? list.find(a => a?.driverId);
+        if (!current) return null;
+        const d = drivers.find(x => x.id === current.driverId);
+        return d ? { id: d.id, name: d.name } : null;
+    }, [asset?.driverAssignments, drivers]);
+
+    const driverChanged = !!previousDriver && previousDriver.id !== (currentDriver?.id ?? '');
+    // Only what travels with the person. Kit filed on the vehicle stays on the vehicle —
+    // nobody carries a spare wheel chock home.
+    const cabItems = useMemo(
+        () => (driverChanged
+            ? (heldRow?.items ?? [])
+                .filter(h => h.via === 'carried' && !inventoryDraft.removeIds.includes(h.item.id))
+                .map(h => h.item)
+            : []),
+        [driverChanged, heldRow, inventoryDraft.removeIds],
+    );
+
+    // Everything in the cab moves unless somebody says otherwise, and the block resets
+    // itself if the driver is put back to who it was.
+    useEffect(() => {
+        setInventoryDraft(d => ({
+            ...d,
+            changeover: {
+                ...d.changeover,
+                outgoing: driverChanged ? previousDriver : null,
+                itemIds: driverChanged ? cabItems.map(i => i.id) : [],
+            },
+        }));
+    }, [driverChanged, previousDriver?.id, cabItems.map(i => i.id).join(',')]);
+
+    // What may come off this vehicle, and by which route. The rule lives with the rollup,
+    // because the Inventory assign page shows the same pile and offers the same undo — a
+    // remove that the next render puts straight back is a lie.
+    const onChecklist = useMemo(() => {
+        const rec = currentDriver ? handoverRecords[`${accountId ?? 'acct-001'}::${currentDriver.id}`] : undefined;
+        return new Set((rec?.lines ?? []).map(l => l.itemId));
+    }, [handoverRecords, currentDriver?.id, accountId]);
+
+    const heldRows = useMemo(() => (heldRow?.items ?? []).map(h => ({
+        ...h,
+        action: removeActionFor(h, 'asset', asset?.id ?? '', onChecklist.has(h.item.id)),
+    })), [heldRow, asset?.id, onChecklist]);
+
+    const toggleRemove = (id: string) => setInventoryDraft(d => ({
+        ...d,
+        removeIds: d.removeIds.includes(id) ? d.removeIds.filter(x => x !== id) : [...d.removeIds, id],
+        // Something being taken off the truck is not also something to move to the next
+        // driver: it is not going to a driver at all.
+        changeover: { ...d.changeover, itemIds: d.changeover.itemIds.filter(x => x !== id) },
+    }));
+
+    // Of the ones coming off, the ones somebody is physically holding: kit in the cab, and
+    // anything signed across. A spare key in a parked truck is already where it lives.
+    const removedInHand = useMemo(
+        () => heldRows.filter(h => inventoryDraft.removeIds.includes(h.item.id)
+            && (h.via === 'carried' || h.via === 'handed')),
+        [heldRows, inventoryDraft.removeIds],
+    );
+
+    const movingItems = useMemo(
+        () => cabItems.filter(i => inventoryDraft.changeover.itemIds.includes(i.id)),
+        [cabItems, inventoryDraft.changeover.itemIds],
+    );
+    const suggestedReturnNote = useMemo(() => (
+        previousDriver && movingItems.length
+            ? draftReturnNote(previousDriver.name, movingItems.map(it => collectionLineFor(it, 'carried')),
+                `${watch('unitNumber') || 'the vehicle'} is changing driver`)
+            : ''
+    ), [previousDriver, movingItems, watch('unitNumber')]);
+    const [returnNoteTouched, setReturnNoteTouched] = useState(false);
+    useEffect(() => {
+        if (!returnNoteTouched) {
+            setInventoryDraft(d => ({ ...d, changeover: { ...d.changeover, returnNote: suggestedReturnNote } }));
+        }
+    }, [suggestedReturnNote, returnNoteTouched]);
+    const shownItems = useMemo(() => {
+        const q = inventorySearch.trim().toLowerCase();
+        if (!q) return freeItems;
+        return freeItems.filter(it => itemName(it).toLowerCase().includes(q)
+            || (it.serial ?? "").toLowerCase().includes(q));
+    }, [freeItems, inventorySearch]);
+
+    // Nobody to tell about a spare key that stays in a yarded truck: the message needs both
+    // a driver and kit that actually travels with them.
+    const handItems = useMemo(
+        () => freeItems.filter(it => inventoryDraft.handIds.includes(it.id)),
+        [freeItems, inventoryDraft.handIds],
+    );
+    // What the incoming driver would be asked to pick up: the cab's kit coming back the
+    // other way, anything assigned that rides with them, and anything signed across.
+    const collectItems = useMemo(() => {
+        const all = [
+            ...(inventoryDraft.changeover.tellIncoming ? movingItems : []),
+            ...(inventoryDraft.carried ? pickedItems : []),
+            ...handItems,
+        ];
+        return all.filter((it, i) => all.findIndex(x => x.id === it.id) === i);
+    }, [movingItems, pickedItems, handItems, inventoryDraft.carried, inventoryDraft.changeover.tellIncoming]);
+    const canTellDriver = !!currentDriver && collectItems.length > 0;
+    const suggestedCollectNote = useMemo(() => (
+        canTellDriver
+            ? draftCollectionNote(
+                currentDriver!.name,
+                collectItems.map(it => collectionLineFor(it, inventoryDraft.handIds.includes(it.id) ? 'handed' : 'assigned')),
+                handItems.length > 0,
+            )
+            : ''
+    ), [canTellDriver, currentDriver, collectItems, handItems.length, inventoryDraft.handIds]);
+    const [collectNoteTouched, setCollectNoteTouched] = useState(false);
+    useEffect(() => {
+        if (!collectNoteTouched) setInventoryDraft(d => ({ ...d, note: suggestedCollectNote }));
+    }, [suggestedCollectNote, collectNoteTouched]);
 
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
@@ -576,6 +775,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
             case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
+            case 'inventory': return inventoryDraft.itemIds.length + inventoryDraft.handIds.length
+                + inventoryDraft.changeover.itemIds.length + inventoryDraft.removeIds.length;
             // The document counts too — it is asked for in this section, so a section that has
             // one should not read the same as one that does not.
             case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined);
@@ -610,7 +811,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
                     {/* The ownership document rides along with the asset: the record can only be
                         filed once the asset has an id, which is assigned by whoever saves it. */}
-                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc }))} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc }, inventoryDraft))} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
 
                         {/* 1. Asset Class */}
                         <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
@@ -761,7 +962,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     {driverFields.map((field, idx) => {
                                         const dId = watch(`driverAssignments.${idx}.driverId`);
                                         const eDate = watch(`driverAssignments.${idx}.endDate`);
-                                        const driverObj = MOCK_DRIVERS.find(d => d.id === dId);
+                                        const driverObj = drivers.find(d => d.id === dId);
                                         if (!dId) return null;
                                         return (
                                             <div key={field.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full shadow-sm">
@@ -790,7 +991,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                             <FormInput label="Driver Name" required>
                                                 <select {...register(`driverAssignments.${index}.driverId`)} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
                                                     <option value="">Select Driver</option>
-                                                    {MOCK_DRIVERS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                                    {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                                 </select>
                                             </FormInput>
                                             <div className="grid grid-cols-2 gap-4">
@@ -801,6 +1002,384 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     ))}
                                 </div>
                             )}
+                            </div>
+                        </WizardSection>
+
+                        {/* 6. Inventory */}
+                        <WizardSection id="inventory" icon={Boxes} title="Inventory"
+                            subtitle="What this vehicle carries, and who to tell."
+                            right={inventoryDraft.itemIds.length > 0 ? (
+                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
+                                    {inventoryDraft.itemIds.length} to assign
+                                </span>
+                            ) : undefined}
+                        >
+                            <div className="space-y-4">
+                                {/* Already on it — read-only here, because taking something back is
+                                    the assign page’s job and a second way to do it is a second answer. */}
+                                {heldRows.length > 0 && (
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                        <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                            <PackageCheck size={12} /> Already on this vehicle
+                                            <span className="text-slate-400">{heldRows.length}</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {heldRows.map(h => {
+                                                const off = inventoryDraft.removeIds.includes(h.item.id);
+                                                return (
+                                                    <span key={h.item.id} className={cn(
+                                                        "inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-[11px]",
+                                                        off ? "border-rose-200 bg-rose-50/70 text-rose-700" : "border-slate-200 text-slate-700",
+                                                    )}>
+                                                        <span className={cn("h-3 w-1 rounded-full", VIA_TONE[h.via].bar)} />
+                                                        <span className={cn(off && "line-through")}>{itemName(h.item)}</span>
+                                                        <span className={cn("rounded border px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider", VIA_TONE[h.via].chip)}>
+                                                            {VIA_LABEL.asset[h.via]}
+                                                        </span>
+                                                        {/* Only what this vehicle's own record put here. Carried kit belongs
+                                                            to the vehicle, so the vehicle is exactly the place to let go
+                                                            of it; anything else is somebody else's record to undo. */}
+                                                        {h.action && (
+                                                            <button type="button" onClick={() => toggleRemove(h.item.id)}
+                                                                title={off ? "Keep it on this vehicle"
+                                                                    : h.action === "unhand" ? `Take it off ${currentDriver?.name ?? "the driver"}’s hand-over`
+                                                                    : "Take it off this vehicle"}
+                                                                className={cn("ml-0.5 rounded p-0.5 transition-colors",
+                                                                    off ? "text-slate-500 hover:bg-slate-200/70" : "text-slate-400 hover:bg-rose-100 hover:text-rose-600")}>
+                                                                {off ? <Undo2 size={11} /> : <X size={11} />}
+                                                            </button>
+                                                        )}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {inventoryDraft.removeIds.length === 0 ? (
+                                            <p className="mt-2 text-[11px] text-slate-500">
+                                                Take something off with the {"\u00D7"}. Anything without one is held through
+                                                another record — change that where it lives.
+                                            </p>
+                                        ) : (
+                                            <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+                                                <p className="text-[11px] font-semibold text-rose-700">
+                                                    {inventoryDraft.removeIds.length} coming off this vehicle when you save.
+                                                </p>
+                                                {/* Taking it off the record does not take it out of a pocket. */}
+                                                {removedInHand.length > 0 && currentDriver && (
+                                                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-2">
+                                                        <input type="checkbox" checked={inventoryDraft.askBack}
+                                                            onChange={e => setInv({ askBack: e.target.checked })}
+                                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
+                                                        <span className="min-w-0">
+                                                            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
+                                                                <Undo2 size={12} className="text-amber-600" />
+                                                                Ask {currentDriver.name} to hand {removedInHand.length === 1 ? "it" : "them"} in at the office
+                                                            </span>
+                                                            <span className="block text-[11px] leading-snug text-slate-500">
+                                                                {currentDriver.name} is holding {removedInHand.length === 1 ? "this one" : `${removedInHand.length} of these`}.
+                                                                {" "}Taking {removedInHand.length === 1 ? "it" : "them"} off the record does not take
+                                                                {" "}{removedInHand.length === 1 ? "it" : "them"} out of a pocket.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* — The driver is changing —
+                                    The kit in the cab does not follow by itself. One of them has it in
+                                    their pocket, and the office is the only place it can change hands. */}
+                                {driverChanged && cabItems.length > 0 && (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                                        <div className="flex flex-wrap items-center gap-2 text-[12px] font-bold text-amber-900">
+                                            <Undo2 size={14} />
+                                            Driver change
+                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-amber-200">
+                                                {previousDriver!.name}
+                                                <ArrowRight size={11} className="text-amber-500" />
+                                                {currentDriver?.name ?? "nobody yet"}
+                                            </span>
+                                        </div>
+                                        <p className="mt-1.5 text-[11px] leading-snug text-slate-600">
+                                            {previousDriver!.name} is carrying {cabItems.length === 1 ? "an item" : `${cabItems.length} items`} that
+                                            {" "}belong{cabItems.length === 1 ? "s" : ""} to this vehicle. Until {cabItems.length === 1 ? "it comes" : "they come"} back
+                                            {" "}through the office, {currentDriver?.name ?? "the next driver"} has not got {cabItems.length === 1 ? "it" : "them"}.
+                                        </p>
+
+                                        <div className="mt-2 space-y-1">
+                                            {cabItems.map(item => {
+                                                const on = inventoryDraft.changeover.itemIds.includes(item.id);
+                                                return (
+                                                    <label key={item.id} className={cn(
+                                                        "flex cursor-pointer items-center gap-2.5 rounded-lg border bg-white px-2.5 py-1.5",
+                                                        on ? "border-amber-300" : "border-slate-200",
+                                                    )}>
+                                                        <input type="checkbox" checked={on}
+                                                            onChange={() => setInv({ changeover: {
+                                                                ...inventoryDraft.changeover,
+                                                                itemIds: on
+                                                                    ? inventoryDraft.changeover.itemIds.filter(x => x !== item.id)
+                                                                    : [...inventoryDraft.changeover.itemIds, item.id],
+                                                            } })}
+                                                            className="h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
+                                                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-800">{itemName(item)}</span>
+                                                        {item.serial && <span className="shrink-0 font-mono text-[10px] text-slate-400">{item.serial}</span>}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {movingItems.length > 0 && (
+                                            <div className="mt-2.5 space-y-2 border-t border-amber-200/70 pt-2.5">
+                                                <label className="flex cursor-pointer items-start gap-2.5">
+                                                    <input type="checkbox" checked={inventoryDraft.changeover.askReturn}
+                                                        onChange={e => setInv({ changeover: { ...inventoryDraft.changeover, askReturn: e.target.checked } })}
+                                                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
+                                                    <span className="min-w-0">
+                                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
+                                                            <MessageSquare size={12} className="text-amber-600" />
+                                                            Ask {previousDriver!.name} to hand {movingItems.length === 1 ? "it" : "them"} in at the office
+                                                        </span>
+                                                        <span className="block text-[11px] leading-snug text-slate-500">
+                                                            Sends the same checklist, pointed the other way. They tick off what they drop in.
+                                                        </span>
+                                                    </span>
+                                                </label>
+
+                                                {inventoryDraft.changeover.askReturn && (
+                                                    <>
+                                                        <textarea
+                                                            value={inventoryDraft.changeover.returnNote}
+                                                            onChange={e => { setInv({ changeover: { ...inventoryDraft.changeover, returnNote: e.target.value } }); setReturnNoteTouched(true); }}
+                                                            rows={5}
+                                                            className="w-full rounded-lg border border-amber-200 bg-white p-2.5 text-[12px] leading-relaxed text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                                                        />
+                                                        {returnNoteTouched && (
+                                                            <button type="button"
+                                                                onClick={() => { setReturnNoteTouched(false); setInv({ changeover: { ...inventoryDraft.changeover, returnNote: suggestedReturnNote } }); }}
+                                                                className="rounded-md border border-amber-200 bg-white px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-50">
+                                                                Reset to draft
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+
+                                                <label className={cn("flex items-start gap-2.5 border-t border-amber-200/70 pt-2",
+                                                    currentDriver ? "cursor-pointer" : "cursor-not-allowed opacity-60")}>
+                                                    <input type="checkbox" checked={inventoryDraft.changeover.tellIncoming && !!currentDriver}
+                                                        disabled={!currentDriver}
+                                                        onChange={e => setInv({ changeover: { ...inventoryDraft.changeover, tellIncoming: e.target.checked } })}
+                                                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                                                    <span className="min-w-0">
+                                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
+                                                            <PackageCheck size={12} className="text-blue-600" />
+                                                            Tell {currentDriver?.name ?? "the new driver"} to collect {movingItems.length === 1 ? "it" : "them"} from the office
+                                                        </span>
+                                                        <span className="block text-[11px] leading-snug text-slate-500">
+                                                            {currentDriver
+                                                                ? "Added to their collection list below, so it is one trip to the office."
+                                                                : "Nobody is driving it yet — assign a driver above and they can be told."}
+                                                        </span>
+                                                    </span>
+                                                </label>
+
+                                                <p className="flex items-start gap-1.5 rounded-lg bg-white/70 px-2.5 py-2 text-[11px] leading-snug text-slate-500 ring-1 ring-amber-200/70">
+                                                    <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
+                                                    Saving takes {movingItems.length === 1 ? "it" : "them"} off the cab straight away, so until somebody
+                                                    picks {movingItems.length === 1 ? "it" : "them"} up the list shows {movingItems.length === 1 ? "it" : "them"} on
+                                                    the vehicle with nobody carrying {movingItems.length === 1 ? "it" : "them"} — which is where
+                                                    {movingItems.length === 1 ? " it is" : " they are"}: a shelf in the office.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Free to give out. The same list, and the same definition of "free",
+                                    the Inventory assign page uses. */}
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                        Unassigned <span className="ml-1 text-slate-400">({freeItems.length} free)</span>
+                                    </h3>
+                                    <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+                                        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            value={inventorySearch}
+                                            onChange={e => setInventorySearch(e.target.value)}
+                                            placeholder="Search unassigned items…"
+                                            className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 text-[13px] text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                        />
+                                    </div>
+                                </div>
+
+                                {shownItems.length === 0 ? (
+                                    <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-400">
+                                        {freeItems.length === 0
+                                            ? "Every item in this carrier\u2019s inventory is already on a vehicle, a person or a hand-over."
+                                            : `No free item matches \u201C${inventorySearch.trim()}\u201D.`}
+                                    </p>
+                                ) : (
+                                    <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+                                        {/* Two destinations, one answer per row — the same two ticks the
+                                            Inventory assign page offers, so a row means the same thing on both. */}
+                                        <div className="sticky top-0 z-[1] flex items-start justify-between gap-4 bg-white pb-1.5">
+                                            <span className="pl-1">
+                                                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                                                    <Boxes size={10} /> ← Assign
+                                                </span>
+                                                <span className="block text-[10px] text-slate-500">Filed against this vehicle · nobody signs</span>
+                                            </span>
+                                            <span className="pr-1 text-right">
+                                                <span className={cn("flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider",
+                                                    currentDriver ? "text-violet-600" : "text-slate-300")}>
+                                                    Hand over → <PenLine size={10} />
+                                                </span>
+                                                <span className="block text-[10px] text-slate-500">
+                                                    {currentDriver ? `${currentDriver.name} signs for it` : "No driver on this vehicle"}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        {shownItems.map(item => {
+                                            const on = inventoryDraft.itemIds.includes(item.id);
+                                            const handOn = inventoryDraft.handIds.includes(item.id);
+                                            const vendor = VENDORS.find(v => v.id === item.vendorId);
+                                            // A blocked tick says why: "why can I not hand this over" is the
+                                            // question a dimmed box provokes and never answers.
+                                            const handBlocked = !currentDriver
+                                                ? "No driver is assigned to this vehicle"
+                                                : !canBeHandedOver(item)
+                                                    ? "Hand-overs cover company-issued kit — assign this instead"
+                                                    : null;
+                                            return (
+                                                <div key={item.id} className={cn(
+                                                    "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                                                    handOn ? "border-violet-300 bg-violet-50/70"
+                                                        : on ? "border-blue-300 bg-blue-50/70"
+                                                        : "border-slate-200 bg-white hover:border-slate-300",
+                                                )}>
+                                                    <button type="button" onClick={() => toggleItem(item.id)}
+                                                        aria-pressed={on} title={`Assign ${itemName(item)} to this vehicle`}
+                                                        className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                                                            on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white hover:border-slate-400")}>
+                                                        {on ? <Check size={13} /> : <Plus size={12} className="text-slate-400" />}
+                                                    </button>
+                                                    <Boxes size={14} className="ml-1 shrink-0 text-slate-400" />
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-[13px] font-semibold text-slate-800">{itemName(item)}</span>
+                                                        <span className="block truncate text-[11px] text-slate-500">
+                                                            {vendor?.companyName || vendor?.name || "—"}
+                                                            {item.serial && <span className="font-mono"> · {item.serial}</span>}
+                                                        </span>
+                                                    </span>
+                                                    <button type="button" onClick={() => toggleHand(item.id)}
+                                                        disabled={!!handBlocked} aria-pressed={handOn}
+                                                        title={handBlocked ?? `Hand ${itemName(item)} over to ${currentDriver?.name ?? "the driver"}`}
+                                                        className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                                                            handBlocked ? "cursor-not-allowed border-slate-200 bg-slate-100"
+                                                                : handOn ? "border-violet-600 bg-violet-600 text-white"
+                                                                : "border-slate-300 bg-white hover:border-slate-400")}>
+                                                        {handBlocked ? <Ban size={11} className="text-slate-300" />
+                                                            : handOn ? <Check size={13} />
+                                                            : <Plus size={12} className="text-slate-400" />}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* A hand-over is signed for. Whoever is doing it signs it — the office
+                                    should not be typing its own name into a receipt. */}
+                                {inventoryDraft.handIds.length > 0 && currentDriver && (
+                                    <p className="flex items-start gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2.5 text-[11px] leading-snug text-slate-600">
+                                        <PenLine size={13} className="mt-0.5 shrink-0 text-violet-600" />
+                                        <span>
+                                            <span className="block font-bold text-violet-800">
+                                                {inventoryDraft.handIds.length} signed across to {currentDriver.name}
+                                            </span>
+                                            Goes onto their hand-over checklist, signed by you. They confirm receipt in the
+                                            driver app, which is what moves it to verified.
+                                        </span>
+                                    </p>
+                                )}
+
+                                {/* Stays with the truck, or rides with the driver — the difference the
+                                    inventory list shows as "On vehicle" against "Carried". */}
+                                {inventoryDraft.itemIds.length > 0 && (
+                                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                                        <input type="checkbox" checked={inventoryDraft.carried}
+                                            onChange={e => setInv({ carried: e.target.checked })}
+                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                                        <span className="min-w-0">
+                                            <span className="block text-[13px] font-semibold text-slate-800">Carried by whoever drives this vehicle</span>
+                                            <span className="block text-[11px] leading-snug text-slate-500">
+                                                {currentDriver
+                                                    ? <>For things that live in the cab — a fuel card, a toll transponder. Currently <span className="font-semibold text-slate-700">{currentDriver.name}</span>, read from the vehicle, so it follows a change of driver.</>
+                                                    : "For things that live in the cab. No driver is assigned above yet, so this follows whoever is assigned later."}
+                                            </span>
+                                        </span>
+                                    </label>
+                                )}
+
+                                {/* Tell them — the same checklist the Add Inventory form and the assign
+                                    page send, so a driver is asked for kit the same way wherever it
+                                    was given out. */}
+                                {(collectItems.length > 0 || inventoryDraft.itemIds.length > 0) && (
+                                    canTellDriver ? (
+                                        <div className="space-y-2 border-t border-slate-100 pt-4">
+                                            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
+                                                <input type="checkbox" checked={inventoryDraft.notify}
+                                                    onChange={e => setInv({ notify: e.target.checked })}
+                                                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
+                                                <span className="min-w-0">
+                                                    <span className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800">
+                                                        <MessageSquare size={13} className="text-blue-600" />
+                                                        Tell {currentDriver!.name} to collect {collectItems.length === 1 ? "it" : "them"} from the office
+                                                    </span>
+                                                    <span className="block text-[11px] leading-snug text-slate-500">
+                                                        Sends a checklist into their chat when you save. They tick it off in the driver
+                                                        app when they pick it up, and that comes back onto the item.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                            {inventoryDraft.notify && (
+                                                <>
+                                                    <textarea
+                                                        value={inventoryDraft.note}
+                                                        onChange={e => { setInv({ note: e.target.value }); setCollectNoteTouched(true); }}
+                                                        rows={6}
+                                                        className="w-full rounded-lg border border-slate-200 bg-white p-3 text-[13px] leading-relaxed text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                                    />
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-[11px] text-slate-500">
+                                                            {collectNoteTouched
+                                                                ? "Your wording — it will not be rewritten if the list changes."
+                                                                : "Drafted from what you picked. Type to make it yours."}
+                                                        </p>
+                                                        {collectNoteTouched && (
+                                                            <button type="button"
+                                                                onClick={() => { setCollectNoteTouched(false); setInv({ note: suggestedCollectNote }); }}
+                                                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">
+                                                                Reset to draft
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        /* Why there is nobody to tell — two different things to go and fix,
+                                           and a silent section would have made them look the same. */
+                                        <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-500">
+                                            <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                                            {!currentDriver
+                                                ? <>Nobody drives this vehicle yet. Assign a driver in <span className="font-semibold">Driver Assignment</span> above and a collection message can go out with the save.</>
+                                                : <>This kit stays with the vehicle, so nobody has to come and collect it. Tick <span className="font-semibold">Carried by whoever drives this vehicle</span> if it rides in the cab, or hand it across with the second tick.</>}
+                                        </p>
+                                    )
+                                )}
                             </div>
                         </WizardSection>
 

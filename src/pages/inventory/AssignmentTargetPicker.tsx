@@ -3,7 +3,8 @@ import {
     Search, ChevronDown, Truck, IdCard, Check, X, MapPin, Calendar, Hash,
     BadgeCheck, Phone, Mail,
 } from "lucide-react";
-import { ACME_TRUCKS, ACME_NON_CMV_ASSETS, ACME_ACTIVE_DRIVERS, type AssignmentKind } from "./inventory.data";
+import { driverOfAsset, type AssignmentKind } from "./inventory.data";
+import { assetsFor, driversFor } from "./inventory-assignment";
 import { cn } from "@/lib/utils";
 
 type Option = {
@@ -14,6 +15,8 @@ type Option = {
     chips?: { label: string; tone?: "slate" | "emerald" | "amber" | "red" | "indigo" | "orange" }[];
     /** Optional extra detail line shown below the chips. */
     extra?: string;
+    /** Vehicles only — whoever drives it now, if anybody. */
+    driver?: string;
 };
 
 type Props = {
@@ -21,6 +24,13 @@ type Props = {
     selectedId: string;
     onSelect: (id: string) => void;
     placeholder?: string;
+    /**
+     * The carrier whose fleet this picks from.
+     *
+     * Without it the picker offered ACME's trucks and drivers to every carrier, so an item
+     * added under any other account was filed against a vehicle that account does not own.
+     */
+    accountId?: string;
 };
 
 /**
@@ -28,7 +38,7 @@ type Props = {
  * Replaces a plain <select> with a richer dropdown that lets you search and
  * see more context (VIN, plate, driver license, status…) per option.
  */
-export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder }: Props) {
+export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder, accountId }: Props) {
     const [open, setOpen] = React.useState(false);
     const [search, setSearch] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
@@ -75,24 +85,34 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
     // Build options for the active kind
     const options: Option[] = React.useMemo(() => {
         if (kind === "cmv" || kind === "non-cmv") {
-            const list = kind === "cmv" ? ACME_TRUCKS : ACME_NON_CMV_ASSETS;
-            return list.map((a) => ({
-                id: a.id,
-                primary: a.unitNumber,
-                secondary: `${a.year} ${a.make} ${a.model}`,
-                chips: [
-                    { label: a.assetCategory, tone: a.assetCategory === "CMV" ? "indigo" : "orange" },
-                    { label: a.operationalStatus, tone: assetStatusTone(a.operationalStatus) },
-                    a.color ? { label: a.color, tone: "slate" as const } : null,
-                ].filter(Boolean) as Option["chips"],
-                extra: [
-                    `VIN •••${a.vin.slice(-4)}`,
-                    a.plateNumber ? `Plate ${a.plateNumber}${a.plateJurisdiction ? ` · ${a.plateJurisdiction}` : ""}` : null,
-                    a.odometer ? `${a.odometer.toLocaleString()} ${a.odometerUnit ?? "mi"}` : null,
-                ].filter(Boolean).join(" · "),
-            }));
+            const list = assetsFor(accountId).filter((a: any) =>
+                kind === "cmv"
+                    ? a.assetCategory === "CMV" && a.assetType === "Truck"
+                    : a.assetCategory === "Non-CMV");
+            return list.map((a: any) => {
+                // Who drives it, right now. The very next question on the form is "is this
+                // carried by the driver of this vehicle?", and the list that answers it has
+                // to say which vehicles even have one.
+                const driver = driverOfAsset(a.id, accountId);
+                return {
+                    id: a.id,
+                    primary: a.unitNumber,
+                    secondary: `${a.year} ${a.make} ${a.model}`,
+                    driver: driver?.name,
+                    chips: [
+                        { label: a.assetCategory, tone: a.assetCategory === "CMV" ? "indigo" : "orange" },
+                        { label: a.operationalStatus, tone: assetStatusTone(a.operationalStatus) },
+                        a.color ? { label: a.color, tone: "slate" as const } : null,
+                    ].filter(Boolean) as Option["chips"],
+                    extra: [
+                        `VIN •••${a.vin.slice(-4)}`,
+                        a.plateNumber ? `Plate ${a.plateNumber}${a.plateJurisdiction ? ` · ${a.plateJurisdiction}` : ""}` : null,
+                        a.odometer ? `${a.odometer.toLocaleString()} ${a.odometerUnit ?? "mi"}` : null,
+                    ].filter(Boolean).join(" · "),
+                };
+            });
         }
-        return ACME_ACTIVE_DRIVERS.map((d) => ({
+        return driversFor(accountId).filter((d: any) => d.status === "Active").map((d: any) => ({
             id: d.id,
             primary: d.name,
             secondary: d.driverType ?? "Driver",
@@ -107,7 +127,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                 d.phone ? d.phone : null,
             ].filter(Boolean).join(" · "),
         }));
-    }, [kind]);
+    }, [kind, accountId]);
 
     const selected = options.find((o) => o.id === selectedId);
 
@@ -145,11 +165,15 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                     {selected ? (
                         <>
                             <div className="text-sm font-semibold text-slate-900 truncate">{selected.primary}</div>
-                            <div className="text-xs text-slate-500 truncate">{selected.secondary}</div>
+                            <div className="truncate text-xs text-slate-500">
+                                {selected.secondary}
+                                {selected.driver && <> · <span className="font-medium text-slate-600">{selected.driver}</span></>}
+                            </div>
                         </>
                     ) : (
                         <div className="text-sm text-slate-400">
-                            {placeholder ?? `Select a ${kindLabel.toLowerCase()}…`}
+                            {/* "Select a cmv…" reads as a typo: CMV is an abbreviation, not a word. */}
+                            {placeholder ?? (kind === "driver" ? "Select a driver…" : `Select a ${kindLabel} vehicle…`)}
                         </div>
                     )}
                 </div>
@@ -192,7 +216,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                     <div ref={resultsRef} className="max-h-80 overflow-y-auto p-1">
                         {filtered.length === 0 ? (
                             <div className="py-8 text-center text-xs text-slate-400">
-                                No {kindLabel.toLowerCase()}{kind === "driver" ? "s" : " assets"} match "{search}"
+                                No {kind === "driver" ? "drivers" : `${kindLabel} vehicles`} match "{search}"
                             </div>
                         ) : filtered.map((opt) => {
                             const isSelected = opt.id === selectedId;
@@ -246,6 +270,18 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                                             ))}
                                         </div>
                                         <div className="text-xs text-slate-600 mt-0.5 truncate">{opt.secondary}</div>
+                                        {/* Who drives it. The next question on the form asks whether the
+                                            item is carried by this vehicle's driver, and until now the list
+                                            you pick from never said which vehicles have one — so that
+                                            checkbox arrived already disabled, with no warning. */}
+                                        {(kind === "cmv" || kind === "non-cmv") && (
+                                            <div className="mt-0.5 inline-flex items-center gap-1 truncate text-[11px]">
+                                                <IdCard size={10} className={opt.driver ? "text-emerald-500" : "text-slate-300"} />
+                                                {opt.driver
+                                                    ? <span className="font-medium text-slate-600">{opt.driver}</span>
+                                                    : <span className="text-slate-400">No driver assigned</span>}
+                                            </div>
+                                        )}
                                         {opt.extra && (
                                             <div className="text-[11px] text-slate-500 mt-0.5 truncate inline-flex items-center gap-1">
                                                 {kind === "driver"

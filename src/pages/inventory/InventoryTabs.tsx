@@ -1,14 +1,17 @@
-import { List, Store } from "lucide-react";
+import { List, Store, UserRound, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Inventory section navigation, rendered as an on-page tab strip (same pattern
 // as the Carrier Compliance Carrier/Asset/Driver tabs). Hand Over and Driver
 // Inventory are folded into the List tab (driven by its handed-over switch), so
 // only List and Vendors remain as top-level tabs.
-export type InventoryTab = "list" | "vendors";
+export type InventoryTab = "list" | "drivers" | "assets" | "vendors";
 
 export const INVENTORY_TABS: { id: InventoryTab; label: string; Icon: React.ElementType; path: string }[] = [
     { id: "list", label: "List", Icon: List, path: "/inventory" },
+    // The same inventory counted the other way round: per person, and per vehicle.
+    { id: "drivers", label: "Drivers", Icon: UserRound, path: "/inventory/drivers" },
+    { id: "assets", label: "Assets", Icon: Truck, path: "/inventory/assets" },
     { id: "vendors", label: "Vendors", Icon: Store, path: "/inventory/vendors" },
 ];
 

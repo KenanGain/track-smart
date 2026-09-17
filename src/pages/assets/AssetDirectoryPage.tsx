@@ -11,6 +11,9 @@ import {
 import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
 import { commitOwnershipDoc } from './ownership-docs-bridge';
+import { commitAssetInventory, currentDriverOf, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
+import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
+import { currentUserName } from '@/data/users.data';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
@@ -173,8 +176,11 @@ export function AssetDirectoryPage({
     onDetailViewChange,
     onFormActiveChange,
     accountId,
+    onNavigate,
 }: {
     isEmbedded?: boolean;
+    /** Opening an inventory item or its form from the asset detail view needs the router. */
+    onNavigate?: (path: string) => void;
     assets?: Asset[];
     /** Fired whenever the embedded asset detail view opens or closes — lets
      *  the parent (CarrierProfilePage) hide its own breadcrumb/tabs while
@@ -297,7 +303,7 @@ export function AssetDirectoryPage({
         return filteredAssets.slice(start, start + rowsPerPage);
     }, [filteredAssets, page, rowsPerPage]);
 
-    const handleSaveAsset = (data: any) => {
+    const handleSaveAsset = (data: any, inventory?: AssetInventoryDraft) => {
         setIsSaving(true);
         setTimeout(() => {
             // The id the ownership document is filed against — an existing asset's, or the one
@@ -310,6 +316,21 @@ export function AssetDirectoryPage({
                 setAssets(prev => [{ ...data, id }, ...prev]);
             }
             commitOwnershipDoc(accountId, id, data);
+            // The vehicle joins the shared fleet, so the inventory list, "the driver of this
+            // vehicle" and the fleet counts can all see it — and then whatever was picked
+            // in the Inventory section is filed against it.
+            addCarrierAsset(accountId, { ...data, id } as any);
+            if (inventory) {
+                commitAssetInventory({
+                    accountId, assetId: id,
+                    assetLabel: data.unitNumber || id,
+                    assetKind: data.assetCategory === 'Non-CMV' ? 'non-cmv' : 'cmv',
+                    items: inventoryItemsForCarrier(accountId),
+                    draft: inventory,
+                    driver: currentDriverOf(accountId, id),
+                    capturedBy: currentUserName(),
+                });
+            }
             setIsSaving(false);
             setIsModalOpen(false);
             setEditingAsset(null);
@@ -336,6 +357,7 @@ export function AssetDirectoryPage({
                 asset={editingAsset}
                 onClose={() => { setIsModalOpen(false); setEditingAsset(null); }}
                 onSave={handleSaveAsset}
+                accountId={accountId}
                 isSaving={isSaving}
             />
         );
@@ -346,6 +368,7 @@ export function AssetDirectoryPage({
             {selectedAsset ? (
                 <AssetDetailView
                     asset={selectedAsset}
+                    onNavigate={onNavigate}
                     onBack={() => setSelectedAsset(null)}
                     onEdit={() => {
                         setEditingAsset(selectedAsset);

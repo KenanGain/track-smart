@@ -41,8 +41,8 @@ export function resolveAsset(a: Assignment | undefined, accountId: string | unde
     const tone = a.kind === "cmv" ? ("indigo" as const) : ("orange" as const);
     const asset = assetsFor(accountId).find((x: any) => x.id === a.targetId)
         ?? ACME_ASSETS.find((x) => x.id === a.targetId);
-    if (!asset) return { label: "—", sub: "Unknown asset", kindLabel, tone: "slate" as const };
-    return { label: asset.unitNumber, sub: `${asset.year} ${asset.make} ${asset.model}`, kindLabel, tone };
+    if (!asset) return { id: a.targetId, label: "—", sub: "Unknown asset", kindLabel, tone: "slate" as const };
+    return { id: asset.id, label: asset.unitNumber, sub: `${asset.year} ${asset.make} ${asset.model}`, kindLabel, tone };
 }
 
 /**
@@ -66,9 +66,10 @@ export function resolveDriver(
     if (a?.kind === "driver") {
         const drivers = driversFor(accountId);
         const d = drivers.find((x: any) => x.id === a.targetId) ?? ACME_DRIVERS.find((x) => x.id === a.targetId);
-        if (!d) return { label: "—", sub: "Unknown driver", via: "assigned" as const };
+        if (!d) return { id: a.targetId, label: "—", sub: "Unknown driver", via: "assigned" as const };
         const name = (d as any).name ?? `${(d as any).firstName ?? ""} ${(d as any).lastName ?? ""}`.trim();
         return {
+            id: (d as any).id as string,
             label: name || "—",
             sub: (d as any).licenseNumber ? `License ${(d as any).licenseNumber}` : "Assigned directly",
             via: "assigned" as const,
@@ -76,12 +77,13 @@ export function resolveDriver(
     }
     if (a && a.alsoDriverOfAsset) {
         const held = driverOfAsset(a.targetId, accountId);
-        if (held) return { label: held.name, sub: "Drives this vehicle", via: "drives" as const };
+        if (held) return { id: held.id, label: held.name, sub: "Drives this vehicle", via: "drives" as const };
     }
     if (handedTo) {
         const name = driverNameOf(handedTo.driverId, accountId);
         if (name) {
             return {
+                id: handedTo.driverId,
                 label: name,
                 sub: handedTo.status === "verified" ? "Hand-over verified" : "Handed over",
                 via: "handed" as const,

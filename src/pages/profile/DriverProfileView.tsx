@@ -21,7 +21,7 @@ import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
 import { Boxes, ClipboardList } from 'lucide-react';
 import { DriverDqFile } from '@/pages/ats/DqFilesPage';
-import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
+import { HolderInventoryPanel, useHolderInventory } from '@/pages/inventory/HolderInventoryPanel';
 import { type SubTab } from '@/components/ui/SubTabs';
 import { getSafetyEventsForDriver } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
@@ -1837,7 +1837,11 @@ const HEADER_TRANSITION =
   }, [driverData.employmentHistory]);
 
 
-    const inventoryRecords = React.useMemo(() => getInventoryByDriverId(driverData.id), [driverData.id]);
+    // Everything they are holding, by any of the three routes — the tab used to count only
+    // what was filed against them directly, so a driver carrying a truck's fuel card and
+    // signed for a set of keys read as holding nothing.
+    const { held: heldInventory } = useHolderInventory('driver', driverData.id, accountId);
+    const inventoryRecords = React.useMemo(() => heldInventory.map(h => h.item), [heldInventory]);
 
     // Tabs grouped logically. Each tab declares which group it belongs to so the
     // strip can render a thin vertical divider at every group boundary.
@@ -3020,76 +3024,16 @@ const HEADER_TRANSITION =
             )}
             
             {activeTab === 'Inventory' && (
-                <div className="space-y-4 animate-in fade-in">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h3 className="font-bold text-slate-900 text-base">Inventory Records</h3>
-                            <p className="text-xs font-medium text-slate-500">Vendor inventory items assigned to this driver.</p>
-                        </div>
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
-                            <Boxes size={12} /> {inventoryRecords.length} record{inventoryRecords.length === 1 ? '' : 's'}
-                        </span>
-                    </div>
-
-                    {inventoryRecords.length === 0 ? (
-                        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
-                            <div className="mx-auto h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                                <Boxes className="text-slate-400" size={20} />
-                            </div>
-                            <h4 className="text-sm font-semibold text-slate-700">No inventory assigned</h4>
-                            <p className="text-xs text-slate-500 mt-1">This driver has no fuel cards, transponders, ELDs, GPS, or dashcams on file.</p>
-                        </div>
-                    ) : (
-                        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
-                            <table className="w-full min-w-[720px] text-sm">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendor</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Serial #</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN #</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Issue Date</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Expiry Date</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {inventoryRecords.map((it) => {
-                                        const vendor = getVendorById(it.vendorId);
-                                        const statusClass =
-                                            it.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                            it.status === 'Expiring Soon' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                            'bg-red-50 text-red-700 border-red-200';
-                                        const dotClass =
-                                            it.status === 'Active' ? 'bg-emerald-500' :
-                                            it.status === 'Expiring Soon' ? 'bg-amber-500' :
-                                            'bg-red-500';
-                                        return (
-                                            <tr key={it.id} className="hover:bg-slate-50/60">
-                                                <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
-                                                <td className="px-4 py-3 text-slate-600">{vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '—'}</td>
-                                                <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
-                                                <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
-                                                <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>
-                                                <td className="px-4 py-3 text-slate-600">{it.expiryDate}</td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
-                                                        <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${dotClass}`} />
-                                                        {it.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                <div className="animate-in fade-in">
+                    <HolderInventoryPanel
+                        kind="driver"
+                        holderId={driverData.id}
+                        accountId={accountId}
+                        onNavigate={onNavigate}
+                    />
                 </div>
             )}
 
-            {/* ACCIDENTS TAB */}
-            {/* Accidents — unified CVOR/NSC/FMCSA panel scoped to this driver. */}
             {activeTab === 'Accidents' && (
               <DriverDefaultAccidents
                 accountId={accountId}

@@ -32,7 +32,7 @@ import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
-import { getInventoryByAssetId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
+import { HolderInventoryPanel, useHolderInventory } from '@/pages/inventory/HolderInventoryPanel';
 import { Boxes } from 'lucide-react';
 import { getSafetyEventsForAsset } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
@@ -471,16 +471,22 @@ function AssetSafetyAnalysisSection({
 }
 
 interface AssetDetailViewProps {
+  /** Opening an inventory item, its editor or the assign flow needs the app's router. */
+  onNavigate?: (path: string) => void;
     asset: DetailedAsset;
     onBack: () => void;
     onEdit: () => void;
     accountId?: string;
 }
 
-export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetailViewProps) {
+export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }: AssetDetailViewProps) {
   const [activeTab, setActiveTab] = useState('Overview');
   
-  const inventoryRecords = useMemo(() => getInventoryByAssetId(asset.id), [asset.id]);
+  // Everything on it, by any route — kept with the vehicle, riding in its cab, or signed
+  // across to whoever drives it. It used to read the frozen seed module, so nothing added
+  // or edited in the app ever showed up here.
+  const { held: heldInventory } = useHolderInventory('asset', asset.id, accountId);
+  const inventoryRecords = useMemo(() => heldInventory.map(h => h.item), [heldInventory]);
 
   const _maintenanceTaskCountForTab = useMemo(
     () => INITIAL_TASKS.filter((t) => t.assetId === asset.id).length,
@@ -837,19 +843,10 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
   const [orderPage, setOrderPage]                 = useState(1);
   const [orderRowsPerPage, setOrderRowsPerPage]   = useState(5);
 
-  // ── Inventory UI state — same shape (filter/search/sort/page) as Tasks ──
-  type InventoryStatusFilter = 'all' | 'Active' | 'Expiring Soon' | 'Expired';
-  const [invStatusFilter, setInvStatusFilter] = useState<InventoryStatusFilter>('all');
-  const [invSearch, setInvSearch]             = useState('');
-  const [invSort, setInvSort]                 = useState<'expiry' | 'vendor' | 'issue'>('expiry');
-  const [invSortDir, setInvSortDir]           = useState<'asc' | 'desc'>('asc');
-  const [invPage, setInvPage]                 = useState(1);
-  const [invRowsPerPage, setInvRowsPerPage]   = useState(5);
 
   // Reset to page 1 whenever filters change so the user always lands on visible rows.
   useEffect(() => { setTaskPage(1); }, [taskStatusFilter, taskSearch, taskSort, taskSortDir, taskRowsPerPage]);
   useEffect(() => { setOrderPage(1); }, [orderStatusFilter, orderSearch, orderSort, orderSortDir, orderRowsPerPage]);
-  useEffect(() => { setInvPage(1); }, [invStatusFilter, invSearch, invSort, invSortDir, invRowsPerPage]);
 
   // Real metrics derived from this asset's actual tasks/orders.
   const maintenanceMetrics = useMemo(() => {
@@ -982,45 +979,8 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
   // Inventory: filter → sort → paginate. Same shape as the tasks/orders
   // pipelines above.
-  const filteredInventory = useMemo(() => {
-    let list = inventoryRecords.filter((it) => {
-      if (invStatusFilter !== 'all' && it.status !== invStatusFilter) return false;
-      const q = invSearch.trim().toLowerCase();
-      if (q) {
-        const vendor = getVendorById(it.vendorId);
-        const haystack = [
-          vendor?.name, vendor?.companyName,
-          it.serial, it.pin,
-          it.issueDate, it.expiryDate,
-          vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '',
-        ].filter(Boolean).join(' ').toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-    const dir = invSortDir === 'asc' ? 1 : -1;
-    list = [...list].sort((a, b) => {
-      if (invSort === 'expiry') return a.expiryDate.localeCompare(b.expiryDate) * dir;
-      if (invSort === 'issue') return a.issueDate.localeCompare(b.issueDate) * dir;
-      // 'vendor'
-      const va = getVendorById(a.vendorId)?.name ?? '';
-      const vb = getVendorById(b.vendorId)?.name ?? '';
-      return va.localeCompare(vb) * dir;
-    });
-    return list;
-  }, [inventoryRecords, invStatusFilter, invSearch, invSort, invSortDir]);
 
-  const pagedInventory = useMemo(() => {
-    const start = (invPage - 1) * invRowsPerPage;
-    return filteredInventory.slice(start, start + invRowsPerPage);
-  }, [filteredInventory, invPage, invRowsPerPage]);
 
-  const invStatusCounts = useMemo(() => ({
-    all:              inventoryRecords.length,
-    'Active':         inventoryRecords.filter((it) => it.status === 'Active').length,
-    'Expiring Soon':  inventoryRecords.filter((it) => it.status === 'Expiring Soon').length,
-    'Expired':        inventoryRecords.filter((it) => it.status === 'Expired').length,
-  }), [inventoryRecords]);
 
   const formatMoney = (n: number, currency: 'USD' | 'CAD' = 'USD') =>
     n.toLocaleString('en-US', { style: 'currency', currency, maximumFractionDigits: 0 });
@@ -3630,177 +3590,14 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                 with title, search + sort row, status chips, table, and the
                 shared PaginationBar. */}
             {activeTab === 'Inventory' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
-                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-                    <div className="flex items-center gap-2">
-                      <Boxes size={16} className="text-slate-500" />
-                      <h3 className="font-bold text-slate-800 text-sm">Inventory Records</h3>
-                      <Badge variant="neutral" className="ml-2">
-                        {filteredInventory.length} of {inventoryRecords.length}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Search + Sort row */}
-                  <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
-                    <div className="relative flex-1 min-w-0">
-                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={invSearch}
-                        onChange={(e) => setInvSearch(e.target.value)}
-                        placeholder="Search vendor, serial, PIN…"
-                        className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                      />
-                      {invSearch && (
-                        <button
-                          onClick={() => setInvSearch('')}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100"
-                          aria-label="Clear"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (invSort === 'expiry') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                        else { setInvSort('expiry'); setInvSortDir('asc'); }
-                      }}
-                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'expiry' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                      title="Sort by expiry"
-                    >
-                      Expiry {invSort === 'expiry' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (invSort === 'vendor') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                        else { setInvSort('vendor'); setInvSortDir('asc'); }
-                      }}
-                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'vendor' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                      title="Sort by vendor"
-                    >
-                      Vendor {invSort === 'vendor' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (invSort === 'issue') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                        else { setInvSort('issue'); setInvSortDir('desc'); }
-                      }}
-                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'issue' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                      title="Sort by issue date"
-                    >
-                      Issued {invSort === 'issue' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
-                    </button>
-                  </div>
-
-                  {/* Status filter chips */}
-                  <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
-                    {([
-                      { id: 'all',            label: 'All' },
-                      { id: 'Active',         label: 'Active' },
-                      { id: 'Expiring Soon',  label: 'Expiring Soon' },
-                      { id: 'Expired',        label: 'Expired' },
-                    ] as Array<{ id: InventoryStatusFilter; label: string }>).map(chip => {
-                      const active = invStatusFilter === chip.id;
-                      const count = invStatusCounts[chip.id] ?? 0;
-                      return (
-                        <button
-                          key={chip.id}
-                          onClick={() => setInvStatusFilter(chip.id)}
-                          className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
-                        >
-                          {chip.label}
-                          <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Table */}
-                  <div className="bg-white overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                        <tr>
-                          <th className="px-4 py-2.5 font-semibold">Vendor</th>
-                          <th className="px-4 py-2.5 font-semibold">Type</th>
-                          <th className="px-4 py-2.5 font-semibold">Serial #</th>
-                          <th className="px-4 py-2.5 font-semibold">PIN #</th>
-                          <th className="px-4 py-2.5 font-semibold">Issue Date</th>
-                          <th className="px-4 py-2.5 font-semibold">Expiry Date</th>
-                          <th className="px-4 py-2.5 font-semibold">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {pagedInventory.length > 0 ? pagedInventory.map((it) => {
-                          const vendor = getVendorById(it.vendorId);
-                          const statusClass =
-                            it.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                            it.status === 'Expiring Soon' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            'bg-red-50 text-red-700 border-red-200';
-                          const dotClass =
-                            it.status === 'Active' ? 'bg-emerald-500' :
-                            it.status === 'Expiring Soon' ? 'bg-amber-500' :
-                            'bg-red-500';
-                          return (
-                            <tr key={it.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
-                              <td className="px-4 py-3 text-slate-600">{vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '—'}</td>
-                              <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
-                              <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
-                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{it.issueDate}</td>
-                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{it.expiryDate}</td>
-                              <td className="px-4 py-3">
-                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
-                                  <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${dotClass}`} />
-                                  {it.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        }) : (
-                          <tr>
-                            <td colSpan={7} className="px-4 py-12 text-center">
-                              <div className="flex flex-col items-center justify-center text-slate-400">
-                                <Boxes size={36} className="mb-2 opacity-25" />
-                                <span className="text-sm font-semibold text-slate-600">
-                                  {inventoryRecords.length === 0 ? 'No inventory assigned' : 'No inventory matches the filter'}
-                                </span>
-                                <span className="text-xs text-slate-400 mt-1">
-                                  {inventoryRecords.length === 0
-                                    ? 'No fuel cards, transponders, ELDs, GPS, or dashcams on file.'
-                                    : 'Try clearing the search or selecting a different status.'}
-                                </span>
-                                {(invStatusFilter !== 'all' || invSearch) && (
-                                  <button
-                                    onClick={() => { setInvSearch(''); setInvStatusFilter('all'); }}
-                                    className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
-                                  >
-                                    Clear filters
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
-                  {filteredInventory.length > 0 && (
-                    <PaginationBar
-                      totalItems={filteredInventory.length}
-                      currentPage={invPage}
-                      rowsPerPage={invRowsPerPage}
-                      onPageChange={setInvPage}
-                      onRowsPerPageChange={(rows) => {
-                        setInvRowsPerPage(rows);
-                        setInvPage(1);
-                      }}
-                    />
-                  )}
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <Card className="p-5">
+                  <HolderInventoryPanel
+                    kind="asset"
+                    holderId={asset.id}
+                    accountId={accountId}
+                    onNavigate={onNavigate}
+                  />
                 </Card>
               </div>
             )}
