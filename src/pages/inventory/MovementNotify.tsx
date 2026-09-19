@@ -47,7 +47,12 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
         return (
             <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-500">
                 <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                {emptyHint ?? "Nothing here has to move, so there is nobody to tell."}
+                {/* One flex item. A hint with a bold word in it is several nodes, and left
+                    loose in a flex row each one becomes its own column — the sentence
+                    then reads across in the wrong order. */}
+                <span className="min-w-0">
+                    {emptyHint ?? "Nothing here has to move, so there is nobody to tell."}
+                </span>
             </p>
         );
     }

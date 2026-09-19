@@ -55,9 +55,10 @@ interface OwnershipSpec {
 const ADDRESS_SUPPLIED = ['addressLine', 'addressCity', 'addressPostal'];
 
 const OWNERSHIP_SPEC: Record<OwnershipStructure, OwnershipSpec> = {
-    // The owner name on the asset form is the carrier's own legal entity — NOT the seller — so
-    // the seller is asked on the document itself. The address block above it is the seller's.
-    Owned: { recordId: 'bill-of-sale', fields: {}, supplied: [...ADDRESS_SUPPLIED], datesFromTerm: false },
+    // Owned has no counterparty on the asset form: the carrier IS the owner, so the section
+    // asks for no name and no address. The seller it was bought from, and the seller's address,
+    // are asked on the bill of sale itself — which is the document they are written on.
+    Owned: { recordId: 'bill-of-sale', fields: {}, supplied: [], datesFromTerm: false },
     Leased: { recordId: 'asset-agreement', fields: { agreementType: 'Lease Agreement' }, supplied: ['counterparty', 'monthlyAmount', ...ADDRESS_SUPPLIED], datesFromTerm: true },
     Financed: { recordId: 'asset-agreement', fields: { agreementType: 'Finance Agreement' }, supplied: ['counterparty', 'monthlyAmount', ...ADDRESS_SUPPLIED], datesFromTerm: true },
     Rented: { recordId: 'asset-agreement', fields: { agreementType: 'Rental Agreement' }, supplied: ['counterparty', 'monthlyAmount', ...ADDRESS_SUPPLIED], datesFromTerm: true },

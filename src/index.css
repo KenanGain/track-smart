@@ -189,6 +189,20 @@
         background-color: rgb(248 250 252);      /* keeps the row-hover unbroken */
     }
 
+    /* ── Ruled columns ───────────────────────────────────────────────────
+       Put `.ruled-cols` on the <table>. A wide table of short values reads as
+       drifting text without them: the eye has nothing to follow down a column.
+       Every cell but the first in its row takes the rule, so the identity
+       column stays open on the left, and a full-width band row (one cell that
+       spans the table) is a first child and takes none. */
+    .ruled-cols > thead > tr > *:not(:first-child) {
+        border-left: 1px solid rgb(226 232 240);     /* slate-200 */
+    }
+
+    .ruled-cols > tbody > tr > *:not(:first-child) {
+        border-left: 1px solid rgb(241 245 249);     /* slate-100 */
+    }
+
     /* The corner cell belongs to both and must out-rank each. */
     .sticky-head.pin-first > tr > th:first-child,
     .pin-first > .sticky-head > tr > th:first-child {

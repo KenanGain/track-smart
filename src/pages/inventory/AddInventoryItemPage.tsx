@@ -18,11 +18,13 @@ import {
     VENDORS,
     INVENTORY_ITEMS,
     itemName,
+    itemCategoryId,
     inventoryMonitoring,
     driverOfAsset,
     type Assignment,
     type InventoryItem,
     type InventoryStatus,
+    type ItemHandling,
 } from "./inventory.data";
 import {
     InventoryItemSection, INVENTORY_SECTIONS, emptyInventoryDraft, draftAssignment, draftIsValid,
@@ -54,6 +56,8 @@ type Props = {
 
 export type InventoryFormPayload = {
     vendorId: string;
+    categoryId?: string;
+    handling?: ItemHandling;
     name?: string;
     serial: string;
     pin: string;
@@ -105,6 +109,8 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
         return {
             ...blank,
             vendorId: editing.vendorId,
+            categoryId: itemCategoryId(editing),
+            handling: editing.handling ?? blank.handling,
             name: itemName(editing),
             serial: editing.serial,
             pin: editing.pin,
@@ -155,6 +161,8 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
         if (!isValid) return;
         const payload: InventoryFormPayload = {
             vendorId: draft.vendorId,
+            categoryId: draft.categoryId || undefined,
+            handling: draft.handling,
             name: draft.name.trim() || undefined,
             serial: draft.serial.trim(),
             pin: draft.pin.trim(),

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Building2, Check } from "lucide-react";
 import {
-    VENDOR_CATEGORIES,
     CARRIER_NAME,
     ADDRESS_COUNTRIES,
     US_STATES,
@@ -19,9 +18,7 @@ export type VendorFormPayload = {
     address: VendorAddress;
     email?: string;
     phone?: string;
-    categoryId: string;
     contactName?: string;
-    contactInfo?: string;
 };
 
 export function AddVendorPage({ onNavigate }: Props) {
@@ -37,21 +34,17 @@ export function AddVendorPage({ onNavigate }: Props) {
     const [state, setState] = useState("");
     const [zip, setZip] = useState("");
 
-    // 3. Vendor Classification
-    const [categoryId, setCategoryId] = useState(VENDOR_CATEGORIES[0]?.id ?? "");
-
     // 4. Contact
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
     const [contactName, setContactName] = useState("");
-    const [contactInfo, setContactInfo] = useState("");
 
     const stateOptions = useMemo(
         () => (country === "Canada" ? CA_PROVINCES : US_STATES),
         [country]
     );
 
-    const isValid = name.trim().length > 0 && !!categoryId;
+    const isValid = name.trim().length > 0;
 
     const handleSave = () => {
         if (!isValid) return;
@@ -68,9 +61,7 @@ export function AddVendorPage({ onNavigate }: Props) {
             },
             email: email || undefined,
             phone: phone || undefined,
-            categoryId,
             contactName: contactName || undefined,
-            contactInfo: contactInfo || undefined,
         };
         console.log("Vendor saved:", payload);
         onNavigate("/inventory/vendors");
@@ -130,13 +121,6 @@ export function AddVendorPage({ onNavigate }: Props) {
                             <FormField label="Company Name" optional>
                                 <TextInput value={companyName} onChange={setCompanyName} placeholder="e.g. Comdata Inc." />
                             </FormField>
-                            <FormField label="Vendor Category" required>
-                                <SelectInput value={categoryId} onChange={setCategoryId}>
-                                    {VENDOR_CATEGORIES.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </SelectInput>
-                            </FormField>
                         </div>
                     </div>
                 </FormSection>
@@ -144,17 +128,17 @@ export function AddVendorPage({ onNavigate }: Props) {
                 {/* 2. Contact */}
                 <FormSection number={2} title="Contact Information" subtitle="Primary point of contact at this vendor.">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* Who, then the two ways to reach them. */}
+                        <div className="md:col-span-2">
+                            <FormField label="Contact Name">
+                                <TextInput value={contactName} onChange={setContactName} placeholder="e.g. Jane Smith" />
+                            </FormField>
+                        </div>
                         <FormField label="Email">
                             <TextInput value={email} onChange={setEmail} type="email" placeholder="contact@vendor.com" />
                         </FormField>
                         <FormField label="Phone">
                             <TextInput value={phone} onChange={setPhone} placeholder="(555) 555-0100" />
-                        </FormField>
-                        <FormField label="Contact Name">
-                            <TextInput value={contactName} onChange={setContactName} placeholder="e.g. Jane Smith" />
-                        </FormField>
-                        <FormField label="Contact Information">
-                            <TextInput value={contactInfo} onChange={setContactInfo} placeholder="Direct phone or email" />
                         </FormField>
                     </div>
                 </FormSection>

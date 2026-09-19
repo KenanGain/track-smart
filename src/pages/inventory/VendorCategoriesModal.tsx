@@ -3,7 +3,8 @@ import {
     Plus, Tag, Trash2, X, Edit2, Check, Layers, AlertCircle,
 } from "lucide-react";
 import {
-    type Vendor,
+    itemCategoryId,
+    type InventoryItem,
     type VendorCategory,
 } from "./inventory.data";
 import { cn } from "@/lib/utils";
@@ -12,12 +13,13 @@ type Props = {
     open: boolean;
     onClose: () => void;
     categories: VendorCategory[];
-    vendors: Vendor[];
+    /** The items these categories categorise — what the counts and the delete guard read. */
+    items: InventoryItem[];
     onCategoriesChange: (next: VendorCategory[]) => void;
 };
 
 export function VendorCategoriesModal({
-    open, onClose, categories, vendors, onCategoriesChange,
+    open, onClose, categories, items, onCategoriesChange,
 }: Props) {
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -27,12 +29,16 @@ export function VendorCategoriesModal({
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
 
-    // Vendor counts per category for safety checks
-    const vendorsByCategory = useMemo(() => {
+    // How many items are in each category — shown on the row, and what stops a category
+    // being deleted out from under them.
+    const itemsByCategory = useMemo(() => {
         const map: Record<string, number> = {};
-        for (const v of vendors) map[v.categoryId] = (map[v.categoryId] ?? 0) + 1;
+        for (const it of items) {
+            const id = itemCategoryId(it);
+            if (id) map[id] = (map[id] ?? 0) + 1;
+        }
         return map;
-    }, [vendors]);
+    }, [items]);
 
     useEffect(() => {
         if (!open) return;
@@ -113,8 +119,8 @@ export function VendorCategoriesModal({
     };
 
     const handleDelete = (cat: VendorCategory) => {
-        if (vendorsByCategory[cat.id]) {
-            setError(`Can't delete "${cat.name}" — ${vendorsByCategory[cat.id]} vendor(s) still use it.`);
+        if (itemsByCategory[cat.id]) {
+            setError(`Can't delete "${cat.name}" — ${itemsByCategory[cat.id]} item(s) are still in it.`);
             return;
         }
         if (!confirm(`Delete the "${cat.name}" category?`)) return;
@@ -131,7 +137,7 @@ export function VendorCategoriesModal({
                     <div>
                         <h2 className="text-lg font-bold text-slate-900">Vendor Categories</h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                            Single source of truth for what kind of services your vendors provide.
+                            Single source of truth for what kind of things your inventory holds.
                         </p>
                     </div>
                     <button
@@ -198,7 +204,7 @@ export function VendorCategoriesModal({
                         <div className="space-y-2">
                             {categories.map((c) => {
                                 const isEditing = editingCategoryId === c.id;
-                                const vendorCount = vendorsByCategory[c.id] ?? 0;
+                                const itemCount = itemsByCategory[c.id] ?? 0;
 
                                 if (isEditing) {
                                     return (
@@ -233,7 +239,7 @@ export function VendorCategoriesModal({
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
-                                                {vendorCount} vendor{vendorCount === 1 ? "" : "s"}
+                                                {itemCount} item{itemCount === 1 ? "" : "s"}
                                             </span>
                                             <IconBtn icon={Edit2} onClick={() => startEdit(c)} title="Edit category" />
                                             <IconBtn icon={Trash2} variant="danger" onClick={() => handleDelete(c)} title="Delete category" />

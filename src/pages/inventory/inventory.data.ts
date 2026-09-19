@@ -113,9 +113,32 @@ export type Assignment = {
     alsoDriverOfAsset?: boolean;
 };
 
+/**
+ * How an item comes back — the two shapes a return takes, and never both:
+ *
+ *   driver-returnable — a person signs for it and hands it back: a fuel card, a set of keys,
+ *                        a hi-vis vest. The item leaves with them and has to be asked for.
+ *   asset-removable   — it is fitted to a vehicle and comes off it: a transponder, an ELD,
+ *                        a dashcam. Nobody carries it anywhere; it is removed.
+ */
+export type ItemHandling = "driver-returnable" | "asset-removable";
+export const ITEM_HANDLING: { id: ItemHandling; label: string; blurb: string }[] = [
+    { id: "driver-returnable", label: "Driver returnable", blurb: "A person signs for it and hands it back." },
+    { id: "asset-removable", label: "Asset removable", blurb: "Fitted to a vehicle and taken off it." },
+];
+export const handlingLabel = (h?: ItemHandling) => ITEM_HANDLING.find((x) => x.id === h)?.label ?? "";
+
 export type InventoryItem = {
     id: string;
     vendorId: string;
+    /**
+     * What KIND of thing this is. Starts from the vendor's category — a good guess, since most
+     * vendors sell one kind of thing — and is the item's own from then on: a repair shop that
+     * also cuts keys sells two categories of item, and the vendor can only say one.
+     */
+    categoryId?: string;
+    /** How it comes back. See `ItemHandling`. */
+    handling?: ItemHandling;
     /**
      * What this item is CALLED. Defaults to the vendor and the category it falls under
      * ("Comdata — Fuel Card"), which is what tells one row from another where a carrier holds
@@ -147,26 +170,36 @@ export type InventoryItem = {
 
 // ── What an item is called ───────────────────────────────────────
 
-/** The name a new item starts with: the vendor, and what kind of thing it issues. */
-export function defaultItemName(vendor: Vendor | undefined, categories: VendorCategory[] = VENDOR_CATEGORIES): string {
+/**
+ * The category an item is IN: its own, falling back to the one its vendor sells. Every list,
+ * tab and icon reads this rather than the vendor, so an item recategorised on its own form
+ * moves everywhere at once.
+ */
+export function itemCategoryId(item: Pick<InventoryItem, "categoryId" | "vendorId">, vendors: Vendor[] = VENDORS): string {
+    if (item.categoryId) return item.categoryId;
+    return vendors.find((v) => v.id === item.vendorId)?.categoryId ?? "";
+}
+
+/** The name a new item starts with: the vendor, and what kind of thing it is. */
+export function defaultItemName(vendor: Vendor | undefined, categories: VendorCategory[] = VENDOR_CATEGORIES, categoryId?: string): string {
     if (!vendor) return "";
-    const category = getCategoryLabel(vendor.categoryId, categories);
+    const category = getCategoryLabel(categoryId || vendor.categoryId, categories);
     return category && category !== vendor.name ? `${vendor.name} — ${category}` : vendor.name;
 }
 
 /** What to show for an item: the name it was given, else the default for its vendor. */
 export function itemName(item: InventoryItem, vendors: Vendor[] = VENDORS, categories: VendorCategory[] = VENDOR_CATEGORIES): string {
     const typed = (item.name ?? "").trim();
-    return typed || defaultItemName(vendors.find((v) => v.id === item.vendorId), categories);
+    return typed || defaultItemName(vendors.find((v) => v.id === item.vendorId), categories, itemCategoryId(item, vendors));
 }
 
 /**
  * True while the name is still the one the vendor chose — so picking a different vendor
  * renames the item, and a name the user typed themselves is never overwritten.
  */
-export function isAutoItemName(name: string | undefined, vendor: Vendor | undefined): boolean {
+export function isAutoItemName(name: string | undefined, vendor: Vendor | undefined, categoryId?: string): boolean {
     const typed = (name ?? "").trim();
-    return !typed || typed === defaultItemName(vendor);
+    return !typed || typed === defaultItemName(vendor) || typed === defaultItemName(vendor, VENDOR_CATEGORIES, categoryId);
 }
 
 // ── The alert on an item ────────────────────────────────────────

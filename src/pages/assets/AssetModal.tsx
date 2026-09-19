@@ -392,12 +392,12 @@ function MonitoringBlock({ title, prefix, watch, register, setValue, monitorOpti
     );
 }
 
-function AddressSection({ register, watch }: { register: any; watch: any }) {
+function AddressSection({ register, watch, title }: { register: any; watch: any; title?: string }) {
     const currentCountry = watch('country');
     return (
         <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/50 border border-slate-100 rounded-xl mt-2">
             <div className="col-span-full text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100 pb-1 flex items-center gap-2">
-                <MapPinIcon size={12} /> Address Details
+                <MapPinIcon size={12} /> {title ?? 'Address Details'}
             </div>
             <div className="col-span-full">
                 <FormInput label="Street Address"><Input {...register('streetAddress')} placeholder="123 Fleet Way" /></FormInput>
@@ -476,6 +476,29 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     const financial = watch('financialStructure');
     const plateCountry = watch('plateCountry');
     const opStatus = watch('operationalStatus');
+
+    // Whose address the ownership section is asking for. Named, because an address block
+    // under a company name is otherwise just "an address" on a form full of them.
+    const addressOwnerLabel = financial === 'Leased' ? 'Leasing company address'
+        : financial === 'Financed' ? 'Lien holder address'
+        : financial === 'Rented' ? 'Rental agency address'
+        : 'Address details';
+
+    // Switching to Owned drops the counterparty it no longer has. Leaving the leasing
+    // company's name and address behind would file them against a truck the carrier owns
+    // outright -- fields nothing on the form shows, and nothing would ever correct.
+    const lastFinancial = useRef(financial);
+    useEffect(() => {
+        if (lastFinancial.current !== financial) {
+            lastFinancial.current = financial;
+            if (financial === 'Owned') {
+                for (const f of ['ownerName', 'leasingName', 'rentalAgencyName', 'lienHolderBusiness',
+                    'streetAddress', 'city', 'stateProvince', 'zipCode'] as const) {
+                    setValue(f, '', { shouldDirty: true });
+                }
+            }
+        }
+    }, [financial, setValue]);
     const grossWeightValue = watch('grossWeight');
     const grossWeightUnit = watch('grossWeightUnit');
 
@@ -751,26 +774,29 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         setActiveStep(id);
     };
 
-    // ── Plate lookup (demo API) — one click populates the Registration & Plate
-    // section from the plate number, simulating a DMV/registry lookup. ──
-    const [plateLookup, setPlateLookup] = useState<'idle' | 'loading' | 'done'>('idle');
-    const plateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => () => { if (plateTimer.current) clearTimeout(plateTimer.current); }, []);
-    const lookupPlate = () => {
-        if (plateLookup === 'loading') return;
-        setPlateLookup('loading');
-        if (plateTimer.current) clearTimeout(plateTimer.current);
-        plateTimer.current = setTimeout(() => {
-            const current = (watch('plateNumber') || '').toString().trim();
-            // Simulated registry response.
-            setValue('plateNumber', current || 'TX-4821RC', { shouldDirty: true });
-            setValue('plateType', 'IRP', { shouldDirty: true });
-            setValue('plateCountry', 'USA', { shouldDirty: true });
-            setValue('plateJurisdiction', 'Texas', { shouldDirty: true });
-            setValue('registrationIssueDate', '2025-04-01', { shouldDirty: true });
-            setValue('registrationExpiryDate', '2026-03-31', { shouldDirty: true });
-            setPlateLookup('done');
-            plateTimer.current = setTimeout(() => setPlateLookup('idle'), 2600);
+    // ── VIN decode (demo API) — one click fills the identity fields from the VIN,
+    // the way a NHTSA/vPIC decode does. Only what a VIN actually carries is written back:
+    // make, model, year and the weight rating. Unit number and colour are ours, not the VIN's.
+    const [vinLookup, setVinLookup] = useState<'idle' | 'loading' | 'done'>('idle');
+    const vinTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (vinTimer.current) clearTimeout(vinTimer.current); }, []);
+    const lookupVin = () => {
+        if (vinLookup === 'loading') return;
+        setVinLookup('loading');
+        if (vinTimer.current) clearTimeout(vinTimer.current);
+        vinTimer.current = setTimeout(() => {
+            const current = (watch('vin') || '').toString().trim();
+            // Simulated decoder response.
+            setValue('vin', current || '1FUJGLDR8CLBP8834', { shouldDirty: true });
+            setValue('make', 'Freightliner', { shouldDirty: true });
+            setValue('model', 'Cascadia', { shouldDirty: true });
+            setValue('year', 2026, { shouldDirty: true });
+            setValue('grossWeight', 80000, { shouldDirty: true });
+            setValue('grossWeightUnit', 'lbs', { shouldDirty: true });
+            setValue('unloadedWeight', 32000, { shouldDirty: true });
+            setValue('unloadedWeightUnit', 'lbs', { shouldDirty: true });
+            setVinLookup('done');
+            vinTimer.current = setTimeout(() => setVinLookup('idle'), 2600);
         }, 950);
     };
 
@@ -845,7 +871,33 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                         </AssetSection>
 
                         {/* 2. Vehicle Information */}
-                        <AssetSection id="vehicle" title="Vehicle Information" subtitle="Identity, weights and specifications." icon={ShieldCheck}>
+                        <AssetSection id="vehicle" title="Vehicle Information" subtitle="Identity, weights and specifications." icon={ShieldCheck}
+                            right={
+                                /* The button alone: the VIN field is the first one in this
+                                   section, and a second copy of it up here is the same box
+                                   twice. It decodes whatever is typed below. */
+                                <div className="flex items-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={lookupVin}
+                                        disabled={vinLookup === 'loading'}
+                                        title="Decode the VIN and fill in make, model, year and weights"
+                                        className={cn(
+                                            "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[11px] font-bold uppercase tracking-wide shadow-sm transition-colors",
+                                            vinLookup === 'done'
+                                                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                : "bg-[#2563EB] text-white shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-60"
+                                        )}
+                                    >
+                                        {vinLookup === 'loading'
+                                            ? <><RotateCcw size={13} className="animate-spin" /> Decoding…</>
+                                            : vinLookup === 'done'
+                                                ? <><Check size={13} /> Filled</>
+                                                : <><Zap size={13} /> Lookup</>}
+                                    </button>
+                                </div>
+                            }
+                        >
                             <FormInput label="Unit Number" error={errors.unitNumber?.message as string} required><Input {...register('unitNumber')} placeholder="TR-100" /></FormInput>
                             <FormInput label="VIN (17 Characters)" error={errors.vin?.message as string} required><Input {...register('vin')} maxLength={17} className="font-mono font-semibold" /></FormInput>
                             <FormInput label="Manufacturer/Make" required><Input {...register('make')} placeholder="Freightliner" /></FormInput>
@@ -894,34 +946,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                         </AssetSection>
 
                         {/* 3. Plate */}
-                        <AssetSection id="plate" title="Registration & Plate" subtitle="Plate, jurisdiction and expiry monitoring." icon={Globe}
-                            right={
-                                <div className="flex items-end gap-2">
-                                    <label className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Plate Number</span>
-                                        <Input {...register('plateNumber')} placeholder="ABC-1234" className="h-9 w-36 sm:w-44" />
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={lookupPlate}
-                                        disabled={plateLookup === 'loading'}
-                                        title="Look up the plate number and auto-fill this section"
-                                        className={cn(
-                                            "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[11px] font-bold uppercase tracking-wide shadow-sm transition-colors",
-                                            plateLookup === 'done'
-                                                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                : "bg-[#2563EB] text-white shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-60"
-                                        )}
-                                    >
-                                        {plateLookup === 'loading'
-                                            ? <><RotateCcw size={13} className="animate-spin" /> Looking…</>
-                                            : plateLookup === 'done'
-                                                ? <><Check size={13} /> Filled</>
-                                                : <><Zap size={13} /> Lookup</>}
-                                    </button>
-                                </div>
-                            }
-                        >
+                        <AssetSection id="plate" title="Registration & Plate" subtitle="Plate, jurisdiction and expiry monitoring." icon={Globe}>
                             <FormInput label="Plate Number"><Input {...register('plateNumber')} placeholder="ABC-1234" /></FormInput>
                             <FormInput label="Plate Type" hint="IRP for interjurisdictional running; Local stays in the base state/province.">
                                 <select {...register('plateType')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
@@ -1285,29 +1310,31 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                 </div>
                             </FormInput>
 
-                            {/* Counterparty → term → address → the document, in that order.
-                                Leased, Financed and Rented all run for a term, at a fixed amount
-                                a month; Owned has neither, and is proved by its bill of sale. */}
+                            {/* Counterparty (with their address) → term → the document, in that
+                                order. Leased, Financed and Rented all run for a term, at a fixed
+                                amount a month; Owned has neither, and is proved by its bill of
+                                sale. */}
                             <div className="col-span-full border-t border-slate-100 pt-6 mt-2 space-y-6">
-                                {financial === 'Owned' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                        <FormInput label="Owner Name"><Input {...register('ownerName')} placeholder="Company Legal Name" /></FormInput>
-                                    </div>
-                                )}
+                                {/* Who the asset is held with, and where they are — the name and
+                                    the address of the same company, so they are read and typed
+                                    together rather than three blocks apart.
 
-                                {financial === 'Leased' && (
+                                    Owned asks for neither: a carrier that owns its truck outright
+                                    IS the owner, so there is nobody to name and nobody's address
+                                    to keep. The seller it was bought from is a field on the bill
+                                    of sale below, which is where a seller belongs. */}
+                                {financial !== 'Owned' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                        <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
-                                    </div>
-                                )}
-                                {financial === 'Financed' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                        <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} placeholder="e.g. Fleet Finance LLC" /></FormInput>
-                                    </div>
-                                )}
-                                {financial === 'Rented' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                        <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
+                                        {financial === 'Leased' && (
+                                            <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
+                                        )}
+                                        {financial === 'Financed' && (
+                                            <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} placeholder="e.g. Fleet Finance LLC" /></FormInput>
+                                        )}
+                                        {financial === 'Rented' && (
+                                            <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
+                                        )}
+                                        <AddressSection register={register} watch={watch} title={addressOwnerLabel} />
                                     </div>
                                 )}
 
@@ -1354,16 +1381,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                         </div>
                                     </div>
                                 )}
-
-                                {/* The other party's address — the seller a vehicle was bought
-                                    from, or the company it is held with. Asked on every structure:
-                                    a bill of sale names an address too, and it is the one thing on
-                                    it that says who to go back to. */}
-                                <div className="border-t border-slate-100 pt-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                        <AddressSection register={register} watch={watch} />
-                                    </div>
-                                </div>
 
                                 {/* THE DOCUMENT that proves all of the above — filed against this
                                     asset as its own Compliance & Documents record, not as a field

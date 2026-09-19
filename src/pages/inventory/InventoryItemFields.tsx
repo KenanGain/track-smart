@@ -26,9 +26,9 @@ import { MovementNotify, useMovementPlans, emptyNotifyState, type NotifyState } 
 import type { Movement } from "./inventory-movements";
 import { driverNameOf } from "./inventory-assignment";
 import {
-    VENDORS, VENDOR_CATEGORIES, getCategoryLabel, defaultItemName, isAutoItemName,
+    VENDORS, VENDOR_CATEGORIES, ITEM_HANDLING, defaultItemName, isAutoItemName,
     driverOfAsset, defaultInventoryMonitoring, INVENTORY_MONITOR_RECORD,
-    type Assignment, type AssignmentKind, type InventoryStatus, type Vendor,
+    type Assignment, type AssignmentKind, type InventoryStatus, type ItemHandling, type Vendor,
 } from "./inventory.data";
 
 export const INVENTORY_STATUS_OPTIONS: InventoryStatus[] = ["Active", "Expiring Soon", "Expired"];
@@ -36,6 +36,10 @@ export const INVENTORY_STATUS_OPTIONS: InventoryStatus[] = ["Active", "Expiring 
 /** Everything the form holds. One object, so both callers read and write the same shape. */
 export interface InventoryItemDraft {
     vendorId: string;
+    /** What kind of thing it is. Starts from the vendor's category, then it is the item's. */
+    categoryId: string;
+    /** How it comes back — signed out to a person, or fitted to a truck. */
+    handling: ItemHandling;
     name: string;
     serial: string;
     pin: string;
@@ -74,6 +78,10 @@ export type InventorySectionId = typeof INVENTORY_SECTIONS[number]["id"];
 export function emptyInventoryDraft(vendor?: Vendor): InventoryItemDraft {
     return {
         vendorId: vendor?.id ?? "",
+        categoryId: vendor?.categoryId ?? "",
+        // The commoner of the two by a distance: most of what a carrier issues is signed
+        // out to a person. Something fitted to a truck says so.
+        handling: "driver-returnable",
         name: defaultItemName(vendor),
         serial: "",
         pin: "",
@@ -107,7 +115,7 @@ export const draftIsValid = (d: InventoryItemDraft): boolean =>
 export function sectionFilled(id: InventorySectionId, d: InventoryItemDraft): number {
     const count = (...vals: unknown[]) => vals.filter(Boolean).length;
     switch (id) {
-        case "item": return count(d.vendorId, d.status, d.name.trim());
+        case "item": return count(d.vendorId, d.categoryId, d.handling, d.status, d.name.trim());
         case "details": return count(d.serial.trim(), d.pin.trim(), d.issueDate, d.expiryDate, d.monitoring.enabled);
         // Deliberately unassigned is an answered question, not a blank one.
         case "assignment": return count(d.assignmentKind === "" || d.targetId, d.alsoDriverOfAsset);
@@ -166,11 +174,25 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
      */
     const pickVendor = (value: string) => {
         const next = vendors.find((v) => v.id === value);
+        // The new vendor's category is the new guess — unless the item has been given one
+        // that vendor does not sell, which is a decision and not a leftover.
+        const category = draft.categoryId && draft.categoryId !== vendor?.categoryId
+            ? draft.categoryId
+            : next?.categoryId ?? '';
         set({
             vendorId: value,
-            ...(isAutoItemName(draft.name, vendor) ? { name: defaultItemName(next) } : {}),
+            categoryId: category,
+            ...(isAutoItemName(draft.name, vendor, draft.categoryId)
+                ? { name: defaultItemName(next, VENDOR_CATEGORIES, category) } : {}),
         });
     };
+
+    /** Recategorising renames the item too, while the name is still the one we chose. */
+    const pickCategory = (value: string) => set({
+        categoryId: value,
+        ...(isAutoItemName(draft.name, vendor, draft.categoryId)
+            ? { name: defaultItemName(vendor, VENDOR_CATEGORIES, value) } : {}),
+    });
 
     const pickHolder = (h: Holder) => {
         if (h === holder) return;
@@ -228,15 +250,17 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <Field label="Vendor" required>
                     <Select value={draft.vendorId} onChange={pickVendor}>
-                        {vendors.map((v) => (
-                            <option key={v.id} value={v.id}>{v.name} — {getCategoryLabel(v.categoryId, VENDOR_CATEGORIES)}</option>
-                        ))}
+                        {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                     </Select>
-                    {vendor && (
-                        <p className="mt-1 text-[11px] text-slate-500">
-                            Category: <span className="font-medium text-slate-700">{getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES)}</span>
-                        </p>
-                    )}
+                </Field>
+                {/* The category is the ITEM's, not the vendor's — a repair shop that also cuts
+                    keys sells two kinds of thing, and the vendor can only say one. It starts
+                    from the vendor's, which is a good guess and nothing more. */}
+                <Field label="Category" required hint="What kind of thing this is.">
+                    <Select value={draft.categoryId} onChange={pickCategory}>
+                        <option value="">Select a category…</option>
+                        {VENDOR_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </Select>
                 </Field>
                 <Field label="Status" required>
                     <Select value={draft.status} onChange={(v) => set({ status: v as InventoryStatus })}>
@@ -246,8 +270,37 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
                 {/* Filled in from the vendor, and editable: a carrier holding four cards from
                     one vendor tells them apart by this. */}
                 <Field label="Record name" required hint="Defaults to the vendor and its category.">
-                    <Text value={draft.name} onChange={(v) => set({ name: v })} placeholder={defaultItemName(vendor) || "e.g. Comdata — Fuel Card"} />
+                    <Text value={draft.name} onChange={(v) => set({ name: v })} placeholder={defaultItemName(vendor, VENDOR_CATEGORIES, draft.categoryId) || "e.g. Comdata — Fuel Card"} />
                 </Field>
+
+                {/* How it comes back. One or the other — a fuel card is handed back by the
+                    person who signed for it, a transponder is unscrewed from the cab. It is
+                    the difference between asking somebody for it and going to fetch it. */}
+                <div className="sm:col-span-2">
+                    <Field label="How it comes back" required>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {ITEM_HANDLING.map((h) => {
+                                const on = draft.handling === h.id;
+                                return (
+                                    <label key={h.id} className={cn(
+                                        "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
+                                        on ? "border-blue-300 bg-blue-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
+                                    )}>
+                                        <input
+                                            type="radio" name="item-handling" value={h.id} checked={on}
+                                            onChange={() => set({ handling: h.id })}
+                                            className="mt-0.5 h-4 w-4 shrink-0 border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                                        />
+                                        <span className="min-w-0">
+                                            <span className={cn("block text-[13px] font-semibold", on ? "text-blue-800" : "text-slate-800")}>{h.label}</span>
+                                            <span className="block text-[11px] leading-snug text-slate-500">{h.blurb}</span>
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </Field>
+                </div>
             </div>
         );
     }

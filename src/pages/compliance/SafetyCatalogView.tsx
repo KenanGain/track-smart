@@ -87,18 +87,6 @@ const COLUMNS: ColumnDef[] = [
                     {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
                 </div>
                 {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                    {r.numberName && (
-                        <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                            <Hash size={9} /> {r.numberName}
-                        </span>
-                    )}
-                    {r.documentName && (
-                        <span className="inline-flex items-center gap-1 rounded bg-violet-50 border border-violet-200 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                            <FileText size={9} /> {r.documentName}
-                        </span>
-                    )}
-                </div>
                 {r.note && <p className="mt-1 text-[11px] leading-snug text-slate-400 italic">{r.note}</p>}
             </>
         ),

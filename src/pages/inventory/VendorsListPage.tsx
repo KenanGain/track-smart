@@ -8,6 +8,8 @@ import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
+    INVENTORY_ITEMS,
+    getInventoryForCarrier,
     CARRIER_NAME,
     formatVendorAddress,
     getCategoryLabel,
@@ -43,6 +45,11 @@ const TD = ({ children, className }: { children?: React.ReactNode; className?: s
 );
 
 export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
+    // The category catalog is about inventory, so it counts this carrier's items.
+    const categoryItems = useMemo(
+        () => (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS),
+        [accountId],
+    );
     const [search, setSearch] = useState("");
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
@@ -239,7 +246,7 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
                 open={categoriesModalOpen}
                 onClose={() => setCategoriesModalOpen(false)}
                 categories={categories}
-                vendors={vendors}
+                items={categoryItems}
                 onCategoriesChange={setCategories}
             />
         </div>

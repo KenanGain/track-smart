@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronRight, ChevronsUpDown, Check, Plus, Trash2, ChevronUp, ChevronDown, X, Search, Info,
     FileText, FileSignature, PenLine, ClipboardList, FolderPlus, SlidersHorizontal, FileCheck2, ListChecks,
-    Hash, Sparkles, MapPin, Calendar, CalendarClock, Activity, History, Eye, ExternalLink, FileDown, AlertTriangle, Lock,
+    Sparkles, MapPin, Calendar, CalendarClock, Activity, History, Eye, ExternalLink, FileDown, AlertTriangle, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -378,10 +378,6 @@ const DOC_COLUMNS: DocCol[] = [
                     {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
                 </div>
                 {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                    {r.numberName && <span className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"><Hash size={9} /> {r.numberName}</span>}
-                    {r.documentName && <span className="inline-flex items-center gap-1 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"><FileText size={9} /> {r.documentName}</span>}
-                </div>
             </>
         ),
     },

@@ -14,7 +14,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PAGE_SIZES, TH_CLS, type SortState } from '@/components/ui/list-chrome';
+import { PAGE_SIZES, TH_CLS, bandTone, type SortState } from '@/components/ui/list-chrome';
 
 /** A sortable (or plain) column heading. */
 export function SortTh<C extends string>({ col, label, sortable, sort, onSort, className }: {
@@ -75,9 +75,13 @@ export function ColumnPicker<C extends string>({ columns, visible, onToggle, ali
  * `filters` is a slot: what a list filters BY is its own business, but where the controls sit
  * and what they look like is not.
  */
-export function ListToolbar({ search, onSearch, placeholder, filters, columns, className }: {
+export function ListToolbar({ search, onSearch, placeholder, filters, filtersExtra, columns, className }: {
     search: string; onSearch: (v: string) => void; placeholder: string;
-    filters?: ReactNode; columns?: ReactNode; className?: string;
+    filters?: ReactNode;
+    /** Controls that narrow the list but are not value filters — a date range, a grouping.
+     *  Separate from `filters` so they sit outside the funnel icon that labels those. */
+    filtersExtra?: ReactNode;
+    columns?: ReactNode; className?: string;
 }) {
     return (
         <div className={cn('flex items-center gap-2 px-5 py-3 border-b border-slate-100 flex-wrap', className)}>
@@ -88,7 +92,8 @@ export function ListToolbar({ search, onSearch, placeholder, filters, columns, c
             </div>
             {filters && <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>}
             {filters}
-            {columns && <div className="hidden md:block">{columns}</div>}
+            {filtersExtra}
+            {columns && <div className="hidden md:flex md:items-center md:gap-2">{columns}</div>}
         </div>
     );
 }
@@ -161,5 +166,24 @@ export function TablePager({ page, pageSize, total, onPage, onPageSize, classNam
                 </button>
             </div>
         </div>
+    );
+}
+
+/**
+ * The band across a grouped table that names a group and says how big it is.
+ *
+ * The tint is on an inner block rather than on the cell: a `.pin-first` table pins the first
+ * cell of every row and paints it white, and a band's cell IS the first cell.
+ */
+export function TableGroupBand({ label, count, colSpan }: { label: string; count: number; colSpan: number }) {
+    return (
+        <tr>
+            <td colSpan={colSpan} className="border-y border-slate-200 p-0">
+                <div className={cn('px-5 py-1.5', bandTone(label))}>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+                    <span className="ml-2 text-[10px] font-semibold tabular-nums opacity-60">{count}</span>
+                </div>
+            </td>
+        </tr>
     );
 }

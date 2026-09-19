@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useCondensingAnchor, useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
 import { ListPageHeader } from '@/components/ui/ListPageHeader';
 import { type KpiChip } from '@/components/ui/KpiChipStrip';
 import {
     ColumnPicker, FilterSelect, HistoryToggle, ListToolbar, SortTh, TablePager,
 } from '@/components/ui/ListChrome';
-import { type SortState } from '@/components/ui/list-chrome';
+import { bandTone, type SortState } from '@/components/ui/list-chrome';
+import { TableGroupBand } from '@/components/ui/ListChrome';
+import { useDriverDqFiles } from '@/pages/dq-files/dq-driver-files.data';
+import { driverTypeLabel } from '@/pages/settings/settings-dq-checklists.data';
 import { SubTabs } from '@/components/ui/SubTabs';
 import {
-    Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
+    Building2, Truck, User, Layers, Search, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
     ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, CornerDownRight, Share2,
     ToggleLeft, ToggleRight, RotateCcw, ExternalLink,
@@ -202,16 +205,107 @@ function DocFilesCell({ files, showTag = true }: { files: DataDocFile[]; showTag
         </div>
     );
 }
-/** Tags cell — record (version) tags plus, optionally, this row's document tag (distinct slate chip). */
-function DocTagsCell({ recordTags, docTag }: { recordTags: string[]; docTag?: string }) {
-    if (!recordTags.length && !docTag) return <span className="text-[13px] text-slate-400">—</span>;
+/**
+ * The ONE date a record is watched on, named the way the record names it: an expiry, a next
+ * filing due, or -- for a record with no end date -- the issue date it is dated by. Returns
+ * null when the record is not watched on a date at all, which is a different answer from a
+ * date that has not been filled in yet.
+ */
+function monitoredDate(r: SafetyRecord, v: DocVersion | null): { label: string; value: string } | null {
+    if (isDateMonitored(r)) return { label: r.monitorType, value: v?.expiryDate || '' };
+    if (r.tracksIssueDate) return { label: r.issueLabel ?? 'Issue date', value: v?.issueDate || '' };
+    return null;
+}
+
+/** What the record is watched on, in one line: the date, or the status standing in for one. */
+function MonitoredCell({ r, cur, monitoringOn }: {
+    r: SafetyRecord; cur: DocVersion | null; monitoringOn: boolean;
+}) {
+    const watched = monitoredDate(r, cur);
+    // Nobody is being alerted about this one. A date here would read as a watched date, which
+    // is the one thing this column must not say when it is not true — the date itself is on
+    // the record, and switching monitoring on brings it back.
+    if (!monitoringOn) {
+        return (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-tight">
+                <span className="text-[11px] text-slate-300" title="Monitoring is off for this record">Not monitored</span>
+            </div>
+        );
+    }
     return (
-        <div className="flex flex-wrap gap-1 max-w-[220px]">
-            {recordTags.map(t => <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', tagColor(t))}><Tag size={9} /> {t}</span>)}
-            {docTag && <span className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', tagColor(docTag))}><Tag size={9} /> {docTag}</span>}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-tight">
+            {watched ? (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <CalendarClock size={12} className={cn('shrink-0', dayState(watched.value) === 'past' ? 'text-rose-400' : 'text-slate-400')} />
+                    <span className="text-slate-400">{watched.label}</span>
+                    <span className={cn('font-semibold tabular-nums',
+                        watched.value ? DAY_TONE[dayState(watched.value) ?? 'later'] : 'text-slate-300')}>
+                        {fmtDay(watched.value) || 'not set'}
+                    </span>
+                </span>
+            ) : r.hideStatus ? (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-400">
+                    <CircleDashed size={12} className="shrink-0 text-slate-300" />
+                    {r.monitorType}
+                </span>
+            ) : (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <CircleDashed size={12} className="shrink-0 text-slate-400" />
+                    <span className="text-slate-400">{r.statusLabel ?? r.monitorType}</span>
+                    <span className={cn('font-semibold', cur?.status ? 'text-slate-700' : 'text-slate-300')}>{cur?.status || '—'}</span>
+                </span>
+            )}
         </div>
     );
 }
+
+/**
+ * The document on the row: the file itself, opened from here rather than two clicks in.
+ * A record that is not meant to carry one says so quietly; one that is, and has none, says
+ * so loudly -- that gap is the point of the column.
+ */
+function RowDocCell({ files, needsDoc, onOpen }: { files: DataDocFile[]; needsDoc: boolean; onOpen: () => void }) {
+    const f = files[0];
+    if (!f) {
+        return needsDoc ? (
+            <button type="button" onClick={onOpen} title="Open the record to upload it"
+                className="inline-flex items-center gap-1 rounded-md border border-dashed border-amber-300 bg-amber-50/60 px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100/60">
+                <CircleAlert size={11} /> No document
+            </button>
+        ) : <span className="text-[12px] text-slate-300">—</span>;
+    }
+    // The file NAME was a truncated slug of the record name — it answered nothing the row
+    // had not already said. What this cell is for is opening the document.
+    return (
+        <div className="flex items-center gap-1.5">
+            <button
+                type="button"
+                onClick={() => (f.url ? openFile(f) : onOpen())}
+                title={f.url ? `View ${f.name}` : f.name}
+                className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+            >
+                <Eye size={11} /> View
+            </button>
+            {files.length > 1 && (
+                <span className="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-bold text-slate-500" title={`${files.length} documents on this record`}>+{files.length - 1}</span>
+            )}
+        </div>
+    );
+}
+
+/** How many records sit behind the current one — the column, and the card's line. */
+function RecordCountCell({ r, entry }: { r: SafetyRecord; entry: RecordDataEntry }) {
+    const n = countOf(r, entry);
+    const noun = r.instanceNoun || 'record';
+    const label = n === 1 ? noun : (noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's');
+    return (
+        <span className={cn('inline-flex items-baseline gap-1 text-[12px] whitespace-nowrap', n ? 'text-slate-600' : 'text-slate-300')}>
+            <span className="font-semibold tabular-nums">{n}</span>
+            <span className="text-[11px] text-slate-400">{label}</span>
+        </span>
+    );
+}
+
 
 /** One label/value fact in a mobile document card. */
 function MobileFact({ label, value }: { label: string; value?: string }) {
@@ -224,15 +318,23 @@ function MobileFact({ label, value }: { label: string; value?: string }) {
 }
 
 // ── Table columns / sort / pagination ─────────────────────────────────
-type DataColId = 'category' | 'type' | 'monitoring' | 'status';
+type DataColId = 'category' | 'type' | 'monitoring' | 'document' | 'records' | 'status';
 type SortCol = 'record' | DataColId;
 const DATA_COLUMNS: { id: DataColId; label: string }[] = [
     { id: 'category', label: 'Category' },
     { id: 'type', label: 'Record Type' },
     { id: 'monitoring', label: 'Monitoring' },
+    // Most of these records ARE a document. Whether one is on file was only visible by
+    // opening the record, which is a click to answer the list's most basic question.
+    { id: 'document', label: 'Document' },
+    // How many are on file behind the current one. Off by default: it matters when you are
+    // looking for history, and on every other day it is a column of 1s.
+    { id: 'records', label: 'Records' },
     { id: 'status', label: 'Status' },
 ];
 const ALL_DATA_COLS: DataColId[] = DATA_COLUMNS.map(c => c.id);
+/** What a fresh table shows — everything except the counts, which are asked for when wanted. */
+const DEFAULT_DATA_COLS: DataColId[] = ALL_DATA_COLS.filter(c => c !== 'records');
 const STATUS_RANK: Record<DataStatus, number> = { complete: 0, missing: 1, optional: 2 };
 // Status values for status-based records (the monitored value captured in the form).
 const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
@@ -519,21 +621,116 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
                 tags: i === 0 ? ['Verified', 'Primary'] : i === 1 ? ['Renewed'] : [],
                 monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
             });
-            if (i === 2) return { ...v, files: [] };                       // missing document
-            if (i === 3) return { ...v, expiryDate: '', issueDate: '' };    // missing dates
-            if (i === 4) return { ...v, numberValue: '' };                  // missing number / code
+            // Every row complete. The gaps here used to demonstrate the missing-document /
+            // missing-date states, but they read as a broken sample rather than as a point
+            // being made — and those states are visible on the records list, across real
+            // records, where they mean something.
             return v;
         }),
     };
 }
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2026-12-31" — "31 Dec 2026". Parsed by hand: `new Date('2026-12-31')` is UTC midnight,
+ *  which is the day before in every timezone west of London. */
+export function fmtDay(iso?: string): string {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d || m > 12) return iso;
+    return `${d} ${MONTHS_SHORT[m - 1]} ${y}`;
+}
+/** What a monitored date MEANS today: gone, close, or far enough away to be quiet about. */
+export function dayState(iso?: string): 'past' | 'soon' | 'later' | null {
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const days = Math.round((new Date(y, m - 1, d).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
+    return days < 0 ? 'past' : days <= 30 ? 'soon' : 'later';
+}
+const DAY_TONE: Record<'past' | 'soon' | 'later', string> = {
+    past: 'text-rose-600', soon: 'text-amber-600', later: 'text-slate-700',
+};
+
+/** How many records are on file: versions, or instances for a record that has them. */
+function countOf(r: SafetyRecord, entry: RecordDataEntry): number {
+    return r.multiInstance ? instancesOf(entry).length : entry.versions.length;
+}
+
+/**
+ * The state a record is in, as one word, in the order somebody works through them: what has
+ * already lapsed, then what is not there at all, then what is there but undated, then what is
+ * done. Exclusive and ranked — a record that is expired AND missing its document is expired,
+ * because that is the one that matters today.
+ */
+type RowBucket = 'expired' | 'missing-doc' | 'missing-date' | 'complete' | 'other';
+const BUCKET_ORDER: RowBucket[] = ['expired', 'missing-doc', 'missing-date', 'complete', 'other'];
+const BUCKET_LABEL: Record<RowBucket, string> = {
+    expired: 'Expired',
+    'missing-doc': 'Missing document',
+    'missing-date': 'Missing date',
+    complete: 'Completed',
+    other: 'Nothing outstanding',
+};
+/** Whether anything is alerting on this record — the row, the filter and the band agree. */
+function isMonitoredOn(r: SafetyRecord, entry: RecordDataEntry): boolean {
+    return r.multiInstance
+        ? instancesOf(entry).some(i => !!i.versions[0]?.monitoring?.enabled)
+        : !!currentVersion(entry)?.monitoring?.enabled;
+}
+
+function bucketOf(r: SafetyRecord, entry: RecordDataEntry): RowBucket {
+    const cur = r.multiInstance ? (instancesOf(entry)[0]?.versions[0] ?? null) : currentVersion(entry);
+    const watched = monitoredDate(r, cur);
+    if (watched?.value && dayState(watched.value) === 'past') return 'expired';
+    if (r.type !== 'C' && r.docRequirement !== 'none' && !(cur?.files.length)) return 'missing-doc';
+    if (watched && !watched.value) return 'missing-date';
+    if (entryStatus(r, entry) === 'complete') return 'complete';
+    return 'other';
+}
+
+type GroupById = 'none' | 'state' | 'type' | 'category' | 'monitoring' | 'record' | 'subject';
+/**
+ * What a list can be banded by. `record` and `subject` are offered only where rows repeat
+ * across both — the flat Records view holds every record for every truck, so grouping by
+ * either is the whole point of it. In one subject's own list a record appears once, and
+ * twenty-six groups of one is not a grouping.
+ */
+function groupOptions(entityLabel?: string): { id: GroupById; label: string }[] {
+    return [
+        { id: 'none', label: 'Group by' },
+        { id: 'state', label: 'Group by document & dates' },
+        { id: 'type', label: 'Group by record type' },
+        { id: 'category', label: 'Group by category' },
+        { id: 'monitoring', label: 'Group by monitoring' },
+        ...(entityLabel
+            ? [{ id: 'record' as GroupById, label: 'Group by record name' },
+               { id: 'subject' as GroupById, label: `Group by ${entityLabel.toLowerCase()}` }]
+            : []),
+    ];
+}
+/** Which band a row falls in, and where that band sits. Rank keeps a group in one piece. */
+function groupOf(by: GroupById, r: SafetyRecord, entry: RecordDataEntry, subject?: { id: string; label: string }): { rank: number; label: string } {
+    if (by === 'type') return { rank: RECORD_TYPE_ORDER.indexOf(r.type), label: RECORD_TYPE_LABEL[r.type] };
+    if (by === 'category') return { rank: 0, label: r.category };
+    if (by === 'monitoring') return isMonitoredOn(r, entry)
+        ? { rank: 0, label: 'Monitored' }
+        : { rank: 1, label: 'Not monitored' };
+    if (by === 'record') return { rank: 0, label: r.recordName };
+    if (by === 'subject') return { rank: 0, label: subject?.label ?? '—' };
+    const b = bucketOf(r, entry);
+    return { rank: BUCKET_ORDER.indexOf(b), label: BUCKET_LABEL[b] };
+}
 function sortValueFor(col: SortCol, r: SafetyRecord, entry: RecordDataEntry): string {
     const cur = currentVersion(entry);
     switch (col) {
         case 'record': return r.recordName.toLowerCase();
         case 'category': return r.category;
         case 'type': return RECORD_TYPE_LABEL[r.type];
-        case 'monitoring': return (cur?.expiryDate || '') + (cur?.numberValue || '');
+        case 'monitoring': return (cur?.expiryDate || cur?.issueDate || '') + (cur?.numberValue || '');
+        // Missing documents sort together, which is the reason to sort by this column at all.
+        case 'document': return cur?.files.length ? '1' + (cur.files[0].name ?? '') : '0';
+        // Padded so 9 sorts before 10 rather than after it.
+        case 'records': return String(countOf(r, entry)).padStart(4, '0');
         case 'status': return String(STATUS_RANK[entryStatus(r, entry)]);
         default: return '';
     }
@@ -670,13 +867,24 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
     const records = useMemo(() => [...customRecords, ...SAFETY_RECORDS], [customRecords]);
     const assets = useMemo(() => getAssetsForAccount(acct), [acct]);
     const drivers = useMemo(() => getDriversForAccount(acct), [acct]);
+    // Which side of the border a driver runs is what decides the records they owe, so that
+    // is the type this page groups and filters by. "Long Haul / Local / Owner Operator" is
+    // how they are employed — true, and beside the point here, so it stays under the name.
+    const { getRecord: dqRecordFor, records: dqRecords } = useDriverDqFiles(acct);
 
     // Asset / Driver tabs: switch between the flat "Records" list (all subjects) and the subject roster.
-    const [subView, setSubView] = useState<'records' | 'list'>('records');
+    // The roster first: you come to the Asset tab to find a truck, not to read 198 rows of
+    // every record on every truck. The flat record list is the other half of the switch.
+    const [subView, setSubView] = useState<'records' | 'list'>('list');
     const assetSubjects = useMemo<RecSubject[]>(() => assets.map(a => ({ id: a.id, label: a.unitNumber, sub: `${a.year} ${a.make} ${a.model}` })), [assets]);
     const driverSubjects = useMemo<RecSubject[]>(() => drivers.map(d => ({ id: d.id, label: d.name, sub: d.driverType ?? undefined, initials: d.avatarInitials })), [drivers]);
     const assetRoster = useMemo<RosterSubject[]>(() => assets.map(a => ({ id: a.id, name: a.unitNumber, sub: `${a.year} ${a.make} ${a.model}`, type: a.assetType, extra: a.vin })), [assets]);
-    const driverRoster = useMemo<RosterSubject[]>(() => drivers.map(d => ({ id: d.id, name: d.name, sub: d.driverType ?? undefined, type: d.driverType ?? '—', extra: d.licenseState ?? undefined, initials: d.avatarInitials })), [drivers]);
+    const driverRoster = useMemo<RosterSubject[]>(() => drivers.map(d => ({
+        id: d.id, name: d.name, sub: d.driverType ?? undefined,
+        type: driverTypeLabel(dqRecordFor(d).driverType),
+        extra: d.licenseState ?? undefined, initials: d.avatarInitials,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    })), [drivers, dqRecords]);
     const assetRecordCount = useMemo(() => records.filter(r => r.entity === 'Asset').length * assets.length, [records, assets]);
     const driverRecordCount = useMemo(() => records.filter(r => r.entity === 'Driver').length * drivers.length, [records, drivers]);
 
@@ -687,6 +895,17 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
     }, [records]);
 
     const switchEntity = (e: EntityId) => { setEntity(e); setSelectedSubject(null); };
+
+    /** The asset or driver whose records are open, named. */
+    const selectedLabel = useMemo(() => {
+        if (!selectedSubject) return null;
+        if (entity === 'Asset') {
+            const a = assets.find(x => x.id === selectedSubject);
+            return a ? `${a.unitNumber} · ${a.make} ${a.model}` : 'Asset';
+        }
+        const d = drivers.find(x => x.id === selectedSubject);
+        return d ? d.name : 'Driver';
+    }, [selectedSubject, entity, assets, drivers]);
 
     // When seeding the carrier, also seed the first asset + driver so the Monitoring page's Asset/Driver tabs have data.
     // One-click "Load sample data" seeds EVERY subject — the carrier + all assets + all drivers —
@@ -720,7 +939,23 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                     activeTab={entity}
                     onTabChange={id => switchEntity(id as EntityId)}
                     tabsRight={
-                        entity !== 'Carrier' && !selectedSubject
+                        // Three screens into a driver's records, "whose records are these" was
+                        // unanswerable: the name scrolled away with the cards. It lives here now,
+                        // where the tabs are, and the body no longer repeats it.
+                        selectedSubject && selectedLabel
+                            ? (
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <button type="button" onClick={() => setSelectedSubject(null)}
+                                        className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-600 hover:bg-slate-50">
+                                        <ChevronLeft size={14} /> All {entity === 'Asset' ? 'assets' : 'drivers'}
+                                    </button>
+                                    <span className="inline-flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-slate-800">
+                                        {entity === 'Asset' ? <Truck size={14} className="shrink-0 text-slate-400" /> : <User size={14} className="shrink-0 text-slate-400" />}
+                                        <span className="truncate">{selectedLabel}</span>
+                                    </span>
+                                </div>
+                            )
+                            : entity !== 'Carrier' && !selectedSubject
                             ? <SubViewSwitch
                                 value={subView} onChange={setSubView}
                                 listLabel={entity === 'Asset' ? 'Assets' : 'Drivers'}
@@ -798,6 +1033,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                                     autoOpenRecordId={focusRecordId}
                                     onFocusConsumed={() => setFocusRecordId(null)}
                                     onBack={() => setSelectedSubject(null)}
+                                    headerShowsSubject
                                     backLabel="All assets"
                                     onDetailChange={setDetailOpen}
                                     onNavigate={onNavigate}
@@ -829,6 +1065,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
                                     autoOpenRecordId={focusRecordId}
                                     onFocusConsumed={() => setFocusRecordId(null)}
                                     onBack={() => setSelectedSubject(null)}
+                                    headerShowsSubject
                                     backLabel="All drivers"
                                     onDetailChange={setDetailOpen}
                                     onNavigate={onNavigate}
@@ -921,6 +1158,35 @@ function CompletionBar({ pct }: { pct: number }) {
 type RosterSubject = { id: string; name: string; sub?: string; type: string; extra?: string; initials?: string };
 type RosterCol = 'name' | 'type' | 'completion' | 'missing';
 
+/**
+ * Banding a roster: by what the thing IS, by how far along it is, or by how big its hole is.
+ * Completion and missing are bands rather than numbers — eighteen groups of one truck each
+ * is a list with headings, not a grouping.
+ */
+type RosterGroupBy = 'none' | 'type' | 'completion' | 'missing';
+const ROSTER_GROUPS: { id: RosterGroupBy; label: string }[] = [
+    { id: 'none', label: 'Group by' },
+    { id: 'type', label: 'Group by type' },
+    { id: 'completion', label: 'Group by completion' },
+    { id: 'missing', label: 'Group by missing records' },
+];
+type RosterStats = { total: number; complete: number; requiredMissing: number; optionalPending: number; pct: number };
+function rosterGroupOf(by: RosterGroupBy, s: RosterSubject, stats: RosterStats): { rank: number; label: string } {
+    if (by === 'type') return { rank: 0, label: s.type || 'Unspecified' };
+    if (by === 'completion') {
+        // Worst first: a roster is read to find what still needs doing.
+        if (stats.pct === 0) return { rank: 0, label: 'Not started' };
+        if (stats.pct < 50) return { rank: 1, label: 'Under half done' };
+        if (stats.pct < 100) return { rank: 2, label: 'Most of the way' };
+        return { rank: 3, label: 'Fully complete' };
+    }
+    const n = stats.requiredMissing;
+    if (n === 0) return { rank: 3, label: 'Nothing missing' };
+    if (n >= 6) return { rank: 0, label: '6 or more missing' };
+    if (n >= 3) return { rank: 1, label: '3–5 missing' };
+    return { rank: 2, label: '1–2 missing' };
+}
+
 function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpis }: {
     entity: 'Asset' | 'Driver';
     subjects: RosterSubject[];
@@ -933,7 +1199,11 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'complete' | 'incomplete'>('all');
+    // Completion and gaps are different questions: "half done" and "missing something" are
+    // both true of the same truck, and one select could only ever answer one of them.
+    const [completionFilter, setCompletionFilter] = useState<'all' | 'complete' | 'partial' | 'none'>('all');
+    const [missingFilter, setMissingFilter] = useState<'all' | 'missing' | 'clean'>('all');
+    const [groupBy, setGroupBy] = useState<RosterGroupBy>('none');
     const [sort, setSort] = useState<{ col: RosterCol; dir: 'asc' | 'desc' }>({ col: 'name', dir: 'asc' });
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
@@ -966,12 +1236,15 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
         const q = search.trim().toLowerCase();
         return rows.filter(({ s, stats }) => {
             if (typeFilter !== 'all' && s.type !== typeFilter) return false;
-            if (statusFilter === 'complete' && stats.pct !== 100) return false;
-            if (statusFilter === 'incomplete' && stats.requiredMissing === 0) return false;
+            if (completionFilter === 'complete' && stats.pct !== 100) return false;
+            if (completionFilter === 'partial' && (stats.pct === 0 || stats.pct === 100)) return false;
+            if (completionFilter === 'none' && stats.pct !== 0) return false;
+            if (missingFilter === 'missing' && stats.requiredMissing === 0) return false;
+            if (missingFilter === 'clean' && stats.requiredMissing > 0) return false;
             if (q && !`${s.name} ${s.sub || ''} ${s.type} ${s.extra || ''}`.toLowerCase().includes(q)) return false;
             return true;
         });
-    }, [rows, search, typeFilter, statusFilter]);
+    }, [rows, search, typeFilter, completionFilter, missingFilter]);
 
     const sorted = useMemo(() => {
         const val = (r: (typeof rows)[number]) =>
@@ -979,12 +1252,30 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
                 : sort.col === 'type' ? (r.s.type || '').toLowerCase()
                     : sort.col === 'completion' ? String(r.stats.pct).padStart(3, '0')
                         : String(r.stats.requiredMissing).padStart(3, '0');
-        const arr = [...filtered].sort((a, b) => val(a).localeCompare(val(b), undefined, { numeric: true }));
+        let arr = [...filtered].sort((a, b) => val(a).localeCompare(val(b), undefined, { numeric: true }));
         if (sort.dir === 'desc') arr.reverse();
+        // Grouped before the column sort, so a band is never split across a page break.
+        if (groupBy !== 'none') {
+            arr = [...arr].sort((a, b) => {
+                const ga = rosterGroupOf(groupBy, a.s, a.stats);
+                const gb = rosterGroupOf(groupBy, b.s, b.stats);
+                return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
+            });
+        }
         return arr;
-    }, [filtered, sort]);
+    }, [filtered, sort, groupBy]);
 
-    useEffect(() => { setPage(1); }, [search, typeFilter, statusFilter, pageSize, sort]);
+    const groupCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy === 'none') return m;
+        for (const { s: subj, stats } of sorted) {
+            const label = rosterGroupOf(groupBy, subj, stats).label;
+            m.set(label, (m.get(label) ?? 0) + 1);
+        }
+        return m;
+    }, [sorted, groupBy]);
+
+    useEffect(() => { setPage(1); }, [search, typeFilter, completionFilter, missingFilter, groupBy, pageSize, sort]);
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(page, totalPages);
@@ -1029,10 +1320,21 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
                             {types.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                     )}
-                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | 'complete' | 'incomplete')} className={selectCls} title="Filter by completion">
-                        <option value="all">All statuses</option>
+                    <select value={completionFilter} onChange={e => setCompletionFilter(e.target.value as 'all' | 'complete' | 'partial' | 'none')} className={selectCls} title="Filter by completion">
+                        <option value="all">Any completion</option>
                         <option value="complete">Fully complete</option>
-                        <option value="incomplete">Has missing</option>
+                        <option value="partial">Partly complete</option>
+                        <option value="none">Not started</option>
+                    </select>
+                    <select value={missingFilter} onChange={e => setMissingFilter(e.target.value as 'all' | 'missing' | 'clean')} className={selectCls} title="Filter by missing records">
+                        <option value="all">Missing or not</option>
+                        <option value="missing">Has missing</option>
+                        <option value="clean">Nothing missing</option>
+                    </select>
+                    <select value={groupBy} onChange={e => setGroupBy(e.target.value as RosterGroupBy)}
+                        className={cn(selectCls, groupBy !== 'none' && 'border-blue-300 bg-blue-50/60 text-blue-700')}
+                        title="Group the list">
+                        {ROSTER_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
                 </div>
 
@@ -1044,15 +1346,23 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
                             <thead className="border-b border-slate-200 bg-slate-50/50">
                                 <tr>
                                     <Th col="name" label={entity} className="pl-5" />
-                                    <Th col="type" label="Type" />
-                                    <Th col="completion" label="Completion" className="w-[300px]" />
-                                    <Th col="missing" label="Required Missing" />
-                                    <th className="px-4 py-2.5" />
+                                    <Th col="type" label="Type" className="border-l border-slate-200" />
+                                    <Th col="completion" label="Completion" className="w-[300px] border-l border-slate-200" />
+                                    <Th col="missing" label="Required Missing" className="border-l border-slate-200" />
+                                    <th className="px-4 py-2.5 border-l border-slate-200" />
                                 </tr>
                             </thead>
                             <tbody>
-                                {pageRows.map(({ s, stats }) => (
-                                    <tr key={s.id} onClick={() => onOpen(s.id)} className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer">
+                                {pageRows.map(({ s, stats }, i) => {
+                                    const g = groupBy === 'none' ? null : rosterGroupOf(groupBy, s, stats);
+                                    const p = pageRows[i - 1];
+                                    const prev = i === 0 || groupBy === 'none' ? null : rosterGroupOf(groupBy, p.s, p.stats);
+                                    return (
+                                    <Fragment key={s.id}>
+                                    {g && (!prev || prev.label !== g.label) && (
+                                        <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={5} />
+                                    )}
+                                    <tr onClick={() => onOpen(s.id)} className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer">
                                         <td className="px-4 py-3 pl-5">
                                             <div className="flex items-center gap-2.5">
                                                 {s.initials
@@ -1064,24 +1374,26 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all, onKpi
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3 border-l border-slate-100">
                                             <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">{s.type || '—'}</span>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3 border-l border-slate-100">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-40"><CompletionBar pct={stats.pct} /></div>
                                                 <span className="w-9 text-[12px] font-semibold text-slate-700 tabular-nums">{stats.pct}%</span>
                                                 <span className="whitespace-nowrap text-[11px] text-slate-500 tabular-nums">{stats.complete}/{stats.complete + stats.requiredMissing} required</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3 border-l border-slate-100">
                                             {stats.requiredMissing > 0
                                                 ? <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600"><CircleAlert size={11} /> {stats.requiredMissing}</span>
                                                 : <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"><Check size={11} /> None</span>}
                                         </td>
-                                        <td className="px-4 py-3 text-right"><ChevronRight size={16} className="text-slate-300" /></td>
+                                        <td className="px-4 py-3 text-right border-l border-slate-100"><ChevronRight size={16} className="text-slate-300" /></td>
                                     </tr>
-                                ))}
+                                    </Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -1129,7 +1441,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, onNavigate, accountId, onKpis, onActions }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, headerShowsSubject, onNavigate, accountId, onKpis, onActions }: {
     entity: EntityId;
     subjectId: string;
     /** Scopes which records this subject tracks (see `record-enablement`). */
@@ -1159,6 +1471,9 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     detailExtraFor?: (record: SafetyRecord) => ReactNode;
     // Hide the category tab row (e.g. the DQ Forms tab, where every record is one category → redundant).
     hideCategoryTabs?: boolean;
+    // The page header already carries the back button and the subject's name, so the in-page
+    // strip would say it twice — and the header's copy is the one that stays while you scroll.
+    headerShowsSubject?: boolean;
     // Deep-link navigation (used by the record-share "Share to chat" flow).
     onNavigate?: (path: string) => void;
     // Report this view's KPI figures to the page header, which shows them as chips once the
@@ -1174,8 +1489,10 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const [statusFilter, setStatusFilter] = useState<'all' | DataStatus>('all');
     const [tagFilter, setTagFilter] = useState<string>('all');
     const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
+    const [monitorFilter, setMonitorFilter] = useState<'all' | 'on' | 'off'>('all');
+    const [groupBy, setGroupBy] = useState<GroupById>('none');
     const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' } | null>(null);
-    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(ALL_DATA_COLS));
+    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(DEFAULT_DATA_COLS));
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
     const [manage, setManage] = useState<SafetyRecord | null>(null);
@@ -1270,6 +1587,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
             if (category !== 'All' && r.category !== category) return false;
             if (typeFilter !== 'all' && r.type !== typeFilter) return false;
             const entry = getEntry(subjectId, r.id);
+            if (monitorFilter !== 'all' && isMonitoredOn(r, entry) !== (monitorFilter === 'on')) return false;
             if (statusFilter !== 'all' && entryStatus(r, entry) !== statusFilter) return false;
             const tags = versionTags(entry);
             if (tagFilter !== 'all' && !tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
@@ -1281,19 +1599,42 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
             return true;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [entityRecords, category, typeFilter, statusFilter, tagFilter, search, subjectId, all]);
+    }, [entityRecords, category, typeFilter, monitorFilter, statusFilter, tagFilter, search, subjectId, all]);
 
     const sorted = useMemo(() => {
-        if (!sort) return filtered;
-        const arr = [...filtered].sort((a, b) =>
-            sortValueFor(sort.col, a, getEntry(subjectId, a.id))
-                .localeCompare(sortValueFor(sort.col, b, getEntry(subjectId, b.id)), undefined, { numeric: true, sensitivity: 'base' }));
-        if (sort.dir === 'desc') arr.reverse();
+        let arr = filtered;
+        if (sort) {
+            arr = [...arr].sort((a, b) =>
+                sortValueFor(sort.col, a, getEntry(subjectId, a.id))
+                    .localeCompare(sortValueFor(sort.col, b, getEntry(subjectId, b.id)), undefined, { numeric: true, sensitivity: 'base' }));
+            if (sort.dir === 'desc') arr.reverse();
+        }
+        // Grouping sorts BEFORE the column sort so a group is never split across two pages —
+        // a heading on page 2 repeating a group from page 1 is not a group.
+        if (groupBy !== 'none') {
+            arr = [...arr].sort((a, b) => {
+                const ga = groupOf(groupBy, a, getEntry(subjectId, a.id));
+                const gb = groupOf(groupBy, b, getEntry(subjectId, b.id));
+                return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
+            });
+        }
         return arr;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtered, sort, subjectId, all]);
+    }, [filtered, sort, groupBy, subjectId, all]);
 
-    useEffect(() => { setPage(1); }, [category, typeFilter, statusFilter, tagFilter, search, pageSize, sort, subjectId]);
+    /** How many rows are in each group, counted over the whole list rather than this page. */
+    const groupCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy === 'none') return m;
+        for (const r of sorted) {
+            const label = groupOf(groupBy, r, getEntry(subjectId, r.id)).label;
+            m.set(label, (m.get(label) ?? 0) + 1);
+        }
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sorted, groupBy, subjectId, all]);
+
+    useEffect(() => { setPage(1); }, [category, typeFilter, monitorFilter, statusFilter, tagFilter, search, pageSize, sort, groupBy, subjectId]);
 
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1326,7 +1667,9 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 Carrier tab it named the carrier a third time, under a header and a tab that had
                 already said it, so it is gone. `onBack` is what distinguishes the two. */}
             {!embedded && onBack && (
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+            // The header's copy is hidden below `sm`, so the strip stays for narrow screens
+            // rather than leaving them with a list that belongs to nobody.
+            <div className={cn('flex items-center justify-between gap-3 flex-wrap', headerShowsSubject && 'sm:hidden')}>
                 <div className="flex items-center gap-2 min-w-0">
                     {onBack && (
                         <button type="button" onClick={onBack} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50">
@@ -1427,11 +1770,23 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                         <option value="missing">Missing</option>
                         <option value="optional">Optional</option>
                     </select>
+                    <select value={monitorFilter} onChange={e => setMonitorFilter(e.target.value as 'all' | 'on' | 'off')} className={selectCls} title="Filter by monitoring">
+                        <option value="all">Monitored or not</option>
+                        <option value="on">Monitored</option>
+                        <option value="off">Not monitored</option>
+                    </select>
                     <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className={selectCls} title="Filter by document tag">
                         <option value="all">All tags</option>
                         {tagCatalog.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
-                    <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
+                    {/* Grouping, not filtering: every row stays on the list, banded by what is
+                        true of it. */}
+                    <select value={groupBy} onChange={e => setGroupBy(e.target.value as GroupById)}
+                        className={cn(selectCls, groupBy !== 'none' && 'border-blue-300 bg-blue-50/60 text-blue-700')}
+                        title="Group the list">
+                        {groupOptions().map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                    <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} onReset={() => setVisibleCols(new Set(DEFAULT_DATA_COLS))} />
                     </div>
                 </div>
 
@@ -1445,33 +1800,20 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     <>
                         {/* Mobile / narrow screens — stacked cards */}
                         <div className="lg:hidden divide-y divide-slate-100">
-                            {pageRows.map(r => (
-                                <RecordCard
-                                    key={r.id}
-                                    r={r}
-                                    entry={entryFor(r)}
-                                    visibleCols={visibleCols}
-                                    onOpen={() => setDetailRecord(r)}
-                                    enabled={!disabled.has(r.id)}
-                                    onEnabledChange={v => setEnabled(r.id, v)}
-                                />
-                            ))}
-                        </div>
-                        {/* Desktop — full table */}
-                        <div className="hidden lg:block overflow-x-auto">
-                            <table className="pin-first w-full min-w-[1070px]">
-                                <thead className="border-b border-slate-200 bg-slate-50">
-                                    <tr className="text-left">
-                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
-                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
-                                        {/* Always shown — not a toggleable column: it is how you get a record back. */}
-                                        <th className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 py-2.5 pl-4 pr-5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap" title="Whether this record is tracked for this driver">Tracked</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pageRows.map(r => (
-                                        <RecordTableRow
-                                            key={r.id}
+                            {pageRows.map((r, i) => {
+                                const g = groupBy === 'none' ? null : groupOf(groupBy, r, entryFor(r));
+                                const prev = i === 0 || groupBy === 'none' ? null
+                                    : groupOf(groupBy, pageRows[i - 1], entryFor(pageRows[i - 1]));
+                                return (
+                                    <Fragment key={r.id}>
+                                        {g && (!prev || prev.label !== g.label) && (
+                                            <div className={cn('px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider',
+                                                bandTone(g.label))}>
+                                                {g.label}
+                                                <span className="ml-2 tabular-nums opacity-60">{groupCounts.get(g.label) ?? 0}</span>
+                                            </div>
+                                        )}
+                                        <RecordCard
                                             r={r}
                                             entry={entryFor(r)}
                                             visibleCols={visibleCols}
@@ -1479,7 +1821,43 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                                             enabled={!disabled.has(r.id)}
                                             onEnabledChange={v => setEnabled(r.id, v)}
                                         />
-                                    ))}
+                                    </Fragment>
+                                );
+                            })}
+                        </div>
+                        {/* Desktop — full table */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="pin-first w-full min-w-[1210px]">
+                                <thead className="border-b border-slate-200 bg-slate-50">
+                                    <tr className="text-left">
+                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
+                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} className="border-l border-slate-200" />)}
+                                        {/* Always shown — not a toggleable column: it is how you get a record back. */}
+                                        <th className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 py-2.5 pl-4 pr-5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap" title="Whether this record is tracked for this driver">Tracked</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageRows.map((r, i) => {
+                                        const g = groupBy === 'none' ? null : groupOf(groupBy, r, entryFor(r));
+                                        const prev = i === 0 ? null
+                                            : groupBy === 'none' ? null
+                                            : groupOf(groupBy, pageRows[i - 1], entryFor(pageRows[i - 1]));
+                                        return (
+                                            <Fragment key={r.id}>
+                                                {g && (!prev || prev.label !== g.label) && (
+                                                    <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={cols.length + 2} />
+                                                )}
+                                                <RecordTableRow
+                                                    r={r}
+                                                    entry={entryFor(r)}
+                                                    visibleCols={visibleCols}
+                                                    onOpen={() => setDetailRecord(r)}
+                                                    enabled={!disabled.has(r.id)}
+                                                    onEnabledChange={v => setEnabled(r.id, v)}
+                                                />
+                                            </Fragment>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -1638,10 +2016,12 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
+    const [monitorFilter, setMonitorFilter] = useState<'all' | 'on' | 'off'>('all');
     const [statusFilter, setStatusFilter] = useState<'all' | DataStatus>('all');
     const [tagFilter, setTagFilter] = useState('all');
     const [subjectFilter, setSubjectFilter] = useState('all');
-    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(ALL_DATA_COLS));
+    const [groupBy, setGroupBy] = useState<GroupById>('none');
+    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(DEFAULT_DATA_COLS));
     const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' } | null>(null);
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
@@ -1686,6 +2066,7 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
             if (subjectFilter !== 'all' && subject.id !== subjectFilter) return false;
             if (typeFilter !== 'all' && r.type !== typeFilter) return false;
             const entry = getEntry(subject.id, r.id);
+            if (monitorFilter !== 'all' && isMonitoredOn(r, entry) !== (monitorFilter === 'on')) return false;
             if (statusFilter !== 'all' && entryStatus(r, entry) !== statusFilter) return false;
             const tags = versionTags(entry);
             if (tagFilter !== 'all' && !tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
@@ -1697,19 +2078,40 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
             return true;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allRows, subjectFilter, typeFilter, statusFilter, tagFilter, search, all]);
+    }, [allRows, subjectFilter, typeFilter, monitorFilter, statusFilter, tagFilter, search, all]);
 
     const sorted = useMemo(() => {
-        if (!sort) return filtered;
-        const arr = [...filtered].sort((a, b) =>
-            sortValueFor(sort.col, a.record, getEntry(a.subject.id, a.record.id))
-                .localeCompare(sortValueFor(sort.col, b.record, getEntry(b.subject.id, b.record.id)), undefined, { numeric: true, sensitivity: 'base' }));
-        if (sort.dir === 'desc') arr.reverse();
+        let arr = filtered;
+        if (sort) {
+            arr = [...arr].sort((a, b) =>
+                sortValueFor(sort.col, a.record, getEntry(a.subject.id, a.record.id))
+                    .localeCompare(sortValueFor(sort.col, b.record, getEntry(b.subject.id, b.record.id)), undefined, { numeric: true, sensitivity: 'base' }));
+            if (sort.dir === 'desc') arr.reverse();
+        }
+        // Before the column sort, so a group stays in one piece across a page break.
+        if (groupBy !== 'none') {
+            arr = [...arr].sort((a, b) => {
+                const ga = groupOf(groupBy, a.record, getEntry(a.subject.id, a.record.id), a.subject);
+                const gb = groupOf(groupBy, b.record, getEntry(b.subject.id, b.record.id), b.subject);
+                return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
+            });
+        }
         return arr;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtered, sort, all]);
+    }, [filtered, sort, groupBy, all]);
 
-    useEffect(() => { setPage(1); }, [subjectFilter, typeFilter, statusFilter, tagFilter, search, pageSize, sort]);
+    const groupCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy === 'none') return m;
+        for (const { subject, record } of sorted) {
+            const label = groupOf(groupBy, record, getEntry(subject.id, record.id), subject).label;
+            m.set(label, (m.get(label) ?? 0) + 1);
+        }
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sorted, groupBy, all]);
+
+    useEffect(() => { setPage(1); }, [subjectFilter, typeFilter, monitorFilter, statusFilter, tagFilter, search, pageSize, sort, groupBy]);
 
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1786,11 +2188,21 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                         <option value="missing">Missing</option>
                         <option value="optional">Optional</option>
                     </select>
+                    <select value={monitorFilter} onChange={e => setMonitorFilter(e.target.value as 'all' | 'on' | 'off')} className={selectCls} title="Filter by monitoring">
+                        <option value="all">Monitored or not</option>
+                        <option value="on">Monitored</option>
+                        <option value="off">Not monitored</option>
+                    </select>
                     <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className={selectCls} title="Filter by document tag">
                         <option value="all">All tags</option>
                         {tagCatalog.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
-                    <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
+                    <select value={groupBy} onChange={e => setGroupBy(e.target.value as GroupById)}
+                        className={cn(selectCls, groupBy !== 'none' && 'border-blue-300 bg-blue-50/60 text-blue-700')}
+                        title="Group the list">
+                        {groupOptions(entity).map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                    <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} onReset={() => setVisibleCols(new Set(DEFAULT_DATA_COLS))} />
                 </div>
 
                 {pageRows.length === 0 ? (
@@ -1799,38 +2211,61 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                     <>
                         {/* Mobile / narrow screens — stacked cards (subject block on top of each) */}
                         <div className="lg:hidden divide-y divide-slate-100">
-                            {pageRows.map(({ subject, record }) => (
-                                <RecordCard
-                                    key={`${subject.id}-${record.id}`}
-                                    r={record}
-                                    entry={getEntry(subject.id, record.id)}
-                                    visibleCols={visibleCols}
-                                    onOpen={() => setDetail({ subject, record })}
-                                    leadCell={<SubjectCell s={subject} />}
-                                />
-                            ))}
-                        </div>
-                        {/* Desktop — full table */}
-                        <div className="hidden lg:block overflow-x-auto">
-                            <table className="pin-first w-full min-w-[1080px]">
-                                <thead className="border-b border-slate-200 bg-slate-50/50">
-                                    <tr className="text-left">
-                                        <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
-                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} />
-                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pageRows.map(({ subject, record }) => (
-                                        <RecordTableRow
-                                            key={`${subject.id}-${record.id}`}
+                            {pageRows.map(({ subject, record }, i) => {
+                                const g = groupBy === 'none' ? null : groupOf(groupBy, record, getEntry(subject.id, record.id), subject);
+                                const p = pageRows[i - 1];
+                                const prev = i === 0 || groupBy === 'none' ? null : groupOf(groupBy, p.record, getEntry(p.subject.id, p.record.id), p.subject);
+                                return (
+                                    <Fragment key={`${subject.id}-${record.id}`}>
+                                        {g && (!prev || prev.label !== g.label) && (
+                                            <div className={cn('px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider',
+                                                bandTone(g.label))}>
+                                                {g.label}
+                                                <span className="ml-2 tabular-nums opacity-60">{groupCounts.get(g.label) ?? 0}</span>
+                                            </div>
+                                        )}
+                                        <RecordCard
                                             r={record}
                                             entry={getEntry(subject.id, record.id)}
                                             visibleCols={visibleCols}
                                             onOpen={() => setDetail({ subject, record })}
                                             leadCell={<SubjectCell s={subject} />}
                                         />
-                                    ))}
+                                    </Fragment>
+                                );
+                            })}
+                        </div>
+                        {/* Desktop — full table */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="pin-first w-full min-w-[1220px]">
+                                <thead className="border-b border-slate-200 bg-slate-50/50">
+                                    <tr className="text-left">
+                                        <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
+                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="border-l border-slate-200" />
+                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} className="border-l border-slate-200" />)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageRows.map(({ subject, record }, i) => {
+                                        const g = groupBy === 'none' ? null : groupOf(groupBy, record, getEntry(subject.id, record.id), subject);
+                                        const p = pageRows[i - 1];
+                                        const prev = i === 0 || groupBy === 'none' ? null
+                                            : groupOf(groupBy, p.record, getEntry(p.subject.id, p.record.id), p.subject);
+                                        return (
+                                            <Fragment key={`${subject.id}-${record.id}`}>
+                                                {g && (!prev || prev.label !== g.label) && (
+                                                    <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={cols.length + 2} />
+                                                )}
+                                                <RecordTableRow
+                                                    r={record}
+                                                    entry={getEntry(subject.id, record.id)}
+                                                    visibleCols={visibleCols}
+                                                    onOpen={() => setDetail({ subject, record })}
+                                                    leadCell={<SubjectCell s={subject} />}
+                                                />
+                                            </Fragment>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -1870,23 +2305,42 @@ function SortableTh({ col, label, sort, onSort, className }: {
     );
 }
 
-function ColumnsDropdown({ visible, onToggle }: { visible: Set<DataColId>; onToggle: (id: DataColId) => void }) {
+function ColumnsDropdown({ visible, onToggle, onReset }: {
+    visible: Set<DataColId>; onToggle: (id: DataColId) => void; onReset?: () => void;
+}) {
     const [open, setOpen] = useState(false);
     return (
         <div className="relative">
             <button type="button" onClick={() => setOpen(o => !o)}
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
-                <Columns size={14} /> Columns <ChevronDown size={13} className="text-slate-400" />
+                <Columns size={14} /> Columns
+                {/* How many are hidden, so a column that is off is not a column that is missing. */}
+                {visible.size < DATA_COLUMNS.length && (
+                    <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-bold tabular-nums text-slate-500">
+                        {DATA_COLUMNS.length - visible.size}
+                    </span>
+                )}
+                <ChevronDown size={13} className="text-slate-400" />
             </button>
             {open && (
                 <>
                     <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                    <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white shadow-lg p-1.5">
-                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</div>
+                    <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-lg p-1.5">
+                        <div className="flex items-center justify-between px-2 py-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</span>
+                            {onReset && (
+                                <button type="button" onClick={onReset}
+                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Reset</button>
+                            )}
+                        </div>
                         {DATA_COLUMNS.map(c => (
                             <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer text-[13px] text-slate-700">
                                 <input type="checkbox" checked={visible.has(c.id)} onChange={() => onToggle(c.id)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                {c.label}
+                                <span className="flex-1">{c.label}</span>
+                                {/* Off unless asked for — said here rather than discovered by noticing. */}
+                                {!DEFAULT_DATA_COLS.includes(c.id) && (
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-300">off by default</span>
+                                )}
                             </label>
                         ))}
                     </div>
@@ -1909,12 +2363,11 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell, enabled, onEn
     const status = entryStatus(r, entry);
     const isMulti = !!r.multiInstance;
     const insts = instancesOf(entry);
-    const noun = r.instanceNoun || 'document';
-    const nounPl = (n: number) => (n === 1 ? noun : (noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's'));
     // Representative "current" for the row — for multi-instance records, the first policy's current version.
     const cur = isMulti ? (insts[0]?.versions[0] ?? null) : currentVersion(entry);
-    const versionCount = isMulti ? insts.length : entry.versions.length;
     const monitoringOn = isMulti ? insts.some(i => !!i.versions[0]?.monitoring?.enabled) : !!cur?.monitoring?.enabled;
+    // A "Compliances" record is a number and a status — there is no document to miss.
+    const needsDoc = r.type !== 'C' && r.docRequirement !== 'none';
 
     // Dimmed the moment the switch is flipped, so the change reads immediately even though
     // the row keeps its place until the list is refreshed.
@@ -1923,37 +2376,22 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell, enabled, onEn
         <>
             <tr className={cn('group border-b border-slate-100 hover:bg-slate-50/50 align-top', off && 'bg-slate-50/40 opacity-60')}>
                 {/* Subject (aggregated Records view only) */}
-                {leadCell !== undefined && <td className="px-4 py-3.5 pl-5 align-top">{leadCell}</td>}
-                {/* Record & Fields */}
-                <td className={cn('px-4 py-3.5', leadCell === undefined && 'pl-5')}>
-                    <div className="flex items-start gap-2">
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                <button type="button" onClick={onOpen} title="Open details" className="group inline-flex items-center gap-1 text-left text-sm font-semibold text-slate-900 hover:text-blue-600">
-                                    {r.recordName}
-                                    <ChevronRight size={13} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
-                                </button>
-                                {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
-                            </div>
-                            {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
-                            <div className="mt-1 flex flex-wrap gap-1.5">
-                                {r.numberName && (
-                                    <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                                        <Hash size={9} /> {r.numberName}
-                                    </span>
-                                )}
-                                {r.documentName && (
-                                    <span className="inline-flex items-center gap-1 rounded bg-violet-50 border border-violet-200 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                                        <FileText size={9} /> {r.documentName}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
+                {leadCell !== undefined && <td className="px-3 py-2 pl-5 align-middle">{leadCell}</td>}
+                {/* Record — the name, and the name only. The description said the same thing
+                    again in grey, on every row, and was what made a row two lines tall. It is
+                    still on the record itself, and still searched. */}
+                <td className={cn('px-3 py-2', leadCell === undefined ? 'pl-5' : 'border-l border-slate-100')}>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <button type="button" onClick={onOpen} title={r.description || 'Open details'} className="group inline-flex items-center gap-1 text-left text-[13px] font-semibold text-slate-900 hover:text-blue-600">
+                            {r.recordName}
+                            <ChevronRight size={13} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                        </button>
+                        {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
                     </div>
                 </td>
                 {/* Category */}
                 {visibleCols.has('category') && (
-                    <td className="px-4 py-3.5">
+                    <td className="px-3 py-2 border-l border-slate-100">
                         <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
                             {CATEGORY_SHORT[r.category] ?? r.category}
                         </span>
@@ -1961,62 +2399,39 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell, enabled, onEn
                 )}
                 {/* Record Type */}
                 {visibleCols.has('type') && (
-                    <td className="px-4 py-3.5">
+                    <td className="px-3 py-2 border-l border-slate-100">
                         <span className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', RECORD_TYPE_TONE[r.type])}>
                             {RECORD_TYPE_LABEL[r.type]}
                         </span>
                     </td>
                 )}
-                {/* Monitoring — captured values on the current version */}
+                {/* Monitoring — the date this record is watched on, when anything is watching.
+                    It used to print the number and every declared field too, mostly as a dash:
+                    the record's own fields belong to the record, not to a column named after
+                    what it is watched on. */}
                 {visibleCols.has('monitoring') && (
-                    <td className="px-4 py-3.5 align-top">
-                        <div className="flex flex-col gap-1.5 text-[12px] min-w-[180px]">
-                            {r.numberName && (
-                                <div className="leading-snug text-slate-700">
-                                    <span className="text-slate-400">{r.numberName}: </span>
-                                    <span className="font-semibold">{cur?.numberValue || '—'}</span>
-                                </div>
-                            )}
-                            {isDateMonitored(r) ? (
-                                <div className="flex items-start gap-1.5 leading-snug text-slate-600">
-                                    <CalendarClock size={12} className="mt-0.5 shrink-0 text-slate-400" />
-                                    <span><span className="text-slate-400">{r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.expiryDate || '—'}</span></span>
-                                </div>
-                            ) : r.hideStatus ? null : (
-                                <div className="flex items-start gap-1.5 leading-snug text-slate-600">
-                                    <CircleDashed size={12} className="mt-0.5 shrink-0 text-slate-400" />
-                                    <span><span className="text-slate-400">{r.statusLabel ?? r.monitorType}: </span><span className="font-semibold text-slate-700">{cur?.status || '—'}</span></span>
-                                </div>
-                            )}
-                            {recordFields(r).map(f => (
-                                <div key={f.key} className="leading-snug text-slate-700">
-                                    <span className="text-slate-400">{f.label}: </span>
-                                    <span className="font-semibold">{fieldValue(f, cur?.fields) || '—'}</span>
-                                </div>
-                            ))}
-                            {(monitoringOn || isMulti || versionCount > 1) && (
-                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                    {monitoringOn && (
-                                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
-                                            <Bell size={9} /> Monitoring on
-                                        </span>
-                                    )}
-                                    {isMulti
-                                        ? insts.length > 0 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{insts.length} {nounPl(insts.length)} · all active</span>
-                                        : versionCount > 1 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{versionCount} records</span>}
-                                </div>
-                            )}
-                        </div>
+                    <td className="px-3 py-2 align-middle border-l border-slate-100">
+                        <MonitoredCell r={r} cur={cur} monitoringOn={monitoringOn} />
                     </td>
+                )}
+                {/* Document — what is actually on file, opened from the row */}
+                {visibleCols.has('document') && (
+                    <td className="px-3 py-2 align-middle border-l border-slate-100">
+                        <RowDocCell files={cur?.files ?? []} needsDoc={needsDoc} onOpen={onOpen} />
+                    </td>
+                )}
+                {/* Records on file — off by default */}
+                {visibleCols.has('records') && (
+                    <td className="px-3 py-2 align-middle border-l border-slate-100"><RecordCountCell r={r} entry={entry} /></td>
                 )}
                 {/* Status */}
                 {visibleCols.has('status') && (
-                    <td className="px-4 py-3.5"><StatusPill status={status} /></td>
+                    <td className="px-3 py-2 align-middle border-l border-slate-100"><StatusPill status={status} /></td>
                 )}
                 {/* Tracked — only where enablement applies (the aggregated Records view has no
                     single subject to enable a record FOR, so it passes no handler). */}
                 {onEnabledChange && (
-                    <td className={cn('sticky right-0 z-10 w-[92px] border-l border-slate-100 py-3.5 pl-4 pr-5 text-right align-top',
+                    <td className={cn('sticky right-0 z-10 w-[92px] border-l border-slate-100 py-2 pl-4 pr-5 text-right align-middle',
                         off ? 'bg-slate-50' : 'bg-white group-hover:bg-slate-50')}>
                         <RowEnableToggle enabled={enabled !== false} onChange={onEnabledChange} recordName={r.recordName} />
                     </td>
@@ -2041,11 +2456,10 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnable
     const status = entryStatus(r, entry);
     const isMulti = !!r.multiInstance;
     const insts = instancesOf(entry);
-    const noun = r.instanceNoun || 'document';
-    const nounPl = (n: number) => (n === 1 ? noun : (noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's'));
     const cur = isMulti ? (insts[0]?.versions[0] ?? null) : currentVersion(entry);
-    const versionCount = isMulti ? insts.length : entry.versions.length;
     const monitoringOn = isMulti ? insts.some(i => !!i.versions[0]?.monitoring?.enabled) : !!cur?.monitoring?.enabled;
+    // A "Compliances" record is a number and a status — there is no document to miss.
+    const needsDoc = r.type !== 'C' && r.docRequirement !== 'none';
 
     return (
         <div
@@ -2064,7 +2478,6 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnable
                         <span className="text-sm font-semibold text-slate-900">{r.recordName}</span>
                         {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
                     </div>
-                    {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
                 </div>
                 <div className="shrink-0 flex items-center gap-1.5 pt-0.5">
                     {visibleCols.has('status') && <StatusPill status={status} />}
@@ -2072,18 +2485,6 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnable
                     <ChevronRight size={15} className="text-slate-300" />
                 </div>
             </div>
-
-            {/* Number / document chips */}
-            {(r.numberName || r.documentName) && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                    {r.numberName && (
-                        <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"><Hash size={9} /> {r.numberName}</span>
-                    )}
-                    {r.documentName && (
-                        <span className="inline-flex items-center gap-1 rounded bg-violet-50 border border-violet-200 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"><FileText size={9} /> {r.documentName}</span>
-                    )}
-                </div>
-            )}
 
             {/* Category / Record Type chips */}
             {(visibleCols.has('category') || visibleCols.has('type')) && (
@@ -2097,26 +2498,21 @@ function RecordCard({ r, entry, visibleCols, onOpen, leadCell, enabled, onEnable
                 </div>
             )}
 
+            {visibleCols.has('records') && (
+                <div className="mt-2"><RecordCountCell r={r} entry={entry} /></div>
+            )}
+
+            {/* The document on file — the same cell the table row shows. */}
+            {visibleCols.has('document') && (
+                <div className="mt-2">
+                    <RowDocCell files={cur?.files ?? []} needsDoc={needsDoc} onOpen={onOpen} />
+                </div>
+            )}
+
             {/* Monitoring values */}
             {visibleCols.has('monitoring') && (
-                <div className="mt-2.5 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2 flex flex-col gap-1 text-[12px]">
-                    {r.numberName && (
-                        <div className="leading-snug text-slate-700"><span className="text-slate-400">{r.numberName}: </span><span className="font-semibold">{cur?.numberValue || '—'}</span></div>
-                    )}
-                    <div className="flex items-start gap-1.5 leading-snug text-slate-600">
-                        {isDateMonitored(r) ? <CalendarClock size={12} className="mt-0.5 shrink-0 text-slate-400" /> : <CircleDashed size={12} className="mt-0.5 shrink-0 text-slate-400" />}
-                        <span><span className="text-slate-400">{r.monitorType}: </span><span className="font-semibold text-slate-700">{isDateMonitored(r) ? (cur?.expiryDate || '—') : (cur?.status || '—')}</span></span>
-                    </div>
-                    {(monitoringOn || isMulti || versionCount > 1) && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                            {monitoringOn && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600"><Bell size={9} /> Monitoring on</span>
-                            )}
-                            {isMulti
-                                ? insts.length > 0 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{insts.length} {nounPl(insts.length)} · all active</span>
-                                : versionCount > 1 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{versionCount} records</span>}
-                        </div>
-                    )}
+                <div className="mt-2.5 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                    <MonitoredCell r={r} cur={cur} monitoringOn={monitoringOn} />
                 </div>
             )}
         </div>
@@ -2425,18 +2821,18 @@ function UploaderCell({ name, at }: { name?: string; at: string }) {
 }
 
 // ── Detail document-table controls (search / filter / sort / column-select / pagination) ──
-type DocStaticColId = 'insurer' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
+type DocStaticColId = 'insurer' | 'state' | 'issue' | 'expiry' | 'status' | 'notes' | 'document' | 'uploaded';
 /** A record's own select fields get a column each, addressed as `sel:<field key>`. */
 type DocColId = DocStaticColId | `sel:${string}`;
 type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded' | `sel:${string}`;
-const DOC_STATIC_COLS: DocStaticColId[] = ['insurer', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
+const DOC_STATIC_COLS: DocStaticColId[] = ['insurer', 'state', 'issue', 'expiry', 'status', 'notes', 'document', 'uploaded'];
 // Core columns that are always shown — cannot be toggled off (locked in the Columns menu).
 const DOC_LOCKED_COLS: DocColId[] = ['state', 'document'];
 // Insurance-only columns (shown only for multi-instance records).
 const DOC_INSURANCE_COLS: DocColId[] = ['insurer'];
 const DOC_COL_LABEL: Record<DocStaticColId, string> = {
     insurer: 'Insurance company',
-    state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
+    state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
 };
 const selKey = (id: DocColId) => (id.startsWith('sel:') ? id.slice(4) : '');
 /** Plural of a filter's field name, for its "All …" option: a bare +'s' gave "All currencys"
@@ -2464,6 +2860,29 @@ function docColLabel(record: SafetyRecord, id: DocColId): string {
     return DOC_COL_LABEL[id as DocStaticColId];
 }
 const DOC_TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
+
+/**
+ * Banding a record's own history. `state` is current-versus-past, `year` is the renewal it
+ * belongs to, and `status` is whatever the record calls its status.
+ */
+type DocGroupBy = 'none' | 'state' | 'year' | 'status';
+const DOC_GROUPS: { id: DocGroupBy; label: string }[] = [
+    { id: 'none', label: 'Group by' },
+    { id: 'state', label: 'Group by state' },
+    { id: 'year', label: 'Group by year' },
+    { id: 'status', label: 'Group by status' },
+];
+/** The date a version is placed on the timeline by: what it is monitored on, else its issue. */
+const rowDate = (v: DocVersion): string => v.expiryDate || v.issueDate || '';
+function docGroupOf(by: DocGroupBy, row: DocRow): { rank: number; label: string } {
+    if (by === 'year') {
+        const y = rowDate(row.version).slice(0, 4);
+        // Newest first, which is the order a history is read in.
+        return { rank: y ? -Number(y) : 1e6, label: y || 'No date' };
+    }
+    if (by === 'status') return { rank: 0, label: row.version.status || 'No status' };
+    return row.isCurrent ? { rank: 0, label: 'Current' } : { rank: 1, label: 'Historical' };
+}
 function docSortValue(col: DocSortCol, row: DocRow, record: SafetyRecord): string {
     const v = row.version;
     switch (col) {
@@ -2491,9 +2910,6 @@ function docSearchBlob(row: DocRow, record: SafetyRecord): string {
         .filter(Boolean).join(' ').toLowerCase();
 }
 /** All tags on a record — its version tags + every document tag (used for the tag filter + search). */
-function rowAllTags(row: DocRow): string[] {
-    return Array.from(new Set([...row.version.tags, ...row.version.files.map(f => f.tag).filter((t): t is string => !!t)]));
-}
 // Both of these are the shared list furniture (`ListChrome`) with this table's own vocabulary
 // filled in. They stay as named wrappers because the call sites read better for it — and
 // because there is then exactly one place where a heading or a column picker is drawn, which
@@ -2542,7 +2958,10 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     };
     const [editing, setEditing] = useState<{ version: DocVersion; mode: 'add' | 'edit'; instanceId?: string; newPolicy?: boolean } | null>(null);
     const [docSearch, setDocSearch] = useState('');
-    const [tagFilter, setTagFilter] = useState('all');
+    // The question asked of a fourteen-year history is "what did we hold between X and Y".
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
+    const [docGroupBy, setDocGroupBy] = useState<DocGroupBy>('none');
     const [docSort, setDocSort] = useState<{ col: DocSortCol; dir: 'asc' | 'desc' } | null>(null);
     const [visibleDocCols, setVisibleDocCols] = useState<Set<DocColId>>(() => new Set(docDefaultColsFor(record)));
     // Value filters over the record's own fields — the monitored status (e.g. Test result)
@@ -2554,7 +2973,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const [pendingDelete, setPendingDelete] = useState<DocRow | null>(null); // → ConfirmDialog "are you sure?"
     const toggleDocSort = (col: DocSortCol) => setDocSort(prev => (prev && prev.col === col ? (prev.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }));
     const toggleDocCol = (id: DocColId) => { if (DOC_LOCKED_COLS.includes(id)) return; setVisibleDocCols(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
-    useEffect(() => { setDocPage(1); }, [docSearch, tagFilter, valueFilters, docSort, docPageSize, includeHistory]);
+    useEffect(() => { setDocPage(1); }, [docSearch, valueFilters, docSort, docPageSize, includeHistory, fromDate, toDate, docGroupBy]);
     // Remove one version (or, for multi-instance, one policy's version — dropping the policy if it empties). Confirmed via ConfirmDialog.
     const doRemove = (row: DocRow) => {
         if (row.instanceId) {
@@ -2680,22 +3099,41 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     // "History" = older/previous versions (position-based, newest = current). Independent of the controllable State field.
     const isCurrentRow = (r: DocRow) => r.isCurrent;
     const historyCount = allRows.filter(r => !isCurrentRow(r)).length;
-    const tagOptions = Array.from(new Set(allRows.flatMap(rowAllTags))).sort();
     const baseRows = includeHistory ? allRows : allRows.filter(isCurrentRow);
     const q = docSearch.trim().toLowerCase();
     const filteredRows = baseRows.filter(r => {
-        if (tagFilter !== 'all' && !rowAllTags(r).some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
         if (valueFilters.status && r.version.status !== valueFilters.status) return false;
         for (const f of selectFieldDefs) {
             const want = valueFilters[f.key];
             if (want && (r.version.fields?.[f.key] ?? '') !== want) return false;
         }
         if (q && !docSearchBlob(r, record).includes(q)) return false;
+        // The range reads the date the record is ABOUT — its expiry where it has one, its
+        // issue date otherwise. A row with no date at all is out of every range, which is
+        // the honest answer: nothing places it.
+        if (fromDate || toDate) {
+            const d = rowDate(r.version);
+            if (!d) return false;
+            if (fromDate && d < fromDate) return false;
+            if (toDate && d > toDate) return false;
+        }
         return true;
     });
-    const sortedRows = docSort
+    let sortedRows = docSort
         ? [...filteredRows].sort((a, b) => docSortValue(docSort.col, a, record).localeCompare(docSortValue(docSort.col, b, record), undefined, { numeric: true, sensitivity: 'base' }) * (docSort.dir === 'desc' ? -1 : 1))
         : filteredRows;
+    // Banded before the page is cut, so a band is never split across two pages.
+    if (docGroupBy !== 'none') {
+        sortedRows = [...sortedRows].sort((a, b) => {
+            const ga = docGroupOf(docGroupBy, a), gb = docGroupOf(docGroupBy, b);
+            return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
+        });
+    }
+    const docGroupCounts = new Map<string, number>();
+    if (docGroupBy !== 'none') for (const r of sortedRows) {
+        const l = docGroupOf(docGroupBy, r).label;
+        docGroupCounts.set(l, (docGroupCounts.get(l) ?? 0) + 1);
+    }
     const totalDocs = sortedRows.length;
     const docTotalPages = Math.max(1, Math.ceil(totalDocs / docPageSize));
     const docSafePage = Math.min(docPage, docTotalPages);
@@ -2741,7 +3179,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     {!compact && (() => {
                         const statusOpts = showStatus ? (record.statusOptions ?? presentValues(v => v.status)) : [];
                         const statusLabel = record.statusLabel ?? 'Status';
-                        const hasFilters = tagOptions.length > 0 || statusOpts.length > 0 || selectFieldDefs.length > 0;
+                        const hasFilters = statusOpts.length > 0 || selectFieldDefs.length > 0;
                         return (
                             <ListToolbar
                                 search={docSearch} onSearch={setDocSearch}
@@ -2756,12 +3194,36 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                             <FilterSelect key={f.key} value={valueFilters[f.key] ?? ''} onChange={v => setValueFilter(f.key, v)}
                                                 title={`Filter by ${f.label.toLowerCase()}`} allLabel={`All ${pluralise(f.label.toLowerCase())}`} options={f.options} />
                                         ))}
-                                        {tagOptions.length > 0 && (
-                                            <FilterSelect value={tagFilter === 'all' ? '' : tagFilter} onChange={v => setTagFilter(v || 'all')}
-                                                title="Filter by tag" allLabel="All tags" options={tagOptions} />
-                                        )}
                                     </>
                                 ) : undefined}
+                                filtersExtra={
+                                    <>
+                                        {/* What did we hold between X and Y — the question a fourteen-year
+                                            history is actually asked. Reads the record's own date. */}
+                                        <label className="inline-flex items-center gap-1.5 text-[12px] text-slate-500">
+                                            From
+                                            <input type="date" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)}
+                                                className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                                        </label>
+                                        <label className="inline-flex items-center gap-1.5 text-[12px] text-slate-500">
+                                            to
+                                            <input type="date" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)}
+                                                className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                                        </label>
+                                        {(fromDate || toDate) && (
+                                            <button type="button" onClick={() => { setFromDate(''); setToDate(''); }}
+                                                className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-500 hover:bg-slate-50">
+                                                Any date
+                                            </button>
+                                        )}
+                                        <select value={docGroupBy} onChange={e => setDocGroupBy(e.target.value as DocGroupBy)}
+                                            title="Group the list"
+                                            className={cn('h-9 rounded-lg border px-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/30',
+                                                docGroupBy === 'none' ? 'border-slate-200 bg-white text-slate-700' : 'border-blue-300 bg-blue-50/60 text-blue-700')}>
+                                            {DOC_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                                        </select>
+                                    </>
+                                }
                                 columns={<DocColumnsDropdown record={record} cols={applicableDocCols} visible={visibleDocCols} onToggle={toggleDocCol} />}
                             />
                         );
@@ -2771,24 +3233,26 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     ) : (
                         <>
                         <div className="hidden md:block overflow-x-auto">
-                            <table className={cn('w-full', isMulti ? 'min-w-[1400px]'
+                            <table className={cn('ruled-cols w-full', isMulti ? 'min-w-[1400px]'
                                 : extraFieldDefs.length >= 3 ? 'min-w-[1520px]'
                                 : extraFieldDefs.length === 2 ? 'min-w-[1400px]'
                                 : extraFieldDefs.length === 1 ? 'min-w-[1280px]' : 'min-w-[1160px]')}>
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr>
-                                        {showNumber && <DocTh col="number" label={record.numberName} sortable sort={docSort} onSort={toggleDocSort} className="pl-5" />}
-                                        {isMulti && <DocTh col="policy" label={noun.charAt(0).toUpperCase() + noun.slice(1)} sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && 'pl-5')} />}
-                                        {showCol('insurer') && <DocTh col="insurer" label="Insurance company" sortable sort={docSort} onSort={toggleDocSort} />}
-                                                                                <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
+                                        {/* The record's own name first, then the form's order behind it.
+                                            Fourteen rows all headed "CVO-466262" said nothing about
+                                            which row you were on; "CVOR Certificate 2019" does. */}
+                                        <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className="pl-5" />
                                         {showCol('state') && <DocTh col="state" label="State" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showNumber && <DocTh col="number" label={record.numberName} sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {isMulti && <DocTh col="policy" label={noun.charAt(0).toUpperCase() + noun.slice(1)} sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showCol('insurer') && <DocTh col="insurer" label="Insurance company" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showIssue && showCol('issue') && <DocTh col="issue" label={docColLabel(record, 'issue')} sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showDate && showCol('expiry') && <DocTh col="expiry" label="Expiry date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showStatus && showCol('status') && <DocTh col="status" label={docColLabel(record, 'status')} sortable sort={docSort} onSort={toggleDocSort} />}
                                         {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && (
                                             <DocTh key={f.key} col={`sel:${f.key}`} label={f.label} sortable sort={docSort} onSort={toggleDocSort} />
                                         ))}
-                                        {showCol('tags') && <DocTh label="Tags" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('notes') && <DocTh label="Notes" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('document') && <DocTh label="Document" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('uploaded') && <DocTh col="uploaded" label="Uploaded by" sortable sort={docSort} onSort={toggleDocSort} />}
@@ -2796,21 +3260,27 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pageRows.flatMap(row => {
+                                    {pageRows.flatMap((row, ri) => {
                                         const v = row.version;
                                         const st = effectiveState(row.isCurrent);
+                                        const g = docGroupBy === 'none' ? null : docGroupOf(docGroupBy, row);
+                                        const prevG = ri === 0 || docGroupBy === 'none' ? null : docGroupOf(docGroupBy, pageRows[ri - 1]);
                                         // Insurance policies with several documents → one row per document (primary row + "extra" rows).
                                         const splitDocs = isMulti && showCol('document') && v.files.length > 1;
                                         const trs: ReactNode[] = [];
+                                        if (g && (!prevG || prevG.label !== g.label)) {
+                                            trs.push(<TableGroupBand key={`band-${g.label}`} label={g.label} count={docGroupCounts.get(g.label) ?? 0} colSpan={30} />);
+                                        }
                                         trs.push(
                                             <tr key={row.key} className={cn('align-top', splitDocs ? '' : 'border-b border-slate-100', st === 'current' ? 'bg-emerald-50/40' : 'hover:bg-slate-50/50')}>
-                                                {showNumber && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', 'pl-5')}>{v.numberValue || <span className="font-normal text-slate-400">—</span>}</td>}
-                                                {isMulti && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', !showNumber && 'pl-5')}>{row.instanceName || '—'}</td>}
-                                                {showCol('insurer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.insurer || <span className="text-slate-400">—</span>}</td>}
-                                                <td className={cn('px-4 py-3 whitespace-nowrap', !showNumber && !isMulti && 'pl-5')}>
-                                                    <span className="text-[13px] font-medium text-slate-700">{v.label}</span>
+                                                {/* Same order as the header: the record's name, then the form's. */}
+                                                <td className="px-4 py-3 pl-5 whitespace-nowrap">
+                                                    <span className="text-[13px] font-semibold text-slate-800">{v.label}</span>
                                                 </td>
                                                 {showCol('state') && <td className="px-4 py-3 whitespace-nowrap"><StateBadge state={st} multi={isMulti} /></td>}
+                                                {showNumber && <td className="px-4 py-3 whitespace-nowrap text-[13px] text-slate-700">{v.numberValue || <span className="text-slate-400">—</span>}</td>}
+                                                {isMulti && <td className="px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800">{row.instanceName || '—'}</td>}
+                                                {showCol('insurer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.insurer || <span className="text-slate-400">—</span>}</td>}
                                                 {showIssue && showCol('issue') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.issueDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showDate && showCol('expiry') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.expiryDate || <span className="text-slate-400">—</span>}</td>}
                                                 {showStatus && showCol('status') && <td className="px-4 py-3 whitespace-nowrap">{v.status ? <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{v.status}</span> : <span className="text-[13px] text-slate-400">—</span>}</td>}
@@ -2834,12 +3304,6 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                         </td>
                                                     );
                                                 })}
-                                                {showCol('tags') && (
-                                                    <td className="px-4 py-3">
-                                                        {/* Insurance is tagged per document — never show record-level tags on its rows. */}
-                                                        <DocTagsCell recordTags={isMulti ? [] : v.tags} docTag={v.files[0]?.tag} />
-                                                    </td>
-                                                )}
                                                 {showCol('notes') && (
                                                     <td className="px-4 py-3">
                                                         {v.notes ? <span className="block max-w-[220px] truncate text-[12px] text-slate-600" title={v.notes}>{v.notes}</span> : <span className="text-[13px] text-slate-400">—</span>}
@@ -2884,7 +3348,6 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                         {showDate && showCol('expiry') && <td className={cellPad} />}
                                                         {showStatus && showCol('status') && <td className={cellPad} />}
                                                         {extraFieldDefs.map(f => showCol(`sel:${f.key}`) && <td key={f.key} className={cellPad} />)}
-                                                        {showCol('tags') && <td className={cellPad}><DocTagsCell recordTags={[]} docTag={f.tag} /></td>}
                                                         {showCol('notes') && <td className={cellPad} />}
                                                         {showCol('document') && (
                                                             <td className={cellPad}>

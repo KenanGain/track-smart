@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
     Plus, Boxes, Search,
     Truck, IdCard, Pencil,
@@ -17,6 +17,7 @@ import {
     ACME_DRIVERS,
     CARRIER_NAME,
     itemName,
+    itemCategoryId,
     inventoryMonitoring,
     type InventoryItem,
     type InventoryStatus,
@@ -37,6 +38,7 @@ import { INVENTORY_TABS } from "./InventoryTabs";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { TablePager } from "./TablePager";
+import { TableGroupBand } from "@/components/ui/ListChrome";
 import { KpiTile } from "./InventoryKpi";
 import { DirectHandoverDialog, ChecklistHandoverPicker } from "./HandoverDialogs";
 import { useInventoryAdditions } from "./inventory-store";
@@ -63,6 +65,21 @@ const ASSIGN_FILTERS: { id: AssignFilter; label: string }[] = [
     { id: "handed", label: "Handed to driver" },
     { id: "none", label: "Not assigned" },
 ];
+
+/**
+ * Banding the list. `where` is the one the assignment switch cannot give you: that switch
+ * shows one place at a time, and this shows all four at once, in the order somebody chasing
+ * kit cares about — what is out with people first, what is on a shelf last.
+ */
+type InvGroupBy = "none" | "where" | "status" | "category" | "vendor";
+const INV_GROUPS: { id: InvGroupBy; label: string }[] = [
+    { id: "none", label: "Group by" },
+    { id: "where", label: "Group by where it is" },
+    { id: "status", label: "Group by status" },
+    { id: "category", label: "Group by category" },
+    { id: "vendor", label: "Group by vendor" },
+];
+const STATUS_RANK: Record<InventoryStatus, number> = { "Expired": 0, "Expiring Soon": 1, "Active": 2 };
 
 type Props = {
     onNavigate: (path: string) => void;
@@ -105,12 +122,12 @@ const visualFor = (categoryId: string) => CATEGORY_VISUAL[categoryId] ?? DEFAULT
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-// The category id an item resolves to, or null when it maps to no known
-// category (surfaced under the "Other" tab).
+// The category id an item resolves to, or null when it maps to no known category (surfaced
+// under the "Other" tab). The item's own answer, falling back to its vendor's — see
+// `itemCategoryId`, which every list reads so a recategorised item moves everywhere at once.
 const categoryIdOf = (item: InventoryItem): string | null => {
-    const vendor = VENDORS.find((v) => v.id === item.vendorId);
-    if (!vendor) return null;
-    return VENDOR_CATEGORIES.some((c) => c.id === vendor.categoryId) ? vendor.categoryId : null;
+    const id = itemCategoryId(item);
+    return id && VENDOR_CATEGORIES.some((c) => c.id === id) ? id : null;
 };
 
 // Sticky, so the column you are reading still has a name three screens down a long list.
@@ -142,6 +159,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     // not a sixth filter, so it is a separate flag rather than another switch option.
     const [byDriver, setByDriver] = useState(false);
     const [activeCat, setActiveCat] = useState<string>("All");
+    const [groupBy, setGroupBy] = useState<InvGroupBy>("none");
     const [directOpen, setDirectOpen] = useState(false);
     const [checklistOpen, setChecklistOpen] = useState(false);
     const [page, setPage] = useState(0);
@@ -291,11 +309,53 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             });
     }, [baseFiltered, activeCat, search]);
 
+    /** Which band a row falls in, and where that band sits. */
+    const groupOfItem = (it: InventoryItem): { rank: number; label: string } => {
+        if (groupBy === "status") return { rank: STATUS_RANK[it.status] ?? 9, label: it.status };
+        if (groupBy === "category") {
+            const id = categoryIdOf(it);
+            return { rank: 0, label: VENDOR_CATEGORIES.find((c) => c.id === id)?.name ?? "Other" };
+        }
+        if (groupBy === "vendor") {
+            const v = VENDORS.find((x) => x.id === it.vendorId);
+            return { rank: 0, label: v?.companyName || v?.name || "No vendor" };
+        }
+        // Where it is. A hand-over wins over the assignment behind it: it is the more
+        // specific answer to where the thing physically is, which is what the switch and
+        // the Driver column already agree on.
+        if (handedTo.has(it.id)) return { rank: 0, label: "Signed across to a driver" };
+        const kind = it.assignedTo?.kind;
+        if (kind === "driver") return { rank: 1, label: "With a driver" };
+        if (kind === "cmv" || kind === "non-cmv") return { rank: 2, label: "On a vehicle" };
+        return { rank: 3, label: "Not assigned" };
+    };
+
+    // Grouped before the page is cut, so a band is never split across two pages.
+    const groupedRows = useMemo(() => {
+        if (groupBy === "none") return rows;
+        return [...rows].sort((a, b) => {
+            const ga = groupOfItem(a), gb = groupOfItem(b);
+            return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, groupBy, handedTo]);
+
+    const groupCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy === "none") return m;
+        for (const it of groupedRows) {
+            const label = groupOfItem(it).label;
+            m.set(label, (m.get(label) ?? 0) + 1);
+        }
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [groupedRows, groupBy, handedTo]);
+
     // Pagination over the filtered item rows.
-    useEffect(() => { setPage(0); }, [search, statusFilter, assignFilter, activeCat, accountId]);
-    const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
+    useEffect(() => { setPage(0); }, [search, statusFilter, assignFilter, activeCat, groupBy, accountId]);
+    const pageCount = Math.max(1, Math.ceil(groupedRows.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
-    const pagedRows = rows.slice(safePage * perPage, safePage * perPage + perPage);
+    const pagedRows = groupedRows.slice(safePage * perPage, safePage * perPage + perPage);
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-slate-50">
@@ -375,6 +435,21 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             </button>
                         ))}
                     </div>
+                    {!handed && (
+                        <select
+                            value={groupBy}
+                            onChange={(e) => setGroupBy(e.target.value as InvGroupBy)}
+                            title="Group the list"
+                            className={cn(
+                                "h-9 shrink-0 rounded-lg border px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
+                                groupBy === "none"
+                                    ? "border-slate-200 bg-white text-slate-700"
+                                    : "border-blue-300 bg-blue-50/60 text-blue-700",
+                            )}
+                        >
+                            {INV_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                        </select>
+                    )}
                     <div className="ml-auto flex items-center gap-2">
                         {assignFilter === "handed" && (
                             <>
@@ -429,26 +504,31 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             <thead>
                                 <tr>
                                     <TH>Item</TH>
-                                    <TH>Number / PIN</TH>
+                                    <TH className="border-l border-slate-200">Number / PIN</TH>
                                     {/* The alert is a bell beside the date it counts back from — a whole
                                         column for it pushed Asset, Driver and Status off the right edge,
                                         and the detail page's Monitoring tab has the full schedule. */}
-                                    <TH>Issued / Expires</TH>
-                                    <TH>Asset</TH>
-                                    <TH>Driver</TH>
-                                    <TH>Status</TH>
-                                    <TH className="w-px text-right">Actions</TH>
+                                    <TH className="border-l border-slate-200">Issued / Expires</TH>
+                                    <TH className="border-l border-slate-200">Asset</TH>
+                                    <TH className="border-l border-slate-200">Driver</TH>
+                                    <TH className="border-l border-slate-200">Status</TH>
+                                    <TH className="w-px text-right border-l border-slate-200">Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {pagedRows.map((item) => {
+                                {pagedRows.map((item, i) => {
+                                    const g = groupBy === "none" ? null : groupOfItem(item);
+                                    const prev = i === 0 || groupBy === "none" ? null : groupOfItem(pagedRows[i - 1]);
                                     const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                     const visual = visualFor(categoryIdOf(item) ?? "");
                                     const onAsset = resolveAsset(item.assignedTo, accountId);
                                     const withDriver = resolveDriver(item.assignedTo, accountId, handedTo.get(item.id));
                                     return (
+                                        <Fragment key={item.id}>
+                                        {g && (!prev || prev.label !== g.label) && (
+                                            <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={7} />
+                                        )}
                                         <tr
-                                            key={item.id}
                                             // The row opens the item. Reading one used to mean opening the EDITOR,
                                             // which is the wrong default: most of the time you want to look at the
                                             // thing, not change it.
@@ -594,6 +674,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                 </div>
                                             </TD>
                                         </tr>
+                                        </Fragment>
                                     );
                                 })}
                             </tbody>

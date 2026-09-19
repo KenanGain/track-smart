@@ -81,6 +81,10 @@ export function ItemPickList({
 }) {
     const [search, setSearch] = useState("");
 
+    // Nobody to sign — so there is nothing to tick in that column, and a disabled box on
+    // every row is the same sentence repeated once per item.
+    const canHand = !!handDriverName;
+
     const shown = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return items;
@@ -118,27 +122,32 @@ export function ItemPickList({
                 </p>
             ) : (
                 <div className={cn("mt-3 space-y-1.5 overflow-y-auto pr-1", maxHeight)}>
-                    {/* What the two ticks mean, on the columns they label. */}
+                    {/* What the ticks mean, over the columns they label. */}
                     <div className="sticky top-0 z-[1] flex items-start justify-between gap-4 bg-white pb-1.5">
                         <span className="pl-1">
                             <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">
                                 <ClipboardList size={10} /> ← Assign
                             </span>
                             <span className="block text-[10px] text-slate-500">
-                                Filed against this {holderNoun} · nobody signs
+                                Filed against this {holderNoun}{canHand ? " · nobody signs" : ""}
                             </span>
                         </span>
-                        <span className="pr-1 text-right">
-                            <span className={cn("flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider",
-                                handDriverName ? "text-violet-600" : "text-slate-300")}>
-                                {stacked ? "\u2026and hand over" : "Hand over"} → <PenLine size={10} />
+                        {canHand ? (
+                            <span className="pr-1 text-right">
+                                <span className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-600">
+                                    {stacked ? "\u2026and hand over" : "Hand over"} → <PenLine size={10} />
+                                </span>
+                                <span className="block text-[10px] text-slate-500">
+                                    {stacked ? `Stays on the ${holderNoun}, ${handDriverName} signs`
+                                        : `${handDriverName} signs for it`}
+                                </span>
                             </span>
-                            <span className="block text-[10px] text-slate-500">
-                                {!handDriverName ? "No driver to sign"
-                                    : stacked ? `Stays on the ${holderNoun}, ${handDriverName} signs`
-                                    : `${handDriverName} signs for it`}
+                        ) : (
+                            /* Said once, instead of once per row. */
+                            <span className="flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                <PenLine size={10} /> Hand-over needs a driver on this {holderNoun}
                             </span>
-                        </span>
+                        )}
                     </div>
 
                     {shown.map((item) => {
@@ -167,13 +176,15 @@ export function ItemPickList({
                                 <span className="shrink-0 text-right text-[11px] text-slate-400">
                                     {item.expiryDate ? fmtDate(item.expiryDate) : "no expiry"}
                                 </span>
-                                <Tick
-                                    on={handPicked} tone="violet" disabledReason={blocked}
-                                    label={stacked
-                                        ? `Keep ${itemName(item)} on this ${holderNoun} and have ${handDriverName ?? "the driver"} sign for it`
-                                        : `Hand ${itemName(item)} over to ${handDriverName ?? "the driver"}`}
-                                    onToggle={() => onHand(item.id)}
-                                />
+                                {canHand && (
+                                    <Tick
+                                        on={handPicked} tone="violet" disabledReason={blocked}
+                                        label={stacked
+                                            ? `Keep ${itemName(item)} on this ${holderNoun} and have ${handDriverName} sign for it`
+                                            : `Hand ${itemName(item)} over to ${handDriverName}`}
+                                        onToggle={() => onHand(item.id)}
+                                    />
+                                )}
                             </div>
                         );
                     })}
