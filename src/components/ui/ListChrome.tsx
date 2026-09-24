@@ -175,6 +175,40 @@ export function TablePager({ page, pageSize, total, onPage, onPageSize, classNam
  * The tint is on an inner block rather than on the cell: a `.pin-first` table pins the first
  * cell of every row and paints it white, and a band's cell IS the first cell.
  */
+/**
+ * One filter chip carrying its own count.
+ *
+ * A row of chips that say only what they are makes you press each one to find out whether
+ * it finds anything. With the number on it, the row is readable before it is used, and a
+ * chip that would find nothing greys out instead of leading you to an empty table.
+ *
+ * `always` marks a group's own "all" chip: it stays pressable at zero, because a group with
+ * no way back to all is a group you can get stuck in.
+ */
+export function FilterChip({ label, count, on, always, onClick }: {
+    label: string; count: number; on: boolean; always?: boolean; onClick: () => void;
+}) {
+    const dead = count === 0 && !always;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={dead}
+            className={cn(
+                'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] font-bold transition-colors',
+                on ? 'bg-blue-600 text-white'
+                    : dead ? 'cursor-not-allowed text-slate-300'
+                    : 'text-slate-600 hover:bg-slate-200/60',
+            )}
+        >
+            {label}
+            <span className={cn('text-[11px] tabular-nums', on ? 'text-blue-100' : 'text-slate-400')}>
+                {count}
+            </span>
+        </button>
+    );
+}
+
 export function TableGroupBand({ label, count, colSpan }: { label: string; count: number; colSpan: number }) {
     return (
         <tr>

@@ -157,12 +157,12 @@ function derived(
  * The full trail for one item, newest first: what the record implies, plus everything
  * actually recorded against it.
  */
-export function inventoryTrail(
+export function inventoryTrailSortable(
     item: InventoryItem,
     accountId: string | undefined,
     handover: DriverHandover | undefined,
     events: InventoryEvent[],
-): ActivityEntry[] {
+): (ActivityEntry & { sortAt: number })[] {
     const rows: (ActivityEntry & { sortAt: number })[] = [];
     const vendor = VENDORS.find((v) => v.id === item.vendorId);
 
@@ -220,8 +220,23 @@ export function inventoryTrail(
     }
 
     const recorded = events.map((e) => ({ ...toEntry(e), sortAt: e.at }));
-    return [...rows, ...recorded]
-        .sort((a, b) => b.sortAt - a.sortAt)
+    return [...rows, ...recorded].sort((a, b) => b.sortAt - a.sortAt);
+}
+
+/**
+ * One item's trail, ready to read.
+ *
+ * `at` on an entry is a formatted date for DISPLAY, so two trails cannot be merged by it
+ * without parsing our own output back. `inventoryTrailSortable` keeps the number the sort
+ * actually used; this drops it, which is all any single-item view needs.
+ */
+export function inventoryTrail(
+    item: InventoryItem,
+    accountId: string | undefined,
+    handover: DriverHandover | undefined,
+    events: InventoryEvent[],
+): ActivityEntry[] {
+    return inventoryTrailSortable(item, accountId, handover, events)
         .map(({ sortAt: _sortAt, ...rest }) => rest);
 }
 

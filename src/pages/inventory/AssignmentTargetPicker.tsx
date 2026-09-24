@@ -19,8 +19,15 @@ type Option = {
     driver?: string;
 };
 
+/**
+ * What the picker lists. `"vehicle"` is every unit in the fleet — trucks and trailers in one
+ * list, which is how a yard thinks about them; the CMV / Non-CMV kinds are kept for the
+ * places that genuinely separate them.
+ */
+export type PickerKind = AssignmentKind | "vehicle";
+
 type Props = {
-    kind: AssignmentKind;
+    kind: PickerKind;
     selectedId: string;
     onSelect: (id: string) => void;
     placeholder?: string;
@@ -84,11 +91,13 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
 
     // Build options for the active kind
     const options: Option[] = React.useMemo(() => {
-        if (kind === "cmv" || kind === "non-cmv") {
+        if (kind !== "driver") {
             const list = assetsFor(accountId).filter((a: any) =>
-                kind === "cmv"
-                    ? a.assetCategory === "CMV" && a.assetType === "Truck"
-                    : a.assetCategory === "Non-CMV");
+                kind === "vehicle"
+                    ? true
+                    : kind === "cmv"
+                        ? a.assetCategory === "CMV" && a.assetType === "Truck"
+                        : a.assetCategory === "Non-CMV");
             return list.map((a: any) => {
                 // Who drives it, right now. The very next question on the form is "is this
                 // carried by the driver of this vehicle?", and the list that answers it has
@@ -100,7 +109,12 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                     secondary: `${a.year} ${a.make} ${a.model}`,
                     driver: driver?.name,
                     chips: [
-                        { label: a.assetCategory, tone: a.assetCategory === "CMV" ? "indigo" : "orange" },
+                        // One list of vehicles says which KIND each one is — a truck or a trailer.
+                        // CMV / Non-CMV is a regulatory class, not what you are looking for
+                        // when you are asking which unit carries the transponder.
+                        kind === "vehicle"
+                            ? { label: a.assetType, tone: assetTypeTone(a.assetType) }
+                            : { label: a.assetCategory, tone: a.assetCategory === "CMV" ? "indigo" : "orange" },
                         { label: a.operationalStatus, tone: assetStatusTone(a.operationalStatus) },
                         a.color ? { label: a.color, tone: "slate" as const } : null,
                     ].filter(Boolean) as Option["chips"],
@@ -143,7 +157,10 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
     }, [options, search]);
 
     const KindIcon = kind === "driver" ? IdCard : Truck;
-    const kindLabel = kind === "cmv" ? "CMV" : kind === "non-cmv" ? "Non-CMV" : "Driver";
+    const kindLabel = kind === "cmv" ? "CMV" : kind === "non-cmv" ? "Non-CMV" : kind === "vehicle" ? "Vehicle" : "Driver";
+    const kindTone = kind === "driver" ? "bg-emerald-50 text-emerald-700"
+        : kind === "non-cmv" ? "bg-orange-50 text-orange-700"
+        : "bg-indigo-50 text-indigo-700";
 
     return (
         <div ref={ref} className="relative">
@@ -157,7 +174,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
             >
                 <div className={cn(
                     "h-9 w-9 rounded-md flex items-center justify-center shrink-0",
-                    selected ? (kind === "driver" ? "bg-emerald-50 text-emerald-700" : kind === "cmv" ? "bg-indigo-50 text-indigo-700" : "bg-orange-50 text-orange-700") : "bg-slate-100 text-slate-400"
+                    selected ? kindTone : "bg-slate-100 text-slate-400"
                 )}>
                     <KindIcon size={16} />
                 </div>
@@ -173,7 +190,9 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                     ) : (
                         <div className="text-sm text-slate-400">
                             {/* "Select a cmv…" reads as a typo: CMV is an abbreviation, not a word. */}
-                            {placeholder ?? (kind === "driver" ? "Select a driver…" : `Select a ${kindLabel} vehicle…`)}
+                            {placeholder ?? (kind === "driver" ? "Select a driver…"
+                                : kind === "vehicle" ? "Select a vehicle…"
+                                : `Select a ${kindLabel} vehicle…`)}
                         </div>
                     )}
                 </div>
@@ -216,7 +235,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                     <div ref={resultsRef} className="max-h-80 overflow-y-auto p-1">
                         {filtered.length === 0 ? (
                             <div className="py-8 text-center text-xs text-slate-400">
-                                No {kind === "driver" ? "drivers" : `${kindLabel} vehicles`} match "{search}"
+                                No {kind === "driver" ? "drivers" : kind === "vehicle" ? "vehicles" : `${kindLabel} vehicles`} match "{search}"
                             </div>
                         ) : filtered.map((opt) => {
                             const isSelected = opt.id === selectedId;
@@ -241,9 +260,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                                     {/* Avatar */}
                                     <div className={cn(
                                         "h-9 w-9 rounded-md flex items-center justify-center shrink-0",
-                                        kind === "driver" ? "bg-emerald-50 text-emerald-700"
-                                            : kind === "cmv" ? "bg-indigo-50 text-indigo-700"
-                                            : "bg-orange-50 text-orange-700"
+                                        kindTone,
                                     )}>
                                         <KindIcon size={15} />
                                     </div>
@@ -274,7 +291,7 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                                             item is carried by this vehicle's driver, and until now the list
                                             you pick from never said which vehicles have one — so that
                                             checkbox arrived already disabled, with no warning. */}
-                                        {(kind === "cmv" || kind === "non-cmv") && (
+                                        {kind !== "driver" && (
                                             <div className="mt-0.5 inline-flex items-center gap-1 truncate text-[11px]">
                                                 <IdCard size={10} className={opt.driver ? "text-emerald-500" : "text-slate-300"} />
                                                 {opt.driver
@@ -319,6 +336,13 @@ const TONE_CLASS: Record<string, string> = {
     indigo:  "bg-indigo-50 text-indigo-700 border-indigo-200",
     orange:  "bg-orange-50 text-orange-700 border-orange-200",
 };
+
+/** Truck, trailer, van — told apart at a glance in the one list that holds all three. */
+function assetTypeTone(type: string): "indigo" | "orange" | "slate" {
+    if (type === "Truck") return "indigo";
+    if (type === "Trailer") return "orange";
+    return "slate";
+}
 
 function assetStatusTone(status: string): "emerald" | "amber" | "slate" | "red" {
     if (status === "Active") return "emerald";

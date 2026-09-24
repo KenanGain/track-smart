@@ -12,22 +12,20 @@
 //   1. Item        — the vendor settles what this is; then its status and its name
 //   2. Details     — the number and PIN printed on it, its two dates, and the alert
 //                    that counts back from them — the same block the records use
-//   3. Assignment  — a vehicle (and optionally its driver), or a driver
+//
+// Where the item GOES is not asked here. The draft still carries an assignment and the save
+// still writes it, so editing an item cannot strip the vehicle it is on — but choosing
+// that vehicle happens elsewhere.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { Bell, Boxes, Check, Hash, IdCard, Truck, UserRound } from "lucide-react";
+import { Bell, Boxes, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MonitoringToggle } from "@/pages/compliance/MonitoringToggle";
 import type { MonitoringConfig } from "@/pages/compliance/compliance-data-store";
-import { AssignmentTargetPicker } from "./AssignmentTargetPicker";
-import { CircleSlash, MessageSquare } from "lucide-react";
-import { MovementNotify, useMovementPlans, emptyNotifyState, type NotifyState } from "./MovementNotify";
-import type { Movement } from "./inventory-movements";
-import { driverNameOf } from "./inventory-assignment";
 import {
     VENDORS, VENDOR_CATEGORIES, ITEM_HANDLING, defaultItemName, isAutoItemName,
-    driverOfAsset, defaultInventoryMonitoring, INVENTORY_MONITOR_RECORD,
+    defaultInventoryMonitoring, INVENTORY_MONITOR_RECORD,
     type Assignment, type AssignmentKind, type InventoryStatus, type ItemHandling, type Vendor,
 } from "./inventory.data";
 
@@ -47,18 +45,15 @@ export interface InventoryItemDraft {
     expiryDate: string;
     status: InventoryStatus;
     monitoring: MonitoringConfig;
-    /** '' until someone is chosen — an item may sit in the office unassigned. */
+    /**
+     * Where the item goes. Carried, not asked — the form has no assignment card, and these
+     * come in from the item being edited (or from the page it was opened on) and go back out
+     * unchanged, so a save cannot strip an assignment the form never showed.
+     */
     assignmentKind: AssignmentKind | "";
     targetId: string;
     /** Only meaningful on a vehicle: the item is carried by whoever drives it. */
     alsoDriverOfAsset: boolean;
-    /**
-     * Tell the driver to come and collect it.
-     *
-     * Part of the draft rather than a step afterwards: an assignment nobody is told about is
-     * an assignment that surprises somebody later.
-     */
-    notify: NotifyState;
 }
 
 /** The sections, in order — the rail's steps and the cards on the page. */
@@ -67,9 +62,6 @@ export const INVENTORY_SECTIONS = [
     // The alert lives with the dates it counts back from. Split into a section of its own it
     // asked you to scroll away from the expiry date to say what should happen on it.
     { id: "details", label: "Details", icon: Hash, title: "Numbers, Dates & Monitoring", subtitle: "What is printed on it, how long it runs, and when to be told." },
-    { id: "assignment", label: "Assignment", icon: Truck, title: "Assignment", subtitle: "Who holds it — a vehicle, or a person." },
-    // Last, because it can only be answered once the page knows who holds it.
-    { id: "notify", label: "Tell them", icon: MessageSquare, title: "Tell them", subtitle: "Send the driver a list to collect from the office." },
 ] as const;
 
 export type InventorySectionId = typeof INVENTORY_SECTIONS[number]["id"];
@@ -92,7 +84,6 @@ export function emptyInventoryDraft(vendor?: Vendor): InventoryItemDraft {
         assignmentKind: "cmv",
         targetId: "",
         alsoDriverOfAsset: false,
-        notify: emptyNotifyState(),
     };
 }
 
@@ -117,32 +108,8 @@ export function sectionFilled(id: InventorySectionId, d: InventoryItemDraft): nu
     switch (id) {
         case "item": return count(d.vendorId, d.categoryId, d.handling, d.status, d.name.trim());
         case "details": return count(d.serial.trim(), d.pin.trim(), d.issueDate, d.expiryDate, d.monitoring.enabled);
-        // Deliberately unassigned is an answered question, not a blank one.
-        case "assignment": return count(d.assignmentKind === "" || d.targetId, d.alsoDriverOfAsset);
-        // One question, and "no, I'll hand it to them myself" answers it.
-        case "notify": return d.notify.notify ? 1 : 0;
     }
 }
-
-/**
- * Where the item lives — a vehicle, a person, or nobody.
- *
- * "Nobody" is not a missing answer. Yard stock — spare load bars, a winter kit — belongs to the
- * company and to no unit, the list filters on it, and the assign dialog can put an item back
- * into it. The form was the only place that could not say it, so anything created here had to
- * be filed against a truck whether or not it was on one.
- */
-const HOLDERS = [
-    { id: "vehicle", label: "Vehicle", helper: "A truck or trailer carries it", Icon: Truck },
-    { id: "driver", label: "Driver", helper: "Issued to a person directly", Icon: UserRound },
-    { id: "none", label: "Nobody yet", helper: "Yard stock, held in the office", Icon: CircleSlash },
-] as const;
-type Holder = typeof HOLDERS[number]["id"];
-
-const VEHICLE_KINDS: { value: AssignmentKind; label: string; helper: string }[] = [
-    { value: "cmv", label: "CMV", helper: "Power units (trucks)" },
-    { value: "non-cmv", label: "Non-CMV", helper: "Trailers / vans / other" },
-];
 
 export interface InventorySectionProps {
     draft: InventoryItemDraft;
@@ -163,10 +130,6 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
 
     const set = (patch: Partial<InventoryItemDraft>) => onChange({ ...draft, ...patch });
     const vendor = vendors.find((v) => v.id === draft.vendorId);
-    // An empty kind is the unassigned state; the draft has carried it all along and only
-    // the UI insisted on one of the other two.
-    const holder: Holder = draft.assignmentKind === "driver" ? "driver"
-        : draft.assignmentKind === "" ? "none" : "vehicle";
 
     /**
      * Picking a vendor renames the item — but only while the name is still the one the last
@@ -194,57 +157,6 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
             ? { name: defaultItemName(vendor, VENDOR_CATEGORIES, value) } : {}),
     });
 
-    const pickHolder = (h: Holder) => {
-        if (h === holder) return;
-        // A target chosen for a vehicle means nothing against a driver, so it goes with the
-        // switch rather than being filed against whoever happens to share the id.
-        set({
-            assignmentKind: h === "driver" ? "driver" : h === "none" ? "" : "cmv",
-            targetId: "",
-            alsoDriverOfAsset: false,
-        });
-    };
-
-    // Who the "and its driver" toggle would actually hand it to. Read live off the vehicle —
-    // and an honest blank where that vehicle has nobody assigned, rather than a switch that
-    // silently records a hand-over to nobody.
-    const assetDriver = draft.assignmentKind !== "driver" && draft.targetId
-        ? driverOfAsset(draft.targetId, accountId) : null;
-
-    /**
-     * Who would be told, resolved the same way the list resolves the Driver column.
-     *
-     * A vehicle's driver only counts when the item actually travels with them — a spare key
-     * in the yard is nobody's to collect.
-     */
-    const notifyTarget = draft.assignmentKind === "driver" && draft.targetId
-        ? { id: draft.targetId, name: driverNameOf(draft.targetId, accountId) ?? "the driver" }
-        : draft.alsoDriverOfAsset && assetDriver
-            ? { id: assetDriver.id, name: assetDriver.name }
-            : null;
-
-    /**
-     * The item as it stands, so the planner can draft a message about something that does
-     * not exist yet. It gets its real id on save; nothing here is stored.
-     */
-    const previewMovements = React.useMemo<Movement[]>(() => {
-        if (!notifyTarget) return [];
-        const preview = {
-            id: "preview", vendorId: draft.vendorId, name: draft.name.trim() || defaultItemName(vendor),
-            serial: draft.serial.trim(), pin: draft.pin.trim(),
-            issueDate: draft.issueDate, expiryDate: draft.expiryDate, status: draft.status,
-        } as never;
-        return [{
-            kind: draft.assignmentKind === "driver" ? "assign-driver" : "assign-vehicle",
-            item: preview,
-            person: notifyTarget,
-            carried: draft.assignmentKind !== "driver",
-        }];
-    }, [notifyTarget?.id, notifyTarget?.name, draft.vendorId, draft.name, draft.serial, draft.pin,
-        draft.issueDate, draft.expiryDate, draft.status, draft.assignmentKind, vendor]);
-
-    const notifyPlans = useMovementPlans(previewMovements, draft.notify);
-
     if (id === "item") {
         return (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -262,15 +174,18 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
                         {VENDOR_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </Select>
                 </Field>
+                {/* Straight under the two fields that write it: vendor and category settle
+                    what the thing is, and the name follows from them. A carrier holding four
+                    cards from one vendor tells them apart by this, so it is editable. */}
+                <Field label="Record name" required hint="Defaults to the vendor and its category.">
+                    <Text value={draft.name} onChange={(v) => set({ name: v })} placeholder={defaultItemName(vendor, VENDOR_CATEGORIES, draft.categoryId) || "e.g. Comdata — Fuel Card"} />
+                </Field>
+                {/* A different kind of question — the thing's condition, not its identity — so
+                    it comes after the three that say what it is. */}
                 <Field label="Status" required>
                     <Select value={draft.status} onChange={(v) => set({ status: v as InventoryStatus })}>
                         {INVENTORY_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                     </Select>
-                </Field>
-                {/* Filled in from the vendor, and editable: a carrier holding four cards from
-                    one vendor tells them apart by this. */}
-                <Field label="Record name" required hint="Defaults to the vendor and its category.">
-                    <Text value={draft.name} onChange={(v) => set({ name: v })} placeholder={defaultItemName(vendor, VENDOR_CATEGORIES, draft.categoryId) || "e.g. Comdata — Fuel Card"} />
                 </Field>
 
                 {/* How it comes back. One or the other — a fuel card is handed back by the
@@ -349,123 +264,7 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
         );
     }
 
-    if (id === "notify") {
-        return (
-            <MovementNotify
-                plans={notifyPlans}
-                state={draft.notify}
-                onChange={(next) => set({ notify: { ...draft.notify, ...next } })}
-                emptyHint={
-                    /* Why there is nobody to tell — each of these is a different thing to go
-                       and fix, and a blank step would have made all four look the same. */
-                    holder === "none"
-                        ? <>This is yard stock, so there is nobody to tell. File it against a driver or a vehicle in <span className="font-semibold">Assignment</span> and the message can go out with it.</>
-                        : !draft.targetId
-                            ? <>Pick who holds it in <span className="font-semibold">Assignment</span> first — the message goes to whoever ends up carrying it.</>
-                            : holder === "vehicle" && !draft.alsoDriverOfAsset
-                                ? <>This sits with the vehicle rather than travelling with its driver, so nobody needs to collect it. Tick <span className="font-semibold">Carried by the driver of this vehicle</span> if it rides in the cab.</>
-                                : <>Nobody drives this vehicle yet, so there is no one to tell. Assign a driver on the asset and the message can go to them.</>
-                }
-            />
-        );
-    }
-
-
-    return (
-        <div>
-            <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {HOLDERS.map((h) => {
-                    const active = holder === h.id;
-                    return (
-                        <button key={h.id} type="button" onClick={() => pickHolder(h.id)}
-                            className={cn(
-                                "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                                active ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300",
-                            )}>
-                            <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-                                active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500")}>
-                                <h.Icon size={14} />
-                            </span>
-                            <span className="min-w-0">
-                                <span className={cn("block text-sm font-semibold", active ? "text-blue-700" : "text-slate-800")}>{h.label}</span>
-                                <span className="block text-[11px] leading-snug text-slate-500">{h.helper}</span>
-                            </span>
-                            {active && <Check size={14} className="ml-auto mt-1 shrink-0 text-blue-600" strokeWidth={3} />}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {holder === "vehicle" && (
-                <div className="space-y-2">
-                    {/* Which kind of vehicle — the picker's list follows this. */}
-                    <div className="grid grid-cols-2 gap-2">
-                        {VEHICLE_KINDS.map((k) => {
-                            const active = draft.assignmentKind === k.value;
-                            return (
-                                <button key={k.value} type="button"
-                                    onClick={() => set({ assignmentKind: k.value, targetId: "", alsoDriverOfAsset: false })}
-                                    className={cn(
-                                        "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors",
-                                        active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                                    )}
-                                    title={k.helper}>
-                                    <Truck size={15} className={active ? "text-blue-600" : "text-slate-400"} /> {k.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <AssignmentTargetPicker
-                        kind={draft.assignmentKind === "non-cmv" ? "non-cmv" : "cmv"}
-                        selectedId={draft.targetId}
-                        onSelect={(value) => set({ targetId: value })}
-                        accountId={accountId}
-                    />
-
-                    {/* …and whether it is the vehicle's driver who actually carries it. Only
-                        once a vehicle is chosen: until then there is no driver to name. */}
-                    {draft.targetId && (
-                        <label className={cn(
-                            "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
-                            draft.alsoDriverOfAsset ? "border-blue-200 bg-blue-50/60" : "border-slate-200 bg-slate-50/60 hover:bg-slate-50",
-                        )}>
-                            <input type="checkbox" checked={draft.alsoDriverOfAsset} disabled={!assetDriver}
-                                onChange={(e) => set({ alsoDriverOfAsset: e.target.checked })}
-                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-40" />
-                            <span className="min-w-0">
-                                {/* "Handed" now means a signed hand-over checklist, which this is not.
-                                    An item that rides in the cab is CARRIED, and the list, the rollup
-                                    and the assign dialog all call it that. */}
-                                <span className="block text-[13px] font-semibold text-slate-700">Carried by the driver of this vehicle</span>
-                                <span className="block text-[11px] leading-snug text-slate-500">
-                                    {assetDriver
-                                        ? <>Currently <span className="font-semibold text-slate-700">{assetDriver.name}</span>. Read from the vehicle, so it follows a change of driver.</>
-                                        : "No driver is assigned to this vehicle yet — assign one on the asset, and this follows."}
-                                </span>
-                            </span>
-                        </label>
-                    )}
-                </div>
-            )}
-
-            {holder === "driver" && (
-                <div className="space-y-2">
-                    <AssignmentTargetPicker kind="driver" selectedId={draft.targetId} onSelect={(value) => set({ targetId: value })} accountId={accountId} />
-                    <p className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
-                        <IdCard size={12} className="text-slate-400" /> Issued to this person, whichever vehicle they are in.
-                    </p>
-                </div>
-            )}
-
-            {holder === "none" && (
-                <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[12px] leading-snug text-slate-600">
-                    <CircleSlash size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                    This item is on nobody. It shows under <span className="font-semibold">Not assigned</span> on the
-                    list and is offered whenever somebody assigns inventory to a driver or a vehicle.
-                </p>
-            )}
-        </div>
-    );
+    return null;
 }
 
 // ── Form primitives ─────────────────────────────────────────────────────────

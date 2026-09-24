@@ -13,6 +13,7 @@ import {
     loadDqChecklists, flattenItems,
     type DqDriverTypeId, type DqChecklist,
 } from "@/pages/settings/settings-dq-checklists.data";
+import { operationsFor } from "@/pages/accounts/carrier-datasets.data";
 
 // ── Fill state (shared with DqFileDocument) ────────────────────────────────────
 export type Verification = "" | "present" | "missing" | "expired" | "na";
@@ -28,9 +29,26 @@ export const emptyFill = (): DqFileFill => ({ header: {}, items: {}, nextReview:
 export type DriverDqRecord = { driverType: DqDriverTypeId; fill: DqFileFill };
 
 // ── Type resolution + checklist lookup ─────────────────────────────────────────
-export function defaultTypeFor(driver: Driver): DqDriverTypeId {
+/**
+ * Which DQ file a driver needs, before anybody overrides it.
+ *
+ * Citizenship and country alone can only ever say "US" or "Canada" — they describe where
+ * a driver is FROM, not where they drive. Cross-border is a property of the work, so the
+ * carrier is the missing input: one whose operations include Cross-Border runs the border,
+ * and it runs it with the long-haul and owner-operator lanes. Local and lease work stays
+ * inside one country whatever the carrier's authority says.
+ *
+ * `accountId` is optional so callers that never had a carrier to hand keep the answer they
+ * always got. Anything that knows the account should pass it, or two screens will disagree
+ * about the same driver.
+ */
+export function defaultTypeFor(driver: Driver, accountId?: string): DqDriverTypeId {
     const c = `${driver.citizenship ?? ""} ${driver.country ?? ""}`.toLowerCase();
-    return c.includes("canada") ? "canada_only" : "us_only";
+    const domestic: DqDriverTypeId = c.includes("canada") ? "canada_only" : "us_only";
+    if (!accountId) return domestic;
+    if (!operationsFor(accountId).carrierOperation.includes("Cross-Border")) return domestic;
+    const work = (driver.driverType ?? "").toLowerCase();
+    return work.includes("long haul") || work.includes("owner operator") ? "cross_border" : domestic;
 }
 
 /** The Settings checklist that applies to a driver type (first match). */
@@ -90,12 +108,12 @@ export function useDriverDqFiles(accountId?: string) {
     }, []);
 
     const getRecord = (driver: Driver): DriverDqRecord =>
-        all[rowKey(acct, driver.id)] ?? { driverType: defaultTypeFor(driver), fill: emptyFill() };
+        all[rowKey(acct, driver.id)] ?? { driverType: defaultTypeFor(driver, acct), fill: emptyFill() };
 
     const patch = (driver: Driver, next: Partial<DriverDqRecord>) => {
         const cur = loadAll();
         const key = rowKey(acct, driver.id);
-        const base = cur[key] ?? { driverType: defaultTypeFor(driver), fill: emptyFill() };
+        const base = cur[key] ?? { driverType: defaultTypeFor(driver, acct), fill: emptyFill() };
         persist({ ...cur, [key]: { ...base, ...next } });
     };
     const setType = (driver: Driver, driverType: DqDriverTypeId) => patch(driver, { driverType });

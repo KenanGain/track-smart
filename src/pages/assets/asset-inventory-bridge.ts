@@ -29,7 +29,7 @@ import {
 } from '@/pages/inventory/handovers.data';
 import { VENDORS } from '@/pages/inventory/inventory.data';
 import { todayISO } from '@/pages/hiring-process/FormKit';
-import { driverOfAsset, type Assignment, type InventoryItem } from '@/pages/inventory/inventory.data';
+import { driverOfAsset, itemTravelsWithDriver, type Assignment, type InventoryItem } from '@/pages/inventory/inventory.data';
 
 /**
  * What this carrier's inventory looks like right now, for the save path.
@@ -61,7 +61,6 @@ export interface AssetInventoryDraft {
     /** Items to file against this vehicle. */
     itemIds: string[];
     /** Items to put on the driver's signed hand-over checklist instead. */
-    handIds: string[];
     /**
      * Items already on this vehicle, being taken back off it.
      *
@@ -71,8 +70,6 @@ export interface AssetInventoryDraft {
     removeIds: string[];
     /** Ask whoever is holding the removed kit to bring it in. */
     askBack: boolean;
-    /** The assigned ones ride with whoever drives it, rather than staying with the vehicle. */
-    carried: boolean;
     /**
      * The "tell them" block, shared with the Add Inventory form and the assign page: whether
      * to send, where the other end of the trip is, when by, and any wording somebody typed.
@@ -104,10 +101,8 @@ export interface AssetInventoryDraft {
 
 export const emptyAssetInventoryDraft = (): AssetInventoryDraft => ({
     itemIds: [],
-    handIds: [],
     removeIds: [],
     askBack: true,
-    carried: false,
     notify: emptyNotifyState(),
     changeover: { outgoing: null, itemIds: [], askReturn: true, tellIncoming: true },
 });
@@ -151,7 +146,10 @@ export function commitAssetInventory(input: {
     const acct = accountId ?? 'acct-001';
     const byId = (id: string) => input.items.find((it) => it.id === id);
     const picked = draft.itemIds.map(byId).filter(Boolean) as InventoryItem[];
-    const handed = draft.handIds.map(byId).filter(Boolean) as InventoryItem[];
+    // Nothing is signed across from this form any more: the item says whether it travels
+    // with the driver, so there is no per-assignment hand-over to create. Taking an
+    // EXISTING one back is below, and reads the driver's real checklist rather than this.
+    const handed: InventoryItem[] = [];
     const moving = draft.changeover.itemIds.map(byId).filter(Boolean) as InventoryItem[];
     const removing = draft.removeIds.map(byId).filter(Boolean) as InventoryItem[];
     const nothingToDo = picked.length === 0 && handed.length === 0
@@ -209,22 +207,28 @@ export function commitAssetInventory(input: {
     }
 
     // — 2. What is being given out
-    const assignedTo: Assignment = {
+    //
+    // Whether it rides with the driver is the ITEM's answer, given when it was added:
+    // driver returnable travels with whoever drives the vehicle, asset removable stays on
+    // it. The form used to ask again, once for the whole batch, which filed a spare key and
+    // a fuel card identically.
+    const ridesAlong = (item: InventoryItem) => itemTravelsWithDriver(item);
+    const filingFor = (item: InventoryItem): Assignment => ({
         kind: assetKind,
         targetId: assetId,
-        ...(draft.carried ? { alsoDriverOfAsset: true } : {}),
-    };
+        ...(ridesAlong(item) ? { alsoDriverOfAsset: true } : {}),
+    });
 
     // Anything signed across is filed against the vehicle as well: a hand-over is about who
     // has it in their hands, not about who owns it. Filing only one of the two left a handed
     // item on no vehicle at all.
     const filing = [...picked, ...handed.filter((h) => !picked.some((pk) => pk.id === h.id))];
     for (const item of filing) {
-        updateInventoryItem(item.id, { assignedTo });
+        updateInventoryItem(item.id, { assignedTo: filingFor(item) });
         logInventoryEvent({
             itemId: item.id, accountId: acct, kind: 'assigned',
             title: 'Assigned to vehicle',
-            detail: draft.carried && driver ? `${assetLabel} · carried by ${driver.name}` : assetLabel,
+            detail: ridesAlong(item) && driver ? `${assetLabel} · carried by ${driver.name}` : assetLabel,
             by: capturedBy, role: 'Office',
         });
     }
@@ -279,7 +283,7 @@ export function commitAssetInventory(input: {
         }
     }
     for (const item of picked) {
-        movements.push({ kind: 'assign-vehicle', item, person: driver, holderLabel: assetLabel, carried: draft.carried });
+        movements.push({ kind: 'assign-vehicle', item, person: driver, holderLabel: assetLabel, carried: ridesAlong(item) });
     }
     for (const item of handed) {
         movements.push({ kind: 'hand-over', item, person: driver, holderLabel: assetLabel });

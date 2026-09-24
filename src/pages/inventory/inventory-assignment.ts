@@ -28,6 +28,17 @@ export const driverNameOf = (driverId: string, accountId: string | undefined): s
 };
 
 /**
+ * Is this item assigned — that is, is it on a vehicle?
+ *
+ * The only question assignment answers. An item filed against a person is left over from
+ * before inventory moved onto the vehicle, and a hand-over is a separate fact about who is
+ * carrying something, not about what it is assigned to. Counting either as "assigned" is
+ * how the Assigned chip and the Unassigned tile ended up disagreeing about the same item.
+ */
+export const itemOnAsset = (a: Assignment | undefined): boolean =>
+    !!a && (a.kind === "cmv" || a.kind === "non-cmv");
+
+/**
  * The VEHICLE an item is assigned to, or null when it is not on one.
  *
  * Split out of the old combined "Assigned To" cell: a truck and a driver are two different

@@ -1,11 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
     Plus, Boxes, Search,
-    Truck, IdCard, Pencil,
-    Fuel, Radio, Activity, Map as MapIcon, Camera, Wrench, Layers,
-    KeyRound, ShieldCheck, Package, Cpu, CreditCard,
+    Truck, IdCard, Pencil, Layers,
     CircleCheck, Clock, AlertTriangle, CircleSlash,
-    PackageCheck, ChevronDown, ChevronRight, Undo2, UserRound, ListChecks, Share2,
+    PackageCheck, Share2,
     Bell, BellOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +16,7 @@ import {
     CARRIER_NAME,
     itemName,
     itemCategoryId,
+    itemTravelsWithDriver,
     inventoryMonitoring,
     type InventoryItem,
     type InventoryStatus,
@@ -25,11 +24,10 @@ import {
 import { MONITOR_BASIS_LABEL } from "@/pages/compliance/monitoring-schedule";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import {
-    useDriverHandovers, handoverStatusOf, seedDemoHandovers,
-    buildDriverGroups, type HandoverStatus,
+    useDriverHandovers, handoverStatusOf, seedDemoHandovers, type HandoverStatus,
 } from "./handovers.data";
 import {
-    resolveAsset, resolveDriver, KIND_TONE, fmtDate,
+    resolveAsset, resolveDriver, itemOnAsset, KIND_TONE, fmtDate,
 } from "./inventory-assignment";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
@@ -38,46 +36,58 @@ import { INVENTORY_TABS } from "./InventoryTabs";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { TablePager } from "./TablePager";
-import { TableGroupBand } from "@/components/ui/ListChrome";
+import { FilterChip, TableGroupBand } from "@/components/ui/ListChrome";
+import { TabScroller } from "@/components/ui/TabScroller";
+import { visualFor } from "./inventory-visuals";
 import { KpiTile } from "./InventoryKpi";
-import { DirectHandoverDialog, ChecklistHandoverPicker } from "./HandoverDialogs";
 import { useInventoryAdditions } from "./inventory-store";
 import { cn } from "@/lib/utils";
 
 /**
- * Where an item is — the question the Asset and Driver columns answer, asked as a filter.
+ * Banding the list.
  *
- * One switch rather than the dropdown-plus-switch this replaced. Those were two controls
- * asking the same question in two shapes, and they could be set against each other:
- * "Assigned to asset" AND "Not handed over" is a pair of filters, not a place an item is.
- *
- * The five options ARE mutually exclusive as far as the reader is concerned, but they are
- * not five values of one stored field: "assigned" is on the item, "handed" is a separate
- * signed checklist. A fuel card can be assigned to a truck and handed to its driver, and it
- * is filed here under the checklist, because that is the more specific fact about where the
- * thing physically is.
+ * `where` is what the old five-chip assignment switch used to do, and more: the switch showed
+ * one place at a time, and this shows all four at once, in the order somebody chasing kit
+ * cares about — what is out with people first, what is on a shelf last.
  */
-type AssignFilter = "all" | "asset" | "driver" | "handed" | "none";
-const ASSIGN_FILTERS: { id: AssignFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "asset", label: "Assigned to asset" },
-    { id: "driver", label: "Assigned to driver" },
-    { id: "handed", label: "Handed to driver" },
-    { id: "none", label: "Not assigned" },
+type InvGroupBy = "none" | "where" | "status" | "category" | "vendor";
+/**
+ * The two questions a status cannot answer.
+ *
+ * Where it is — out on something, or on a shelf — and what kind of thing it is: something
+ * a person signs for and gives back, or something bolted to a unit. Chasing a driver who is
+ * leaving is the first list; stripping a truck that is going is the second.
+ */
+type InvAssign = "all" | "assigned" | "unassigned";
+type InvHandling = "all" | "returnable" | "removable";
+
+/** Is it on a vehicle, or on nothing. The only question assignment asks. */
+const INV_ASSIGN: { id: InvAssign; label: string }[] = [
+    { id: "all", label: "All items" },
+    { id: "assigned", label: "Assigned" },
+    { id: "unassigned", label: "Not assigned" },
 ];
 
 /**
- * Banding the list. `where` is the one the assignment switch cannot give you: that switch
- * shows one place at a time, and this shows all four at once, in the order somebody chasing
- * kit cares about — what is out with people first, what is on a shelf last.
+ * And if it is on one: does it come back with the driver, or come off the unit.
+ *
+ * A question ABOUT the vehicle an item is on, which is why it is asked second and only of
+ * assigned items. Of something sitting on a shelf it has no answer.
  */
-type InvGroupBy = "none" | "where" | "status" | "category" | "vendor";
+const INV_HANDLING: { id: InvHandling; label: string }[] = [
+    { id: "all", label: "All kinds" },
+    { id: "returnable", label: "Driver returnable" },
+    { id: "removable", label: "Asset removable" },
+];
+
+// One word each, and the control names itself once. "Assignment" rather than "where it is"
+// because that is what the bands say: on a vehicle, with a driver, not assigned.
 const INV_GROUPS: { id: InvGroupBy; label: string }[] = [
     { id: "none", label: "Group by" },
-    { id: "where", label: "Group by where it is" },
-    { id: "status", label: "Group by status" },
-    { id: "category", label: "Group by category" },
-    { id: "vendor", label: "Group by vendor" },
+    { id: "where", label: "Assignment" },
+    { id: "status", label: "Status" },
+    { id: "category", label: "Category" },
+    { id: "vendor", label: "Vendor" },
 ];
 const STATUS_RANK: Record<InventoryStatus, number> = { "Expired": 0, "Expiring Soon": 1, "Active": 2 };
 
@@ -102,23 +112,7 @@ const STATUS_DOT: Record<InventoryStatus, string> = {
     "Expired": "bg-red-500",
 };
 
-// ── Per-category visual treatment ──────────────────────────────────────────
 
-const CATEGORY_VISUAL: Record<string, { icon: React.ElementType; bg: string; text: string; bar: string; avatarBg: string; avatarText: string }> = {
-    "cat-fuel-card":          { icon: Fuel,     bg: "bg-amber-50",   text: "text-amber-700",   bar: "bg-amber-500",   avatarBg: "bg-amber-100",   avatarText: "text-amber-800"   },
-    "cat-transponder":        { icon: Radio,    bg: "bg-violet-50",  text: "text-violet-700",  bar: "bg-violet-500",  avatarBg: "bg-violet-100",  avatarText: "text-violet-800"  },
-    "cat-eld-provider":       { icon: Activity, bg: "bg-blue-50",    text: "text-blue-700",    bar: "bg-blue-500",    avatarBg: "bg-blue-100",    avatarText: "text-blue-800"    },
-    "cat-gps-tracking":       { icon: MapIcon,  bg: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-500", avatarBg: "bg-emerald-100", avatarText: "text-emerald-800" },
-    "cat-dashcam":            { icon: Camera,   bg: "bg-cyan-50",    text: "text-cyan-700",    bar: "bg-cyan-500",    avatarBg: "bg-cyan-100",    avatarText: "text-cyan-800"    },
-    "cat-repair-maintenance": { icon: Wrench,   bg: "bg-slate-100",  text: "text-slate-700",   bar: "bg-slate-500",   avatarBg: "bg-slate-200",   avatarText: "text-slate-800"   },
-    "cat-keys":               { icon: KeyRound,    bg: "bg-amber-50",   text: "text-amber-700",   bar: "bg-amber-500",   avatarBg: "bg-amber-100",   avatarText: "text-amber-800"   },
-    "cat-safety-ppe":         { icon: ShieldCheck, bg: "bg-rose-50",    text: "text-rose-700",    bar: "bg-rose-500",    avatarBg: "bg-rose-100",    avatarText: "text-rose-800"    },
-    "cat-equipment":          { icon: Package,     bg: "bg-teal-50",    text: "text-teal-700",    bar: "bg-teal-500",    avatarBg: "bg-teal-100",    avatarText: "text-teal-800"    },
-    "cat-devices":            { icon: Cpu,         bg: "bg-sky-50",     text: "text-sky-700",     bar: "bg-sky-500",     avatarBg: "bg-sky-100",     avatarText: "text-sky-800"     },
-    "cat-cards-docs":         { icon: CreditCard,  bg: "bg-violet-50",  text: "text-violet-700",  bar: "bg-violet-500",  avatarBg: "bg-violet-100",  avatarText: "text-violet-800"  },
-};
-const DEFAULT_VISUAL = { icon: Layers, bg: "bg-slate-100", text: "text-slate-700", bar: "bg-slate-400", avatarBg: "bg-slate-200", avatarText: "text-slate-800" };
-const visualFor = (categoryId: string) => CATEGORY_VISUAL[categoryId] ?? DEFAULT_VISUAL;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -152,19 +146,12 @@ const TD = ({ children, className, onClick }: {
 
 export function InventoryListPage({ onNavigate, accountId, accountName }: Props) {
     const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState<InventoryStatus | "all">("all");
-    const [assignFilter, setAssignFilter] = useState<AssignFilter>("all");
-    // Under "Handed to driver" the same rows can be read grouped by the person holding them,
-    // which is where the take-back and checklist actions live. It is a view of that filter,
-    // not a sixth filter, so it is a separate flag rather than another switch option.
-    const [byDriver, setByDriver] = useState(false);
+    const [assign, setAssign] = useState<InvAssign>("all");
+    const [handling, setHandling] = useState<InvHandling>("all");
     const [activeCat, setActiveCat] = useState<string>("All");
     const [groupBy, setGroupBy] = useState<InvGroupBy>("none");
-    const [directOpen, setDirectOpen] = useState(false);
-    const [checklistOpen, setChecklistOpen] = useState(false);
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
-    const handed = assignFilter === "handed" && byDriver;
 
     // The two localStorage overlays on the frozen seed: items added in the app, and edits
     // made to any item. Without the second, saving a change to a seeded row did nothing
@@ -228,9 +215,6 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     // Reset filters when the carrier changes.
     useEffect(() => {
         setSearch("");
-        setStatusFilter("all");
-        setAssignFilter("all");
-        setByDriver(false);
         setActiveCat("All");
     }, [accountId]);
 
@@ -241,13 +225,13 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             if (it.status === "Active") active++;
             else if (it.status === "Expiring Soon") expiring++;
             else if (it.status === "Expired") expired++;
-            if (!it.assignedTo) unassigned++;
+            if (!itemOnAsset(it.assignedTo)) unassigned++;
         }
         return { total: items.length, active, expiring, expired, unassigned };
     }, [items]);
 
     // The header stays put and shrinks as the list scrolls; the body is its own scroller.
-    const { scrollRef, condensed, onScroll } = useCondensingHeader(assignFilter);
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(accountId);
     const kpiChips = useMemo(() => [
         { id: 'total', label: 'Items', value: counts.total, tone: 'text-blue-700' },
         { id: 'active', label: 'Active', value: counts.active, tone: 'text-emerald-700' },
@@ -256,23 +240,62 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
         { id: 'unassigned', label: 'Unassigned', value: counts.unassigned },
     ], [counts]);
 
-    // Status + hand-over filters drive the category tabs; search narrows rows.
+    // Status drives the category tabs; search narrows rows. Where an item IS is no longer
+    // a filter — it is what the Asset and Driver columns say, and "Group by where it is"
+    // bands all four places at once rather than showing one at a time.
     const baseFiltered = useMemo(
         () => items.filter((it) => {
-            if (statusFilter !== "all" && it.status !== statusFilter) return false;
-            const kind = it.assignedTo?.kind;
-            const isHanded = handedTo.has(it.id);
-            // "Assigned" is read off the item; "handed" off the signed checklist. An item can
-            // be both, and a hand-over wins — it is the more specific answer to where the
-            // thing physically is, and it is what the Driver column shows for that row.
-            if (assignFilter === "asset" && (isHanded || (kind !== "cmv" && kind !== "non-cmv"))) return false;
-            if (assignFilter === "driver" && (isHanded || kind !== "driver")) return false;
-            if (assignFilter === "handed" && !isHanded) return false;
-            if (assignFilter === "none" && (it.assignedTo || isHanded)) return false;
+            // Assigned means one thing: it is on a vehicle.
+            const on = itemOnAsset(it.assignedTo);
+            if (assign === "assigned" && !on) return false;
+            if (assign === "unassigned" && on) return false;
+            // …and, of the ones that are, which kind. Narrowing to a kind is itself a
+            // statement that the item is on something, so it carries the assignment with it
+            // rather than leaving you a selection that describes nothing.
+            if (handling !== "all" && !on) return false;
+            if (handling === "returnable" && !itemTravelsWithDriver(it)) return false;
+            if (handling === "removable" && itemTravelsWithDriver(it)) return false;
             return true;
         }),
-        [items, statusFilter, assignFilter, handedTo],
+        [items, assign, handling],
     );
+
+    /**
+     * What each chip would find if you pressed it.
+     *
+     * Each group is counted with the OTHER group's chip already applied, and neither is
+     * counted against itself. So with "Not assigned" held down, "Driver returnable 3" means
+     * three unassigned returnables — pressing it really does leave you three rows. Counting
+     * both off the whole list would promise numbers the list cannot show.
+     */
+    const whatCounts = useMemo(() => {
+        // The assignment chips are counted within the kind you are holding, so pressing one
+        // really does leave you that many rows. The kind chips are counted within the
+        // ASSIGNED items only, because that is the only set they describe.
+        const keepKind = (it: InventoryItem) =>
+            handling === "all" ? true
+                : handling === "returnable" ? itemTravelsWithDriver(it)
+                : !itemTravelsWithDriver(it);
+
+        let kindTotal = 0, assignedIn = 0, assignedTotal = 0, returnableIn = 0;
+        for (const it of items) {
+            const on = itemOnAsset(it.assignedTo);
+            if (keepKind(it)) { kindTotal += 1; if (on) assignedIn += 1; }
+            if (on) { assignedTotal += 1; if (itemTravelsWithDriver(it)) returnableIn += 1; }
+        }
+        return {
+            assign: {
+                all: kindTotal,
+                assigned: assignedIn,
+                unassigned: kindTotal - assignedIn,
+            } as Record<InvAssign, number>,
+            handling: {
+                all: assignedTotal,
+                returnable: returnableIn,
+                removable: assignedTotal - returnableIn,
+            } as Record<InvHandling, number>,
+        };
+    }, [items, assign, handling]);
 
     const tabs = useMemo(() => {
         const present = VENDOR_CATEGORIES.filter((c) => baseFiltered.some((it) => categoryIdOf(it) === c.id));
@@ -320,14 +343,16 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             const v = VENDORS.find((x) => x.id === it.vendorId);
             return { rank: 0, label: v?.companyName || v?.name || "No vendor" };
         }
-        // Where it is. A hand-over wins over the assignment behind it: it is the more
-        // specific answer to where the thing physically is, which is what the switch and
-        // the Driver column already agree on.
-        if (handedTo.has(it.id)) return { rank: 0, label: "Signed across to a driver" };
-        const kind = it.assignedTo?.kind;
-        if (kind === "driver") return { rank: 1, label: "With a driver" };
-        if (kind === "cmv" || kind === "non-cmv") return { rank: 2, label: "On a vehicle" };
-        return { rank: 3, label: "Not assigned" };
+        // Assignment, and it has two answers — the SAME two the chips above the table
+        // offer, in the same words. Banding the identical split as "On a vehicle" while the
+        // chip called it "Assigned" made one question look like two.
+        //
+        // It used to have four bands, two of which ("Signed across to a driver", "With a
+        // driver") described how somebody came to be holding the thing rather than what it
+        // is assigned to. Who is carrying it is the Driver column's job.
+        return itemOnAsset(it.assignedTo)
+            ? { rank: 0, label: "Assigned" }
+            : { rank: 1, label: "Not assigned" };
     };
 
     // Grouped before the page is cut, so a band is never split across two pages.
@@ -338,7 +363,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows, groupBy, handedTo]);
+    }, [rows, groupBy]);
 
     const groupCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -349,10 +374,10 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
         }
         return m;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groupedRows, groupBy, handedTo]);
+    }, [groupedRows, groupBy]);
 
     // Pagination over the filtered item rows.
-    useEffect(() => { setPage(0); }, [search, statusFilter, assignFilter, activeCat, groupBy, accountId]);
+    useEffect(() => { setPage(0); }, [search, assign, handling, activeCat, groupBy, accountId]);
     const pageCount = Math.max(1, Math.ceil(groupedRows.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
     const pagedRows = groupedRows.slice(safePage * perPage, safePage * perPage + perPage);
@@ -389,108 +414,101 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
 
             {/* Category-tabbed list */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                {!handed && <CardTabs tabs={tabs} active={activeCat} onChange={setActiveCat} />}
+                <CardTabs tabs={tabs} active={activeCat} onChange={setActiveCat} />
 
                 {/* Toolbar */}
-                <div className={cn("px-5 py-3 flex items-center gap-2 flex-wrap", handed && "border-b border-slate-100")}>
+                <div className="px-5 py-3 flex items-center gap-2 flex-wrap">
                     <div className="relative min-w-[190px] max-w-xs flex-1">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         <input
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder={handed ? "Search drivers by name or license…" : "Search item, vendor, number or PIN…"}
+                            placeholder="Search item, vendor, number or PIN…"
                             className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
-                    {!handed && (
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value as InventoryStatus | "all")}
-                            className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        >
-                            <option value="all">All Statuses</option>
-                            <option value="Active">Active</option>
-                            <option value="Expiring Soon">Expiring Soon</option>
-                            <option value="Expired">Expired</option>
-                        </select>
-                    )}
-                    {/* Where the item is, as one switch. This replaced a dropdown and a separate
-                        All / Handed over switch that asked the same question twice and could be
-                        set against each other. */}
-                    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5">
-                        {ASSIGN_FILTERS.map((o) => (
-                            <button
-                                key={o.id}
-                                type="button"
-                                onClick={() => { setAssignFilter(o.id); if (o.id !== "handed") setByDriver(false); }}
-                                className={cn(
-                                    "rounded-md px-2.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors",
-                                    assignFilter === o.id
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-600 hover:text-slate-900",
-                                )}
-                            >
-                                {o.label}
-                            </button>
-                        ))}
-                    </div>
-                    {!handed && (
-                        <select
-                            value={groupBy}
-                            onChange={(e) => setGroupBy(e.target.value as InvGroupBy)}
-                            title="Group the list"
-                            className={cn(
-                                "h-9 shrink-0 rounded-lg border px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
-                                groupBy === "none"
-                                    ? "border-slate-200 bg-white text-slate-700"
-                                    : "border-blue-300 bg-blue-50/60 text-blue-700",
-                            )}
-                        >
-                            {INV_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
-                        </select>
-                    )}
                     <div className="ml-auto flex items-center gap-2">
-                        {assignFilter === "handed" && (
-                            <>
-                                {/* The per-driver view, with its take-back and checklist actions.
-                                    Only reachable from the filter it belongs to. */}
-                                <Button variant={byDriver ? "default" : "outline"} size="sm" onClick={() => setByDriver((v) => !v)}>
-                                    <UserRound size={15} /> By driver
-                                </Button>
-                                {byDriver && (
-                                    <Button variant="outline" size="sm" onClick={() => setDirectOpen(true)}>
-                                        <PackageCheck size={15} /> Hand over to driver
-                                    </Button>
-                                )}
-                                <Button size="sm" onClick={() => setChecklistOpen(true)}>
-                                    <ListChecks size={15} /> Create checklist
-                                </Button>
-                            </>
-                        )}
-                        {assignFilter !== "handed" && (
-                            <Button size="sm" onClick={() => onNavigate("/inventory/items/new")}>
-                                <Plus size={15} /> Add Inventory
-                            </Button>
-                        )}
+                        <Button size="sm" onClick={() => onNavigate("/inventory/items/new")}>
+                            <Plus size={15} /> Add Inventory
+                        </Button>
                     </div>
                 </div>
 
-                {handed ? (
-                    <HandedOverDrivers onNavigate={onNavigate} accountId={accountId} search={search} />
-                ) : rows.length === 0 ? (
+                {/* How the list is narrowed and banded, on a row of its own. On the same
+                    line as the search box these broke to a second row at a different width
+                    every time; chips left and Group by right is also where the holder panel
+                    and the Drivers tab put them.
+
+                    Two questions, so two groups with a rule between them: where it is (out
+                    on something, or on a shelf) and what kind of thing it is (comes back
+                    with the driver, or comes off the unit). One switch could not answer
+                    both, so "which of the unassigned ones come off the truck" had no way
+                    to be asked. A status filter would be a fourth way to say "Expired" —
+                    the KPI tiles, the category strip and the pill on every row say it. */}
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 bg-slate-50/40 px-5 py-2">
+                    {/* Is it on a vehicle. Dropping to "Not assigned" drops the kind with
+                        it: an item on nothing is neither returnable from nor removable
+                        off anything. */}
+                    {INV_ASSIGN.map((o) => (
+                        <FilterChip
+                            key={o.id}
+                            label={o.label}
+                            count={whatCounts.assign[o.id]}
+                            on={assign === o.id}
+                            always={o.id === "all"}
+                            onClick={() => {
+                                setAssign(o.id);
+                                if (o.id === "unassigned") setHandling("all");
+                            }}
+                        />
+                    ))}
+                    <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" aria-hidden />
+                    {/* And of the assigned ones, which kind. Picking one says "assigned"
+                        as well, because that is the only set it can describe — otherwise
+                        the row would sit reading "Not assigned + Driver returnable" over
+                        an empty table. */}
+                    {INV_HANDLING.map((o) => (
+                        <FilterChip
+                            key={o.id}
+                            label={o.label}
+                            count={whatCounts.handling[o.id]}
+                            on={handling === o.id}
+                            always={o.id === "all"}
+                            onClick={() => {
+                                setHandling(o.id);
+                                if (o.id !== "all" && assign === "unassigned") setAssign("assigned");
+                            }}
+                        />
+                    ))}
+                    <select
+                        value={groupBy}
+                        onChange={(e) => setGroupBy(e.target.value as InvGroupBy)}
+                        title="Group the list"
+                        className={cn(
+                            "ml-auto h-8 shrink-0 rounded-lg border px-2 text-[12px] font-semibold outline-none focus:border-blue-500",
+                            groupBy === "none"
+                                ? "border-slate-200 bg-white text-slate-600"
+                                : "border-blue-300 bg-blue-50/60 text-blue-700",
+                        )}
+                    >
+                        {INV_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                </div>
+
+                {rows.length === 0 ? (
                     <div className="border-t border-slate-100 p-12 text-center">
                         <Layers size={28} className="mx-auto text-slate-300 mb-2" />
                         <p className="text-sm font-semibold text-slate-700">No inventory items match your filters</p>
                         <p className="mt-1 text-xs text-slate-500">
                             {search.trim()
                                 ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
-                                : "Try a different category, status, or assignment."}
+                                : "Try a different category, or show all items."}
                         </p>
-                        {(search.trim() || statusFilter !== "all" || assignFilter !== "all" || activeCat !== "All") && (
+                        {(search.trim() || assign !== "all" || handling !== "all" || activeCat !== "All") && (
                             <button
                                 type="button"
-                                onClick={() => { setSearch(""); setStatusFilter("all"); setAssignFilter("all"); setActiveCat("All"); }}
+                                onClick={() => { setSearch(""); setAssign("all"); setHandling("all"); setActiveCat("All"); }}
                                 className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
                             >
                                 Clear filters
@@ -505,10 +523,12 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                 <tr>
                                     <TH>Item</TH>
                                     <TH className="border-l border-slate-200">Number / PIN</TH>
-                                    {/* The alert is a bell beside the date it counts back from — a whole
+                                    {/* Two dates, two columns: when it started, and when it runs out.
+                                        The alert is a bell beside the expiry it counts back from — a whole
                                         column for it pushed Asset, Driver and Status off the right edge,
                                         and the detail page's Monitoring tab has the full schedule. */}
-                                    <TH className="border-l border-slate-200">Issued / Expires</TH>
+                                    <TH className="border-l border-slate-200">Issued</TH>
+                                    <TH className="border-l border-slate-200">Expires</TH>
                                     <TH className="border-l border-slate-200">Asset</TH>
                                     <TH className="border-l border-slate-200">Driver</TH>
                                     <TH className="border-l border-slate-200">Status</TH>
@@ -526,7 +546,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                     return (
                                         <Fragment key={item.id}>
                                         {g && (!prev || prev.label !== g.label) && (
-                                            <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={7} />
+                                            <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={8} />
                                         )}
                                         <tr
                                             // The row opens the item. Reading one used to mean opening the EDITOR,
@@ -563,19 +583,21 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     </div>
                                                 </div>
                                             </TD>
-                                            <TD>
+                                            <TD className="border-l border-slate-100">
                                                 <div className="font-mono text-xs leading-tight text-slate-700">{item.serial}</div>
                                                 {item.pin && <div className="font-mono text-[11px] leading-tight text-slate-400">PIN {item.pin}</div>}
                                             </TD>
-                                            <TD>
+                                            <TD className="border-l border-slate-100">
                                                 <div className="text-xs leading-tight text-slate-600">{fmtDate(item.issueDate)}</div>
-                                                {/* An item with no expiry is not missing one — a yard key never runs out.
-                                                    Where there IS one, the bell says whether anybody gets told: a date with
-                                                    a muted bell is the row that will quietly lapse. */}
-                                                <div className="flex items-center gap-1 text-[11px] leading-tight text-slate-400">
+                                            </TD>
+                                            {/* An item with no expiry is not missing one — a yard key never runs out.
+                                                Where there IS one, the bell says whether anybody gets told: a date with
+                                                a muted bell is the row that will quietly lapse. */}
+                                            <TD className="border-l border-slate-100">
+                                                <div className="flex items-center gap-1 text-xs leading-tight text-slate-600">
                                                     {item.expiryDate ? (
                                                         <>
-                                                            <span>→ {fmtDate(item.expiryDate)}</span>
+                                                            <span>{fmtDate(item.expiryDate)}</span>
                                                             {(() => {
                                                                 const mon = inventoryMonitoring(item);
                                                                 const days = [...mon.reminders].sort((a, b) => b - a);
@@ -594,12 +616,12 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                             })()}
                                                         </>
                                                     ) : (
-                                                        <span>no expiry</span>
+                                                        <span className="text-[11px] text-slate-400">no expiry</span>
                                                     )}
                                                 </div>
                                             </TD>
                                             {/* The vehicle — blank when the item is on a person, or on nobody. */}
-                                            <TD>
+                                            <TD className="border-l border-slate-100">
                                                 {onAsset ? (
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <span className={cn(
@@ -619,7 +641,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                             </TD>
                                             {/* The person — assigned to them, driving the vehicle it is on, or
                                                 holding it on a signed hand-over. */}
-                                            <TD>
+                                            <TD className="border-l border-slate-100">
                                                 {withDriver ? (
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <span className={cn(
@@ -643,7 +665,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     <span className="text-xs text-slate-300">—</span>
                                                 )}
                                             </TD>
-                                            <TD>
+                                            <TD className="border-l border-slate-100">
                                                 <span className={cn(
                                                     "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
                                                     STATUS_BADGE[item.status]
@@ -654,7 +676,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                             </TD>
                                             {/* The row opens the item, so every control in here stops the click
                                                 reaching it — otherwise Edit would open the item and then the editor. */}
-                                            <TD className="w-px text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
+                                            <TD className="w-px border-l border-slate-100 text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-end gap-0.5">
                                                     <button
                                                         type="button"
@@ -708,177 +730,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate("/messages"); }}
                 />
             )}
-            {directOpen && (
-                <DirectHandoverDialog accountId={accountId} onClose={() => setDirectOpen(false)} />
-            )}
-            {checklistOpen && (
-                <ChecklistHandoverPicker accountId={accountId} onNavigate={onNavigate} onClose={() => setChecklistOpen(false)} />
-            )}
         </div>
-    );
-}
-
-// ── Handed-over view: inventory grouped by the driver holding it ────────────
-
-const driverName = (d: any) => (d?.name ?? `${d?.firstName ?? ""} ${d?.lastName ?? ""}`.trim()) || "Driver";
-const driverInitials = (d: any) => driverName(d).split(/\s+/).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-const AVATAR_TONES = [
-    "bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald-700", "bg-violet-100 text-violet-700",
-    "bg-amber-100 text-amber-700", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700",
-    "bg-indigo-100 text-indigo-700", "bg-cyan-100 text-cyan-700",
-];
-const avatarTone = (id: string) => {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    return AVATAR_TONES[h % AVATAR_TONES.length];
-};
-
-const HANDED_STATUS_CHIP: Record<HandoverStatus, { label: string; cls: string; dot: string; icon?: React.ElementType }> = {
-    "not-issued": { label: "Draft", cls: "bg-slate-100 text-slate-500", dot: "bg-slate-400" },
-    "handed-over": { label: "Handed over · awaiting driver", cls: "bg-amber-50 text-amber-700 border border-amber-200", dot: "bg-amber-500" },
-    "verified": { label: "Verified by driver", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500", icon: CircleCheck },
-};
-
-function HandedOverDrivers({ onNavigate, accountId, search }: {
-    onNavigate: (path: string) => void;
-    accountId?: string;
-    search: string;
-}) {
-    const acct = accountId ?? "acct-001";
-    const { records } = useDriverHandovers(acct);
-    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-    const [directFor, setDirectFor] = useState<string | null>(null);
-
-    const drivers = useMemo(() => CARRIER_DRIVERS[acct] || CARRIER_DRIVERS["acct-001"] || [], [acct]);
-    const itemById = useMemo(() => {
-        const all = accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS;
-        const m = new Map<string, InventoryItem>();
-        for (const it of all) m.set(it.id, it);
-        return m;
-    }, [accountId]);
-
-    const rows = useMemo(() => {
-        const out: {
-            driver: any; status: HandoverStatus; assigneeName?: string;
-            groups: ReturnType<typeof buildDriverGroups>; total: number; verifiedCount: number;
-        }[] = [];
-        for (const d of drivers) {
-            const rec = records[`${acct}::${d.id}`];
-            if (!rec || rec.lines.length === 0) continue;
-            out.push({
-                driver: d, status: handoverStatusOf(rec), assigneeName: rec.assigneeName,
-                groups: buildDriverGroups(rec, itemById), total: rec.lines.length, verifiedCount: rec.verifiedItemIds?.length ?? 0,
-            });
-        }
-        return out;
-    }, [drivers, records, acct, itemById]);
-
-    const q = search.trim().toLowerCase();
-    const shown = q
-        ? rows.filter((r) => driverName(r.driver).toLowerCase().includes(q) || ((r.driver as any).licenseNumber ?? "").toLowerCase().includes(q))
-        : rows;
-
-    if (shown.length === 0) {
-        return (
-            <div className="border-t border-slate-100 p-12 text-center">
-                <UserRound size={28} className="mx-auto text-slate-300 mb-2" />
-                <p className="text-sm font-medium text-slate-600">No drivers are holding inventory</p>
-                <p className="text-xs text-slate-500 mt-1">Hand keys, devices or equipment over to a driver and it'll show here, grouped by driver.</p>
-            </div>
-        );
-    }
-
-    return (
-        <>
-        <div className="border-t border-slate-100 divide-y divide-slate-100">
-            {shown.map((r) => {
-                const open = !!expanded[r.driver.id];
-                const chip = HANDED_STATUS_CHIP[r.status];
-                const ChipIcon = chip.icon;
-                const lic = (r.driver as any).licenseNumber as string | undefined;
-                return (
-                    <div key={r.driver.id}>
-                        {/* Driver header row */}
-                        <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
-                            <button
-                                type="button"
-                                onClick={() => setExpanded((e) => ({ ...e, [r.driver.id]: !e[r.driver.id] }))}
-                                className="flex items-center gap-3 min-w-0 flex-1 text-left"
-                            >
-                                {open ? <ChevronDown size={17} className="text-slate-400 shrink-0" /> : <ChevronRight size={17} className="text-slate-400 shrink-0" />}
-                                <div className={cn("h-9 w-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ring-1 ring-black/5", avatarTone(r.driver.id))}>
-                                    {driverInitials(r.driver)}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-sm font-semibold text-slate-900 truncate">{driverName(r.driver)}</div>
-                                    <div className="text-[11px] text-slate-500 truncate">
-                                        {lic ? `License ${lic}` : ""}{lic && r.assigneeName ? " · " : ""}{r.assigneeName ? `by ${r.assigneeName}` : ""}
-                                    </div>
-                                </div>
-                            </button>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <span className={cn("hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold", chip.cls)}>
-                                    {ChipIcon ? <ChipIcon size={13} /> : <span className={cn("h-1.5 w-1.5 rounded-full", chip.dot)} />}
-                                    {chip.label}
-                                </span>
-                                <span className="hidden lg:inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 whitespace-nowrap tabular-nums">
-                                    {r.total} item{r.total === 1 ? "" : "s"} · {r.verifiedCount}/{r.total} verified
-                                </span>
-                                <Button variant="outline" size="sm" onClick={() => setDirectFor(r.driver.id)}>
-                                    <PackageCheck size={14} /> Hand over
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => onNavigate(`/inventory/take-back/${r.driver.id}`)}>
-                                    <Undo2 size={14} /> Take back
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* Items grouped by category (read-only; take-back is done from the module) */}
-                        {open && (
-                            <div className="bg-slate-50/40 px-5 py-3 space-y-4">
-                                {r.groups.map((g) => {
-                                    const visual = visualFor(g.id);
-                                    const Icon = visual.icon;
-                                    return (
-                                        <div key={g.id}>
-                                            <div className="mb-1.5 flex items-center gap-2">
-                                                <div className={cn("h-6 w-6 rounded-md flex items-center justify-center", visual.bg, visual.text)}><Icon size={13} /></div>
-                                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{g.name}</p>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                {g.lines.map(({ item, qty, verified, requested }) => {
-                                                    const vendor = VENDORS.find((v) => v.id === item.vendorId);
-                                                    return (
-                                                        <div key={item.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="text-sm font-semibold text-slate-900 truncate">{vendor?.name ?? "—"}</div>
-                                                                <div className="text-[11px] text-slate-500 font-mono truncate">{item.serial}{item.pin ? ` · PIN ${item.pin}` : ""}</div>
-                                                            </div>
-                                                            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Qty {qty}</span>
-                                                            {requested ? (
-                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"><Undo2 size={11} /> Return requested</span>
-                                                            ) : verified ? (
-                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"><CircleCheck size={11} /> Received</span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">Pending</span>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
-        {directFor && (
-            <DirectHandoverDialog accountId={accountId} driverId={directFor} onClose={() => setDirectFor(null)} />
-        )}
-        </>
     );
 }
 
@@ -890,8 +742,12 @@ function CardTabs<T extends string>({ tabs, active, onChange }: {
     onChange: (t: T) => void;
 }) {
     return (
-        <div className="border-b border-slate-200 bg-slate-50/40 px-5 overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-1 -mb-px">
+        // The same rail as the driver and asset pages: chevrons only while there is more
+        // that way, a fade so cut-off tabs look cut off, and the active tab scrolled into
+        // view when it changes. Twelve categories do not fit, and `no-scrollbar` hid the
+        // only thing that used to say so — the row just stopped mid-word at "Safe".
+        <div className="border-b border-slate-200 bg-slate-50/40 px-5">
+            <TabScroller ariaLabel="Inventory categories" activeKey={active}>
                 {tabs.map((t) => {
                     const isActive = active === t.id;
                     return (
@@ -899,6 +755,7 @@ function CardTabs<T extends string>({ tabs, active, onChange }: {
                             key={t.id}
                             type="button"
                             onClick={() => onChange(t.id)}
+                            data-tab-active={isActive || undefined}
                             className={cn(
                                 "inline-flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-colors",
                                 isActive
@@ -916,7 +773,8 @@ function CardTabs<T extends string>({ tabs, active, onChange }: {
                         </button>
                     );
                 })}
-            </div>
+            </TabScroller>
         </div>
     );
 }
+

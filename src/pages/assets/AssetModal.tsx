@@ -4,7 +4,7 @@ import {
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
     UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock, FileSignature,
-    Boxes, MessageSquare, PackageCheck, PenLine, Undo2, ArrowRight, X
+    Boxes, MessageSquare, PackageCheck, Undo2, ArrowRight, X
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -16,8 +16,8 @@ import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { useInventoryAdditions } from '@/pages/inventory/inventory-store';
 import { useDriverHandovers, handedToMap } from '@/pages/inventory/handovers.data';
 import { unassignedItems, rollupByAsset, VIA_LABEL, VIA_TONE } from '@/pages/inventory/inventory-rollup';
-import { getInventoryForCarrier, INVENTORY_ITEMS, itemName } from '@/pages/inventory/inventory.data';
-import { emptyAssetInventoryDraft, canBeHandedOver, type AssetInventoryDraft } from './asset-inventory-bridge';
+import { getInventoryForCarrier, INVENTORY_ITEMS, itemName, itemTravelsWithDriver } from '@/pages/inventory/inventory.data';
+import { emptyAssetInventoryDraft, type AssetInventoryDraft } from './asset-inventory-bridge';
 import { MovementNotify, useMovementPlans } from '@/pages/inventory/MovementNotify';
 import { ItemPickList } from '@/pages/inventory/ItemPickList';
 import type { Movement } from '@/pages/inventory/inventory-movements';
@@ -587,17 +587,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         return {
             ...d,
             itemIds: on ? d.itemIds.filter(x => x !== id) : [...d.itemIds, id],
-            handIds: on ? d.handIds.filter(x => x !== id) : d.handIds,
         };
     });
-    const toggleHand = (id: string) => setInventoryDraft(d => {
-        const on = d.handIds.includes(id);
-        return {
-            ...d,
-            handIds: on ? d.handIds.filter(x => x !== id) : [...d.handIds, id],
-            itemIds: on || d.itemIds.includes(id) ? d.itemIds : [...d.itemIds, id],
-        };
-    });
+
 
     // Whoever is driving it according to THIS form, not the saved record: on a new asset
     // there is no saved record, and on an edit the driver may be changing in this very
@@ -634,7 +626,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     const cabItems = useMemo(
         () => (driverChanged
             ? (heldRow?.items ?? [])
-                .filter(h => h.via === 'carried' && !inventoryDraft.removeIds.includes(h.item.id))
+                .filter(h => h.via === 'returnable' && !inventoryDraft.removeIds.includes(h.item.id))
                 .map(h => h.item)
             : []),
         [driverChanged, heldRow, inventoryDraft.removeIds],
@@ -677,8 +669,10 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     // Of the ones coming off, the ones somebody is physically holding: kit in the cab, and
     // anything signed across. A spare key in a parked truck is already where it lives.
     const removedInHand = useMemo(
+        // Only what somebody is actually holding: a reefer sensor bolted to the truck is
+        // already where it lives, and nobody has to bring it anywhere.
         () => heldRows.filter(h => inventoryDraft.removeIds.includes(h.item.id)
-            && (h.via === 'carried' || h.via === 'handed')),
+            && h.via === 'returnable'),
         [heldRows, inventoryDraft.removeIds],
     );
 
@@ -690,8 +684,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     // Nobody to tell about a spare key that stays in a yarded truck: the message needs both
     // a driver and kit that actually travels with them.
     const handItems = useMemo(
-        () => freeItems.filter(it => inventoryDraft.handIds.includes(it.id)),
-        [freeItems, inventoryDraft.handIds],
+        () => [],
+        [],
     );
     // What the incoming driver would be asked to pick up: the cab's kit coming back the
     // other way, anything assigned that rides with them, and anything signed across.
@@ -716,7 +710,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
             }
         }
         for (const item of pickedItems) {
-            out.push({ kind: 'assign-vehicle', item, person: currentDriver, holderLabel: label, carried: inventoryDraft.carried });
+            // Per item, from the item: the preview has to say the same thing the save will.
+            out.push({ kind: 'assign-vehicle', item, person: currentDriver, holderLabel: label, carried: itemTravelsWithDriver(item) });
         }
         for (const item of handItems) {
             out.push({ kind: 'hand-over', item, person: currentDriver, holderLabel: label });
@@ -724,7 +719,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         if (inventoryDraft.askBack && currentDriver) {
             for (const h of removedInHand) {
                 out.push({
-                    kind: h.via === 'handed' ? 'take-back' : 'unassign-vehicle',
+                    kind: 'unassign-vehicle',
                     item: h.item, person: currentDriver, holderLabel: label, carried: true,
                 });
             }
@@ -732,7 +727,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         return out;
     }, [movingItems, pickedItems, handItems, removedInHand, previousDriver, currentDriver,
         inventoryDraft.changeover.askReturn, inventoryDraft.changeover.tellIncoming,
-        inventoryDraft.carried, inventoryDraft.askBack, watch('unitNumber')]);
+        inventoryDraft.askBack, watch('unitNumber')]);
 
     const inventoryPlans = useMovementPlans(inventoryMovements, inventoryDraft.notify);
 
@@ -810,7 +805,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
             case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
-            case 'inventory': return inventoryDraft.itemIds.length + inventoryDraft.handIds.length
+            case 'inventory': return inventoryDraft.itemIds.length
                 + inventoryDraft.changeover.itemIds.length + inventoryDraft.removeIds.length;
             // The document counts too — it is asked for in this section, so a section that has
             // one should not read the same as one that does not.
@@ -1214,58 +1209,23 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     </div>
                                 )}
 
-                                {/* Free to give out — the same two ticks, and the same idea of what
-                                    "free" means, as the Inventory assign page. */}
+                                {/* Free to give out — the same list, and the same idea of what
+                                    "free" means, as the Inventory assign page. One tick: where it
+                                    lands is the item's own answer, not asked again per vehicle. */}
                                 <ItemPickList
                                     items={freeItems}
                                     assigned={new Set(inventoryDraft.itemIds)}
-                                    handed={new Set(inventoryDraft.handIds)}
                                     onAssign={toggleItem}
-                                    onHand={toggleHand}
                                     holderNoun="vehicle"
-                                    handDriverName={currentDriver?.name}
-                                    handBlockedBecause={(item) => (
-                                        !currentDriver ? "No driver is assigned to this vehicle"
-                                            : !canBeHandedOver(item) ? "Hand-overs cover company-issued kit — assign this instead"
-                                            : null
+                                    destinationFor={(item) => (
+                                        itemTravelsWithDriver(item)
+                                            ? currentDriver?.name ?? 'whoever drives it'
+                                            : watch('unitNumber') || 'this vehicle'
                                     )}
-                                    stacked
-                                    maxHeight="max-h-80"
                                     emptyAll={<>Every item in this carrier’s inventory is already on a vehicle, a person or a hand-over.</>}
                                 />
 
-                                {/* A hand-over is signed for. Whoever is doing it signs it — the office
-                                    should not be typing its own name into a receipt. */}
-                                {inventoryDraft.handIds.length > 0 && currentDriver && (
-                                    <p className="flex items-start gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2.5 text-[11px] leading-snug text-slate-600">
-                                        <PenLine size={13} className="mt-0.5 shrink-0 text-violet-600" />
-                                        <span>
-                                            <span className="block font-bold text-violet-800">
-                                                {inventoryDraft.handIds.length} signed across to {currentDriver.name}
-                                            </span>
-                                            Goes onto their hand-over checklist, signed by you. They confirm receipt in the
-                                            driver app, which is what moves it to verified.
-                                        </span>
-                                    </p>
-                                )}
 
-                                {/* Stays with the truck, or rides with the driver — the difference the
-                                    inventory list shows as "On vehicle" against "Carried". */}
-                                {inventoryDraft.itemIds.length > 0 && (
-                                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
-                                        <input type="checkbox" checked={inventoryDraft.carried}
-                                            onChange={e => setInv({ carried: e.target.checked })}
-                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                        <span className="min-w-0">
-                                            <span className="block text-[13px] font-semibold text-slate-800">Carried by whoever drives this vehicle</span>
-                                            <span className="block text-[11px] leading-snug text-slate-500">
-                                                {currentDriver
-                                                    ? <>For things that live in the cab — a fuel card, a toll transponder. Currently <span className="font-semibold text-slate-700">{currentDriver.name}</span>, read from the vehicle, so it follows a change of driver.</>
-                                                    : "For things that live in the cab. No driver is assigned above yet, so this follows whoever is assigned later."}
-                                            </span>
-                                        </span>
-                                    </label>
-                                )}
 
                                 {/* Tell them — the same block the Add Inventory form and the assign
                                     page show, so the office reads the messages it is about to send
@@ -1275,12 +1235,12 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     state={inventoryDraft.notify}
                                     onChange={(next) => setInv({ notify: { ...inventoryDraft.notify, ...next } })}
                                     emptyHint={
-                                        inventoryDraft.itemIds.length === 0 && inventoryDraft.handIds.length === 0
+                                        inventoryDraft.itemIds.length === 0
                                             && inventoryDraft.removeIds.length === 0 && movingItems.length === 0
                                             ? <>Nothing is changing hands yet. Pick something from the list above, or change the driver, and the messages it needs will be drafted here.</>
                                             : !currentDriver
                                                 ? <>Nobody drives this vehicle yet. Assign a driver in <span className="font-semibold">Driver Assignment</span> above and the messages can go out with the save.</>
-                                                : <>This kit stays with the vehicle, so nobody has to collect or return anything. Tick <span className="font-semibold">Carried by whoever drives this vehicle</span> if it rides in the cab.</>
+                                                : <>This kit stays with the vehicle, so nobody has to collect or return anything — the <span className="font-semibold">Goes to</span> column says which of the two each item is.</>
                                     }
                                 />
                             </div>

@@ -17,36 +17,45 @@
 //     says which route put it there.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { driverOfAsset, inventoryMonitoring, type InventoryItem } from "./inventory.data";
+import { driverOfAsset, inventoryMonitoring, itemTravelsWithDriver, type InventoryItem } from "./inventory.data";
 import { driversFor, assetsFor, resolveAsset, resolveDriver, daysUntil } from "./inventory-assignment";
 import type { HandoverStatus } from "./handovers.data";
 
 export type HolderKind = "driver" | "asset";
 
 /**
- * How an item reached the holder. Mirrors `resolveDriver`'s three routes.
+ * The two things an item can be, which is the item's own answer:
  *
- *   direct  — assigned to the holder itself (to the person, or sitting with the vehicle).
- *   carried — goes with a vehicle and is in the hands of whoever drives it.
- *   handed  — on a driver's signed hand-over checklist.
+ *   returnable — travels with whoever drives the vehicle. Somebody has it, and it has to
+ *                come back when they stop driving it.
+ *   removable  — fitted to the vehicle. Nobody carries it; it comes off with a spanner.
+ *
+ * This replaced "direct / carried / handed", which described how an item REACHED a holder
+ * and needed three words because inventory could be filed against a person, against a
+ * vehicle, or onto a signed checklist. It is filed against a vehicle now, always, so how it
+ * got there was never a question worth a column.
  */
-export type HeldVia = "direct" | "carried" | "handed";
+export type HeldVia = "returnable" | "removable";
 export type ViaCounts = Record<HeldVia, number>;
 
-/** One item on a holder's pile, with the route that put it there. */
+/** One item on a holder's pile. */
 export type HeldItem = { item: InventoryItem; via: HeldVia };
 
 export const VIA_LABEL: Record<HolderKind, Record<HeldVia, string>> = {
-    driver: { direct: "Assigned", carried: "Carried", handed: "Handed" },
-    asset: { direct: "On vehicle", carried: "Carried", handed: "Handed" },
+    driver: { returnable: "Returnable", removable: "On the vehicle" },
+    asset: { returnable: "Driver returnable", removable: "Asset removable" },
 };
 
-/** One tone per route, used by the columns, the chips and the expanded rows alike. */
 export const VIA_TONE: Record<HeldVia, { chip: string; bar: string; text: string }> = {
-    direct: { chip: "border-emerald-200 bg-emerald-50 text-emerald-700", bar: "bg-emerald-400", text: "text-emerald-700" },
-    carried: { chip: "border-indigo-200 bg-indigo-50 text-indigo-700", bar: "bg-indigo-400", text: "text-indigo-700" },
-    handed: { chip: "border-violet-200 bg-violet-50 text-violet-700", bar: "bg-violet-400", text: "text-violet-700" },
+    returnable: { chip: "border-blue-200 bg-blue-50 text-blue-700", bar: "bg-blue-400", text: "text-blue-700" },
+    removable: { chip: "border-slate-200 bg-slate-50 text-slate-600", bar: "bg-slate-400", text: "text-slate-600" },
 };
+
+/** Which of the two an item is. One resolver, so every list agrees. */
+export const viaOf = (item: InventoryItem): HeldVia =>
+    itemTravelsWithDriver(item) ? "returnable" : "removable";
+
+const NO_COUNTS = (): ViaCounts => ({ returnable: 0, removable: 0 });
 
 export type HolderRow = {
     id: string;
@@ -105,13 +114,16 @@ export function rollupByDriver(
     const byId = new Map<string, HeldItem[]>();
     const via = new Map<string, ViaCounts>();
 
+    // A driver holds the RETURNABLE half of whatever they are driving. Nothing is filed
+    // against a person any more, so this is a view of the vehicle's pile rather than a
+    // second record that has to be kept in step with it.
     for (const item of items) {
+        if (!itemTravelsWithDriver(item)) continue;
         const held = resolveDriver(item.assignedTo, accountId, handedTo.get(item.id));
         if (!held) continue;
-        if (!byId.has(held.id)) { byId.set(held.id, []); via.set(held.id, { direct: 0, carried: 0, handed: 0 }); }
-        const route: HeldVia = held.via === "assigned" ? "direct" : held.via === "drives" ? "carried" : "handed";
-        byId.get(held.id)!.push({ item, via: route });
-        via.get(held.id)![route]++;
+        if (!byId.has(held.id)) { byId.set(held.id, []); via.set(held.id, NO_COUNTS()); }
+        byId.get(held.id)!.push({ item, via: "returnable" });
+        via.get(held.id)!.returnable++;
     }
 
     const rows: HolderRow[] = driversFor(accountId).map((d: any) => {
@@ -124,7 +136,7 @@ export function rollupByDriver(
             status: d.status ?? "Active",
             statusTone: DRIVER_TONE[d.status] ?? "slate",
             items: mine,
-            via: via.get(d.id) ?? { direct: 0, carried: 0, handed: 0 },
+            via: via.get(d.id) ?? NO_COUNTS(),
             ...tally(mine),
         };
     });
@@ -144,7 +156,9 @@ export function rollupByDriver(
 export function rollupByAsset(
     items: InventoryItem[],
     accountId: string | undefined,
-    handedTo: HandedMap,
+    // Kept in the signature so every caller reads the same way; a vehicle's pile is decided
+    // by what is filed against it, and a signed checklist no longer changes that.
+    _handedTo: HandedMap,
 ): HolderRow[] {
     const byId = new Map<string, HeldItem[]>();
     const via = new Map<string, ViaCounts>();
@@ -152,11 +166,9 @@ export function rollupByAsset(
     for (const item of items) {
         const on = resolveAsset(item.assignedTo, accountId);
         if (!on) continue;
-        if (!byId.has(on.id)) { byId.set(on.id, []); via.set(on.id, { direct: 0, carried: 0, handed: 0 }); }
-        // On an asset, "carried" means the item goes with whoever drives it, and "handed"
-        // means it is also on a signed checklist. Everything else sits with the vehicle.
-        const route: HeldVia = handedTo.has(item.id) ? "handed"
-            : item.assignedTo?.alsoDriverOfAsset ? "carried" : "direct";
+        if (!byId.has(on.id)) { byId.set(on.id, []); via.set(on.id, NO_COUNTS()); }
+        // What it IS, not how it arrived: the item answers this on its own form.
+        const route = viaOf(item);
         byId.get(on.id)!.push({ item, via: route });
         via.get(on.id)![route]++;
     }
@@ -177,7 +189,7 @@ export function rollupByAsset(
             kindLabel: a.assetCategory === "Non-CMV" ? "Non-CMV" : "CMV",
             driverLabel: driver?.name,
             items: mine,
-            via: via.get(a.id) ?? { direct: 0, carried: 0, handed: 0 },
+            via: via.get(a.id) ?? NO_COUNTS(),
             ...tally(mine),
         };
     });
@@ -226,11 +238,14 @@ function sortRows(rows: HolderRow[]): HolderRow[] {
 export type RemoveAction = "unassign" | "unhand" | null;
 
 export function removeActionFor(
-    h: HeldItem, kind: HolderKind, holderId: string, hasHandDriver: boolean,
+    h: HeldItem, kind: HolderKind, holderId: string, _hasHandDriver: boolean,
 ): RemoveAction {
     const a = h.item.assignedTo;
-    if (h.via === "handed") return hasHandDriver ? "unhand" : null;
-    if (kind === "driver") return a?.kind === "driver" && a.targetId === holderId ? "unassign" : null;
+    // Inventory is filed against the VEHICLE, so the vehicle is the only place it can be
+    // taken off. A driver holds the returnable half of what they drive — that is a view
+    // of the truck's record, and the next render reads it straight back, so a button here
+    // would undo nothing.
+    if (kind === "driver") return null;
     return a && a.kind !== "driver" && a.targetId === holderId ? "unassign" : null;
 }
 

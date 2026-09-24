@@ -20,7 +20,6 @@ import {
     itemName,
     itemCategoryId,
     inventoryMonitoring,
-    driverOfAsset,
     type Assignment,
     type InventoryItem,
     type InventoryStatus,
@@ -33,9 +32,6 @@ import {
 import { useInventoryAdditions } from "./inventory-store";
 import { logInventoryEvent, describeChanges } from "./inventory-activity";
 import { currentUserName } from "@/data/users.data";
-import { planMovements, sendMovements } from "./inventory-movements";
-import { counterpartyOf, planKey, sendablePlans } from "./notify-state";
-import { driverNameOf } from "./inventory-assignment";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -185,29 +181,10 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
                 reminder: "None",
             };
             add(item);
-            // …and tell whoever it went to. An assignment nobody is told about is an
-            // assignment that surprises somebody later, so the message goes with the save.
-            const target = draft.assignmentKind === "driver" && draft.targetId
-                ? { id: draft.targetId, name: driverNameOf(draft.targetId, accountId) ?? "Driver" }
-                : draft.alsoDriverOfAsset && draft.targetId
-                    ? driverOfAsset(draft.targetId, accountId)
-                    : null;
-            if (target) {
-                // Through the planner, like every other surface that moves kit: one rule
-                // about who gets told, and one wording, however the item got here. The
-                // wording and the where / when come off the same block all three forms show.
-                const plans = planMovements([{
-                    kind: draft.assignmentKind === "driver" ? "assign-driver" : "assign-vehicle",
-                    item,
-                    person: target,
-                    carried: draft.assignmentKind !== "driver",
-                }], {
-                    counterparty: counterpartyOf(draft.notify),
-                    dueAt: draft.notify.dueAt || undefined,
-                }).map((p) => ({ ...p, note: draft.notify.notes[planKey(p)] ?? p.note }));
-                sendMovements(sendablePlans(plans, draft.notify),
-                    { accountId: accountId ?? "acct-001", issuedBy: capturedBy() });
-            }
+            // Nothing is sent from here. Telling a driver to come and collect something was
+            // the "Tell them" step — where you saw the message and could change it before it
+            // went — and that step went with the assignment card. The assign flow still sends,
+            // because that is where somebody chooses to move the kit and can read what goes.
             logInventoryEvent({
                 itemId: item.id, accountId: accountId ?? "acct-001", kind: "created",
                 title: "Added to inventory", by: capturedBy(), role: "Office",
@@ -243,7 +220,7 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
                 onBack={() => onNavigate("/inventory")}
                 icon={Boxes}
                 title={title}
-                subtitle="Item details, dates, alert and assignment."
+                subtitle="Item details, dates and alert."
                 actions={
                     <>
                         <button

@@ -29,6 +29,7 @@ import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
 import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
 import { InventoryItemDetailPage } from '@/pages/inventory/InventoryItemDetailPage'
 import { InventoryHoldersPage } from '@/pages/inventory/InventoryHoldersPage'
+import { HolderDetailPage } from '@/pages/inventory/HolderDetailPage'
 import { AssignInventoryPage } from '@/pages/inventory/AssignInventoryPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
 import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
@@ -471,6 +472,21 @@ function App() {
                     onNavigate={handleNavigate}
                     accountId={account?.id}
                     preset={{ kind: seg === "drivers" ? "driver" : "asset", targetId: id }}
+                />
+            )
+        }
+        // ".../<id>" is that holder's own page — four tabs, rather than a row that expands
+        // inside the list of every other holder.
+        if (/^\/inventory\/(drivers|assets)\/[^/]+$/.test(path)) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const [, , seg, id] = path.split("/")
+            return (
+                <HolderDetailPage
+                    onNavigate={handleNavigate}
+                    kind={seg === "drivers" ? "driver" : "asset"}
+                    holderId={id}
+                    accountId={account?.id}
                 />
             )
         }

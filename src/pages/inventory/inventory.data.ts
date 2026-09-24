@@ -171,6 +171,30 @@ export type InventoryItem = {
 // ── What an item is called ───────────────────────────────────────
 
 /**
+ * Categories whose things are FITTED to a vehicle rather than carried by a person.
+ *
+ * An ELD, a toll transponder, a dashcam, a tracker: nobody puts one in their pocket, and
+ * taking it back means going to the truck with a screwdriver.
+ */
+const FITTED_CATEGORIES = ["cat-eld-provider", "cat-transponder", "cat-dashcam", "cat-gps-tracking"];
+
+/**
+ * Does this item travel with whoever drives the vehicle, or stay on it?
+ *
+ * The item's own answer where it has one — `handling`, asked on its form. Everything from
+ * before that field existed has none, and defaulting those to "stays on the vehicle" would
+ * quietly stop every fuel card in the fleet travelling with the driver who uses it. So the
+ * fallback makes the same judgement from the category: fitted kit stays, the rest goes.
+ */
+export function itemTravelsWithDriver(
+    item: Pick<InventoryItem, "handling" | "categoryId" | "vendorId">,
+    vendors: Vendor[] = VENDORS,
+): boolean {
+    if (item.handling) return item.handling === "driver-returnable";
+    return !FITTED_CATEGORIES.includes(itemCategoryId(item, vendors));
+}
+
+/**
  * The category an item is IN: its own, falling back to the one its vendor sells. Every list,
  * tab and icon reads this rather than the vendor, so an item recategorised on its own form
  * moves everywhere at once.
@@ -576,14 +600,15 @@ function statusForExpiry(expiryDate: string): InventoryStatus {
 
 function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undefined {
     const assets = CARRIER_ASSETS[vendor.accountId] ?? [];
-    const drivers = CARRIER_DRIVERS[vendor.accountId] ?? [];
     const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");
     const nonCmv = assets.filter((a) => a.assetCategory === "Non-CMV");
-    const activeDrivers = drivers.filter((d) => d.status === "Active");
 
+    // A dashcam is fitted to a vehicle and comes off with it, never with the driver —
+    // itemTravelsWithDriver() has said so all along. Filing it against a person was the
+    // one place the seed contradicted the model it is read through.
     if (vendor.categoryId === "cat-dashcam") {
-        const driver = activeDrivers[offset % Math.max(activeDrivers.length, 1)];
-        return driver ? { kind: "driver", targetId: driver.id } : undefined;
+        const cam = trucks[offset % Math.max(trucks.length, 1)] ?? assets[offset % Math.max(assets.length, 1)];
+        if (cam) return { kind: cam.assetCategory === "Non-CMV" ? "non-cmv" : "cmv", targetId: cam.id };
     }
 
     if (vendor.categoryId === "cat-gps-tracking") {
@@ -609,8 +634,9 @@ function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undef
         };
     }
 
-    const driver = activeDrivers[offset % Math.max(activeDrivers.length, 1)];
-    return driver ? { kind: "driver", targetId: driver.id } : undefined;
+    // A carrier with no assets at all has nothing to assign to, and "assigned" means on a
+    // vehicle. Unassigned is the true answer; a driver is not a fallback for one.
+    return undefined;
 }
 
 function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
@@ -729,7 +755,6 @@ for (const accountId of Object.keys(CARRIER_ASSETS)) {
     const assets = CARRIER_ASSETS[accountId] ?? [];
     const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");
     if (trucks.length === 0) continue;
-    const activeDrivers = (CARRIER_DRIVERS[accountId] ?? []).filter((d) => d.status === "Active");
     const list = CARRIER_INVENTORY_ITEMS[accountId] ??= [];
     COMPANY_ACCESSORIES.forEach((def, i) => {
         const vendorId = `v-acc-${accountId}-${i}`;
@@ -755,13 +780,14 @@ for (const accountId of Object.keys(CARRIER_ASSETS)) {
             recurrence: rec,
             reminder: hasExpiry && i % 8 !== 5 ? "1 month" : "None",
             status: statusForExpiry(expiryDate),
-            // Yard stock is on nobody; personal issue is on a driver; everything else is on
-            // a truck, and some of that is in the hands of whoever drives it.
+            // Yard stock is on nobody. Everything else is on a TRUCK — including the vest
+            // and the uniform, which are sized to a person but still issued against the
+            // vehicle they climb into: driver-returnable means it goes back when the
+            // driver hands the truck over, which is a fact about the truck's crew, not a
+            // second place to file the item.
             assignedTo: def.yardStock
                 ? undefined
-                : def.toDriver && activeDrivers.length
-                    ? { kind: "driver", targetId: activeDrivers[i % activeDrivers.length].id }
-                    : { kind: "cmv", targetId: truck.id, alsoDriverOfAsset: !!def.withDriver },
+                : { kind: "cmv", targetId: truck.id, alsoDriverOfAsset: !!(def.withDriver || def.toDriver) },
         });
     });
 }

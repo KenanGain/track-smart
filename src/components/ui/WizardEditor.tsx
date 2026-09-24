@@ -62,6 +62,77 @@ export function WizardStepNav({ steps, active, onGo, completionFor }: {
     );
 }
 
+/**
+ * The same steps, laid across the top.
+ *
+ * For a short flow that is genuinely sequential — pick what moves, then say who to tell —
+ * where the side rail's "complete each section" is the wrong promise and its column is more
+ * chrome than the form. Steps behind the current one are ticked and clickable; steps ahead
+ * are reachable too, because nothing here is a gate.
+ */
+export function WizardStepBar({ steps, active, onGo, completionFor, className }: {
+    steps: readonly WizardStep[];
+    active: string;
+    onGo: (id: string) => void;
+    /** How many answers a step holds, for its tick and its count chip. */
+    completionFor?: (id: string) => number;
+    className?: string;
+}) {
+    const activeIdx = steps.findIndex((s) => s.id === active);
+    return (
+        <div className={cn('border-b border-slate-200 bg-white px-6 py-3', className)}>
+            <ol className="mx-auto flex w-full max-w-4xl items-center gap-2">
+                {steps.map((s, idx) => {
+                    const Icon = s.icon;
+                    const isActive = active === s.id;
+                    const behind = idx < activeIdx;
+                    const count = completionFor?.(s.id) ?? 0;
+                    return (
+                        <React.Fragment key={s.id}>
+                            {idx > 0 && (
+                                // The line between two steps, filled in as far as you have got.
+                                <span aria-hidden className={cn('h-px min-w-6 flex-1', behind || isActive ? 'bg-blue-200' : 'bg-slate-200')} />
+                            )}
+                            <li>
+                                <button
+                                    type="button"
+                                    onClick={() => onGo(s.id)}
+                                    aria-current={isActive ? 'step' : undefined}
+                                    className={cn(
+                                        'flex items-center gap-2.5 rounded-full border py-1.5 pl-1.5 pr-3.5 transition-colors',
+                                        isActive
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                            : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700',
+                                    )}
+                                >
+                                    <span className={cn(
+                                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                                        isActive ? 'bg-blue-600 text-white'
+                                            : behind || count > 0 ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-slate-100 text-slate-500',
+                                    )}>
+                                        {!isActive && (behind || count > 0) ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+                                    </span>
+                                    <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-blue-600' : 'text-slate-400')} />
+                                    <span className="whitespace-nowrap text-sm font-semibold">{s.label}</span>
+                                    {count > 0 && (
+                                        <span className={cn(
+                                            'rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                                            isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500',
+                                        )}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            </li>
+                        </React.Fragment>
+                    );
+                })}
+            </ol>
+        </div>
+    );
+}
+
 /** Section header bar — icon tile + title + subtitle + optional right slot. */
 export function WizardSectionHeader({ icon: Icon, title, subtitle, right }: {
     icon: React.ElementType;

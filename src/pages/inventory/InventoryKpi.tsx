@@ -15,18 +15,31 @@ export type KpiAccent = keyof typeof ACCENT_CLS;
 
 /** KPI tile matching the carrier-compliance list: left accent bar, tinted icon
  *  chip, uppercase label, big value. Shared across the inventory pages. */
-export function KpiTile({ label, value, Icon, accent }: {
+export function KpiTile({ label, value, Icon, accent, onClick, active }: {
     label: string;
     value: number | string;
     Icon: React.ComponentType<{ size?: number; className?: string }>;
     accent: KpiAccent;
+    /** Given one, the tile becomes the filter for what it counts. */
+    onClick?: () => void;
+    active?: boolean;
 }) {
     const cls = ACCENT_CLS[accent];
+    // A div when it does nothing, a button when it does — rather than a div that happens to
+    // have a click handler, which the keyboard cannot reach.
+    const Tag = onClick ? "button" : "div";
     return (
-        <div className={cn(
-            "bg-white border border-slate-200 border-l-4 rounded-xl p-3 shadow-sm flex items-center justify-between gap-3",
-            cls.border,
-        )}>
+        <Tag
+            type={onClick ? "button" : undefined}
+            onClick={onClick}
+            aria-pressed={onClick ? !!active : undefined}
+            className={cn(
+                "bg-white border border-slate-200 border-l-4 rounded-xl p-3 shadow-sm flex items-center justify-between gap-3 text-left",
+                cls.border,
+                onClick && "transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40",
+                active && "ring-2 ring-blue-500/40",
+            )}
+        >
             <div className="min-w-0">
                 <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center mb-2", cls.iconBg)}>
                     <Icon size={14} className={cls.iconColor} />
@@ -34,6 +47,6 @@ export function KpiTile({ label, value, Icon, accent }: {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">{label}</div>
             </div>
             <div className="text-2xl font-black tabular-nums text-slate-900 leading-none">{value}</div>
-        </div>
+        </Tag>
     );
 }
