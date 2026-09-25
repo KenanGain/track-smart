@@ -28,7 +28,9 @@ import {
     rollupByDriver, rollupByAsset, rollupTotals,
     VIA_LABEL, VIA_TONE, type HeldVia, type HolderKind, type HolderRow,
 } from "./inventory-rollup";
-import { ColumnPicker, FilterChip, TableGroupBand, type PickerColumn } from "@/components/ui/ListChrome";
+import {
+    ColumnPicker, FilterChip, ResetFilters, TableGroupBand, type PickerColumn,
+} from "@/components/ui/ListChrome";
 import { useDriverDqFiles } from "@/pages/dq-files/dq-driver-files.data";
 import { DQ_DRIVER_TYPES, type DqDriverTypeId } from "@/pages/settings/settings-dq-checklists.data";
 import { KebabMenu } from "@/components/ui/KebabMenu";
@@ -444,6 +446,18 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                 >
                                     {groupOptions.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                                 </select>
+                                {/* The KPI tiles are a filter too, so a holder list can be
+                                    narrowed four ways at once. */}
+                                <ResetFilters
+                                    on={loadFilter !== "all" || dqFilter !== "all"
+                                        || groupBy !== "none" || search.trim() !== ""}
+                                    onReset={() => {
+                                        setLoadFilter("all");
+                                        setDqFilter("all");
+                                        setGroupBy("none");
+                                        setSearch("");
+                                    }}
+                                />
                             </div>
                         )}
 
@@ -603,7 +617,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                                             <KebabMenu items={[
                                                                 { label: isDriver ? "Open driver" : "Open asset", icon: ExternalLink, onClick: () => onNavigate(`${back}/${r.id}`) },
                                                                 ...(isDriver ? [] : [
-                                                                    { label: "Assignment", icon: ClipboardList, onClick: () => onNavigate(`${back}/${r.id}/assign`) },
+                                                                    { label: "Manage inventory", icon: ClipboardList, onClick: () => onNavigate(`${back}/${r.id}/assign`) },
                                                                 ]),
                                                                 { label: "Share to chat", icon: Share2, onClick: () => setSharing(r) },
                                                             ]} />

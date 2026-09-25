@@ -57,31 +57,79 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
         );
     }
 
-    const collects = plans.filter((p) => p.direction === "collect").length;
+    // Two different messages, and the switch only governs one of them.
+    const collects = plans.filter((p) => p.direction === "collect");
+    const returns = plans.filter((p) => p.direction === "return");
+    /** What is left on screen once the switch is off. */
+    const shown = state.notify ? plans : returns;
 
     return (
         <div className="space-y-3">
-            {collects > 0 && (
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
-                    <input
-                        type="checkbox" checked={state.notify}
-                        onChange={(e) => onChange({ notify: e.target.checked })}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
-                    />
-                    <span className="min-w-0">
-                        <span className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800">
-                            <MessageSquare size={13} className="text-blue-600" />
-                            Send {plans.length === 1 ? "this message" : `these ${plans.length} messages`} when you save
-                        </span>
-                        {/* Nobody can collect what they were never told about, which is why this
-                            goes with the save rather than being a thing to remember afterwards. */}
-                        <span className="block text-[11px] leading-snug text-slate-500">
-                            Each one lands in their chat as a checklist they tick off in the driver app.
-                            What they confirm comes back onto the item.
-                        </span>
+            {/* The switch, at the top, and the form below is what it switches. It used to be
+                a tick in the MIDDLE of the step, under a message and a deadline that were on
+                screen whether or not anything was going to be sent.
+
+                Only where there is a collection for it to govern: a switch beside a lone
+                hand-back would claim to turn off something it does not control. */}
+            {collects.length > 0 && (
+            <div className={cn(
+                "flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors",
+                state.notify ? "border-blue-200 bg-blue-50/50" : "border-slate-200 bg-slate-50",
+            )}>
+                <span className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                    state.notify ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-500",
+                )}>
+                    <MessageSquare size={15} />
+                </span>
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-bold text-slate-800">
+                        {collects.length === 1
+                            ? "Ask them to collect it"
+                            : `Ask them to collect these ${collects.length} times`} when you save
                     </span>
-                </label>
+                    {/* Nobody can collect what they were never told about, which is why this
+                        goes with the save rather than being a thing to remember afterwards. */}
+                    <span className="block text-[11px] leading-snug text-slate-500">
+                        {state.notify
+                            ? "It lands in their chat as a checklist they tick off in the driver app. What they confirm comes back onto the item."
+                            : "The kit still goes onto the vehicle. Nobody is asked to come for it."}
+                    </span>
+                </span>
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={state.notify}
+                    aria-label="Send these messages when you save"
+                    onClick={() => onChange({ notify: !state.notify })}
+                    className={cn(
+                        "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                        state.notify ? "bg-blue-600" : "bg-slate-300",
+                    )}
+                >
+                    <span className={cn(
+                        "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
+                        state.notify ? "left-[22px]" : "left-0.5",
+                    )} />
+                </button>
+            </div>
             )}
+
+            {/* What the switch does NOT govern, said where somebody might assume it did.
+                Taking kit off the record does not take it out of a pocket, so the hand-back
+                goes either way — and it is still on screen below to be worded. */}
+            {!state.notify && returns.length > 0 && (
+                <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-[12px] leading-snug text-amber-800">
+                    <Info size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                    <span className="min-w-0">
+                        {returns.length === 1 ? "One hand-back is" : `${returns.length} hand-backs are`} still
+                        going out. Somebody is carrying kit this save takes off the record, and not
+                        asking for it is how it stays in a pocket.
+                    </span>
+                </p>
+            )}
+
+            {shown.length > 0 && (<>
 
             {/* Where and when, once for the whole save: somebody making one trip does not
                 want two different deadlines. */}
@@ -136,16 +184,14 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
 
             {/* One card per message. Two of them is the normal shape of a driver change:
                 one person drops off, the other picks up. */}
-            {plans.map((p) => {
+            {shown.map((p) => {
                 const key = planKey(p);
                 const edited = state.notes[key] !== undefined;
                 const back = p.direction === "return";
-                const muted = !back && !state.notify;
                 return (
                     <div key={key} className={cn(
                         "overflow-hidden rounded-xl border transition-opacity",
                         back ? "border-amber-200" : "border-blue-200",
-                        muted && "opacity-50",
                     )}>
                         <div className={cn(
                             "flex flex-wrap items-center gap-2 border-b px-3 py-2",
@@ -178,8 +224,7 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
                             <p className="text-[11px] text-slate-500">
                                 {/* An edit somebody made is theirs; the draft stops rewriting
                                     itself once they have typed. */}
-                                {muted ? "Not being sent — tick the box above to send it."
-                                    : edited ? "Your wording — it will not be rewritten if the list changes."
+                                {edited ? "Your wording — it will not be rewritten if the list changes."
                                     : "Drafted from what is moving. Type to make it yours."}
                             </p>
                             <div className="flex gap-1.5">
@@ -206,6 +251,7 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
                     </div>
                 );
             })}
+            </>)}
         </div>
     );
 }

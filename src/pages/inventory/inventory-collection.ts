@@ -65,6 +65,8 @@ export function draftMovementNote(input: {
     lines: CollectionLine[];
     counterparty?: Counterparty;
     dueAt?: string;
+    /** The vehicle this kit belongs to, named in the message. */
+    holderLabel?: string;
 }): string {
     const who = input.driverName.trim().split(/\s+/)[0] || "there";
     const n = input.lines.length;
@@ -75,14 +77,19 @@ export function draftMovementNote(input: {
     const by = input.dueAt ? ` by ${formatDue(input.dueAt)}` : "";
     const signing = input.lines.some((l) => l.route === "handed");
 
+    // Which vehicle it is for. A driver who runs three units this month cannot act on
+    // "collect two items" without being told which truck they belong to.
+    const unit = input.holderLabel?.trim();
+    const forUnit = unit ? ` for ${unit}` : "";
+
     if (input.direction === "collect") {
-        return `Hi ${who} — you’ve been assigned ${what}. Please collect ${it} from ${person || "the office"}${by}:\n${list}\n\n`
+        return `Hi ${who} — you’ve been assigned ${what}${forUnit}. Please collect ${it} from ${person || "the office"}${by}:\n${list}\n\n`
             + (signing
                 ? "You’ll be asked to sign for these when you pick them up."
                 : "Tick them off below once you have them.");
     }
     const drop = person ? `hand ${it} to ${person}` : `drop ${it} back to the office`;
-    return `Hi ${who} — could you ${drop}${by}:\n${list}\n\n`
+    return `Hi ${who} — could you ${drop}${by}${unit ? `, ${what} from ${unit}` : ""}:\n${list}\n\n`
         + "Tick them off below once you have handed them in.";
 }
 

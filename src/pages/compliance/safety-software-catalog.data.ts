@@ -1179,6 +1179,54 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
     // is filled in from the carrier's insurance record rather than retyped per truck, where a
     // hundred chances to mistype it is a hundred pink slips that do not match the policy.
     // Still an ordinary editable field: a vehicle insured separately says so by overtyping it.
+    // ── What condition it is in ──────────────────────────────────────────
+    // Both of these are the same shape: done on a date, at a reading, due again. The date it
+    // was last done is the issue date, the date it is next due is what it is monitored on —
+    // so "next due" is not a field somebody maintains by hand, it is the thing the alert
+    // fires on, and a truck whose inspection has lapsed is found by the office rather than
+    // at the scale.
+    { id: 'annual-safety', category: 'Maintenance & Inspection', entity: 'Asset', type: 'DC', docRequirement: 'required',
+      recordName: 'Annual Safety', description: 'Annual Safety Inspection',
+      numberName: '', documentName: 'Annual Safety Inspection Certificate',
+      recurring: 'Annual', monitorType: 'Next due date', jurisdiction: 'Inspecting jurisdiction',
+      tracksIssueDate: true, issueLabel: 'Last annual safety date',
+      nameFromRecord: true, monitorByDefault: true,
+      textFields: [
+          // The reading it was done at. Kept beside the date because an inspection is due on
+          // whichever comes first — the year or the distance — and a date with no odometer
+          // beside it cannot answer the second half of that.
+          { key: 'odometer', label: 'Odometer', order: 1, placeholder: 'e.g. 412,500',
+            demoValues: ['312,480', '512,900', '188,340'] },
+      ],
+      selectFields: [
+          { key: 'odometerUnit', label: 'Odometer unit', order: 2, options: ['miles', 'km'],
+            // Every reading on file was taken before the unit was asked for, and a fleet
+            // reads its own odometers in one unit — a guess per record would be worse.
+            priorValue: 'miles' },
+      ],
+      monitor: 'The next due date, armed by default — an expired safety inspection takes the vehicle off the road, and it is the officer at the scale who finds it otherwise.' },
+    { id: 'annual-pm', category: 'Maintenance & Inspection', entity: 'Asset', type: 'DC', docRequirement: 'required',
+      recordName: 'Annual Preventive Maintenance', description: 'Scheduled preventive-maintenance service',
+      numberName: '', documentName: 'Preventive Maintenance Record',
+      recurring: 'Annual', monitorType: 'Next due date', jurisdiction: 'Servicing location',
+      tracksIssueDate: true, issueLabel: 'Last PM date',
+      // Done in a shop, not by a jurisdiction: there is no issuing state to ask for.
+      hideCountry: true,
+      nameFromRecord: true, monitorByDefault: true,
+      textFields: [
+          // The reading it was done at. Kept beside the date because an inspection is due on
+          // whichever comes first — the year or the distance — and a date with no odometer
+          // beside it cannot answer the second half of that.
+          { key: 'odometer', label: 'Odometer', order: 1, placeholder: 'e.g. 412,500',
+            demoValues: ['312,480', '512,900', '188,340'] },
+      ],
+      selectFields: [
+          { key: 'odometerUnit', label: 'Odometer unit', order: 2, options: ['miles', 'km'],
+            // Every reading on file was taken before the unit was asked for, and a fleet
+            // reads its own odometers in one unit — a guess per record would be worse.
+            priorValue: 'miles' },
+      ],
+      monitor: 'The next service due date, armed by default. A missed PM is not a citation on its own — it is the breakdown, and the maintenance history a claim is argued from.' },
     { id: 'pink-slip', category: 'Insurance', entity: 'Asset', type: 'DC', docRequirement: 'required',
       recordName: 'Pink Slip', description: 'Vehicle Proof of Insurance', numberName: 'Liability Policy Number', documentName: 'Proof of Automobile Insurance Card (Pink Slip)',
       recurring: 'Yes', monitorType: 'Slip expiry', jurisdiction: 'Issuing insurance jurisdiction',
@@ -1687,6 +1735,10 @@ export const SAFETY_CATEGORY_ORDER = [
     // whose it is — plus the proof of insurance carried in its cab. ('Insurance' is shared with
     // the carrier: it is the same heading, one holding policies and the other the card.)
     'Ownership & Plating',
+    // What condition the vehicle is IN, as opposed to whose it is: the annual safety
+    // inspection that keeps it legal on the road, and the preventive maintenance that keeps
+    // it fit to be. Both are done at a date and an odometer reading, and both fall due again.
+    'Maintenance & Inspection',
     // Retired asset headings. Nothing in the catalog files under these any more, and the picker
     // no longer offers them — they are kept because a carrier's own custom record may already
     // have been filed under one, and a category no list knows about loses its tab and its chip.
@@ -1708,7 +1760,7 @@ export type SafetyCategory = typeof SAFETY_CATEGORY_ORDER[number];
 export const SAFETY_CATEGORIES_BY_ENTITY: Record<EntityId, SafetyCategory[]> = {
     Carrier: ['Operating Authority', 'Safety & Regulatory Permits', 'Carrier Codes & Certifications', 'Insurance', 'Other'],
     Driver: ['Personal Documents', 'Travel Documents', 'Abstracts & Annual Reviews', 'Pre-Employment', 'Disciplinary Records', 'Other'],
-    Asset: ['Ownership & Plating', 'Insurance', 'Other'],
+    Asset: ['Ownership & Plating', 'Maintenance & Inspection', 'Insurance', 'Other'],
 };
 
 // Display order for the record-type switch — "Compliance & Documents" first.

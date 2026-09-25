@@ -11,11 +11,16 @@ import { planMovements, OFFICE, type Counterparty, type Movement, type MovementP
 
 export interface NotifyState {
     /**
-     * The master tick.
+     * The "tell them to come and get it" switch.
      *
-     * It silences COLLECTIONS only. A hand-back has its own reason to exist: somebody is
-     * holding something the office has just taken off the record, and not asking for it is
-     * how a fuel card stays in a pocket with the record saying otherwise.
+     * COLLECTIONS only, and deliberately. A hand-back is a different fact: somebody is
+     * holding kit the office has just taken off the record, and not asking for it is how a
+     * fuel card stays in a pocket with the record saying otherwise. The asset wizard has a
+     * separate `askBack` answer for exactly that, and folding the two together would make
+     * one switch silently override the other.
+     *
+     * The form says which of the two it is hiding, so "off" never reads as "nothing will
+     * be sent" while a hand-back is on its way.
      */
     notify: boolean;
     counterKind: Counterparty["kind"];

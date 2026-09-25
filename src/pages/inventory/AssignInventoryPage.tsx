@@ -28,6 +28,7 @@ import {
     ChevronLeft, ChevronRight, PackageCheck,
 } from "lucide-react";
 import { WizardHeader, WizardSection, WizardStepBar, type WizardStep } from "@/components/ui/WizardEditor";
+import { PAGE_PAD } from "@/components/ui/ListPageHeader";
 import {
     INVENTORY_ITEMS, getInventoryForCarrier, ACME_DRIVERS,
     driverOfAsset, itemName, itemTravelsWithDriver, type Assignment, type InventoryItem,
@@ -46,7 +47,7 @@ import {
 import { logInventoryEvent } from "./inventory-activity";
 import { useInventoryAdditions } from "./inventory-store";
 import { getOrCreateDriverConversation, setMessagesFocus } from "@/pages/messages/messages-store";
-import { sendMovements, type Movement } from "./inventory-movements";
+import { sendMovements, summarise, type Movement, type MovementPlan } from "./inventory-movements";
 import {
     MovementNotify, useMovementPlans, sendablePlans, emptyNotifyState, type NotifyState,
 } from "./MovementNotify";
@@ -250,6 +251,17 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
      * truck — nobody walks to the office for a reefer sensor — so listing it here would
      * be asking for something nobody is asking for.
      */
+    /** The ticked items, as items: what the confirmation reads from. */
+    const givingItems = useMemo(
+        () => [...toAssign].map((id) => available.find((it) => it.id === id)).filter((it): it is InventoryItem => !!it),
+        [toAssign, available],
+    );
+    const takingItems = useMemo(
+        () => [...toRemove].map((id) => rows.find((r) => r.item.id === id)?.item).filter((it): it is InventoryItem => !!it),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [toRemove, row?.items],
+    );
+
     const collecting = useMemo(
         () => [...toAssign].map((id) => available.find((it) => it.id === id))
             .filter((it): it is InventoryItem => !!it && travelsWithDriver(it)),
@@ -261,9 +273,37 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         [toAssign, available],
     );
 
+    /**
+     * Has the notification step been opened?
+     *
+     * Not "has it been filled in" — the draft is already written and may be exactly right.
+     * What must not happen is a message going to a driver that nobody in the office ever
+     * looked at, so the gate is on having SEEN it.
+     */
+    const [seenNotify, setSeenNotify] = useState(false);
+
     /** The messages this save would send, with any wording somebody has typed. */
     const plans = useMovementPlans(movements, notifyState);
     const sending = sendablePlans(plans, notifyState);
+
+    /**
+     * Does this save have to be read before it happens?
+     *
+     * Only when something is going to a person. Everything driver-returnable means a trip
+     * to the office for somebody, and the message that asks for it goes out on save — so
+     * the office reads it first. A save that only files kit against a vehicle sends nothing
+     * and is gated by nothing.
+     */
+    const mustNotify = sending.length > 0;
+    const notifyPending = mustNotify && !seenNotify;
+    /**
+     * Saving and sending are one action, so the button says so.
+     *
+     * It changes as you change the tick on the notification step: untick "send this message"
+     * and it reads "Save changes" again. A button labelled the same either way leaves the
+     * only evidence of an outgoing message on a screen you have scrolled past.
+     */
+    const saveLabel = sending.length > 0 ? "Save & send" : "Save changes";
 
 
     // ── The steps ────────────────────────────X
@@ -278,6 +318,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     const go = (id: string) => {
         setActiveStep(id as SectionId);
+        if (id === "notify") setSeenNotify(true);
         // A new page starts at its top, whatever the last one was scrolled to.
         scrollRef.current?.scrollTo({ top: 0 });
     };
@@ -290,8 +331,13 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     };
 
     // ── Save ─────────────────────────────────────────────────────────────────
+    // Nothing here is undoable from this page: the items move, the messages go, and the
+    // page navigates away. So the button opens the confirmation rather than doing it.
+    const [confirming, setConfirming] = useState(false);
+
     const save_ = () => {
         if (changeCount === 0) return;
+        setConfirming(false);
 
         // Where each one lands is its own answer: driver returnable rides with whoever
         // drives the vehicle, asset removable stays on it.
@@ -404,7 +450,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                 backLabel={`Back to ${isDriver ? "Drivers" : "Assets"}`}
                 onBack={() => onNavigate(back)}
                 icon={isDriver ? IdCard : Truck}
-                title={`${isDriver ? "Assign & hand over" : "Assign inventory"} — ${holderLabel}`}
+                title={`Manage inventory — ${holderLabel}`}
                 subtitle={
                     [
                         isDriver ? "Driver" : `${row.kindLabel ?? "Asset"} · ${row.sub}`,
@@ -414,68 +460,83 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                             : status === "handed-over" ? "awaiting driver" : null,
                     ].filter(Boolean).join(" · ")
                 }
-                actions={
-                    <>
-                        <button
-                            onClick={() => onNavigate(back)}
-                            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={save_}
-                            disabled={changeCount === 0}
-                            className={cn(
-                                "flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white shadow-md transition-colors",
-                                changeCount === 0 ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700",
-                            )}
-                        >
-                            <Check size={16} /> Save assignment
-                        </button>
-                    </>
-                }
             />
 
             {/* Two steps, across the top. A 288px column saying "complete each section"
                 is a lot of chrome for two, and the second may correctly be empty. */}
             <WizardStepBar steps={STEPS} active={activeStep} onGo={go} completionFor={(id) => filled(id as SectionId)} />
 
-            <div className="flex flex-1 overflow-hidden">
-                <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
-                    <div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {/* Where you are in the job, and the one thing to do next. Directly under
+                    the stepper and OUTSIDE the scroller, so it never moves: inside it, it
+                    sat under the table’s own pager and jumped every time the list paged.
 
-                        {/* Where you go next, above what you are doing: under a table that
-                            pages, it sat below the pager and moved every time the list did. */}
-                        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
-                            <button
-                                type="button"
-                                onClick={() => go(STEPS[stepIndex - 1].id)}
-                                disabled={stepIndex === 0}
-                                className={cn(
-                                    "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold transition-colors",
-                                    stepIndex === 0
-                                        ? "cursor-not-allowed border-slate-200 text-slate-300"
-                                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800",
-                                )}
-                            >
-                                <ChevronLeft size={16} /> Back
-                            </button>
-                            {stepIndex < STEPS.length - 1 ? (
-                                <button
-                                    type="button"
-                                    onClick={() => go(STEPS[stepIndex + 1].id)}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-700"
-                                >
-                                    {STEPS[stepIndex + 1].label} <ChevronRight size={16} />
-                                </button>
-                            ) : (
-                                // The last step's own button is the one in the header; saying
-                                // "Save" twice on one screen is two buttons to choose between.
-                                <span className="text-[12px] text-slate-400">
-                                    Save assignment, above, when you are done.
-                                </span>
-                            )}
-                        </div>
+                    On the last step the button is the save. One per screen, and it is
+                    whatever this step’s next move is. */}
+                <div className={cn(
+                    "flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white py-3",
+                    PAGE_PAD,
+                )}>
+                    {/* Step navigation, not an action: it goes back a page, it does not undo
+                        anything. Quiet enough not to read as a second choice. */}
+                    <button
+                        type="button"
+                        onClick={() => go(STEPS[stepIndex - 1].id)}
+                        disabled={stepIndex === 0}
+                        className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold transition-colors",
+                            stepIndex === 0
+                                ? "cursor-not-allowed text-slate-300"
+                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                        )}
+                    >
+                        <ChevronLeft size={16} /> Back
+                    </button>
+
+                    {/* What is waiting to be saved. The one button no longer sits beside the
+                        ticks, and "Save changes" over seventeen rows should not send anybody
+                        scrolling up to count them. */}
+                    <p className="min-w-0 flex-1 truncate text-[12px] text-slate-500">
+                        {changeCount === 0
+                            ? <>Nothing picked yet — tick something on the list.</>
+                            : <>
+                                <span className="font-bold text-slate-700">{changeCount}</span>
+                                {" "}change{changeCount === 1 ? "" : "s"}
+                                {givingItems.length > 0 && <> · {givingItems.length} going on</>}
+                                {takingItems.length > 0 && <> · {takingItems.length} coming off</>}
+                                {sending.length > 0 && <> · {sending.length} message{sending.length === 1 ? "" : "s"}</>}
+                            </>}
+                    </p>
+
+                    {/* THE button. One per screen, and it is whatever this step's next move
+                        is: on to the notification when somebody has to be told, otherwise
+                        straight to the confirmation. */}
+                    <button
+                        type="button"
+                        onClick={() => (notifyPending ? go("notify") : setConfirming(true))}
+                        disabled={changeCount === 0}
+                        title={notifyPending
+                            ? "Something you have picked travels with the driver. Read what they will be told first."
+                            : undefined}
+                        className={cn(
+                            "inline-flex shrink-0 items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors",
+                            changeCount === 0 ? "cursor-not-allowed bg-slate-300"
+                                // Dark rather than disabled while the notification is unread:
+                                // a dead button tells you nothing. This one takes you there.
+                                : notifyPending ? "bg-slate-900 hover:bg-slate-700"
+                                : "bg-blue-600 hover:bg-blue-700",
+                        )}
+                    >
+                        {notifyPending
+                            ? <><MessageSquare size={16} /> {STEPS[1].label} <ChevronRight size={16} /></>
+                            : <><Check size={16} /> {saveLabel}</>}
+                    </button>
+                </div>
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+                    {/* The picker is a table with a checkbox column; max-w-4xl made it
+                        scroll sideways on a screen with room to spare. */}
+                    <div className={cn("w-full space-y-6 py-4 sm:py-6", PAGE_PAD)}>
+
 
                         {/* ── Step 1 — the inventory ──────────────── */}
                         {activeStep === "items" && (
@@ -568,6 +629,120 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                         )}
 
                     </div>
+                </div>
+
+            </div>
+
+            {/* Nothing on this page is undoable once it runs: items move, messages go out,
+                and the page navigates away. So it is said once, in full, first. */}
+            {confirming && (
+                <ConfirmChanges
+                    holderLabel={holderLabel}
+                    holderNoun={isDriver ? "driver" : "vehicle"}
+                    giving={givingItems}
+                    taking={takingItems}
+                    plans={sending}
+                    onCancel={() => setConfirming(false)}
+                    onConfirm={save_}
+                />
+            )}
+        </div>
+    );
+}
+
+/**
+ * What this save is about to do, before it does it.
+ *
+ * Three facts, in the order they matter: what goes onto the unit, what comes off it, and
+ * who gets told. The last is the one that cannot be taken back — a message in a driver's
+ * app is read on a phone at a truck stop, and "ignore that" is a second message.
+ */
+function ConfirmChanges({
+    holderLabel, holderNoun, giving, taking, plans, onCancel, onConfirm,
+}: {
+    holderLabel: string;
+    holderNoun: string;
+    giving: InventoryItem[];
+    taking: InventoryItem[];
+    plans: MovementPlan[];
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    const Row = ({ it }: { it: InventoryItem }) => (
+        <li className="flex items-center gap-2 py-1">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{itemName(it)}</span>
+            {itemTravelsWithDriver(it)
+                ? <span className="shrink-0 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Driver</span>
+                : <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">Asset</span>}
+        </li>
+    );
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+            <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <h2 className="text-base font-black text-slate-900">Confirm these changes</h2>
+                    <p className="mt-0.5 text-[12px] text-slate-500">
+                        {holderLabel} — this is what will happen when you save.
+                    </p>
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                    {giving.length > 0 && (
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Going onto this {holderNoun} ({giving.length})
+                            </p>
+                            <ul className="mt-1 divide-y divide-slate-100">{giving.map((it) => <Row key={it.id} it={it} />)}</ul>
+                        </div>
+                    )}
+                    {taking.length > 0 && (
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Coming off it ({taking.length})
+                            </p>
+                            <ul className="mt-1 divide-y divide-slate-100">{taking.map((it) => <Row key={it.id} it={it} />)}</ul>
+                        </div>
+                    )}
+
+                    {/* The half that leaves this app. Said as a sentence per message rather
+                        than as a count: "2 notifications" does not tell you who is being
+                        asked to walk to the office. */}
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Who gets told</p>
+                        {plans.length === 0 ? (
+                            <p className="mt-1 text-[12px] text-slate-500">
+                                Nobody. Everything here stays with the {holderNoun}, so there is no
+                                message to send.
+                            </p>
+                        ) : (
+                            <ul className="mt-1 space-y-1">
+                                {plans.map((p) => (
+                                    <li key={`${p.driverId}-${p.direction}`} className="flex items-start gap-2 text-[12px] text-slate-700">
+                                        <MessageSquare size={13} className="mt-0.5 shrink-0 text-blue-600" />
+                                        <span>{summarise(p)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                    >
+                        Go back
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
+                    >
+                        <Check size={16} /> {plans.length > 0 ? "Save and send" : "Save changes"}
+                    </button>
                 </div>
             </div>
         </div>

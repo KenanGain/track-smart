@@ -27,12 +27,17 @@
 // into a column, so the row says where the tick will put it before you click.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Check, Plus, Ban, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TabScroller } from "@/components/ui/TabScroller";
 import { TablePager } from "./TablePager";
-import { itemName, itemCategoryId, VENDORS, VENDOR_CATEGORIES, type InventoryItem, type InventoryStatus } from "./inventory.data";
+import {
+    itemName, itemCategoryId, itemTravelsWithDriver, handlingLabel, HANDLING_ALL_LABEL,
+    VENDORS, VENDOR_CATEGORIES,
+    type InventoryItem, type InventoryStatus,
+} from "./inventory.data";
+import { FilterChip, ResetFilters, TableGroupBand } from "@/components/ui/ListChrome";
 import { visualFor } from "./inventory-visuals";
 import { fmtDate } from "./inventory-assignment";
 
@@ -122,6 +127,25 @@ function StatusPill({ status }: { status: InventoryStatus }) {
 
 const ALL = "All";
 
+type PickWhat = "all" | "on" | "free";
+type PickHandling = "all" | "returnable" | "removable";
+type PickGroup = "none" | "assignment" | "category" | "vendor" | "handling" | "status";
+
+const PICK_GROUPS: { id: PickGroup; label: string }[] = [
+    { id: "none", label: "Group by" },
+    // First, because it is the cut you want while giving kit out: what is already on it,
+    // then everything you could add. Same word, and same two bands, as the Inventory list.
+    { id: "assignment", label: "Assignment" },
+    { id: "category", label: "Category" },
+    { id: "vendor", label: "Vendor" },
+    { id: "handling", label: "Handling" },
+    { id: "status", label: "Status" },
+];
+
+const PICK_STATUS_RANK: Record<InventoryStatus, number> = {
+    "Expired": 0, "Expiring Soon": 1, "Active": 2,
+};
+
 export function ItemPickList({
     items, assigned, onAssign, holderNoun, destinationFor,
     emptyAll,
@@ -152,6 +176,12 @@ export function ItemPickList({
 }) {
     const [search, setSearch] = useState("");
     const [cat, setCat] = useState<string>(ALL);
+    // The two questions you have while giving kit out: is it already on this holder, and
+    // does it come back with the driver. Same chips, same Group by, same Reset as the
+    // Inventory list and the holder panel.
+    const [what, setWhat] = useState<PickWhat>("all");
+    const [handling, setHandling] = useState<PickHandling>("all");
+    const [groupBy, setGroupBy] = useState<PickGroup>("none");
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
 
@@ -188,7 +218,7 @@ export function ItemPickList({
 
     // Narrowing the list puts you back at the start of it: page 4 of a list that now has
     // two pages is an empty table, which reads as "nothing matches".
-    useEffect(() => { setPage(0); }, [cat, search]);
+    useEffect(() => { setPage(0); }, [cat, search, what, handling, groupBy]);
 
     // The tab and the search box narrow both halves, so a category with nothing free in it
     // still shows what is already on the vehicle rather than reading as empty.
@@ -204,22 +234,94 @@ export function ItemPickList({
         };
     }, [cat, search]);
 
-    const allHeld = useMemo(() => held.filter((h) => matches(h.item)), [held, matches]);
-    const allFree = useMemo(() => items.filter(matches), [items, matches]);
-    const total = allHeld.length + allFree.length;
-
     /**
-     * One page of the one list.
+     * One list, not two.
      *
-     * Held rows come first and page WITH the free ones, because they are one list: a page
-     * boundary is just where the rows ran out, not a change of subject. Ticking a row does
-     * not move it, so what you just ticked stays where you left it.
+     * What is already on this holder and what is free to give out were two separate loops
+     * paged together, which is why nothing could band them: a group heading cannot span two
+     * maps. A row is an item plus, when it is already on this holder, the entry that says
+     * so — and the only thing that differs between them is the tick.
      */
+    const rows = useMemo(() => {
+        const out: { item: InventoryItem; on: HeldPickRow | null }[] = [];
+        for (const h of held) if (matches(h.item)) out.push({ item: h.item, on: h });
+        for (const it of items) if (matches(it)) out.push({ item: it, on: null });
+        return out.filter((r) => {
+            if (what === "on" && !r.on) return false;
+            if (what === "free" && r.on) return false;
+            if (handling === "returnable" && !itemTravelsWithDriver(r.item)) return false;
+            if (handling === "removable" && itemTravelsWithDriver(r.item)) return false;
+            return true;
+        });
+    }, [held, items, matches, what, handling]);
+
+    /** What each chip would find, before it narrows anything. */
+    const counts = useMemo(() => {
+        const base: { item: InventoryItem; on: boolean }[] = [
+            ...held.filter((h) => matches(h.item)).map((h) => ({ item: h.item, on: true })),
+            ...items.filter(matches).map((it) => ({ item: it, on: false })),
+        ];
+        const kept = base.filter(({ item }) =>
+            handling === "all" ? true
+                : handling === "returnable" ? itemTravelsWithDriver(item)
+                : !itemTravelsWithDriver(item));
+        const inWhat = base.filter(({ on }) => what === "all" ? true : what === "on" ? on : !on);
+        const ret = inWhat.filter(({ item }) => itemTravelsWithDriver(item)).length;
+        return {
+            all: kept.length,
+            on: kept.filter((r) => r.on).length,
+            free: kept.filter((r) => !r.on).length,
+            kindAll: inWhat.length,
+            returnable: ret,
+            removable: inWhat.length - ret,
+        };
+    }, [held, items, matches, what, handling]);
+
+    /** Which band a row falls in, and where that band sits. */
+    const groupOfRow = (r: { item: InventoryItem; on: HeldPickRow | null }): { rank: number; label: string } => {
+        // The same two bands the Inventory list uses, in the same words: what is on it, and
+        // what is on nothing. Assigned first — you check what is already there before you
+        // decide what to add.
+        if (groupBy === "assignment") {
+            return r.on ? { rank: 0, label: "Assigned" } : { rank: 1, label: "Available" };
+        }
+        if (groupBy === "vendor") return { rank: 0, label: vendorOf(r.item) || "No vendor" };
+        if (groupBy === "handling") {
+            return itemTravelsWithDriver(r.item)
+                ? { rank: 0, label: handlingLabel("driver-returnable") }
+                : { rank: 1, label: handlingLabel("asset-removable") };
+        }
+        if (groupBy === "status") return { rank: PICK_STATUS_RANK[r.item.status] ?? 9, label: r.item.status };
+        const id = itemCategoryId(r.item) || "";
+        return { rank: 0, label: VENDOR_CATEGORIES.find((c) => c.id === id)?.name ?? "Other" };
+    };
+
+    // Banded before the page is cut, so a band never splits across two pages. Ungrouped,
+    // the order is what it always was: what is on it first, then what is free.
+    const ordered = useMemo(() => {
+        if (groupBy === "none") return rows;
+        return [...rows].sort((a, b) => {
+            const ga = groupOfRow(a), gb = groupOfRow(b);
+            return ga.rank - gb.rank || ga.label.localeCompare(gb.label)
+                || Number(!!b.on) - Number(!!a.on);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, groupBy]);
+
+    const groupCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy === "none") return m;
+        for (const r of ordered) {
+            const label = groupOfRow(r).label;
+            m.set(label, (m.get(label) ?? 0) + 1);
+        }
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ordered, groupBy]);
+
+    const total = ordered.length;
     const safePage = Math.min(page, Math.max(0, Math.ceil(total / perPage) - 1));
-    const from = safePage * perPage;
-    const to = from + perPage;
-    const shownHeld = allHeld.slice(from, to);
-    const shown = allFree.slice(Math.max(0, from - allHeld.length), Math.max(0, to - allHeld.length));
+    const paged = ordered.slice(safePage * perPage, safePage * perPage + perPage);
 
     if (all.length === 0) {
         return (
@@ -286,6 +388,56 @@ export function ItemPickList({
                 </div>
             </div>
 
+            {/* The same row the Inventory list and the holder panel carry: chips left,
+                Group by right, Reset on the end. Picking two fuel cards out of seventeen
+                free items used to mean typing a word and hoping. */}
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 bg-slate-50/40 px-3 py-2">
+                {held.length > 0 && (
+                    <>
+                        {/* The Inventory list's words, not a second set: you arrive here from
+                            that list, and "On this vehicle / Free" describes exactly the two
+                            sets it calls Assigned and Available. */}
+                        <FilterChip label="All items" count={counts.all} on={what === "all"} always
+                            onClick={() => setWhat("all")} />
+                        <FilterChip label="Assigned" count={counts.on} on={what === "on"}
+                            onClick={() => setWhat("on")} />
+                        <FilterChip label="Available" count={counts.free} on={what === "free"}
+                            onClick={() => setWhat("free")} />
+                        <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" aria-hidden />
+                    </>
+                )}
+                <FilterChip label={HANDLING_ALL_LABEL} count={counts.kindAll} on={handling === "all"} always
+                    onClick={() => setHandling("all")} />
+                <FilterChip label={handlingLabel("driver-returnable")} count={counts.returnable} on={handling === "returnable"}
+                    onClick={() => setHandling("returnable")} />
+                <FilterChip label={handlingLabel("asset-removable")} count={counts.removable} on={handling === "removable"}
+                    onClick={() => setHandling("removable")} />
+                <select
+                    value={groupBy}
+                    onChange={(e) => setGroupBy(e.target.value as PickGroup)}
+                    title="Group the list"
+                    className={cn(
+                        "ml-auto h-8 shrink-0 rounded-lg border px-2 text-[12px] font-semibold outline-none focus:border-blue-500",
+                        groupBy === "none"
+                            ? "border-slate-200 bg-white text-slate-600"
+                            : "border-blue-300 bg-blue-50/60 text-blue-700",
+                    )}
+                >
+                    {PICK_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                </select>
+                <ResetFilters
+                    on={what !== "all" || handling !== "all" || groupBy !== "none"
+                        || cat !== ALL || search.trim() !== ""}
+                    onReset={() => {
+                        setWhat("all");
+                        setHandling("all");
+                        setGroupBy("none");
+                        setCat(ALL);
+                        setSearch("");
+                    }}
+                />
+            </div>
+
             {total === 0 ? (
                 <p className="px-3 py-8 text-center text-sm text-slate-400">
                     {search.trim()
@@ -310,26 +462,40 @@ export function ItemPickList({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {/* What is already on it, ticked, at the top of the same list. */}
-                            {shownHeld.map((h) => {
-                                const item = h.item;
+                            {paged.map((r, i) => {
+                                const item = r.item;
                                 const visual = visualFor(itemCategoryId(item));
-                                const off = !!removing?.has(item.id);
-                                const blocked = h.removeBlocked ?? null;
+                                const band = groupBy === "none" ? null : groupOfRow(r);
+                                const prev = i === 0 || groupBy === "none" ? null : groupOfRow(paged[i - 1]);
+                                // A held row is ticked because it IS on this holder, and
+                                // unticking is how you take it back. A free row is ticked to
+                                // put it on. One box, two meanings, decided by which it is.
+                                const off = r.on ? !!removing?.has(item.id) : false;
+                                const picked = r.on ? !off : assigned.has(item.id);
                                 return (
-                                    <tr key={`held-${item.id}`} className={cn(
+                                    <Fragment key={`${r.on ? "on" : "free"}-${item.id}`}>
+                                    {band && (!prev || prev.label !== band.label) && (
+                                        <TableGroupBand label={band.label} count={groupCounts.get(band.label) ?? 0} colSpan={6} />
+                                    )}
+                                    <tr className={cn(
                                         "transition-colors",
-                                        off ? "bg-rose-50/60" : "bg-white hover:bg-slate-50/70",
+                                        off ? "bg-rose-50/60"
+                                            : picked ? "bg-blue-50/70"
+                                            : "bg-white hover:bg-slate-50/70",
                                     )}>
                                         <td className="px-3 py-2 align-middle">
-                                            {/* Ticked because it IS on this holder. Unticking is how you
-                                                take it back — the same box, the same meaning. */}
                                             <Tick
-                                                on={!off} tone="blue" disabledReason={blocked}
-                                                label={off
-                                                    ? `Keep ${itemName(item)} on this ${holderNoun}`
-                                                    : `Take ${itemName(item)} off this ${holderNoun}`}
-                                                onToggle={() => onRemove?.(item.id)}
+                                                on={picked}
+                                                tone="blue"
+                                                disabledReason={r.on ? (r.on.removeBlocked ?? null) : null}
+                                                label={r.on
+                                                    ? (off
+                                                        ? `Keep ${itemName(item)} on this ${holderNoun}`
+                                                        : `Take ${itemName(item)} off this ${holderNoun}`)
+                                                    : (destinationFor
+                                                        ? `Put ${itemName(item)} on this ${holderNoun} → ${destinationFor(item)}`
+                                                        : `Assign ${itemName(item)} to this ${holderNoun}`)}
+                                                onToggle={() => (r.on ? onRemove?.(item.id) : onAssign(item.id))}
                                             />
                                         </td>
                                         <td className="max-w-[20rem] px-3 py-2 align-middle">
@@ -341,70 +507,15 @@ export function ItemPickList({
                                                     <visual.icon size={14} />
                                                 </span>
                                                 <div className="min-w-0">
+                                                    {/* No chip saying it is on this vehicle — the ticked box
+                                                        beside it says that, and saying the same thing twice is
+                                                        what made this list look complicated. */}
                                                     <div className={cn(
                                                         "truncate text-[13px] font-semibold leading-tight text-slate-900",
                                                         off && "text-slate-400 line-through",
                                                     )}>
                                                         {itemName(item)}
                                                     </div>
-                                                    {/* No chip saying it is on this vehicle — the ticked box
-                                                        beside it says that, and saying the same thing twice is
-                                                        what made this list look complicated. */}
-                                                    <div className="truncate text-[11px] leading-tight text-slate-500">{vendorOf(item)}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 align-middle">
-                                            <div className="font-mono text-[11px] leading-tight text-slate-700">{item.serial || "—"}</div>
-                                            {item.pin && <div className="font-mono text-[10px] leading-tight text-slate-400">PIN {item.pin}</div>}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 align-middle text-[11px] text-slate-600">
-                                            {item.issueDate ? fmtDate(item.issueDate) : "—"}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 align-middle text-[11px]">
-                                            {item.expiryDate
-                                                ? <span className="text-slate-600">{fmtDate(item.expiryDate)}</span>
-                                                : <span className="text-slate-400">no expiry</span>}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 align-middle">
-                                            <StatusPill status={item.status} />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                            {shown.map((item) => {
-                                const assignPicked = assigned.has(item.id);
-                                const visual = visualFor(itemCategoryId(item));
-                                return (
-                                    <tr
-                                        key={item.id}
-                                        className={cn(
-                                            "transition-colors",
-                                            assignPicked ? "bg-blue-50/70" : "bg-white hover:bg-slate-50/70",
-                                        )}
-                                    >
-                                        <td className="px-3 py-2 align-middle">
-                                            <Tick
-                                                on={assignPicked} tone="blue"
-                                                // Where it will land, on the control that puts it there.
-                                                // It was a column of its own, which is a table explaining
-                                                // its own tick box; on the tick it is one hover away.
-                                                label={destinationFor
-                                                    ? `Put ${itemName(item)} on this ${holderNoun} → ${destinationFor(item)}`
-                                                    : `Assign ${itemName(item)} to this ${holderNoun}`}
-                                                onToggle={() => onAssign(item.id)}
-                                            />
-                                        </td>
-                                        <td className="max-w-[20rem] px-3 py-2 align-middle">
-                                            <div className="flex min-w-0 items-center gap-2.5">
-                                                <span className={cn(
-                                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                                                    visual.avatarBg, visual.avatarText,
-                                                )}>
-                                                    <visual.icon size={14} />
-                                                </span>
-                                                <div className="min-w-0">
-                                                    <div className="truncate text-[13px] font-semibold leading-tight text-slate-900">{itemName(item)}</div>
                                                     <div className="truncate text-[11px] leading-tight text-slate-500">{vendorOf(item)}</div>
                                                 </div>
                                             </div>
@@ -427,6 +538,7 @@ export function ItemPickList({
                                             <StatusPill status={item.status} />
                                         </td>
                                     </tr>
+                                    </Fragment>
                                 );
                             })}
                         </tbody>

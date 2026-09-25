@@ -162,7 +162,22 @@ export interface OwnershipSource {
     stateProvince?: string;
     zipCode?: string;
     ownershipDoc?: OwnershipDocCapture;
+    /**
+     * The bill of sale, which every asset has regardless of how it is held now.
+     *
+     * Only used when the structure files something else: an Owned asset's `ownershipDoc`
+     * already IS the bill of sale, and filing a second one would put two of the same
+     * document on the same truck.
+     */
+    billDoc?: OwnershipDocCapture;
 }
+
+/** The structure whose document is the bill of sale. */
+export const BILL_STRUCTURE = 'Owned';
+
+/** Does this structure file something OTHER than a bill of sale, so one is asked for separately? */
+export const needsSeparateBill = (structure: string | undefined): boolean =>
+    (structure ?? BILL_STRUCTURE) !== BILL_STRUCTURE;
 
 /**
  * The asset form's country, as the compliance record spells it. The two lists write the same
@@ -248,12 +263,12 @@ function capturedByName(): string {
  * nothing to file. Only the keys the record still declares are carried over, so a value left
  * behind by a changed ownership structure cannot leak onto the document.
  */
-export function ownershipDocVersion(asset: OwnershipSource, capturedBy?: string): DocVersion | null {
-    const structure = asset.financialStructure ?? '';
+function versionOf(
+    structure: string, c: OwnershipDocCapture | undefined, asset: OwnershipSource, capturedBy?: string,
+): DocVersion | null {
     const spec = specFor(structure);
     const base = baseRecordFor(structure);
     const record = ownershipRecordFor(structure);
-    const c = asset.ownershipDoc;
     if (!spec || !base || !record || !c || !ownershipDocHasContent(structure, c)) return null;
 
     // Named by the user, falling back to the catalog default — a record cannot be filed
@@ -297,6 +312,22 @@ export function ownershipDocVersion(asset: OwnershipSource, capturedBy?: string)
     return v;
 }
 
+/** The document the ownership STRUCTURE files: an agreement, or a bill of sale when Owned. */
+export function ownershipDocVersion(asset: OwnershipSource, capturedBy?: string): DocVersion | null {
+    return versionOf(asset.financialStructure ?? '', asset.ownershipDoc, asset, capturedBy);
+}
+
+/**
+ * The bill of sale, when the structure files something else.
+ *
+ * Null on an Owned asset, whose own document is already the bill — not because nothing was
+ * captured, but because filing it twice would put two bills of sale on one truck.
+ */
+export function billOfSaleVersion(asset: OwnershipSource, capturedBy?: string): DocVersion | null {
+    if (!needsSeparateBill(asset.financialStructure)) return null;
+    return versionOf(BILL_STRUCTURE, asset.billDoc, asset, capturedBy);
+}
+
 /**
  * File the captured ownership document as the asset's compliance record. Called once the asset
  * has an id — on Add Asset that is only after the list assigns one.
@@ -309,9 +340,23 @@ export function commitOwnershipDoc(
     accountId: string | undefined, assetId: string, asset: OwnershipSource, capturedBy?: string,
 ): string | null {
     if (!assetId) return null;
+    const filed: string[] = [];
+
     const base = baseRecordFor(asset.financialStructure ?? '');
     const version = ownershipDocVersion(asset, capturedBy);
-    if (!base || !version) return null;
-    writeComplianceVersion(accountId, assetId, base.id, version);
-    return version.label;
+    if (base && version) {
+        writeComplianceVersion(accountId, assetId, base.id, version);
+        filed.push(version.label);
+    }
+
+    // And the bill of sale, which a leased truck has as surely as an owned one — against
+    // its own catalog record, so the agreement and the bill do not overwrite each other.
+    const billBase = baseRecordFor(BILL_STRUCTURE);
+    const bill = billOfSaleVersion(asset, capturedBy);
+    if (billBase && bill) {
+        writeComplianceVersion(accountId, assetId, billBase.id, bill);
+        filed.push(bill.label);
+    }
+
+    return filed.length ? filed.join(', ') : null;
 }

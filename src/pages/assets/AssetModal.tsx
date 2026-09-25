@@ -3,7 +3,7 @@ import {
     Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2, Gauge, Zap, Check, CalendarClock, FileSignature,
+    UploadCloud, FileText, Trash2, Gauge, Wrench, Zap, Check, CalendarClock, FileSignature,
     Boxes, MessageSquare, PackageCheck, Undo2, ArrowRight, X
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
@@ -18,15 +18,21 @@ import { useDriverHandovers, handedToMap } from '@/pages/inventory/handovers.dat
 import { unassignedItems, rollupByAsset, VIA_LABEL, VIA_TONE } from '@/pages/inventory/inventory-rollup';
 import { getInventoryForCarrier, INVENTORY_ITEMS, itemName, itemTravelsWithDriver } from '@/pages/inventory/inventory.data';
 import { emptyAssetInventoryDraft, type AssetInventoryDraft } from './asset-inventory-bridge';
+import { plateRecordFor, plateSlotLabels, plateHasCabCard } from './plate-record-bridge';
+import { assetRecordFor } from './asset-records-bridge';
 import { MovementNotify, useMovementPlans } from '@/pages/inventory/MovementNotify';
 import { ItemPickList } from '@/pages/inventory/ItemPickList';
 import type { Movement } from '@/pages/inventory/inventory-movements';
 import { removeActionFor } from '@/pages/inventory/inventory-rollup';
 import { GvwrTag } from './GvwrTag';
-import { MAX_RECORD_NAME, isDateMonitored } from '@/pages/compliance/safety-software-catalog.data';
+import {
+    MAX_RECORD_NAME, isDateMonitored,
+    type SafetyRecord, type RecordTextField,
+} from '@/pages/compliance/safety-software-catalog.data';
 import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
 import {
     emptyOwnershipDoc, ownershipCardFields, ownershipDocLabel, ownershipRecordFor,
+    BILL_STRUCTURE, needsSeparateBill,
     type OwnershipDocCapture,
 } from './ownership-docs-bridge';
 
@@ -143,10 +149,42 @@ const assetSchema = z.object({
     plateNumber: z.string().optional(),
     /** IRP = apportioned plate for interjurisdictional running; Local = base-state only. */
     plateType: z.enum(['IRP', 'Local']).optional(),
+    plateDocument: z.any().optional(),
+    /**
+     * The IRP cab card: the apportioned registration that lists the jurisdictions this unit
+     * is licensed to run in and the weight it is licensed at. Only an apportioned plate has
+     * one, so it is asked for only when the plate type says IRP.
+     */
+    cabCardDocument: z.any().optional(),
     plateCountry: z.enum(['USA', 'Canada']).default('USA'),
     plateJurisdiction: z.string().optional(),
     registrationIssueDate: z.string().optional(),
     registrationExpiryDate: z.string().optional(),
+    /**
+     * The pink slip: proof of insurance, carried in the cab and shown at the roadside.
+     * Its own record on the asset, because a lapsed one is found by an officer rather than
+     * by the office.
+     */
+    pinkSlipNumber: z.string().optional(),
+    pinkSlipExpiry: z.string().optional(),
+    pinkSlipDocument: z.any().optional(),
+
+    /**
+     * The two inspections. Same three questions each: when it was last done, at what
+     * reading, and when it falls due again — that last one being what the alert fires on.
+     */
+    annualSafetyLastDate: z.string().optional(),
+    annualSafetyOdometer: z.string().optional(),
+    annualSafetyOdometerUnit: z.enum(['miles', 'km']).default('miles'),
+    annualSafetyNextDue: z.string().optional(),
+    annualSafetyDocument: z.any().optional(),
+
+    annualPmLastDate: z.string().optional(),
+    annualPmOdometer: z.string().optional(),
+    annualPmOdometerUnit: z.enum(['miles', 'km']).default('miles'),
+    annualPmNextDue: z.string().optional(),
+    annualPmDocument: z.any().optional(),
+
     plateMonitoringEnabled: z.boolean().default(true),
     plateMonitorBasedOn: z.enum(['expiry_date', 'issue_date']).default('expiry_date'),
     plateRenewalRecurrence: z.enum(['annually', 'quarterly', 'custom']).default('annually'),
@@ -190,7 +228,7 @@ const assetSchema = z.object({
 // A 3-column field grid used inside each wizard section (replaces the old
 // FormSection's inner grid; the section header/card now comes from WizardSection).
 const FieldGrid = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6", className)}>{children}</div>
+    <div className={cn("grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8", className)}>{children}</div>
 );
 
 // A wizard section card (icon-tile header, à la Add Accident) wrapping a 3-col
@@ -428,6 +466,9 @@ const STEPS: readonly WizardStep[] = [
     { id: 'drivers', label: 'Driver assignment', icon: Users },
     // After the driver, because who carries what depends on who is driving.
     { id: 'inventory', label: 'Inventory', icon: Boxes },
+    // Before ownership: what the vehicle's condition is has to be asked while somebody is
+    // still holding the certificates, not after the money questions have moved them on.
+    { id: 'service', label: 'Safety & maintenance', icon: Wrench },
     { id: 'ownership', label: 'Ownership & financial', icon: KeyRound },
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'insurance', label: 'Insurance & status', icon: Shield },
@@ -443,6 +484,147 @@ interface AssetModalProps {
     accountId?: string;
 }
 
+
+/**
+ * One service record's three questions, plus its certificate.
+ *
+ * The annual safety inspection and the preventive-maintenance service are the same shape,
+ * so they are the same block twice rather than two that drift. "Next due" is not a note
+ * somebody keeps up to date — it is the date the record is monitored on, which is why it
+ * sits beside the date it was last done rather than being worked out in somebody's head.
+ */
+function ServiceBlock({
+    heading, note, lastLabel, docLabel, lastDate, odometer, unit, nextDue, files, onFiles,
+}: {
+    heading: string;
+    note: string;
+    lastLabel: string;
+    docLabel: string;
+    lastDate: any;
+    odometer: any;
+    unit: any;
+    nextDue: any;
+    files: any[];
+    onFiles: (files: any[]) => void;
+}) {
+    return (
+        <div className="col-span-full border-t border-slate-100 pt-6 first:border-t-0 first:pt-0">
+            <div className="mb-4 flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Wrench size={15} /></span>
+                <div>
+                    <p className="text-[12.5px] font-bold text-slate-800">{heading}</p>
+                    <p className="text-[11px] text-slate-500">{note} — filed against this asset as a Compliance &amp; Documents record.</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
+                <FormInput label={lastLabel}><Input type="date" {...lastDate} /></FormInput>
+                <FormInput label="Odometer" hint="The reading it was done at.">
+                    <div className="flex gap-2">
+                        <div className="relative min-w-[5.5rem] flex-1">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
+                            <Input {...odometer} className="pl-9" placeholder="e.g. 412,500" />
+                        </div>
+                        <select {...unit} className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                            <option value="miles">miles</option>
+                            <option value="km">km</option>
+                        </select>
+                    </div>
+                </FormInput>
+                <FormInput label="Next due date" hint="What the alert counts down to.">
+                    <Input type="date" {...nextDue} />
+                </FormInput>
+                <div className="col-span-full">
+                    <DocumentUploadInput
+                        label={docLabel}
+                        description="Attach the signed copy (PDF, JPG, PNG)"
+                        files={files}
+                        onFilesChange={onFiles} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * One ownership document, as the Add Asset form captures it.
+ *
+ * Written once and used twice: for whatever the ownership structure files, and for the bill
+ * of sale a leased or financed asset also has. Everything it asks for is read off the
+ * catalog record, so a field added there appears here without this file being touched.
+ */
+function OwnershipDocCard({
+    record, heading, fields, capture, files, onPatch, onField, onFiles, monitored, issueDate, expiryDate,
+}: {
+    record: SafetyRecord | null;
+    heading: string;
+    fields: RecordTextField[];
+    capture: OwnershipDocCapture;
+    files: any[];
+    onPatch: (p: Partial<OwnershipDocCapture>) => void;
+    onField: (key: string, val: string) => void;
+    onFiles: (list: any[]) => void;
+    monitored: boolean;
+    issueDate: string;
+    expiryDate: string;
+}) {
+    if (!record) return null;
+    return (
+        <div className="border-t border-slate-100 pt-6">
+            <div className="mb-4 flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileSignature size={15} /></span>
+                <div>
+                    <p className="text-[12.5px] font-bold text-slate-800">{heading}</p>
+                    <p className="text-[11px] text-slate-500">Filed against this asset as a Compliance &amp; Documents record.</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
+                <FormInput label="Record Name" hint="What this document is filed under.">
+                    <Input value={capture.label} maxLength={MAX_RECORD_NAME} placeholder={heading}
+                        onChange={e => onPatch({ label: e.target.value })} />
+                </FormInput>
+                {fields.map(f => (
+                    <FormInput key={f.key} label={f.label}>
+                        {f.money ? (
+                            <div className="flex gap-2">
+                                <div className="relative min-w-[5.5rem] flex-1">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                    <Input type="number" step="0.01" min="0" className="pl-9" placeholder="0.00"
+                                        value={capture.fields[f.key] ?? ''}
+                                        onChange={e => onField(f.key, e.target.value)} />
+                                </div>
+                                <select
+                                    value={capture.fields[f.money.currencyKey] ?? f.money.defaultCurrency ?? f.money.currencies[0]}
+                                    onChange={e => onField(f.money!.currencyKey, e.target.value)}
+                                    className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                    {f.money.currencies.map((c: string) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                        ) : (
+                            <Input value={capture.fields[f.key] ?? ''} placeholder={f.placeholder}
+                                onChange={e => onField(f.key, e.target.value)} />
+                        )}
+                    </FormInput>
+                ))}
+                <div className="col-span-full">
+                    <DocumentUploadInput
+                        label={record.documentName || record.recordName}
+                        description="Attach the signed document — PDF, DOC, DOCX up to 10MB"
+                        files={files}
+                        onFilesChange={onFiles} />
+                </div>
+                {/* The alert on the end date, set here rather than hunted down on the
+                    compliance page afterwards. */}
+                {monitored && (
+                    <div className="col-span-full">
+                        <MonitoringToggle record={record} monitoring={capture.monitoring}
+                            issueDate={issueDate} expiryDate={expiryDate} status=""
+                            onChange={m => onPatch({ monitoring: m })} />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: AssetModalProps) {
     const isEdit = !!asset;
     const { register, handleSubmit, watch, setValue, control, formState: { errors, isDirty } } = useForm({
@@ -475,6 +657,20 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     const assetType = watch('assetType');
     const financial = watch('financialStructure');
     const plateCountry = watch('plateCountry');
+    const plateType = watch('plateType');
+    /**
+     * The plate section files the "Asset Plates" compliance record, so what it captures is
+     * named by that record rather than spelled out here: the document it files, and the two
+     * slots it files into (a local plate has no cab card, so it offers one slot, not two).
+     */
+    const plateRecord = useMemo(() => plateRecordFor(plateType), [plateType]);
+    const plateSlots = useMemo(() => plateSlotLabels(plateType), [plateType]);
+    const hasCabCard = plateHasCabCard(plateType);
+    // The three remaining records the form files. Every label below comes off these, so a
+    // record renamed in the catalog renames on this form too.
+    const pinkSlipRecord = useMemo(() => assetRecordFor('pinkSlip'), []);
+    const safetyRecord = useMemo(() => assetRecordFor('annualSafety'), []);
+    const pmRecord = useMemo(() => assetRecordFor('annualPm'), []);
     const opStatus = watch('operationalStatus');
 
     // Whose address the ownership section is asking for. Named, because an address block
@@ -541,6 +737,15 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     const [ownershipFiles, setOwnershipFiles] = useState<any[]>([]);
     const patchDoc = (p: Partial<OwnershipDocCapture>) => setOwnershipDoc(d => ({ ...d, ...p }));
     const setDocField = (key: string, val: string) => setOwnershipDoc(d => ({ ...d, fields: { ...d.fields, [key]: val } }));
+
+    // The bill of sale, asked for whatever the structure says. A leased truck was bought by
+    // somebody, and the carrier is asked for the bill either way — so the only case with no
+    // second card is Owned, where the structure's own document already IS the bill.
+    const showBill = needsSeparateBill(financial);
+    const billRecord = useMemo(() => ownershipRecordFor(BILL_STRUCTURE), []);
+    const billFields = useMemo(() => ownershipCardFields(BILL_STRUCTURE), []);
+    const [billDoc, setBillDoc] = useState<OwnershipDocCapture>(() => emptyOwnershipDoc(BILL_STRUCTURE));
+    const [billFiles, setBillFiles] = useState<any[]>([]);
     const setDocFiles = (list: any[]) => {
         setOwnershipFiles(list);
         patchDoc({ files: list.map(f => ({ name: f.fileName, size: f.fileSize ?? 0 })) });
@@ -802,14 +1007,23 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         switch (id) {
             case 'class': return filledCount(allValues.assetType, allValues.vehicleType);
             case 'vehicle': return filledCount(allValues.unitNumber, allValues.vin, allValues.make, allValues.model, allValues.year, allValues.color, allValues.grossWeight, allValues.unloadedWeight);
-            case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate);
+            case 'plate': return filledCount(allValues.plateNumber, allValues.plateType, allValues.plateJurisdiction, allValues.registrationIssueDate, allValues.registrationExpiryDate,
+                // Only counted on an IRP plate: on a Local one it is a box that can never
+                // be filled, and a section that can never read complete is a nag.
+                plateHasCabCard(allValues.plateType) ? ((allValues.cabCardDocument?.length ?? 0) > 0 || undefined) : undefined);
+            case 'service': return filledCount(
+                allValues.annualSafetyLastDate, allValues.annualSafetyNextDue, allValues.annualSafetyOdometer,
+                allValues.annualPmLastDate, allValues.annualPmNextDue, allValues.annualPmOdometer,
+                (allValues.annualSafetyDocument?.length ?? 0) > 0 || undefined,
+                (allValues.annualPmDocument?.length ?? 0) > 0 || undefined,
+            );
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
             case 'inventory': return inventoryDraft.itemIds.length
                 + inventoryDraft.changeover.itemIds.length + inventoryDraft.removeIds.length;
             // The document counts too — it is asked for in this section, so a section that has
             // one should not read the same as one that does not.
-            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined);
+            case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined, (showBill && billDoc.files.length > 0) || undefined);
             case 'notes': return filledCount(allValues.notes);
             case 'insurance': return filledCount(allValues.operationalStatus, allValues.dateAdded, allValues.insuranceAddedDate, allValues.odometer, allValues.dateRemoved);
             default: return 0;
@@ -841,7 +1055,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
                     {/* The ownership document rides along with the asset: the record can only be
                         filed once the asset has an id, which is assigned by whoever saves it. */}
-                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc }, inventoryDraft))} className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc, billDoc: showBill ? billDoc : undefined }, inventoryDraft))} className="@container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
 
                         {/* 1. Asset Class */}
                         <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
@@ -902,11 +1116,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                             
                             <FormInput label="Gross Weight (Loaded)">
                                 <div className="flex gap-2">
-                                    <div className="relative flex-1">
+                                    <div className="relative min-w-[5.5rem] flex-1">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Scale size={14} /></div>
                                         <Input type="number" {...register('grossWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" />
                                     </div>
-                                    <select {...register('grossWeightUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                    <select {...register('grossWeightUnit')} className="w-16 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
                                         <option value="lbs">lbs</option>
                                         <option value="kg">kg</option>
                                     </select>
@@ -928,11 +1142,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
 
                             <FormInput label="Unloaded Weight">
                                 <div className="flex gap-2">
-                                    <div className="relative flex-1">
+                                    <div className="relative min-w-[5.5rem] flex-1">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Scale size={14} /></div>
                                         <Input type="number" {...register('unloadedWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" />
                                     </div>
-                                    <select {...register('unloadedWeightUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                    <select {...register('unloadedWeightUnit')} className="w-16 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
                                         <option value="lbs">lbs</option>
                                         <option value="kg">kg</option>
                                     </select>
@@ -954,14 +1168,43 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                             <FormInput label="Plate State/Province"><select {...register('plateJurisdiction')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">{(plateCountry === 'USA' ? USA_STATES : CANADA_PROVINCES).map(s => <option key={s} value={s}>{s}</option>)}</select></FormInput>
                             <FormInput label="Issue Date"><Input type="date" {...register('registrationIssueDate')} /></FormInput>
                             <FormInput label="Expiry Date"><Input type="date" {...register('registrationExpiryDate')} /></FormInput>
-                            <div className="col-span-full">
-                                <DocumentUploadInput
-                                    label="Registration Document"
-                                    description="Upload current registration card (PDF, JPG, PNG)"
-                                    files={watch('plateDocument') || []}
-                                    onFilesChange={(files) => setValue('plateDocument', files, { shouldDirty: true })}
-                                />
-                            </div>
+                            {/* The documents the plate record files, in its own words — and
+                                nothing until the plate type has been answered, because until
+                                then the record cannot say which they are. An apportioned
+                                plate carries a cab card: the document listing the
+                                jurisdictions this unit is licensed to run in, and the one an
+                                officer asks for at the scale. A local plate has none, so the
+                                record offers one box rather than leaving a second standing
+                                open as a permanent gap. */}
+                            {plateSlots.length > 0 && (
+                                <div className="col-span-full">
+                                    <DocumentUploadInput
+                                        label={plateSlots[0]}
+                                        description={`Attach it to the ${plateRecord?.documentName ?? 'plate registration'} (PDF, JPG, PNG)`}
+                                        files={watch('plateDocument') || []}
+                                        onFilesChange={(files) => setValue('plateDocument', files, { shouldDirty: true })}
+                                    />
+                                </div>
+                            )}
+                            {hasCabCard && (
+                                <div className="col-span-full">
+                                    <DocumentUploadInput
+                                        label={plateSlots[1]}
+                                        description="The apportioned cab card (PDF, JPG, PNG)"
+                                        files={watch('cabCardDocument') || []}
+                                        onFilesChange={(files) => setValue('cabCardDocument', files, { shouldDirty: true })}
+                                    />
+                                </div>
+                            )}
+                            {/* Said once, where it happens. The office should not discover on
+                                the compliance page that the plate it just typed is already
+                                filed there. */}
+                            {plateSlots.length > 0 && (
+                                <p className="col-span-full -mt-2 text-[11px] text-slate-500">
+                                    Filed against this asset as a Compliance &amp; Documents record
+                                    {plateRecord ? <> — <span className="font-semibold text-slate-600">{plateRecord.recordName}</span></> : null}.
+                                </p>
+                            )}
                             <MonitoringBlock title="Plate / Registration Expiry Monitoring" prefix="plate" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
                         </AssetSection>
 
@@ -1259,11 +1502,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
 
                             <FormInput label="Current Market Value">
                                 <div className="flex gap-2">
-                                    <div className="relative flex-1">
+                                    <div className="relative min-w-[5.5rem] flex-1">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
                                         <Input type="number" {...register('marketValue', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
                                     </div>
-                                    <select {...register('marketValueCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                    <select {...register('marketValueCurrency')} className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
                                         <option value="USD">USD</option>
                                         <option value="CAD">CAD</option>
                                     </select>
@@ -1284,7 +1527,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     to keep. The seller it was bought from is a field on the bill
                                     of sale below, which is where a seller belongs. */}
                                 {financial !== 'Owned' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                    <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
                                         {financial === 'Leased' && (
                                             <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
                                         )}
@@ -1312,7 +1555,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                                 <p className="text-[11px] text-slate-500">Agreement dates and the monthly payment.</p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                        <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
                                             <FormInput label={ownershipRecord?.issueLabel ?? 'Start Date'} error={errors.agreementStartDate?.message as string | undefined}>
                                                 <Input type="date" {...register('agreementStartDate')} />
                                             </FormInput>
@@ -1328,11 +1571,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                                 hint={termTotal ? `≈ ${termTotal} over the term` : undefined}
                                             >
                                                 <div className="flex gap-2">
-                                                    <div className="relative flex-1">
+                                                    <div className="relative min-w-[5.5rem] flex-1">
                                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
                                                         <Input type="number" step="0.01" min="0" {...register('monthlyPayment', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
                                                     </div>
-                                                    <select {...register('monthlyPaymentCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                    <select {...register('monthlyPaymentCurrency')} className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
                                                         <option value="USD">USD</option>
                                                         <option value="CAD">CAD</option>
                                                     </select>
@@ -1346,64 +1589,78 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     asset as its own Compliance & Documents record, not as a field
                                     on the asset. Everything it asks for comes from the catalog
                                     record, minus what this section has already collected. */}
-                                {ownershipRecord && (
-                                    <div className="border-t border-slate-100 pt-6">
-                                        <div className="mb-4 flex items-center gap-2">
-                                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileSignature size={15} /></span>
-                                            <div>
-                                                <p className="text-[12.5px] font-bold text-slate-800">{ownershipDocLabel(financial)}</p>
-                                                <p className="text-[11px] text-slate-500">Filed against this asset as a Compliance &amp; Documents record.</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-                                            <FormInput label="Record Name" hint="What this document is filed under.">
-                                                <Input value={ownershipDoc.label} maxLength={MAX_RECORD_NAME}
-                                                    placeholder={ownershipDocLabel(financial)}
-                                                    onChange={e => patchDoc({ label: e.target.value })} />
-                                            </FormInput>
-                                            {ownershipFields.map(f => (
-                                                <FormInput key={f.key} label={f.label}>
-                                                    {f.money ? (
-                                                        <div className="flex gap-2">
-                                                            <div className="relative flex-1">
-                                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
-                                                                <Input type="number" step="0.01" min="0" className="pl-9" placeholder="0.00"
-                                                                    value={ownershipDoc.fields[f.key] ?? ''}
-                                                                    onChange={e => setDocField(f.key, e.target.value)} />
-                                                            </div>
-                                                            <select
-                                                                value={ownershipDoc.fields[f.money.currencyKey] ?? f.money.defaultCurrency ?? f.money.currencies[0]}
-                                                                onChange={e => setDocField(f.money!.currencyKey, e.target.value)}
-                                                                className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
-                                                                {f.money.currencies.map(c => <option key={c} value={c}>{c}</option>)}
-                                                            </select>
-                                                        </div>
-                                                    ) : (
-                                                        <Input value={ownershipDoc.fields[f.key] ?? ''} placeholder={f.placeholder}
-                                                            onChange={e => setDocField(f.key, e.target.value)} />
-                                                    )}
-                                                </FormInput>
-                                            ))}
-                                            <div className="col-span-full">
-                                                <DocumentUploadInput
-                                                    label={ownershipRecord.documentName || ownershipRecord.recordName}
-                                                    description="Attach the signed document — PDF, DOC, DOCX up to 10MB"
-                                                    files={ownershipFiles}
-                                                    onFilesChange={setDocFiles} />
-                                            </div>
-                                            {/* The alert on the end date, set here rather than
-                                                hunted down on the compliance page afterwards. */}
-                                            {ownershipMonitored && (
-                                                <div className="col-span-full">
-                                                    <MonitoringToggle record={ownershipRecord} monitoring={ownershipDoc.monitoring}
-                                                        issueDate={agreementStart ?? ''} expiryDate={agreementEnd ?? ''} status=""
-                                                        onChange={m => patchDoc({ monitoring: m })} />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                                <OwnershipDocCard
+                                    record={ownershipRecord}
+                                    heading={ownershipDocLabel(financial)}
+                                    fields={ownershipFields}
+                                    capture={ownershipDoc}
+                                    files={ownershipFiles}
+                                    onPatch={patchDoc}
+                                    onField={setDocField}
+                                    onFiles={setDocFiles}
+                                    monitored={ownershipMonitored}
+                                    issueDate={agreementStart ?? ''}
+                                    expiryDate={agreementEnd ?? ''}
+                                />
+
+                                {/* And the bill of sale, on a truck that is leased, financed or
+                                    rented. It was bought by somebody before it was leased to
+                                    anybody, and the carrier is asked for the bill either way.
+                                    Not shown on an Owned asset — there the card above already
+                                    IS the bill, and asking twice would file two of them. */}
+                                {showBill && (
+                                    <OwnershipDocCard
+                                        record={billRecord}
+                                        heading={ownershipDocLabel(BILL_STRUCTURE)}
+                                        fields={billFields}
+                                        capture={billDoc}
+                                        files={billFiles}
+                                        onPatch={p => setBillDoc(d => ({ ...d, ...p }))}
+                                        onField={(k, v) => setBillDoc(d => ({ ...d, fields: { ...d.fields, [k]: v } }))}
+                                        onFiles={list => {
+                                            setBillFiles(list);
+                                            setBillDoc(d => ({ ...d, files: list.map((f: any) => ({ name: f.fileName, size: f.fileSize ?? 0 })) }));
+                                        }}
+                                        // A bill of sale has no term, so nothing to alert on.
+                                        monitored={false}
+                                        issueDate=""
+                                        expiryDate=""
+                                    />
                                 )}
                             </div>
+                        </AssetSection>
+
+                        {/* 7b. Safety & maintenance — two records, one shape each */}
+                        <AssetSection id="service" title="Safety & Maintenance" subtitle="The annual inspection and the preventive-maintenance service." icon={Wrench}>
+                            {/* Both blocks ask the same three things, because both records
+                                are the same shape: when it was last done, at what reading,
+                                and when it falls due again. The LAST of those is what the
+                                alert fires on — "next due" is not a note somebody keeps up to
+                                date, it is the date the office is warned about. */}
+                            <ServiceBlock
+                                heading={safetyRecord?.recordName ?? 'Annual Safety'}
+                                note={safetyRecord?.description ?? ''}
+                                lastLabel={safetyRecord?.issueLabel ?? 'Last annual safety date'}
+                                docLabel={safetyRecord?.documentName ?? 'Certificate'}
+                                lastDate={register('annualSafetyLastDate')}
+                                odometer={register('annualSafetyOdometer')}
+                                unit={register('annualSafetyOdometerUnit')}
+                                nextDue={register('annualSafetyNextDue')}
+                                files={watch('annualSafetyDocument') || []}
+                                onFiles={(f) => setValue('annualSafetyDocument', f, { shouldDirty: true })}
+                            />
+                            <ServiceBlock
+                                heading={pmRecord?.recordName ?? 'Annual Preventive Maintenance'}
+                                note={pmRecord?.description ?? ''}
+                                lastLabel={pmRecord?.issueLabel ?? 'Last PM date'}
+                                docLabel={pmRecord?.documentName ?? 'Record'}
+                                lastDate={register('annualPmLastDate')}
+                                odometer={register('annualPmOdometer')}
+                                unit={register('annualPmOdometerUnit')}
+                                nextDue={register('annualPmNextDue')}
+                                files={watch('annualPmDocument') || []}
+                                onFiles={(f) => setValue('annualPmDocument', f, { shouldDirty: true })}
+                            />
                         </AssetSection>
 
                         {/* 8. Notes */}
@@ -1417,6 +1674,36 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
 
                         {/* 9. Insurance & Operational Status */}
                         <AssetSection id="insurance" title="Insurance & Operational Status" subtitle="Fleet & insurance dates and operational state." icon={Shield}>
+                            {/* The pink slip. It lives in the cab, it expires, and the
+                                person who finds a lapsed one is usually an officer at the
+                                roadside — so it is a record with an alert on it, not a
+                                filename on the asset row. */}
+                            <div className="col-span-full">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileSignature size={15} /></span>
+                                    <div>
+                                        <p className="text-[12.5px] font-bold text-slate-800">{pinkSlipRecord?.recordName ?? 'Pink Slip'}</p>
+                                        <p className="text-[11px] text-slate-500">{pinkSlipRecord?.description ?? 'Vehicle proof of insurance'} — filed against this asset as a Compliance &amp; Documents record.</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
+                                    <FormInput label={pinkSlipRecord?.numberName ?? 'Liability Policy Number'}>
+                                        <Input {...register('pinkSlipNumber')} placeholder="Policy number on the slip" />
+                                    </FormInput>
+                                    <FormInput label="Slip Expiry">
+                                        <Input type="date" {...register('pinkSlipExpiry')} />
+                                    </FormInput>
+                                    <div className="col-span-full">
+                                        <DocumentUploadInput
+                                            label={pinkSlipRecord?.documentName ?? 'Proof of Automobile Insurance Card (Pink Slip)'}
+                                            description="Attach the slip carried in the cab (PDF, JPG, PNG)"
+                                            files={watch('pinkSlipDocument') || []}
+                                            onFilesChange={(files) => setValue('pinkSlipDocument', files, { shouldDirty: true })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
                             <FormInput label="Operational Status">
                                 <select {...register('operationalStatus')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
                                     <option value="Active">Active</option>
@@ -1437,11 +1724,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                         {opStatus === 'Active' && (
                                             <FormInput label="Odometer" required>
                                                 <div className="flex gap-2">
-                                                    <div className="relative flex-1">
+                                                    <div className="relative min-w-[5.5rem] flex-1">
                                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
                                                         <Input type="number" {...register('odometer', { valueAsNumber: true })} className="pl-9" placeholder="0" />
                                                     </div>
-                                                    <select {...register('odometerUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                    <select {...register('odometerUnit')} className="w-16 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
                                                         <option value="mi">mi</option>
                                                         <option value="km">km</option>
                                                     </select>

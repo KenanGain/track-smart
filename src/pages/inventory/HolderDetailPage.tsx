@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SubTabs } from "@/components/ui/SubTabs";
+import { PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
 import { type RecordRef } from "@/pages/messages/messages-store";
@@ -190,7 +191,7 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
                                     onClick={() => onNavigate(`${back}/${holderId}/assign`)}
                                     className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
                                 >
-                                    <ClipboardList size={15} /> Assignment
+                                    <ClipboardList size={15} /> Manage inventory
                                 </button>
                             )}
                             <KebabMenu items={[
@@ -205,7 +206,11 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto w-full max-w-5xl px-6 py-6">
+                {/* Full width, with the list pages' gutters — 16px on a phone, 32px on a
+                    desktop. Capped at max-w-5xl and centred, a nine-column table sat in a
+                    1024px well with its own horizontal scrollbar and the screen blank
+                    either side of it. */}
+                <div className={cn("w-full py-4 sm:py-6", PAGE_PAD)}>
                     {/* ── What is on it ───────────────────────────────── */}
                     {tab === "inventory" && (
                         <HolderInventoryPanel kind={kind} holderId={holderId} accountId={accountId} onNavigate={onNavigate} />

@@ -12,7 +12,7 @@
 // redesigned, so nothing moves on the screens that already use it.
 
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PAGE_SIZES, TH_CLS, bandTone, type SortState } from '@/components/ui/list-chrome';
 
@@ -205,6 +205,29 @@ export function FilterChip({ label, count, on, always, onClick }: {
             <span className={cn('text-[11px] tabular-nums', on ? 'text-blue-100' : 'text-slate-400')}>
                 {count}
             </span>
+        </button>
+    );
+}
+
+/**
+ * Put every filter on a row back at once.
+ *
+ * Rendered only when `on` — a Reset sitting there greyed out beside an untouched list is
+ * a control you learn to stop reading, and then miss when it matters. Callers decide what
+ * "touched" means, because only they know which of their controls are filters.
+ */
+export function ResetFilters({ on, onReset, label = 'Reset' }: {
+    on: boolean; onReset: () => void; label?: string;
+}) {
+    if (!on) return null;
+    return (
+        <button
+            type="button"
+            onClick={onReset}
+            title="Clear the filters on this row"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+        >
+            <X size={13} /> {label}
         </button>
     );
 }

@@ -11,6 +11,8 @@ import {
 import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
 import { commitOwnershipDoc } from './ownership-docs-bridge';
+import { commitPlateRecord } from './plate-record-bridge';
+import { commitAssetRecords, assetRecordsFromForm } from './asset-records-bridge';
 import { commitAssetInventory, currentDriverOf, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
 import { currentUserName } from '@/data/users.data';
@@ -316,6 +318,12 @@ export function AssetDirectoryPage({
                 setAssets(prev => [{ ...data, id }, ...prev]);
             }
             commitOwnershipDoc(accountId, id, data);
+            // And the plate, which is a Compliance & Documents record too — "Asset Plates",
+            // with the copy of ownership and (on an apportioned plate) the cab card in the
+            // two slots that record draws for them.
+            commitPlateRecord(accountId, id, data);
+            // The pink slip and the two inspections, each its own record with its own alert.
+            commitAssetRecords(accountId, id, assetRecordsFromForm(data));
             // The vehicle joins the shared fleet, so the inventory list, "the driver of this
             // vehicle" and the fleet counts can all see it — and then whatever was picked
             // in the Inventory section is filed against it.

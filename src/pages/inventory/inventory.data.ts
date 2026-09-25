@@ -122,11 +122,32 @@ export type Assignment = {
  *                        a dashcam. Nobody carries it anywhere; it is removed.
  */
 export type ItemHandling = "driver-returnable" | "asset-removable";
+/**
+ * Who the item follows once it is on a vehicle.
+ *
+ * Both are filed against the ASSET — that has not changed. What differs is who it leaves
+ * with: a fuel card goes wherever the driver goes, a transponder stays screwed to the cab
+ * and only moves when the truck does.
+ */
 export const ITEM_HANDLING: { id: ItemHandling; label: string; blurb: string }[] = [
-    { id: "driver-returnable", label: "Driver returnable", blurb: "A person signs for it and hands it back." },
-    { id: "asset-removable", label: "Asset removable", blurb: "Fitted to a vehicle and taken off it." },
+    {
+        id: "driver-returnable", label: "Driver",
+        blurb: "The driver returns it to the carrier when they leave, or when they move to a different asset.",
+    },
+    {
+        id: "asset-removable", label: "Asset",
+        blurb: "It is removed when the asset leaves the carrier's fleet.",
+    },
 ];
 export const handlingLabel = (h?: ItemHandling) => ITEM_HANDLING.find((x) => x.id === h)?.label ?? "";
+
+/**
+ * What the "no filter" chip is called in the lists.
+ *
+ * "Both", not "All": there are exactly two answers, and a list that offers All / Driver /
+ * Asset invites you to wonder what the third one is.
+ */
+export const HANDLING_ALL_LABEL = "Both";
 
 export type InventoryItem = {
     id: string;
@@ -137,7 +158,7 @@ export type InventoryItem = {
      * also cuts keys sells two categories of item, and the vendor can only say one.
      */
     categoryId?: string;
-    /** How it comes back. See `ItemHandling`. */
+    /** Who it follows off the asset. See `ItemHandling`. */
     handling?: ItemHandling;
     /**
      * What this item is CALLED. Defaults to the vendor and the category it falls under

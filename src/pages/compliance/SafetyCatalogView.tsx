@@ -53,6 +53,7 @@ const CATEGORY_SHORT: Record<SafetyCategory, string> = {
     'Disciplinary Records': 'Disciplinary',
     // Asset
     'Ownership & Plating': 'Ownership & Plating',
+    'Maintenance & Inspection': 'Maintenance & Inspection',
     // Retired asset headings, kept so a custom record filed under one still reads.
     'Regulatory and Safety Numbers': 'Regulatory & Safety',
     'Tax and Business Identification Numbers': 'Tax & Business ID',

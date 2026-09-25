@@ -299,10 +299,9 @@ export function commitAssetInventory(input: {
 
     // Nothing is sent about kit that never leaves the yard: a spare key in a parked truck
     // is nobody's to come and collect, which the planner knows rather than each caller.
-    // `notify` is the "tell them to collect it" tick, so it silences collections only. A
-    // hand-back has its own tick and its own reason to exist: somebody is holding something
-    // the office has just taken off the record, and not asking for it back is how a fuel
-    // card stays in a pocket with the record saying otherwise.
+    // `notify` is the "tell them to collect it" switch, so it silences collections only. A
+    // hand-back has its own answer on this form (`askBack`) and its own reason to exist:
+    // somebody is holding something the office has just taken off the record.
     const plans = sendablePlans(
         planMovements(movements, {
             counterparty: counterpartyOf(draft.notify),

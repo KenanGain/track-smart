@@ -24,10 +24,11 @@ import { cn } from "@/lib/utils";
 import { TablePager } from "./TablePager";
 import {
     INVENTORY_ITEMS, getInventoryForCarrier, itemName, VENDORS, VENDOR_CATEGORIES,
-    getCategoryLabel, itemTravelsWithDriver, itemCategoryId,
+    getCategoryLabel, itemTravelsWithDriver, itemCategoryId, handlingLabel, HANDLING_ALL_LABEL,
     type InventoryItem, type InventoryStatus,
 } from "./inventory.data";
 import { TabScroller } from "@/components/ui/TabScroller";
+import { ResetFilters } from "@/components/ui/ListChrome";
 import { useInventoryAdditions } from "./inventory-store";
 import { useDriverHandovers, handedToMap } from "./handovers.data";
 import {
@@ -42,26 +43,36 @@ import { fmtDate, daysUntil } from "./inventory-assignment";
  * `handling` first, because it is the one the item itself answers and the one that decides
  * who has to do something about it.
  */
-type GroupBy = "none" | "handling" | "status" | "category";
-// One word each: the control names itself once, in its first option.
-const GROUPS: { id: GroupBy; label: string }[] = [
+type GroupBy = "none" | "handling" | "status" | "category" | "vendor";
+
+/**
+ * `assetOnly` marks the question only a vehicle can answer. A driver holds the returnable
+ * half of what they drive and nothing else, so banding their pile by handling produces one
+ * band containing everything.
+ */
+const GROUPS: { id: GroupBy; label: string; assetOnly?: boolean }[] = [
     { id: "none", label: "Group by" },
-    { id: "handling", label: "Handling" },
+    { id: "handling", label: "Handling", assetOnly: true },
     { id: "status", label: "Status" },
     { id: "category", label: "Category" },
+    { id: "vendor", label: "Vendor" },
 ];
 
 /** Which band a row falls in, and where that band sits. */
 function groupOf(by: GroupBy, h: HeldItem): { rank: number; label: string } {
     if (by === "handling") {
         return itemTravelsWithDriver(h.item)
-            ? { rank: 0, label: "Driver returnable" }
-            : { rank: 1, label: "Asset removable" };
+            ? { rank: 0, label: handlingLabel("driver-returnable") }
+            : { rank: 1, label: handlingLabel("asset-removable") };
     }
     if (by === "status") {
         // Worst first, as everywhere else in this module.
         const order: InventoryStatus[] = ["Expired", "Expiring Soon", "Active"];
         return { rank: order.indexOf(h.item.status), label: h.item.status };
+    }
+    if (by === "vendor") {
+        const label = vendorOf(h.item) || "No vendor";
+        return { rank: 0, label };
     }
     const label = categoryOf(h.item) || "Other";
     return { rank: label.charCodeAt(0), label };
@@ -132,7 +143,8 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
     onNavigate?: (path: string) => void;
 }) {
     const { held, expiring, expired } = useHolderInventory(kind, holderId, accountId);
-    const back = kind === "driver" ? "drivers" : "assets";
+    const isDriver = kind === "driver";
+    const back = isDriver ? "drivers" : "assets";
 
     const [search, setSearch] = useState("");
     /**
@@ -146,6 +158,14 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
     const [groupBy, setGroupBy] = useState<GroupBy>("none");
     const [status, setStatus] = useState<InventoryStatus | "all">("all");
     const [cat, setCat] = useState<string>(ALL_CAT);
+    // Nine columns on a vehicle, eight on a driver: "Comes back" would read the same on
+    // every row of a driver's pile, because a driver holds only the returnable half.
+    const COLS = isDriver
+        ? ["Item", "Type", "Serial #", "PIN #", "Issued", "Expires", "Status", ""]
+        // "Assigned to", as the item form asks it — the cell under it now reads "Driver"
+        // or "Asset", and "Comes back: Driver" is not a sentence.
+        : ["Item", "Type", "Serial #", "PIN #", "Issued", "Expires", "Assigned to", "Status", ""];
+    const groupOptions = GROUPS.filter((g) => !isDriver || !g.assetOnly);
     const [sort, setSort] = useState<SortKey>("expiry");
     const [dir, setDir] = useState<1 | -1>(1);
     const [page, setPage] = useState(0);
@@ -223,9 +243,9 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
     const handlingTabs = useMemo(() => {
         const ret = held.filter((h) => itemTravelsWithDriver(h.item)).length;
         return [
-            { id: "all" as const, label: "All", count: held.length },
-            { id: "returnable" as const, label: "Driver returnable", count: ret },
-            { id: "removable" as const, label: "Asset removable", count: held.length - ret },
+            { id: "all" as const, label: HANDLING_ALL_LABEL, count: held.length },
+            { id: "returnable" as const, label: handlingLabel("driver-returnable"), count: ret },
+            { id: "removable" as const, label: handlingLabel("asset-removable"), count: held.length - ret },
         ];
     }, [held]);
 
@@ -339,7 +359,7 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                     (everything returnable comes back) or a truck goes off the road
                     (everything removable comes off). HOW it got here stays a column. */}
                 <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2">
-                    {handlingTabs.map((t) => (
+                    {!isDriver && handlingTabs.map((t) => (
                         <button
                             key={t.id}
                             type="button"
@@ -367,8 +387,21 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                                 : "border-blue-300 bg-blue-50/60 text-blue-700",
                         )}
                     >
-                        {GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                        {groupOptions.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                    {/* Five here: the category tab, the handling chips, the status select,
+                        the grouping and the search box. */}
+                    <ResetFilters
+                        on={cat !== ALL_CAT || handling !== "all" || status !== "all"
+                            || groupBy !== "none" || search.trim() !== ""}
+                        onReset={() => {
+                            setCat(ALL_CAT);
+                            setHandling("all");
+                            setStatus("all");
+                            setGroupBy("none");
+                            setSearch("");
+                        }}
+                    />
                 </div>
 
                 {rows.length === 0 ? (
@@ -393,11 +426,11 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                             <thead className="border-b border-slate-200 bg-slate-50">
                                 <tr>
                                     {/* Ruled, so nine columns do not run into each other. */}
-                                    {["Item", "Type", "Serial #", "PIN #", "Issued", "Expires", "Comes back", "Status", ""].map((h, i) => (
+                                    {COLS.map((h, i) => (
                                         <th key={h || i} className={cn(
                                             "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500",
                                             i > 0 && "border-l border-slate-200",
-                                            i === 8 && "text-right",
+                                            i === COLS.length - 1 && "text-right",
                                         )}>
                                             {h}
                                         </th>
@@ -415,7 +448,7 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                                         <Fragment key={item.id}>
                                         {band && (!prev || prev.label !== band.label) && (
                                             <tr>
-                                                <td colSpan={9} className="border-y border-slate-200 bg-slate-50 p-0">
+                                                <td colSpan={COLS.length} className="border-y border-slate-200 bg-slate-50 p-0">
                                                     <div className="flex items-center gap-2 px-3 py-1.5">
                                                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">{band.label}</span>
                                                         <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-200/70 px-1.5 text-[10px] font-bold tabular-nums text-slate-600">
@@ -458,15 +491,18 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                                                 ) : <span className="text-slate-400">no expiry</span>}
                                             </td>
                                             {/* What the ITEM says about itself, which is what decides who has
-                                                to do something when a driver leaves or a truck goes off road. */}
-                                            <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
-                                                <span className={cn(
-                                                    "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                    rides ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600",
-                                                )}>
-                                                    {rides ? "Driver returnable" : "Asset removable"}
-                                                </span>
-                                            </td>
+                                                to do something when a driver leaves or a truck goes off road.
+                                                Not on a driver: every row there would read the same. */}
+                                            {!isDriver && (
+                                                <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
+                                                    <span className={cn(
+                                                        "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                        rides ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600",
+                                                    )}>
+                                                        {handlingLabel(rides ? "driver-returnable" : "asset-removable")}
+                                                    </span>
+                                                </td>
+                                            )}
                                             <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
                                                 <span className={cn(
                                                     "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",

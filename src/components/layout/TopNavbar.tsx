@@ -65,7 +65,7 @@ const PATH_TITLES: Record<string, string> = {
 function getPageTitle(path: string): string {
     if (PATH_TITLES[path]) return PATH_TITLES[path];
     if (path.startsWith("/inventory/drivers/") && path.endsWith("/assign")) return "Assign & Hand Over";
-    if (path.startsWith("/inventory/assets/") && path.endsWith("/assign")) return "Assign Inventory";
+    if (path.startsWith("/inventory/assets/") && path.endsWith("/assign")) return "Manage Inventory";
     if (path.startsWith("/inventory/driver-inventory/")) return "Driver Inventory";
     if (path.startsWith("/inventory/handover/")) return "Hand Over";
     if (path.startsWith("/inventory/take-back/")) return "Take Back";

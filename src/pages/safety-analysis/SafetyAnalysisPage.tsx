@@ -4015,7 +4015,7 @@ export function SafetyAnalysisPage() {
                     <td className="py-2.5 pr-3 text-xs text-slate-500">{evt.vehicleId}</td>
                     <td className="py-2.5 pr-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${evt.category === 'ELD/HOS' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{evt.category}</span></td>
                     <td className="py-2.5 pr-3 text-xs text-slate-600 max-w-[220px] truncate">{evt.description}</td>
-                    <td className="py-2.5 pr-3">{evt.isOos ? <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">OOS</span> : <span className="text-[10px] text-slate-400">\u2014</span>}</td>
+                    <td className="py-2.5 pr-3">{evt.isOos ? <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">OOS</span> : <span className="text-[10px] text-slate-400">—</span>}</td>
                     <td className="py-2.5">{getStatusBadge(evt.status)}</td>
                   </tr>
                 ))}

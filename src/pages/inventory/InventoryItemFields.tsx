@@ -36,7 +36,7 @@ export interface InventoryItemDraft {
     vendorId: string;
     /** What kind of thing it is. Starts from the vendor's category, then it is the item's. */
     categoryId: string;
-    /** How it comes back — signed out to a person, or fitted to a truck. */
+    /** Who it follows off the asset — the driver, or the asset itself. */
     handling: ItemHandling;
     name: string;
     serial: string;
@@ -188,11 +188,12 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
                     </Select>
                 </Field>
 
-                {/* How it comes back. One or the other — a fuel card is handed back by the
-                    person who signed for it, a transponder is unscrewed from the cab. It is
-                    the difference between asking somebody for it and going to fetch it. */}
+                {/* Who the item follows. Either way it is filed against the asset — what
+                    this settles is who it leaves with: a fuel card goes wherever the driver
+                    goes, a transponder stays screwed to the cab. It is the difference
+                    between asking somebody for it and going to fetch it. */}
                 <div className="sm:col-span-2">
-                    <Field label="How it comes back" required>
+                    <Field label="Assigned to" required>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {ITEM_HANDLING.map((h) => {
                                 const on = draft.handling === h.id;

@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Store, Mail, Phone, MapPin, Tag } from "lucide-react";
+import { Plus, Store, Mail, Phone, MapPin } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
-import { VendorCategoriesModal } from "./VendorCategoriesModal";
 import { INVENTORY_TABS } from "./InventoryTabs";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
-    INVENTORY_ITEMS,
-    getInventoryForCarrier,
     CARRIER_NAME,
     formatVendorAddress,
     getCategoryLabel,
@@ -45,11 +42,6 @@ const TD = ({ children, className }: { children?: React.ReactNode; className?: s
 );
 
 export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
-    // The category catalog is about inventory, so it counts this carrier's items.
-    const categoryItems = useMemo(
-        () => (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS),
-        [accountId],
-    );
     const [search, setSearch] = useState("");
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
@@ -60,8 +52,8 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
     const [vendors, setVendors] = useState<Vendor[]>(() =>
         accountId ? VENDORS.filter((v) => v.accountId === accountId) : VENDORS
     );
-    const [categories, setCategories] = useState<VendorCategory[]>(VENDOR_CATEGORIES);
-    const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
+    // Read, not owned: the catalog is edited from the List tab, where its counts are.
+    const categories: VendorCategory[] = VENDOR_CATEGORIES;
 
     // Refresh when the active carrier changes (super-admin switching via the
     // top navbar). Reset to page 1 so we don't land on an empty page.
@@ -114,12 +106,6 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
                 activeTab="vendors"
                 onTabChange={id => onNavigate(INVENTORY_TABS.find(t => t.id === id)?.path ?? "/inventory")}
                 actions={<>
-                    <button
-                        onClick={() => setCategoriesModalOpen(true)}
-                        className={cn("inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50", condensed ? "h-8" : "h-9")}
-                    >
-                        <Tag size={15} /> Categories
-                    </button>
                     <button
                         onClick={() => onNavigate("/inventory/vendors/new")}
                         className={cn("inline-flex items-center gap-2 rounded-lg bg-[#2563EB] px-3.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}
@@ -241,14 +227,6 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
             </div>
             </div>
             </div>
-
-            <VendorCategoriesModal
-                open={categoriesModalOpen}
-                onClose={() => setCategoriesModalOpen(false)}
-                categories={categories}
-                items={categoryItems}
-                onCategoriesChange={setCategories}
-            />
         </div>
     );
 }
