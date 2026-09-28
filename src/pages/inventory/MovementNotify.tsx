@@ -17,11 +17,12 @@ import { Info, MessageSquare, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { summarise, type Movement, type MovementPlan } from "./inventory-movements";
 import { plansFor, planKey, type NotifyState } from "./notify-state";
+import { MovementForms } from "./MovementForms";
 
 // The state and its helpers live in a plain module: the asset wizard's save path reads
 // them outside React, and pure logic should not have to import a component to do it.
 export {
-    emptyNotifyState, planKey, counterpartyOf, sendablePlans, type NotifyState,
+    emptyNotifyState, planKey, counterpartyOf, sendablePlans, withForms, type NotifyState,
 } from "./notify-state";
 
 /** The messages a set of changes would send, memoised for the form that shows them. */
@@ -29,13 +30,15 @@ export function useMovementPlans(movements: Movement[], state: NotifyState): Mov
     return useMemo(() => plansFor(movements, state), [movements, state]);
 }
 
-export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }: {
+export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat, onPreviewForm }: {
     plans: MovementPlan[];
     state: NotifyState;
     onChange: (next: Partial<NotifyState>) => void;
     /** Why there is nothing to send — each reason is a different thing to go and fix. */
     emptyHint?: React.ReactNode;
     onOpenChat?: (driverName: string) => void;
+    /** Read a form before attaching it. Nothing to show it in? Then it is not offered. */
+    onPreviewForm?: (defId: string) => void;
 }) {
     const initials = (name: string) => {
         const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -127,6 +130,21 @@ export function MovementNotify({ plans, state, onChange, emptyHint, onOpenChat }
                         asking for it is how it stays in a pocket.
                     </span>
                 </p>
+            )}
+
+            {/* The paperwork. Only beside a collection: nobody signs for giving something
+                back — the signature that matters there is the office's, on receiving it, and
+                asking the driver to sign for kit they no longer have is backwards.
+
+                Under the switch, because it is part of the same ask. Switch the collection
+                off and there is no card for the form to ride on. */}
+            {state.notify && collects.length > 0 && (
+                <MovementForms
+                    ids={state.formIds}
+                    onChange={(formIds) => onChange({ formIds })}
+                    onPreview={onPreviewForm}
+                    collectCount={collects.length}
+                />
             )}
 
             {shown.length > 0 && (<>

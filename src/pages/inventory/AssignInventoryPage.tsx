@@ -52,8 +52,12 @@ import {
     MovementNotify, useMovementPlans, sendablePlans, emptyNotifyState, type NotifyState,
 } from "./MovementNotify";
 import { ItemPickList, type HeldPickRow } from "./ItemPickList";
+import { PolicyForm } from "@/pages/hiring-process/PolicyForm";
+import { collectionLineFor } from "./inventory-collection";
+import { inventoryFormDef, issueFormValues } from "./inventory-forms";
 import { currentUserName } from "@/data/users.data";
 import { todayISO } from "../hiring-process/FormKit";
+import { backTarget, backLabel } from "@/lib/nav-history";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -334,6 +338,8 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     // Nothing here is undoable from this page: the items move, the messages go, and the
     // page navigates away. So the button opens the confirmation rather than doing it.
     const [confirming, setConfirming] = useState(false);
+    /** A form opened to be read before it is attached. Never editable from here. */
+    const [readingForm, setReadingForm] = useState<string | null>(null);
 
     const save_ = () => {
         if (changeCount === 0) return;
@@ -447,8 +453,13 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     return (
         <div className="flex h-full flex-col bg-[#F8FAFC] text-slate-900">
             <WizardHeader
-                backLabel={`Back to ${isDriver ? "Drivers" : "Assets"}`}
-                onBack={() => onNavigate(back)}
+                {...(() => {
+                    // Where you came from. This page is reached from the holders list, from a
+                    // holder's own page and from the asset record — and only the first of those
+                    // was ever "Back to Drivers".
+                    const t = backTarget(back, isDriver ? "Drivers" : "Assets");
+                    return { backLabel: backLabel(t), onBack: () => onNavigate(t.path) };
+                })()}
                 icon={isDriver ? IdCard : Truck}
                 title={`Manage inventory — ${holderLabel}`}
                 subtitle={
@@ -616,6 +627,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                                 plans={plans}
                                 state={notifyState}
                                 onChange={setNotifyPart}
+                                onPreviewForm={setReadingForm}
                                 onOpenChat={(name) => { setMessagesFocus(getOrCreateDriverConversation(name)); onNavigate("/messages"); }}
                                 emptyHint={
                                     !handDriver && !isDriver
@@ -632,6 +644,46 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                 </div>
 
             </div>
+
+            {/* The form itself, filled in from what is actually moving. Read-only: this is
+                the office checking what it is about to ask somebody to sign, not the office
+                signing on their behalf. */}
+            {readingForm && (() => {
+                const def = inventoryFormDef(readingForm);
+                if (!def) return null;
+                return (
+                    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+                        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
+                            <div className="min-w-0">
+                                <p className="truncate text-[14px] font-bold text-slate-900">{def.title} {def.accentTitle}</p>
+                                <p className="truncate text-[12px] text-slate-500">
+                                    As {handDriver?.name ?? "the driver"} will see it — filled in from what you have picked.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReadingForm(null)}
+                                className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                            <PolicyForm
+                                def={def}
+                                startPreview
+                                onBack={() => setReadingForm(null)}
+                                sharedValues={issueFormValues({
+                                    driverName: handDriver?.name ?? holderLabel,
+                                    lines: collecting.map((it) => collectionLineFor(it, "carried")),
+                                    holderLabel: isDriver ? undefined : holderLabel,
+                                    issuedBy,
+                                })}
+                            />
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Nothing on this page is undoable once it runs: items move, messages go out,
                 and the page navigates away. So it is said once, in full, first. */}

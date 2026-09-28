@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     Smartphone, Bell, ChevronRight, ChevronLeft, ChevronDown, UploadCloud, PenLine, MessageSquare,
     Truck, ShieldCheck, AlertTriangle, CheckCircle2, Clock, FileText, User,
     Home as HomeIcon, Phone, Mail, Settings, LogOut, Wifi, Signal, BatteryFull,
-    MapPin, IdCard, CircleHelp, Camera, Send, X, CalendarClock, Building2, PackageCheck,
+    MapPin, IdCard, CircleHelp, Camera, Send, X, CalendarClock, Building2, PackageCheck, FileSignature, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/pages/ats/ats-ui";
@@ -17,6 +17,13 @@ import { useDriverDqHealth, type Health } from "@/pages/ats/DqFilesPage";
 import { useConversations, type InventoryCollection } from "@/pages/messages/messages-store";
 import { InventoryCollectionCard } from "@/pages/messages/InventoryCollectionCard";
 import { collectionsForDriver, confirmCollection } from "@/pages/inventory/inventory-collection";
+import { signAndSettle } from "@/pages/inventory/collection-signing";
+import { InlineFormFill } from "@/pages/inventory/InlineFormFill";
+import { inventoryFormDef, issueFormValues } from "@/pages/inventory/inventory-forms";
+import { DriverRemediationScreen, openRemediations } from "@/pages/roadside/DriverRemediationScreen";
+import { useInspections } from "@/pages/roadside/roadside.data";
+import { consumeDriverAppFocus } from "./driver-app-focus";
+import { currentUser, driverIdOfUser } from "@/data/users.data";
 
 /**
  * Driver Mobile App — the TrackSmart companion app drivers carry, driven by the
@@ -92,7 +99,22 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
     const drivers: Driver[] = (bundle?.drivers ?? MOCK_DRIVERS) as Driver[];
     const carrier = bundle?.viewData?.page?.carrierHeader?.name ?? "Your carrier";
 
-    const [driverId, setDriverId] = useState<string>(drivers[0]?.id ?? "");
+    // Whoever the office asked to see, when it arrived here from a collection card —
+    // otherwise the first driver on the roster, as before. Read ONCE, into a ref, because
+    // consuming it is destructive: a second read during a re-render would find it gone and
+    // silently bounce the page back to driver number one.
+    const asked = useRef<string | null>(null);
+    // Arriving FROM a collection card is a different arrival from simply being signed in as
+    // a driver: one came here to look at a specific list, the other just opened the app. The
+    // first lands on that list; the second lands on Home, like anybody else.
+    const fromCard = useRef(false);
+    if (asked.current === null) {
+        const sent = consumeDriverAppFocus();
+        const want = sent || driverIdOfUser(currentUser());
+        asked.current = want && drivers.some(d => d.id === want) ? want : "";
+        fromCard.current = !!sent && !!asked.current;
+    }
+    const [driverId, setDriverId] = useState<string>(() => asked.current || drivers[0]?.id || "");
     const driver = drivers.find(d => d.id === driverId) ?? drivers[0];
 
     const healthFor = useDriverDqHealth(accountId);
@@ -112,11 +134,24 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
     );
     const toCollect = collections.filter((c) => c.status === "pending");
 
+    // Roadside defects still waiting on a re-inspection. The driver is the one at the
+    // shop holding the signed sheet, so the upload belongs on the phone as much as in
+    // the office — same record, same shelf, marked as having come from here.
+    const inspections = useInspections(accountId);
+    const toFix = driver ? openRemediations(inspections, driver.id) : [];
+
     const [tab, setTab] = useState<TabId>("home");
     const [reporting, setReporting] = useState(false);
-    const [collecting, setCollecting] = useState(false);
+    const [fixing, setFixing] = useState(false);
+    // Opened straight onto the collection list when the office came here from a card, since
+    // that card is the reason it came. The switcher is still right there to change driver.
+    const [collecting, setCollecting] = useState(() => fromCard.current);
     // Switching driver resets the phone to a clean Home + closes anything open over it.
-    useEffect(() => { setReporting(false); setCollecting(false); setTab("home"); }, [driverId]);
+    const first = useRef(true);
+    useEffect(() => {
+        if (first.current) { first.current = false; return; }
+        setReporting(false); setCollecting(false); setFixing(false); setTab("home");
+    }, [driverId]);
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -187,12 +222,23 @@ export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) 
                                             onReport={() => setReporting(true)}
                                             toCollect={toCollect.length}
                                             onCollect={() => setCollecting(true)}
+                                            toFix={toFix.length}
+                                            onFix={() => setFixing(true)}
                                         />
                                     )}
                                     {tab === "docs" && <DocsScreen health={health} />}
                                     {tab === "hours" && <HoursScreen />}
                                     {tab === "profile" && <ProfileScreen d={vm} />}
                                     <BottomNav tab={tab} onChange={setTab} />
+                                    {fixing && (
+                                        <DriverRemediationScreen
+                                            key={vm.id}
+                                            driverId={vm.id}
+                                            driverName={vm.name}
+                                            accountId={accountId}
+                                            onClose={() => setFixing(false)}
+                                        />
+                                    )}
                                     {collecting && (
                                         <CollectScreen
                                             key={vm.id}
@@ -318,8 +364,10 @@ const TASK_TONE: Record<string, { icon: string; chip: string }> = {
     blue: { icon: "text-blue-600 bg-blue-50", chip: "bg-blue-600 text-white" },
 };
 
-function HomeScreen({ d, health, onReport, toCollect, onCollect }: {
+function HomeScreen({ d, health, onReport, toCollect, onCollect, toFix, onFix }: {
     d: DriverVM; health: Health | null; onReport: () => void; toCollect: number; onCollect: () => void;
+    /** Roadside defects on this driver's unit with no re-inspection on file yet. */
+    toFix: number; onFix: () => void;
 }) {
     // Build the "needs attention" list from the driver's real DQ health + license expiry.
     const tasks: { Icon: React.ElementType; tone: string; title: string; sub: string; chip: string }[] = [];
@@ -380,6 +428,21 @@ function HomeScreen({ d, health, onReport, toCollect, onCollect }: {
                         </span>
                     </span>
                     <ChevronRight size={18} className="text-blue-400" />
+                </button>
+            )}
+
+            {/* A defect found at the roadside, still waiting on a re-inspection. Above the
+                accident button because the truck is not legal until this is done. */}
+            {toFix > 0 && (
+                <button onClick={onFix} className="mx-5 mt-4 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition-colors hover:bg-amber-100">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-600 text-white"><Wrench size={20} /></span>
+                    <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-amber-900">Upload a re-inspection</span>
+                        <span className="block text-xs text-amber-700/80">
+                            {toFix === 1 ? "1 roadside defect" : `${toFix} roadside defects`} waiting — send the signed report
+                        </span>
+                    </span>
+                    <ChevronRight size={18} className="text-amber-400" />
                 </button>
             )}
 
@@ -722,6 +785,22 @@ function AutoInfo({ title, icon: Icon, rows }: { title: string; icon: React.Elem
 function CollectScreen({ collections, onClose }: { collections: InventoryCollection[]; onClose: () => void }) {
     const pending = collections.filter((c) => c.status === "pending");
     const done = collections.filter((c) => c.status === "collected");
+    // The receipt, full-screen over the phone — which is what a dedicated page IS at this
+    // width. Same renderer as the web page, so both ends sign the same document.
+    const [signing, setSigning] = useState<{ collection: InventoryCollection; defId: string; picked: string[] } | null>(null);
+    const signingDef = signing ? inventoryFormDef(signing.defId) : undefined;
+    // The whole list, ticked as the card had it. The driver is holding the kit on this
+    // screen, so this is where "the vest wasn't in the bag" gets said.
+    const signingLines = signing ? signing.collection.lines : [];
+    const signingChecked = useMemo(() => new Set(signing?.picked ?? []), [signing]);
+    const toggleSigning = (itemId: string) =>
+        setSigning((prev) => prev && ({
+            ...prev,
+            picked: prev.picked.includes(itemId)
+                ? prev.picked.filter((x) => x !== itemId)
+                : [...prev.picked, itemId],
+        }));
+
 
     return (
         <div className="absolute inset-x-0 bottom-0 top-11 z-40 flex flex-col bg-slate-50">
@@ -753,6 +832,7 @@ function CollectScreen({ collections, onClose }: { collections: InventoryCollect
                                 <InventoryCollectionCard
                                     collection={c}
                                     onConfirm={(ids) => confirmCollection(c.id, ids)}
+                                    onSign={(defId, ids) => setSigning({ collection: c, defId, picked: ids })}
                                 />
                             </div>
                         ))}
@@ -774,6 +854,38 @@ function CollectScreen({ collections, onClose }: { collections: InventoryCollect
                     </>
                 )}
             </div>
+
+            {/* Its own screen, with the back arrow the rest of the app has. */}
+            {signing && signingDef && (
+                <div className="absolute inset-x-0 bottom-0 top-11 z-50 flex flex-col bg-slate-50">
+                    <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
+                        <button onClick={() => setSigning(null)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"><ChevronLeft size={22} /></button>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white"><FileSignature size={16} /></span>
+                        <h3 className="min-w-0 flex-1 truncate text-base font-bold text-slate-900">Sign the receipt</h3>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-3 py-3">
+                        <InlineFormFill
+                            def={signingDef}
+                            initialValues={issueFormValues({
+                                driverName: signing.collection.driverName,
+                                lines: signingLines.filter((l) => signingChecked.has(l.itemId)),
+                                holderLabel: signing.collection.holderLabel,
+                                issuedBy: signing.collection.issuedBy,
+                            })}
+                            lines={signingLines}
+                            checked={signingChecked}
+                            onToggleItem={toggleSigning}
+                            holderLabel={signing.collection.holderLabel}
+                            signerName={signing.collection.driverName}
+                            onCancel={() => setSigning(null)}
+                            onSign={(filled) => {
+                                signAndSettle({ collection: signing.collection, defId: signing.defId, pickedItemIds: signing.picked, filled });
+                                setSigning(null);
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

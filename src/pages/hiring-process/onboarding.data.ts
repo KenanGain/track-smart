@@ -97,13 +97,27 @@ export const ONBOARDING_FORM_DEFS: PolicyFormDef[] = [
         blurb: "Company property issued to the driver.",
         intro: [{ key: "applicant", label: "Employee name", kind: "text" }],
         fieldsTitle: "Issued items",
+        // Above the statement, which promises to return "the property listed above" — and
+        // as rows, so there is something to list. A hand-out replaces this with the real
+        // kit table; typed by hand it is the same shape, in the same wire format.
+        fieldsFirst: true,
         fields: [
-            { key: "itemsIssued", label: "Items issued (uniforms, fuel card, ELD / tablet, keys, PPE)" },
+            { key: "itemsIssued", label: "Items issued (uniforms, fuel card, ELD / tablet, keys, PPE)", kind: "items" },
             { key: "issueDate", label: "Issue date", kind: "date" },
         ],
         body: [{ p: "I acknowledge receipt of the company property listed above. I agree to keep it in good condition, use it only for company purposes, and return all items upon separation or on request. I understand the value of unreturned items may be deducted from my final pay where permitted by law." }],
         signers: SIGN,
-        sample: { applicant: "Jane Doe", itemsIssued: "2 uniforms, fuel card, ELD tablet, cab keys, hi-vis vest", issueDate: "2026-06-05", printName: "Jane Doe", date: "2026-06-05" },
+        sample: {
+            applicant: "Jane Doe",
+            itemsIssued: [
+                "Company Uniform Shirt (UNI-2210)",
+                "Fuel Card (FC-9001)",
+                "ELD Tablet (DEV-448120)",
+                "Cab Keys (set) (KEY-983142)",
+                "Hi-Vis Vest",
+            ].join("\n"),
+            issueDate: "2026-06-05", printName: "Jane Doe", date: "2026-06-05",
+        },
     },
     {
         id: "fuel-card", title: "Fuel Card", accentTitle: "Agreement", theme: "blue", kind: "policy",

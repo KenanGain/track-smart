@@ -21,7 +21,7 @@
 import { useMemo, useState } from 'react';
 import {
     Boxes, Check, CheckCircle2, PackageCheck, ClipboardList, PenLine, Clock, Truck, Undo2,
-    Building2, UserRound, CalendarClock,
+    Building2, UserRound, CalendarClock, FileSignature, FileCheck2, Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InventoryCollection } from './messages-store';
@@ -60,11 +60,23 @@ const DIRECTION_COPY = {
 } as const;
 
 
-export function InventoryCollectionCard({ collection, preview, onConfirm }: {
+export function InventoryCollectionCard({ collection, preview, onConfirm, onSign, onOpenDriverApp }: {
     collection: InventoryCollection;
     /** The office's own copy — shows the state, offers no buttons. */
     preview?: boolean;
     onConfirm: (collectedItemIds: string[]) => void;
+    /**
+     * A form on this card came back signed.
+     *
+     * The card renders and collects the signature itself — it is a form in a message, which
+     * is the whole point — and hands the result up, because what a signature MEANS (file a
+     * copy, settle the collection) is not a chat bubble's business. Without this the card
+     * falls back to the plain confirm, so a surface that cannot file anything still lets
+     * somebody answer.
+     */
+    onSign?: (defId: string, pickedItemIds: string[]) => void;
+    /** The office watching its own copy, wanting to see the driver's end of it. */
+    onOpenDriverApp?: () => void;
 }) {
     const done = collection.status === 'collected';
     const back = collection.direction === 'return';
@@ -92,6 +104,14 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
 
     const all = collection.lines.length;
     const allPicked = picked.size === all;
+    // The paperwork. A hand-back never carries any — see `withForms`.
+    const forms = collection.forms ?? [];
+    const unsigned = forms.filter(f => f.status !== 'signed');
+    /** Signing settles the collection, so the primary becomes the form when there is one. */
+    const signing = !done && !preview && !!onSign && unsigned.length > 0;
+    // The card does not draw the form any more. A 380px column is not somewhere to read a
+    // statement about money coming out of a final pay cheque, or to draw a signature — so
+    // the card asks, and the host opens it on a page with room, carrying the ticks.
     const anyHanded = collection.lines.some(l => l.route === 'handed');
 
     const shownAsOn = (id: string) => (done ? confirmed.has(id) : picked.has(id));
@@ -178,6 +198,52 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
                 })}
             </ul>
 
+            {/* What they sign for it. Under the list, because the list is what the receipt
+                says — and a signed one says so, with the date, rather than disappearing. */}
+            {forms.length > 0 && (
+                <div className="border-t border-slate-100 bg-violet-50/40 px-3.5 py-2.5">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                        <FileSignature size={11} />
+                        {forms.length === 1 ? 'Receipt to sign' : `${forms.length} receipts to sign`}
+                    </p>
+                    <ul className="space-y-1">
+                        {forms.map(f => (
+                            <li key={f.defId} className="flex flex-wrap items-start gap-2">
+                                {f.status === 'signed'
+                                    ? <FileCheck2 size={13} className="mt-0.5 shrink-0 text-emerald-600" />
+                                    : <PenLine size={13} className="mt-0.5 shrink-0 text-violet-500" />}
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-[12px] font-semibold text-slate-800">{f.title}</span>
+                                    <span className="block text-[11px] text-slate-500">
+                                        {f.status === 'signed'
+                                            ? <>Signed{f.signedBy ? ` by ${f.signedBy}` : ''}{f.signedAt ? ` on ${f.signedAt.slice(0, 10)}` : ''} — filed on their record.</>
+                                            : preview
+                                                ? <>Waiting on {collection.driverName}.</>
+                                                : 'Filled in from what you tick above.'}
+                                    </span>
+                                </span>
+                                {/* Openable from the row as well as from the button, because a
+                                    driver who has already ticked reads down the card, not back
+                                    up to a footer they have scrolled past. */}
+                                {f.status !== 'signed' && !preview && !!onSign && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onSign(f.defId, [...picked])}
+                                        disabled={picked.size === 0}
+                                        className={cn('shrink-0 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors',
+                                            picked.size === 0
+                                                ? 'cursor-not-allowed border-slate-200 text-slate-300'
+                                                : 'border-violet-300 bg-white text-violet-700 hover:bg-violet-50')}
+                                    >
+                                        Fill it in
+                                    </button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
             {/* Footer */}
             {done ? (
                 <div className={cn('border-t px-3.5 py-2.5 text-[12px]',
@@ -200,8 +266,20 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
                     )}
                 </div>
             ) : preview ? (
-                <div className="border-t border-slate-100 bg-slate-50/70 px-3.5 py-2.5 text-[12px] text-slate-500">
-                    {copy.waiting(collection.driverName)}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-3.5 py-2.5 text-[12px] text-slate-500">
+                    <span className="min-w-0">{copy.waiting(collection.driverName)}</span>
+                    {/* The office cannot answer for them — that is what `preview` means — but it
+                        can go and look at the driver's end of it, which is also the only way
+                        anybody in the office ever sees what they are actually sending. */}
+                    {onOpenDriverApp && (
+                        <button
+                            type="button"
+                            onClick={onOpenDriverApp}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                            <Smartphone size={11} /> Open in driver app
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
@@ -209,16 +287,25 @@ export function InventoryCollectionCard({ collection, preview, onConfirm }: {
                         {picked.size === 0
                             ? copy.prompt
                             : <><span className="font-semibold text-slate-700">{picked.size}</span> of {all} ticked
-                                {!back && anyHanded && picked.size > 0 && ' · signing for these'}</>}
+                                {signing
+                                    ? ' · the receipt lists these'
+                                    : !back && anyHanded && picked.size > 0 ? ' · signing for these' : ''}</>}
                     </span>
+                    {/* ONE answer. Ticking four and signing for three is two answers to the
+                        same question, and the record then says both. So where there is a
+                        receipt, signing it is what confirms the collection. */}
                     <button
                         type="button"
-                        onClick={() => onConfirm([...picked])}
+                        onClick={() => (signing ? onSign?.(unsigned[0].defId, [...picked]) : onConfirm([...picked]))}
                         disabled={picked.size === 0}
                         className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold text-white transition-colors',
-                            picked.size === 0 ? 'cursor-not-allowed bg-slate-300' : 'bg-blue-600 hover:bg-blue-700')}
+                            picked.size === 0 ? 'cursor-not-allowed bg-slate-300'
+                                : signing ? 'bg-violet-600 hover:bg-violet-700'
+                                : 'bg-blue-600 hover:bg-blue-700')}
                     >
-                        <Check size={13} /> {picked.size === all ? copy.confirmAll : copy.confirmSome(picked.size, all)}
+                        {signing
+                            ? <><FileSignature size={13} /> Sign &amp; confirm</>
+                            : <><Check size={13} /> {picked.size === all ? copy.confirmAll : copy.confirmSome(picked.size, all)}</>}
                     </button>
                 </div>
             )}

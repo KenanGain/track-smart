@@ -1,6 +1,7 @@
 import {
     LayoutDashboard,
     ClipboardCheck,
+    ScanSearch,
     Building2,
     Briefcase,
     CheckSquare,
@@ -121,6 +122,13 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Safety and Compliance",
         icon: ClipboardCheck,
         path: "/inspections",
+    },
+    {
+        key: "roadside-inspections",
+        label: "Roadside Inspection",
+        icon: ScanSearch,
+        path: "/roadside-inspections",
+        badge: "New",
     },
     {
         key: "top-violations",

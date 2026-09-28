@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronRight, ChevronsUpDown, Check, Plus, Trash2, ChevronUp, ChevronDown, X, Search, Info,
-    FileText, FileSignature, PenLine, ClipboardList, FolderPlus, SlidersHorizontal, FileCheck2, ListChecks,
+    FileText, FileSignature, Upload, PenLine, ClipboardList, FolderPlus, SlidersHorizontal, FileCheck2, ListChecks,
     Sparkles, MapPin, Calendar, CalendarClock, Activity, History, Eye, ExternalLink, FileDown, AlertTriangle, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,12 +21,15 @@ import {
     type SafetyRecord, type RecordTypeId, type UploadMode,
 } from "@/pages/compliance/safety-software-catalog.data";
 import { useCustomSafetyRecords } from "@/pages/compliance/safety-custom-records.data";
-import { useComplianceData, entryStatus, CARRIER_SUBJECT } from "@/pages/compliance/compliance-data-store";
-import { SubjectDocuments } from "@/pages/compliance/DefaultComplianceDataPage";
+import { useComplianceData, entryStatus, writeComplianceVersion, CARRIER_SUBJECT, type FilledForm } from "@/pages/compliance/compliance-data-store";
+// One writer for "a completed form, filed" — the chat-card receipt and the one filled in
+// here are the same document on the same record, and two labellers would split the history.
+import { filedFormVersion, copySource, type CopySource } from "@/pages/inventory/inventory-forms";
+import { SubjectDocuments, type RecordDetailActions, type DetailExtra } from "@/pages/compliance/DefaultComplianceDataPage";
 import { getAccountById } from "@/pages/accounts/accounts.data";
 import { consentForms, consentRegion, THEME_HEX, POLICY_FORMS, type PolicyTheme, type PolicyFormDef } from "@/pages/hiring-process/policy-forms.data";
 import { ONBOARDING_FORM_DEFS, getOnboardingFormDef } from "@/pages/hiring-process/onboarding.data";
-import { PolicyForm } from "@/pages/hiring-process/PolicyForm";
+import { PolicyForm, type PolicyFormResult } from "@/pages/hiring-process/PolicyForm";
 import { ReviewSignOff, newSignOff, type SignOffData } from "@/pages/hiring-process/FormKit";
 import { ThemedDocumentViewer } from "@/pages/hiring-process/ThemedDocumentViewer";
 import type { DocSection } from "@/pages/hiring-process/FormDocument";
@@ -80,6 +83,13 @@ export function formToRecord(item: DqItem): SafetyRecord {
         docRequirement: item.requirement === "must" ? "required" : "optional",
         recurring: "Per hire",
         monitorType: "On file",
+        // A form is not monitored on a status — nothing ever writes one, so the column was a
+        // permanent dash taking up the widest slot on the record header.
+        hideStatus: true,
+        // What a signed copy IS dated by: the day it was signed. Worth a column; the
+        // record otherwise showed the file name and nothing about when it was given.
+        tracksIssueDate: true,
+        issueLabel: "Signed on",
         jurisdiction: region === "Canada" ? "Canada" : region === "US" ? "United States, federal" : "",
         monitor: "Keep a signed copy of the completed form on file.",
         uploadMode: "single",
@@ -1002,6 +1012,12 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
     const [pdfView, setPdfView] = useState(false);
     const [openForm, setOpenForm] = useState<PolicyFormDef | null>(null);
     const [openFormPreview, setOpenFormPreview] = useState(false);   // open the form in view (preview) mode
+    // WHICH record a completed form gets filed against. Without it the form knows what it
+    // is and not what it is about, and a signed copy has nowhere to land.
+    const [openFormRecordId, setOpenFormRecordId] = useState<string | null>(null);
+    // An archived copy being READ rather than a blank form being filled. Its answers are
+    // what the viewer renders — that is the difference between a receipt and a filename.
+    const [openFormFilled, setOpenFormFilled] = useState<FilledForm | null>(null);
     const [formsDetailOpen, setFormsDetailOpen] = useState(false);   // forms-only: a form's record detail is open
     const [formRecordItem, setFormRecordItem] = useState<DqItem | null>(null);
     const [docRecordItem, setDocRecordItem] = useState<DqItem | null>(null);
@@ -1051,18 +1067,65 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
     // (SubjectDocuments), each form synthesized into a driver record. Clicking a form opens
     // its record detail with a per-form "Fill out the form" card (detailExtraFor).
     const formRecords = useMemo(() => (formsOnly ? items.map(formToRecord) : []), [items, formsOnly]);
-    const openFormIn = (def: PolicyFormDef, preview: boolean) => { setOpenFormPreview(preview); setOpenForm(def); };
+    const openFormIn = (def: PolicyFormDef, preview: boolean, recordId?: string, filled?: FilledForm) => {
+        setOpenFormPreview(preview);
+        setOpenFormRecordId(recordId ?? null);
+        setOpenFormFilled(filled ?? null);
+        setOpenForm(def);
+    };
+    const closeForm = () => {
+        setOpenForm(null); setOpenFormPreview(false); setOpenFormRecordId(null); setOpenFormFilled(null);
+    };
+
+    /**
+     * Every copy on file, newest first.
+     *
+     * Read off the compliance store rather than kept beside it: an uploaded signed copy and
+     * one completed in-system are the same fact on the same record, and counting only our
+     * own would tell a carrier that scans its paperwork it has never filed any.
+     */
+    const fillsFor = (recordId: string): FormCopy[] => {
+        const versions = getEntry(subjectIdForEntity("Driver"), recordId).versions ?? [];
+        return versions.map((v) => ({
+            id: v.id,
+            at: v.issueDate || v.uploadedAt?.slice(0, 10) || "",
+            by: v.uploadedBy || "",
+            source: copySource(v),
+            fileName: v.files[0]?.name,
+            fileUrl: v.files[0]?.url,
+            filled: v.formData,
+        }));
+    };
+
+    /** A completed form — filed as a version, so the next one does not overwrite it. */
+    const fileFilledForm = (recordId: string, defId: string, result: PolicyFormResult) => {
+        const { values, sigs } = result;
+        const v = filedFormVersion({
+            defId,
+            signedBy: values.printName || values.applicant || driverInfo.name?.trim() || subjectLabel,
+            date: values.date || values.issueDate || undefined,
+            notes: values.itemsIssued ? [`Items: ${values.itemsIssued}`] : undefined,
+            // Kept, so this copy can be opened and read back from the records table rather
+            // than sitting there as a filename with nothing behind it.
+            filled: { values, sigs },
+        });
+        if (v) writeComplianceVersion(accountId, subjectIdForEntity("Driver"), recordId, v);
+        closeForm();
+    };
+
     const renderFormFill = (rec: SafetyRecord) => {
         const item = items.find(i => (i.refId ?? i.id) === rec.id);
         if (!item) return null;
         const def = formDefForRefId(item.refId);
-        return (
+        return (actions: RecordDetailActions) => (
             <FillFormSection
                 formName={item.label}
                 def={def}
                 filled={!!checked[item.id]}
-                onFill={() => def && openFormIn(def, false)}
+                copies={fillsFor(rec.id)}
+                onFill={() => def && openFormIn(def, false, rec.id)}
                 onView={() => def && openFormIn(def, true)}
+                onUpload={actions.addVersion}
                 onToggleFilled={v => setChecked(c => ({ ...c, [item.id]: v }))}
             />
         );
@@ -1121,7 +1184,24 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
 
     // A form opened to fill/view takes over the full screen (its own back button).
     // startPreview=false → fillable mode; true → the read-only preview ("View").
-    if (openForm) return <PolicyForm def={openForm} startPreview={openFormPreview} onBack={() => { setOpenForm(null); setOpenFormPreview(false); }} />;
+    if (openForm) return (
+        <PolicyForm
+            def={openForm}
+            startPreview={openFormPreview}
+            onBack={closeForm}
+            // A copy that has been signed and filed is READ: its answers, its signature, and
+            // no Edit button — a filed receipt somebody can quietly change is not a receipt.
+            {...(openFormFilled
+                ? { sharedValues: openFormFilled.values, sharedSignatures: openFormFilled.sigs, readOnly: true }
+                : {})}
+            // Opened to READ ("View") there is nothing to file — it is a copy of something
+            // already on the record. Opened to fill, finishing it files it.
+            onComplete={!openFormPreview && openFormRecordId
+                ? (r) => fileFilledForm(openFormRecordId, openForm.id, r)
+                : undefined}
+            completeLabel="Save & file"
+        />
+    );
 
     // Form item → the SAME in-system record page as documents (Add record / Sample data /
     // Documents / Monitoring), backed by a synthesized record, PLUS a "Fill out the form"
@@ -1137,16 +1217,18 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
                 subjectId={subjectIdForEntity(rec.entity)}
                 subjectLabel={driverInfo.name?.trim() || subjectLabel}
                 onBack={() => setFormRecordItem(null)}
-                detailExtra={
+                detailExtra={(actions: RecordDetailActions) => (
                     <FillFormSection
                         formName={formRecordItem.label}
                         def={def}
                         filled={!!checked[id]}
-                        onFill={() => def && openFormIn(def, false)}
+                        copies={fillsFor(rec.id)}
+                        onFill={() => def && openFormIn(def, false, rec.id)}
                         onView={() => def && openFormIn(def, true)}
+                        onUpload={actions.addVersion}
                         onToggleFilled={v => setChecked(c => ({ ...c, [id]: v }))}
                     />
-                }
+                )}
             />
         );
     }
@@ -1310,6 +1392,11 @@ export function DqFilePreview({ cl, records, accountId, subjectId, subjectLabel 
                                 all={all}
                                 onDetailChange={setFormsDetailOpen}
                                 detailExtraFor={renderFormFill}
+                                // Every form here is category "Other", type D, monitored "On
+                                // file" — three columns saying the same thing on every row. What a
+                                // person scanning this list wants is whether a copy is on file,
+                                // how many, and which one.
+                                defaultCols={["document", "records", "status"]}
                             />
                         ) : (
                             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1437,7 +1524,7 @@ function DocRecordDetail({ record, accountId, subjectId, subjectLabel, detailExt
     accountId?: string;
     subjectId: string;
     subjectLabel: string;
-    detailExtra?: React.ReactNode;
+    detailExtra?: DetailExtra;
     onBack: () => void;
 }) {
     const account = accountId ? getAccountById(accountId) : undefined;
@@ -1484,51 +1571,103 @@ function DocRecordDetail({ record, accountId, subjectId, subjectLabel, detailExt
 // between the record header and the Documents/Monitoring tabs. Lets the form be
 // completed & signed in-system, alongside the standard Add record / upload flow the
 // record page already provides. Styled to match the record page's cards.
-function FillFormSection({ formName, def, filled, onFill, onView, onToggleFilled }: {
+/** One copy on the record, as the card lists it. */
+export interface FormCopy {
+    id: string;
+    at: string;
+    by: string;
+    /** How it got here: completed in the app, uploaded as a scan, or recorded by hand. */
+    source: CopySource;
+    fileName?: string;
+    /** The uploaded file itself, where one was actually attached. */
+    fileUrl?: string;
+    /** The answers, when they were kept — what makes this copy openable. */
+    filled?: FilledForm;
+}
+
+function FillFormSection({ formName, def, filled, copies = [], onFill, onView, onUpload, onToggleFilled }: {
     formName: string;
     def: PolicyFormDef | undefined;
     filled: boolean;
+    /**
+     * Every copy on file, newest first — completed here or uploaded.
+     *
+     * A list rather than a count, because this is not a form you sign once and it is not a
+     * form with one kind of answer. Kit changes hands in March, again in August, again in
+     * November; each hand-over has its own receipt listing its own items, and some of them
+     * arrive as a scan rather than through the app.
+     */
+    copies?: FormCopy[];
     onFill: () => void;
     onView: () => void;
+    /** Add a scanned copy — the other half of "on file". */
+    onUpload?: () => void;
     onToggleFilled: (v: boolean) => void;
 }) {
+    const fills = copies.length;
+    // On file means there is a copy, whoever put it there. The tick is still honoured for a
+    // form somebody completed outside the app and only wants to account for.
+    const onFile = fills > 0;
+    const good = onFile || filled;
+    const lastFilledAt = copies[0]?.at;
     return (
-        <div className={cn("rounded-xl border p-5 shadow-sm transition-colors", filled ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-white")}>
+        <div className={cn("rounded-xl border p-5 shadow-sm transition-colors", good ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-white")}>
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-3">
-                    <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", filled ? "bg-emerald-100 text-emerald-600" : "bg-violet-50 text-violet-600")}>
-                        {filled ? <FileCheck2 className="h-5 w-5" /> : <PenLine className="h-5 w-5" />}
+                    <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", good ? "bg-emerald-100 text-emerald-600" : "bg-violet-50 text-violet-600")}>
+                        {good ? <FileCheck2 className="h-5 w-5" /> : <PenLine className="h-5 w-5" />}
                     </span>
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                             <p className="text-[15px] font-bold text-slate-800">Fill out the form</p>
-                            {filled && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"><Check className="h-3 w-3" /> Completed</span>}
+                            {onFile && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                                    <Check className="h-3 w-3" /> {fills} on file
+                                </span>
+                            )}
+                            {!onFile && filled && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"><Check className="h-3 w-3" /> Completed</span>
+                            )}
                         </div>
                         <p className="mt-0.5 text-[13px] text-slate-500">
-                            {filled
-                                ? <>{formName || "This form"} is completed in the system. View the signed form, or reopen to edit — or add a signed copy in the records below.</>
-                                : <>Complete and sign {formName || "this form"} directly in the system — or add a signed copy in the records below.</>}
+                            {onFile
+                                ? <>
+                                    {fills === 1 ? "One copy" : `${fills} copies`} on file{lastFilledAt ? <>, most recently <span className="font-semibold text-slate-600">{lastFilledAt}</span></> : null}.
+                                    {" "}Fill it again whenever kit changes hands — each one is kept.
+                                </>
+                                : filled
+                                    ? <>{formName || "This form"} is marked completed. Fill it in here to keep a signed copy — or add one in the records below.</>
+                                    : <>Complete and sign {formName || "this form"} directly in the system — or add a signed copy in the records below.</>}
                         </p>
                     </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {filled ? (
-                        <>
-                            <Button onClick={onView} disabled={!def}><Eye className="h-4 w-4" /> View form</Button>
-                            <Button variant="outline" onClick={onFill} disabled={!def}><PenLine className="h-4 w-4" /> Edit</Button>
-                        </>
-                    ) : (
-                        <Button onClick={onFill} disabled={!def}>
-                            <FileSignature className="h-4 w-4" /> {def ? "Open & fill form" : "Form unavailable"}
-                        </Button>
+                    {/* Never stops being offered. The old card swapped it for "Edit" once the
+                        box was ticked, which is the right move for a form with one true answer
+                        and the wrong one for a receipt. */}
+                    <Button onClick={onFill} disabled={!def}>
+                        <FileSignature className="h-4 w-4" />
+                        {!def ? "Form unavailable" : onFile ? "Fill it again" : "Open & fill form"}
+                    </Button>
+                    {/* The other way a copy gets here, said out loud. It was only ever an "Add
+                        record" button on a table below, which is not where somebody looking at
+                        a form for the first time goes to file the one they have in their hand. */}
+                    {onUpload && (
+                        <Button variant="outline" onClick={onUpload}><Upload className="h-4 w-4" /> Upload a signed copy</Button>
                     )}
+                    <Button variant="outline" onClick={onView} disabled={!def}><FileText className="h-4 w-4" /> Read blank form</Button>
                 </div>
             </div>
-            {/* Completion toggle */}
-            <label className="mt-4 flex cursor-pointer items-center gap-2 border-t border-slate-100 pt-3.5 text-[13px] text-slate-600">
-                <input type="checkbox" checked={filled} onChange={e => onToggleFilled(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
-                Mark as completed in system
-            </label>
+
+            {/* Completion toggle — for a form completed outside the app that the office only
+                wants to account for. Hidden once copies are on file: the copies are the answer,
+                and a tick beside them is a second one that can disagree. */}
+            {!onFile && (
+                <label className="mt-4 flex cursor-pointer items-center gap-2 border-t border-slate-100 pt-3.5 text-[13px] text-slate-600">
+                    <input type="checkbox" checked={filled} onChange={e => onToggleFilled(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                    Mark as completed in system
+                </label>
+            )}
         </div>
     );
 }

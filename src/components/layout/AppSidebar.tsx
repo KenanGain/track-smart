@@ -13,10 +13,23 @@ type UserRole = "user" | "admin" | "super-admin";
 
 const ADMIN_ONLY_KEYS = new Set(["admin"]);
 
+/**
+ * What a driver's sidebar is.
+ *
+ * An allowlist, not more exclusions. A driver is not an office user with some menus
+ * hidden — they are a different person doing a different job, and the list of things they
+ * can do is short and closed. Denying item by item would mean every page added from now on
+ * is visible to drivers until somebody remembers otherwise, and the way that gets noticed
+ * is a driver opening Super Admin.
+ */
+const DRIVER_KEYS = new Set(["driver-mobile-app", "messages"]);
+
 type AppSidebarProps = {
     currentPath: string;
     onNavigate: (path: string) => void;
     role: UserRole;
+    /** A driver is signed in — see `DRIVER_KEYS`. */
+    driver?: boolean;
     /** Whether the off-canvas mobile drawer is open (ignored on md+). */
     mobileOpen?: boolean;
     /** Close the mobile drawer (backdrop tap / after navigating). */
@@ -24,7 +37,7 @@ type AppSidebarProps = {
     className?: string;
 };
 
-export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, onMobileClose, className }: AppSidebarProps) {
+export function AppSidebar({ currentPath, onNavigate, role, driver, mobileOpen = false, onMobileClose, className }: AppSidebarProps) {
     // On phones the sidebar is an off-canvas drawer, always expanded (labels visible).
     const [isMobile, setIsMobile] = React.useState(false);
     React.useEffect(() => {
@@ -37,9 +50,10 @@ export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, 
     // Close the drawer after navigating away.
     const navigateAndClose = (path: string) => { onNavigate(path); onMobileClose?.(); };
     const visibleNodes = React.useMemo(() => {
+        if (driver) return SIDEBAR_NODES.filter((n) => DRIVER_KEYS.has(n.key));
         const isAdmin = role === "admin" || role === "super-admin";
         return SIDEBAR_NODES.filter((n) => (ADMIN_ONLY_KEYS.has(n.key) ? isAdmin : true));
-    }, [role]);
+    }, [role, driver]);
 
     const [isCollapsed, setIsCollapsed] = React.useState(() => {
         if (typeof window !== 'undefined') {

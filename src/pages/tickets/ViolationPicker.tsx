@@ -18,14 +18,25 @@ export function ViolationPicker({
     isCanada = false,
     label = 'Violation Type',
     hint = '· select all that apply, a violation can have multiple charges',
+    presets,
 }: {
     value: TicketViolation[];
     onChange: (violations: TicketViolation[]) => void;
     isCanada?: boolean;
     label?: string;
     hint?: string;
+    /**
+     * The quick chips this picker offers.
+     *
+     * Defaults to the traffic charges a citation carries. A caller with a different
+     * kind of finding passes its own — a trailer cannot be charged with Speeding, and
+     * a chip list that offers it is the picker telling the user they are on the wrong
+     * form. Each entry may bring its own FMCSA/SMS code.
+     */
+    presets?: readonly { label: string; code?: string }[];
 }) {
     const violations = value ?? [];
+    const chips = presets ?? CHARGE_PRESETS.map((c) => ({ label: c, code: undefined }));
 
     const violationOptions = useMemo(() => {
         if (isCanada) {
@@ -45,10 +56,10 @@ export function ViolationPicker({
         }));
     }, [isCanada]);
 
-    const togglePreset = (charge: string) => {
+    const togglePreset = (charge: string, code?: string) => {
         const exists = violations.some(v => v.source === 'preset' && v.label === charge);
         if (exists) onChange(violations.filter(v => !(v.source === 'preset' && v.label === charge)));
-        else onChange([...violations, violationFromCharge(charge)]);
+        else onChange([...violations, violationFromCharge(charge, code)]);
     };
 
     const addViolation = (v: TicketViolation) => {
@@ -67,14 +78,14 @@ export function ViolationPicker({
 
             {/* 1) Quick charge presets — click to add/remove as a violation */}
             <div className="flex flex-wrap gap-2">
-                {CHARGE_PRESETS.map(charge => {
+                {chips.map(({ label: charge, code }) => {
                     const active = violations.some(v => v.source === 'preset' && v.label === charge);
                     return (
                         <button
                             key={charge}
                             type="button"
                             aria-pressed={active}
-                            onClick={() => togglePreset(charge)}
+                            onClick={() => togglePreset(charge, code)}
                             className={
                                 'inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ' +
                                 (active

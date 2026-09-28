@@ -245,15 +245,26 @@ const fmtIsoOf = (ms: number) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** Live view of one item's recorded events. */
-export function useInventoryActivity(itemId: string) {
+/** Live view of the whole recorded trail, keyed by item. */
+export function useInventoryActivityStore(): Store {
     const [all, setAll] = useState<Store>(loadAll);
     useEffect(() => {
         const h = () => setAll(loadAll());
         window.addEventListener(EVENT, h);
         return () => window.removeEventListener(EVENT, h);
     }, []);
-    return all[itemId] ?? [];
+    return all;
+}
+
+/**
+ * Live view of one item's recorded events.
+ *
+ * A HOLDER's Activity tab needs many of these at once and cannot call a hook per item, so
+ * it reads the store above. One loader either way — a second reader over the same key is
+ * how a page ends up showing a trail that is one event behind.
+ */
+export function useInventoryActivity(itemId: string) {
+    return useInventoryActivityStore()[itemId] ?? [];
 }
 
 /** How many things have been recorded against an item — for the tab badge. */

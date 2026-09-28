@@ -7,8 +7,35 @@
 // Certificate of Receipt (12 items → i–vii → A–D) render faithfully.
 export type ListItem = { text: string; sub?: ListItem[] };
 
+/**
+ * A table inside a form's body.
+ *
+ * Some forms are ABOUT a list. An equipment issue receipt that says "Items issued: fuel
+ * card, tablet, 2 uniforms, cab keys" in one run-on field is a receipt nobody can check a
+ * line of — not the driver signing it, and not the office reading it back in March. The
+ * rows are built from the data at render time, which is what makes it a receipt for THIS
+ * hand-over rather than a form with a big empty box on it.
+ */
+/**
+ * A table built from data, with an optional tick per row.
+ *
+ * `checks` turns the first column into a box: one entry per row, true where it is
+ * ticked. Left undefined there is no box at all, which is what every other table here
+ * wants. Whether the box can be CLICKED is the renderer's business, not the data's —
+ * the same table is ticked on a phone and printed on paper.
+ */
+export type PolicyTable = {
+    title?: string;
+    headers: string[];
+    rows: string[][];
+    note?: string;
+    checks?: boolean[];
+    checkHeader?: string;
+};
+
 export type PolicyBlock =
     | { p: string }            // paragraph
+    | { table: PolicyTable }   // a built-from-data table (see PolicyTable)
     | { h: string }            // bold sub-heading
     | { ol: string[] }         // numbered list
     | { ul: string[] }         // bullet list
@@ -16,7 +43,7 @@ export type PolicyBlock =
     | { callout: string; tone?: "notice" | "info" }   // boxed, tinted disclosure/notice
     | { note: string };        // emphasized note (colored)
 
-export type PolicyField = { key: string; label: string; kind?: "text" | "date" | "state" | "sign" | "choice"; options?: string[] };
+export type PolicyField = { key: string; label: string; kind?: "text" | "date" | "state" | "sign" | "choice" | "items"; options?: string[] };
 export type PolicyQuestion = { key: string; text: string };
 export type PolicyTheme = "teal" | "blue" | "orange";
 
@@ -24,6 +51,48 @@ export type PolicyTheme = "teal" | "blue" | "orange";
 // (like the §40.25(g) records-release authorization) that collect several
 // distinct parties' details rather than a single flat field block.
 export type PolicySection = { title: string; note?: string; fields: PolicyField[] };
+
+/**
+ * A line on a form that lists things.
+ *
+ * The receipt used to ask for "2 uniforms, fuel card, ELD tablet, cab keys, hi-vis vest" in
+ * one text box, which is a list only to the person who typed it: nobody can tick it off,
+ * nothing in it has a serial, and the statement above it promises to return "the property
+ * listed above" without anything being listed at all. So an `items` field holds rows.
+ *
+ * Stored as ONE newline-separated string because that is what a form value is here, in the
+ * same "Name (SERIAL)" shape the inventory notes already use — one wire format across the
+ * app, so a receipt typed by hand and one built from a hand-out parse identically.
+ */
+export interface ReceiptItem { name: string; serial?: string }
+
+/** "Snow Chains (EQP-482919)" → the name and the number. The LAST bracket is the serial. */
+export function splitNameSerial(text: string): ReceiptItem {
+    const t = text.replace(/^[\u2022\-*]\s*/, "").trim();
+    // Item names carry brackets of their own ("Spare Truck Keys (set)"); only a trailing
+    // group with no brackets inside it is the number.
+    const m = /^(.*)\s+\(([^()]+)\)$/.exec(t);
+    return m ? { name: m[1].trim(), serial: m[2].trim() } : { name: t };
+}
+
+/** The stored value, as rows. Blank lines drop out; a blank value is no rows. */
+export function parseItemLines(value?: string): ReceiptItem[] {
+    return (value ?? "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map(splitNameSerial)
+        .filter((i) => !!i.name);
+}
+
+/** Rows back to the stored value. An empty row is not written. */
+export function formatItemLines(items: ReceiptItem[]): string {
+    return items
+        .filter((i) => i.name.trim() || i.serial?.trim())
+        .map((i) => (i.serial?.trim() ? `${i.name.trim()} (${i.serial.trim()})` : i.name.trim()))
+        .join("\n");
+}
+
 
 export interface PolicyFormDef {
     id: string;
@@ -39,6 +108,14 @@ export interface PolicyFormDef {
     body: PolicyBlock[];
     fields?: PolicyField[];  // mid-form fields (licence / state / expiration)
     fieldsTitle?: string;
+    /**
+     * Put the mid-form fields ABOVE the statement rather than below it.
+     *
+     * For a receipt whose statement begins "the property listed above": set by the form
+     * that has a list, not by a global reordering that would move every other form's
+     * fields along with it.
+     */
+    fieldsFirst?: boolean;
     sections?: PolicySection[]; // grouped field blocks (e.g. applicant / previous-employer / prospective-employer)
     onDuty?: boolean;        // render the §395.8 7-day on-duty grid
     signers: PolicyField[];  // signature block

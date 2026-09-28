@@ -28,7 +28,7 @@ import {
     requestCollection, requestReturn, draftMovementNote,
     OFFICE, type Counterparty,
 } from "./inventory-collection";
-import type { CollectionLine } from "@/pages/messages/messages-store";
+import type { CollectionForm, CollectionLine } from "@/pages/messages/messages-store";
 
 export type MovementKind =
     | "assign-driver" | "unassign-driver"
@@ -58,6 +58,13 @@ export interface MovementPlan {
     holderLabel?: string;
     counterparty: Counterparty;
     dueAt?: string;
+    /**
+     * What they sign for it, attached by the notification block rather than decided here.
+     *
+     * The planner's job is who has to move and which way; whether the office wants a receipt
+     * for it is an office policy, not a rule about the kit.
+     */
+    forms?: CollectionForm[];
     /** The drafted wording. Editable before it is sent. */
     note: string;
 }
@@ -158,6 +165,7 @@ export function sendMovements(
             note: p.note.trim() || undefined,
             counterparty: p.counterparty,
             dueAt: p.dueAt || undefined,
+            forms: p.forms,
         };
         if (p.direction === "return") requestReturn(input);
         else requestCollection(input);
@@ -171,7 +179,12 @@ export function summarise(plan: MovementPlan): string {
     const where = plan.counterparty.kind === "person" && plan.counterparty.name
         ? plan.counterparty.name
         : "the office";
+    // Said in the same sentence as the trip, because it is the same trip. A confirmation
+    // that lists the items and leaves the signature to a second line invites the office to
+    // read the first one and stop.
+    const f = plan.forms?.length ?? 0;
+    const signing = f > 0 ? ` and signs ${f === 1 ? "1 form" : `${f} forms`}` : "";
     return plan.direction === "collect"
-        ? `${plan.driverName} collects ${n} item${n === 1 ? "" : "s"} from ${where}`
+        ? `${plan.driverName} collects ${n} item${n === 1 ? "" : "s"} from ${where}${signing}`
         : `${plan.driverName} hands ${n} item${n === 1 ? "" : "s"} to ${where}`;
 }

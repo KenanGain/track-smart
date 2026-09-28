@@ -57,8 +57,10 @@ export function findViolationByCode(code: string): { item: any; categoryLabel: s
 
 /** Build an enriched preset violation from a charge label — fills the real
  *  code + category + group when the preset maps to a master-chart code. */
-export function violationFromCharge(charge: string): TicketViolation {
-    const code = PRESET_CODES[charge];
+export function violationFromCharge(charge: string, presetCode?: string): TicketViolation {
+    // The caller's code wins: a roadside inspection's quick charges are equipment
+    // defects with their own FMCSA codes, not the traffic charges on a citation.
+    const code = presetCode ?? PRESET_CODES[charge];
     const match = code ? findViolationByCode(code) : null;
     return match
         ? {

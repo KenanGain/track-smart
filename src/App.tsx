@@ -7,7 +7,10 @@ import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 import { UsersListPage } from '@/pages/admin/UsersListPage'
 import { AddUserPage } from '@/pages/admin/AddUserPage'
 import { SuperAdminDashboardPage } from '@/pages/admin/SuperAdminDashboardPage'
-import { findUserById, type AppUser } from '@/data/users.data'
+import { findUserById, isDriverUser, type AppUser } from '@/data/users.data'
+import { recordNavigation, clearNavigationHistory } from '@/lib/nav-history'
+import { CollectionFormPage } from '@/pages/inventory/CollectionFormPage'
+import { COLLECTION_FORM_PATH } from '@/pages/inventory/collection-form-handoff'
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data'
 import { EmptyCarrierProfile } from '@/pages/account/EmptyCarrierProfile'
 import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
@@ -84,6 +87,9 @@ import { OnboardingPage } from '@/pages/hiring-process/OnboardingPage'
 import { OnboardingFileDashboard } from '@/pages/hiring-process/OnboardingFileDashboard'
 import { TestingFormsPage } from '@/pages/hiring-process/TestingFormsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
+import { RoadsideInspectionsPage } from '@/pages/roadside/RoadsideInspectionsPage'
+import { RoadsideInspectionForm } from '@/pages/roadside/RoadsideInspectionForm'
+import { RoadsideInspectionDetail } from '@/pages/roadside/RoadsideInspectionDetail'
 import { ChatTagsSettingsPage } from '@/pages/settings/ChatTagsSettingsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -111,7 +117,12 @@ function App() {
     // Simple state for navigation simulation since we might not have a full router set up
     // or the user might want to test without it initially.
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
-    const [path, setPath] = useState("/dashboard")
+    const [path, setPath] = useState(() => {
+        // Restoring a driver's session lands them where signing in would have.
+        if (typeof window === 'undefined') return "/dashboard"
+        const id = localStorage.getItem('app_current_user_id')
+        return id && isDriverUser(findUserById(id)) ? "/driver-mobile-app" : "/dashboard"
+    })
     const [previousPath, setPreviousPath] = useState<string | null>(null)
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
     const [selectedServiceProfileId, setSelectedServiceProfileId] = useState<string | undefined>(undefined)
@@ -206,10 +217,14 @@ function App() {
     const handleSignIn = (user: AppUser) => {
         setCurrentUser(user)
         setSelectedAccount(getDefaultCarrierForUser(user))
-        setPath("/dashboard")
+        // A driver signing in is not an office user with fewer menus — they are a different
+        // person doing a different job, and the fleet dashboard is not it.
+        setPath(isDriverUser(user) ? "/driver-mobile-app" : "/dashboard")
     }
 
     const handleSignOut = () => {
+        // Somebody else's trail is not this person's history.
+        clearNavigationHistory()
         setCurrentUser(null)
         setPath("/dashboard")
         setSelectedAccount(null)
@@ -217,8 +232,11 @@ function App() {
 
     const handleNavigate = (newPath: string) => {
         // Remember where the user came from so detail pages can render an
-        // accurate "Back to <list>" affordance.
+        // accurate "Back to <list>" affordance. `previousPath` is the old one-slot
+        // version, kept for the carrier profile that still reads it; the trail is the
+        // real answer — a single slot sends A → B → A → B round in circles.
         if (newPath !== path) setPreviousPath(path)
+        recordNavigation(path, newPath)
         setPath(newPath)
         console.log("Navigated to:", newPath)
     }
@@ -228,8 +246,21 @@ function App() {
         console.log("Selected account:", account.id, account.legalName)
     }
 
+    /**
+     * Where a driver is allowed to go.
+     *
+     * The sidebar already only offers these two, but a sidebar is a menu, not a lock: an
+     * old link, a back button or a deep-link from a record would drop a driver onto the
+     * fleet's hiring pipeline. The same short list, enforced once on the way in.
+     */
+    const DRIVER_PATHS = ["/driver-mobile-app", "/messages", "/profile/me", COLLECTION_FORM_PATH]
+    const driverAllowed = (p: string) => DRIVER_PATHS.some((d) => p === d || p.startsWith(`${d}/`))
+
     // Render the appropriate page based on currentPath
     const renderPage = () => {
+        if (currentUser && isDriverUser(currentUser) && !driverAllowed(path)) {
+            return <DriverMobileAppPage key={selectedAccount?.id ?? 'default'} accountId={selectedAccount?.id} />
+        }
         if (path === "/profile/me" && currentUser) {
             return <MyProfilePage user={currentUser} />
         }
@@ -615,6 +646,9 @@ function App() {
                 />
             )
         }
+        if (path === COLLECTION_FORM_PATH) {
+            return <CollectionFormPage onNavigate={handleNavigate} />
+        }
         if (path === "/driver-mobile-app") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
@@ -783,6 +817,56 @@ function App() {
         if (path === "/admin/hiring-form-templates") {
             return <TemplatesPage lockedFormType="hiring-ats" />
         }
+        // ── Roadside inspections ──
+        // List, the full-screen recorder, one record, and that record's editor. The
+        // detail route is matched last of the four because "/new" would otherwise be
+        // read as an id.
+        if (path === "/roadside-inspections") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <RoadsideInspectionsPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                    accountName={account?.dbaName || account?.legalName}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
+        if (path === "/roadside-inspections/new") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <RoadsideInspectionForm
+                    accountId={account?.id}
+                    accountName={account?.dbaName || account?.legalName}
+                    currentUserName={currentUser?.name}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
+        if (path.startsWith("/roadside-inspections/") && path.endsWith("/edit")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <RoadsideInspectionForm
+                    inspectionId={path.slice("/roadside-inspections/".length, -"/edit".length)}
+                    accountId={account?.id}
+                    accountName={account?.dbaName || account?.legalName}
+                    currentUserName={currentUser?.name}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
+        if (path.startsWith("/roadside-inspections/")) {
+            return (
+                <RoadsideInspectionDetail
+                    inspectionId={path.slice("/roadside-inspections/".length)}
+                    currentUserName={currentUser?.name}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
         if (path === "/tickets") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
@@ -866,6 +950,7 @@ function App() {
                 currentPath={path}
                 onNavigate={handleNavigate}
                 role={currentUser.role}
+                driver={isDriverUser(currentUser)}
                 mobileOpen={mobileNavOpen}
                 onMobileClose={() => setMobileNavOpen(false)}
             />

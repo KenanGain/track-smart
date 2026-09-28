@@ -18,7 +18,7 @@
 
 import { useMemo, useState } from "react";
 import {
-    ArrowLeft, Boxes, ClipboardList, IdCard, Truck, CircleSlash, Share2, BellRing,
+    Boxes, ClipboardList, IdCard, Truck, CircleSlash, Share2, BellRing,
     History, UserRound, PackageCheck, AlertTriangle, BellOff, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,9 +35,10 @@ import {
 import { MONITOR_BASIS_LABEL, monitoredDateFor } from "@/pages/compliance/monitoring-schedule";
 import { fmtDate, daysUntil } from "./inventory-assignment";
 import { VIA_LABEL, VIA_TONE, type HeldItem, type HolderKind } from "./inventory-rollup";
-import { inventoryTrailSortable } from "./inventory-activity";
+import { inventoryTrailSortable, useInventoryActivityStore } from "./inventory-activity";
 import { useDriverHandovers } from "./handovers.data";
 import { ActivityTimeline, type ActivityEntry } from "@/components/ui/ActivityTimeline";
+import { BackLink } from "@/components/ui/BackLink";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
 import { visualFor } from "./inventory-visuals";
 import { itemCategoryId } from "./inventory.data";
@@ -103,6 +104,11 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
      * parsing that back would be reading our own output. Each line keeps the name of the
      * item it was about, which an item's own trail never has to say and a truck's always does.
      */
+    // Everything actually RECORDED against these items, as well as what the record implies.
+    // The tab used to pass an empty list here, so a trail that was entirely derived read as
+    // the whole story: a receipt asked for, signed and filed left no mark on it at all.
+    const events = useInventoryActivityStore();
+
     const trail = useMemo<ActivityEntry[]>(() => {
         const scope = accountId ?? "acct-001";
         const rows: (ActivityEntry & { sortAt: number })[] = [];
@@ -110,13 +116,14 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
             const handover = Object.values(records).find(
                 (r) => r.accountId === scope && r.lines.some((l) => l.itemId === h.item.id),
             );
-            for (const e of inventoryTrailSortable(h.item, accountId, handover, [])) {
+            const mine = (events[h.item.id] ?? []).filter((e) => e.accountId === scope);
+            for (const e of inventoryTrailSortable(h.item, accountId, handover, mine)) {
                 rows.push({ ...e, detail: [itemName(h.item), e.detail].filter(Boolean).join(" · ") });
             }
         }
         return rows.sort((a, b) => b.sortAt - a.sortAt).slice(0, 60)
             .map(({ sortAt: _s, ...rest }) => rest);
-    }, [held, records, accountId]);
+    }, [held, records, accountId, events]);
 
     const title = label ?? holderId;
 
@@ -160,12 +167,9 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
         <div className="flex h-full min-h-0 flex-col bg-slate-50">
             <header className="shrink-0 border-b border-slate-200 bg-white">
                 <div className="px-6 pt-4">
-                    <button
-                        onClick={() => onNavigate(back)}
-                        className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-blue-600"
-                    >
-                        <ArrowLeft size={14} /> Back to {isDriver ? "Drivers" : "Assets"}
-                    </button>
+                    {/* Where you came FROM, not where this page assumes you must have.
+                        Open a truck from a compliance alert and "Back to Assets" was a lie. */}
+                    <BackLink className="mb-3" fallback={back} onNavigate={onNavigate} />
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex min-w-0 items-start gap-3">
                             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">

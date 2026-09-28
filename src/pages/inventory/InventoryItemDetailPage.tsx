@@ -11,10 +11,11 @@
 
 import { useMemo, useState } from "react";
 import {
-    Boxes, Pencil, Share2, ArrowLeft, Truck, IdCard, PackageCheck, BellRing, BellOff,
+    Boxes, Pencil, Share2, Truck, IdCard, PackageCheck, BellRing, BellOff,
     Info, History, Hash, Calendar, Store, Tag, StickyNote, Phone, CircleSlash,
     type LucideIcon,
 } from "lucide-react";
+import { BackLink } from "@/components/ui/BackLink";
 import {
     INVENTORY_ITEMS, getInventoryForCarrier, VENDORS, VENDOR_CATEGORIES,
     itemName, inventoryMonitoring, type InventoryItem,
@@ -148,12 +149,9 @@ export function InventoryItemDetailPage({ onNavigate, itemId, accountId }: Props
             {/* Header */}
             <header className="shrink-0 border-b border-slate-200 bg-white">
                 <div className="px-6 pt-4">
-                    <button
-                        onClick={() => onNavigate("/inventory")}
-                        className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-blue-600"
-                    >
-                        <ArrowLeft size={14} /> Back to Inventory
-                    </button>
+                    {/* An item is opened from the inventory list, from a holder's page, and
+                        from a chat share. Only one of those is "Back to Inventory". */}
+                    <BackLink className="mb-3" fallback="/inventory" onNavigate={onNavigate} />
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex min-w-0 items-start gap-3">
                             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">

@@ -141,7 +141,7 @@ export function WizardSectionHeader({ icon: Icon, title, subtitle, right }: {
     right?: React.ReactNode;
 }) {
     return (
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-6 py-4">
+        <div className="flex items-center justify-between gap-3 rounded-t-xl border-b border-slate-100 bg-slate-50/60 px-6 py-4">
             <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Icon className="h-5 w-5" /></div>
                 <div>
@@ -155,16 +155,26 @@ export function WizardSectionHeader({ icon: Icon, title, subtitle, right }: {
 }
 
 /** A full section card (header + padded body). Sets `id="section-<id>"` + `data-step` for scroll-spy. */
-export function WizardSection({ id, icon, title, subtitle, right, children }: {
+export function WizardSection({ id, icon, title, subtitle, right, allowOverflow, children }: {
     id: string;
     icon: React.ElementType;
     title: string;
     subtitle?: string;
     right?: React.ReactNode;
+    /**
+     * Let the body escape the card.
+     *
+     * A section holding a combobox clips its own dropdown: the popover is positioned
+     * inside the card, and `overflow-hidden` cuts it off at the border — the search
+     * results end mid-row. Opt-in, so every existing section keeps clipping.
+     */
+    allowOverflow?: boolean;
     children: React.ReactNode;
 }) {
     return (
-        <section data-step={id} id={`section-${id}`} className="scroll-mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section data-step={id} id={`section-${id}`}
+            className={cn("scroll-mt-6 rounded-xl border border-slate-200 bg-white shadow-sm",
+                allowOverflow ? "overflow-visible" : "overflow-hidden")}>
             <WizardSectionHeader icon={icon} title={title} subtitle={subtitle} right={right} />
             <div className="p-6">{children}</div>
         </section>

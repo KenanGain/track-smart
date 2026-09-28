@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  useConversations, sendMessage, markRead, setExternalEnabled, startNewExternalChat,
+  useConversations, sendMessage, receiveMessage, markRead, setExternalEnabled, startNewExternalChat,
   externalChatUrl, consumeMessagesFocus, setPendingRecord, setWidgetStatus,
   askAgent, useAiTyping, submitComplianceRequest,
   type Conversation, type RoleTag, type MsgAttachment, type AttachmentKind, type RecordRef,
@@ -25,6 +25,13 @@ import { AiPanelCard, AiDashboardCard, AI_TONE, type RowTarget } from './AiWidge
 import { ComplianceRequestCard } from './ComplianceRequestCard';
 import { InventoryCollectionCard } from './InventoryCollectionCard';
 import { confirmCollection } from '@/pages/inventory/inventory-collection';
+import { signAndSettle } from '@/pages/inventory/collection-signing';
+import { openCollectionForm, COLLECTION_FORM_PATH } from '@/pages/inventory/collection-form-handoff';
+import { getAccountById } from '@/pages/accounts/accounts.data';
+import {
+    currentChatViewer, isOutgoing, visibleConversations, counterpartyName, counterpartyRole,
+} from './chat-viewer';
+import { setDriverAppFocus } from '@/pages/driver-app/driver-app-focus';
 import {
   ChatPicker, ComposerChips,
   type PickerItem, type PickerMode, type PickerSubject, type PickerCompliance, type PickerTask,
@@ -482,7 +489,18 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
   accountId?: string;
   onNavigate?: (path: string) => void;
 }) {
-  const convos = useConversations();
+  const all = useConversations();
+  // Whose seat this is. A driver signed in sees their own thread, from their end — the
+  // store is office-centric, so without this they read their own collection list as
+  // something they sent themselves and cannot answer.
+  const viewer = useMemo(() => currentChatViewer(), []);
+  const convos = useMemo(() => visibleConversations(all, viewer), [all, viewer]);
+  // What the driver's end of the thread is called. Their own carrier — a header reading
+  // "Elizabeth Cook" on Elizabeth Cook's own screen names the wrong end of the conversation.
+  const carrierDisplayName = useMemo(() => {
+    const a = accountId ? getAccountById(accountId) : undefined;
+    return a?.dbaName || a?.legalName || 'The office';
+  }, [accountId]);
   const typingIds = useAiTyping();
   const [selectedId, setSelectedId] = useState<string>(() => consumeMessagesFocus() ?? convos[0]?.id ?? '');
   const [listTab, setListTab] = useState<'contacts' | 'ai'>('contacts');
@@ -492,6 +510,7 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
   const [infoTab, setInfoTab] = useState<'photos' | 'videos' | 'docs'>('photos');
   const [chatView, setChatView] = useState<'chat' | 'profile'>('chat');
   const [preview, setPreview] = useState<PreviewItem | null>(null);
+
   const [toast, setToast] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -571,7 +590,10 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
       clearAsk();
     } else {
       if (!text) return;
-      sendMessage(selected.id, text);
+      // From the driver's seat their own message is, in the store's office-centric words,
+      // one that came in. Same thread, same record, read from the other end.
+      if (viewer.asDriver) receiveMessage(selected.id, text);
+      else sendMessage(selected.id, text);
     }
     setDraft('');
     closePicker();
@@ -897,8 +919,10 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
             )}
           </div>
 
-          {/* Contacts ⇄ AI Agents switch — labelled at lg+, icon-only on the rail */}
-          <div className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-0.5 md:flex-col lg:flex-row">
+          {/* Contacts ⇄ AI Agents switch — labelled at lg+, icon-only on the rail.
+              Not for a driver: the agents are the office's, so the tab would be a
+              permanently empty half of a two-way switch. */}
+          <div className={cn('mt-3 gap-1 rounded-lg bg-slate-100 p-0.5 md:flex-col lg:flex-row', viewer.asDriver ? 'hidden' : 'flex')}>
             {([['contacts', 'Contacts', Users, contactsUnread], ['ai', 'AI Agents', Bot, aiUnread]] as const).map(([id, label, Icon, n]) => (
               <button key={id} type="button" onClick={() => switchTab(id)} title={label}
                 className={cn('relative flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
@@ -924,13 +948,16 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
             const last = c.messages[c.messages.length - 1];
             const active = c.id === selectedId;
             const isExternal = c.kind === 'external';
+            // The row names the other end too, or a driver's one thread is a row with their
+            // own name on it, which reads as a note to self rather than as the office.
+            const who = counterpartyName(c, viewer, carrierDisplayName);
             return (
-              <button key={c.id} type="button" onClick={() => select(c.id)} title={`${c.name} · ${c.role}`}
+              <button key={c.id} type="button" onClick={() => select(c.id)} title={`${who} · ${counterpartyRole(c, viewer)}`}
                 className={cn('flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left transition-colors md:justify-center md:px-2 lg:justify-start lg:px-4',
                   active ? 'bg-blue-50/70' : 'hover:bg-slate-50')}>
                 <div className="relative shrink-0">
                   <span className={cn('flex h-11 w-11 items-center justify-center rounded-full text-[13px] font-bold text-white', c.color,
-                    active && 'ring-2 ring-blue-500 ring-offset-2')}>{c.ai ? <Bot size={20} /> : initials(c.name)}</span>
+                    active && 'ring-2 ring-blue-500 ring-offset-2')}>{c.ai ? <Bot size={20} /> : initials(who)}</span>
                   {c.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}
                   {isExternal && (c.emailOnly
                     ? <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-slate-400"><Mail size={9} className="text-white" /></span>
@@ -942,13 +969,13 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                 </div>
                 <div className="min-w-0 flex-1 md:hidden lg:block">
                   <div className="flex items-center gap-1.5">
-                    <span className={cn('min-w-0 truncate text-[14px] font-semibold', active ? 'text-blue-900' : 'text-slate-800')}>{c.name}</span>
+                    <span className={cn('min-w-0 truncate text-[14px] font-semibold', active ? 'text-blue-900' : 'text-slate-800')}>{who}</span>
                     <ConvBadge conv={c} className="hidden lg:inline-block xl:inline-block" />
                     <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-slate-400">{c.lastAt}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className={cn('truncate text-[12px]', c.unread ? 'font-semibold text-slate-700' : 'text-slate-500')}>
-                      {last?.system ? last.text : `${last?.fromMe ? 'You: ' : ''}${last?.text ?? ''}`}
+                      {last?.system ? last.text : `${last && isOutgoing(last, viewer) ? 'You: ' : ''}${last?.text ?? ''}`}
                     </span>
                     {c.unread > 0 && <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white">{c.unread}</span>}
                   </div>
@@ -977,15 +1004,15 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                 <button type="button" onClick={() => setChatView('profile')} title="View contact profile"
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-0.5 pr-2 text-left transition-colors hover:bg-slate-50 2xl:cursor-default 2xl:hover:bg-transparent">
                   <div className="relative shrink-0">
-                    <span className={cn('flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white', selected.color)}>{selected.ai ? <Bot size={18} /> : initials(selected.name)}</span>
+                    <span className={cn('flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white', selected.color)}>{selected.ai ? <Bot size={18} /> : initials(counterpartyName(selected, viewer, carrierDisplayName))}</span>
                     {selected.online && <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="min-w-0 truncate text-[14px] font-bold text-slate-900">{selected.name}</span>
+                      <span className="min-w-0 truncate text-[14px] font-bold text-slate-900">{counterpartyName(selected, viewer, carrierDisplayName)}</span>
                       <ConvBadge conv={selected} />
                     </div>
-                    <div className="truncate text-[12px] text-slate-500">{selected.online ? <span className="text-emerald-600">Online</span> : 'Offline'} · {selected.role}</div>
+                    <div className="truncate text-[12px] text-slate-500">{selected.online ? <span className="text-emerald-600">Online</span> : 'Offline'} · {counterpartyRole(selected, viewer)}</div>
                   </div>
                 </button>
                 <div className="flex items-center gap-0.5 text-slate-500">
@@ -1057,10 +1084,12 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                   {selected.messages.map((m, i) => {
                     const prev = selected.messages[i - 1];
                     const showDay = m.day && m.day !== prev?.day;
-                    const mine = m.fromMe;
+                    const mine = isOutgoing(m, viewer);
                     const kind = messageKind(m);
                     const meta = MSG_KIND[kind];
-                    const senderName = mine ? (currentUserName || 'You') : selected.name;
+                    const senderName = mine
+                        ? (viewer.asDriver ? (viewer.driverName ?? 'You') : (currentUserName || 'You'))
+                        : counterpartyName(selected, viewer, carrierDisplayName);
 
                     const dayRule = showDay ? (
                       <div className="my-4 flex items-center justify-center">
@@ -1180,6 +1209,14 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                                   collection={col}
                                   preview={mine}
                                   onConfirm={(ids) => confirmCollection(col.id, ids)}
+                                  onSign={(defId, ids) => {
+                                    if (!onNavigate) { signAndSettle({ collection: col, defId, pickedItemIds: ids }); return; }
+                                    openCollectionForm({ collectionId: col.id, defId, pickedItemIds: ids, returnTo: '/messages' });
+                                    onNavigate(COLLECTION_FORM_PATH);
+                                  }}
+                                  onOpenDriverApp={onNavigate
+                                    ? () => { setDriverAppFocus(col.driverId); onNavigate('/driver-mobile-app'); }
+                                    : undefined}
                                 />
                               </div>
                             </div>
@@ -1368,7 +1405,7 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
                             : taggedSubject
                               ? `Ask about ${taggedSubject.name.split(' ')[0]} — or type / to pick a record…`
                               : `Ask ${selected.name.split(' ')[0]} — type @ for a driver, / for a compliance record…`)
-                          : `Message ${selected.name.split(' ')[0]}…`}
+                          : `Message ${counterpartyName(selected, viewer, carrierDisplayName).split(' ')[0]}…`}
                         className="max-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-10 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                       <button type="button" title="Emoji" className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Smile size={17} /></button>

@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { planMovements, OFFICE, type Counterparty, type Movement, type MovementPlan } from "./inventory-movements";
+import { ISSUE_RECEIPT_ID, collectionFormsFor } from "./inventory-forms";
 
 export interface NotifyState {
     /**
@@ -28,6 +29,18 @@ export interface NotifyState {
     dueAt: string;
     /** Wording somebody typed, keyed by who it is to and which way it goes. */
     notes: Record<string, string>;
+    /**
+     * The forms that ride with the collection, by catalog id.
+     *
+     * Handing kit over is a receipt as much as it is a record change, and the app already
+     * had the receipt — it just lived in onboarding, where it was signed once on day one
+     * and never again. Attached to the movement, it is signed each time, for exactly what
+     * moved.
+     *
+     * Collections only. Nobody signs for giving something back; the office signs for
+     * receiving it, which happens at a counter rather than in a chat card.
+     */
+    formIds: string[];
 }
 
 export const emptyNotifyState = (): NotifyState => ({
@@ -36,6 +49,10 @@ export const emptyNotifyState = (): NotifyState => ({
     counterName: "",
     dueAt: "",
     notes: {},
+    // The issue receipt, pre-attached. It is the right answer for a hand-out nearly every
+    // time, it is one click to drop, and the confirmation names it before anything is sent —
+    // whereas a receipt nobody remembered to ask for is found out about months later.
+    formIds: [ISSUE_RECEIPT_ID],
 });
 
 export const planKey = (p: MovementPlan) => `${p.driverId}::${p.direction}`;
@@ -50,6 +67,19 @@ export const plansFor = (movements: Movement[], state: NotifyState): MovementPla
     planMovements(movements, { counterparty: counterpartyOf(state), dueAt: state.dueAt || undefined })
         .map((p) => ({ ...p, note: state.notes[planKey(p)] ?? p.note }));
 
+/**
+ * The plans with their paperwork attached.
+ *
+ * Only the collections. A hand-back card asks somebody to bring a fuel card to the office;
+ * the signature that matters there is the office's, on receiving it, and putting a "sign
+ * this" on the driver's card would be asking them to sign for something they no longer have.
+ */
+export const withForms = (plans: MovementPlan[], state: NotifyState): MovementPlan[] => {
+    const forms = collectionFormsFor(state.formIds);
+    if (!forms.length) return plans;
+    return plans.map((p) => (p.direction === "collect" ? { ...p, forms } : p));
+};
+
 /** Only the ones that will actually go out, for the save path. */
 export const sendablePlans = (plans: MovementPlan[], state: NotifyState) =>
-    plans.filter((p) => (p.direction === "collect" ? state.notify : true));
+    withForms(plans.filter((p) => (p.direction === "collect" ? state.notify : true)), state);

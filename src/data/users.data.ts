@@ -1,6 +1,8 @@
 // Centralized user roster. Used by the login page (quick-login dropdown) and
 // by the app for role-based sidebar filtering and navbar identity.
 
+import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
+
 export type UserRole = "super-admin" | "admin" | "user";
 
 export type AppUser = {
@@ -469,6 +471,62 @@ export const APP_USERS: AppUser[] = [
         avatarGradient: "from-yellow-500 to-yellow-700",
     },
 ];
+
+// ── Drivers, as accounts ────────────────────────────────────────────────────
+//
+// A driver was a record the office looked at, never somebody who could be signed in as —
+// which was fine while everything a driver did happened on paper. It stopped being fine the
+// moment the app started sending them things to answer: a collection to confirm, a receipt
+// to sign. There was no way to stand where they stand and check what actually arrives.
+//
+// Derived from the carrier's own roster rather than typed out, because a hard-coded
+// "Elizabeth Cook" would be a second Elizabeth Cook: the roster is generated, so a name
+// written down here is right until the seed changes and then it is a login that matches
+// nobody. Same id, same name, same email as the driver record, every time.
+//
+// Acme only, and only active drivers. Every carrier's roster would put three hundred names
+// in a demo login list, and the point is to be able to test the driver half, not to model
+// a workforce.
+const DRIVER_LOGIN_CARRIER = "acct-001";
+
+const driverUsers = (): AppUser[] => {
+    const roster = (CARRIER_DRIVERS[DRIVER_LOGIN_CARRIER] ?? []) as { id: string; name: string; email?: string; status?: string; driverType?: string }[];
+    const GRADIENTS = [
+        "from-cyan-500 to-cyan-700", "from-rose-500 to-rose-700", "from-lime-500 to-lime-700",
+        "from-orange-500 to-orange-700", "from-indigo-500 to-indigo-700",
+    ];
+    return roster
+        .filter((d) => d.status === "Active")
+        .map((d, i) => {
+            const parts = d.name.trim().split(/\s+/).filter(Boolean);
+            return {
+                // Namespaced off the driver id so it cannot collide with a u-0NN, and so the
+                // same driver is the same login across reloads.
+                id: `u-drv-${d.id}`,
+                name: d.name,
+                email: d.email ?? `${d.name.toLowerCase().replace(/\s+/g, ".")}@acmelogistics.com`,
+                role: "user" as const,
+                accountId: DRIVER_LOGIN_CARRIER,
+                accountName: "Acme Trucking Inc.",
+                serviceProfileId: "svc-001",
+                status: "Active" as const,
+                title: d.driverType || "Driver",
+                initials: ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "DR",
+                avatarGradient: GRADIENTS[i % GRADIENTS.length],
+            };
+        });
+};
+
+/** Every driver on the Acme roster, as a signed-in-able account. */
+export const DRIVER_USERS: AppUser[] = driverUsers();
+APP_USERS.push(...DRIVER_USERS);
+
+/** Is this account one of the roster drivers, rather than an office user? */
+export const isDriverUser = (u: AppUser | undefined): boolean => !!u && u.id.startsWith("u-drv-");
+
+/** The driver record behind a driver login, for the surfaces that are about that driver. */
+export const driverIdOfUser = (u: AppUser | undefined): string | undefined =>
+    isDriverUser(u) ? u!.id.slice("u-drv-".length) : undefined;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
     "super-admin": "Super Admin",

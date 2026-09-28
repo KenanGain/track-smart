@@ -55,6 +55,39 @@ export function defaultMonitoring(): MonitoringConfig {
     return { enabled: false, basis: 'expiry', customDate: '', recurrence: 'annually', reminders: [90, 60, 30], channels: { email: true, inApp: true } };
 }
 
+/**
+ * A completed form, kept as its ANSWERS rather than as a picture of them.
+ *
+ * A copy filed from the app used to be a filename and nothing else: `equipment-issue-
+ * 2026-09-25.pdf`, size 0, no file behind it. The record listed it, somebody clicked it,
+ * and there was nothing to open — which defeats the point of filing it at all, which is
+ * being able to read the receipt back months later.
+ *
+ * Kept as data it can be re-rendered as the document it is, printed, or downloaded as a
+ * real PDF. It is also the only honest evidence that a copy was completed in the app rather
+ * than scanned: an upload has a file, this has answers.
+ */
+export interface FilledForm {
+    /** The form definition it was filled from. */
+    defId: string;
+    values: Record<string, string>;
+    /** Signature images, keyed by the form's signature field. */
+    sigs: Record<string, string>;
+    /**
+     * The rows the form was about, when it was about a list.
+     *
+     * Kept as rows rather than as the sentence they were joined into, so the copy redraws
+     * the same table when it is read back. Typed loosely here because this store must not
+     * learn what an inventory line is.
+     *
+     * `itemId` and `route` are optional because a copy recovered from an older record has
+     * the names and serials the notes listed and genuinely does not know the rest. A table
+     * that prints a dash there is right; one that guesses "Assigned" is not.
+     */
+    lines?: { itemId?: string; name: string; serial?: string; route?: 'assigned' | 'carried' | 'handed' }[];
+    holderLabel?: string;
+}
+
 export interface DocVersion {
     id: string;
     label: string;
@@ -72,6 +105,8 @@ export interface DocVersion {
     monitoring: MonitoringConfig;
     uploadedAt: string;  // ISO
     uploadedBy?: string; // name of the person who captured/uploaded this version
+    /** The answers, when this copy was completed in the app rather than uploaded. */
+    formData?: FilledForm;
     /** Pinned as THE current record. Unset on every version → the newest one is current.
      *  Only one version in a list carries it; the save paths clear it from the others. */
     isCurrent?: boolean;

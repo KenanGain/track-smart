@@ -14,10 +14,13 @@ import {
     Building2, Truck, User, Layers, Search, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
     ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, CornerDownRight, Share2,
-    ToggleLeft, ToggleRight, RotateCcw, ExternalLink,
-} from 'lucide-react';
+    ToggleLeft, ToggleRight, RotateCcw, ExternalLink, FileSignature } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KebabMenu } from '@/components/ui/KebabMenu';
+// A completed form is read back through the viewer that knows how to draw one — the kit
+// table, the answers, the signature, and the printable document behind the same copy.
+import { FiledFormViewer } from '@/pages/inventory/FiledFormViewer';
+import { viewableForm, isFilledInSystem, type ViewableForm } from '@/pages/inventory/inventory-forms';
 import { UploadZone } from '@/components/ui/UploadZone';
 import { ShareToChat } from '@/components/share/ShareToChat';
 import { consumePendingRecord, setPendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
@@ -176,6 +179,23 @@ function DocThumb({ f, size = 40 }: { f: DataDocFile; size?: number }) {
 
 /** Compact document list for one version — a tight line per file, or a clear "missing" chip when none uploaded. Shared by the table + mobile cards.
  *  `showTag=false` hides the per-file tag (used in the table, where the tag has its own Tags column). Slot labels (Front/Back) always show. */
+/**
+ * What a record shows under DOCUMENT when it was completed in the app.
+ *
+ * A form filled in here has no scan behind it. It was given a generated file name so the
+ * column would not sit empty, which turned out to be the worse lie: a row reading
+ * "equipment-issue-2026-09-25.pdf" invites somebody to click a file that does not exist,
+ * and the edit sheet went on to call it "Uploaded · 0 B". There is no document. There is a
+ * completed form, and the Form button beside it opens that.
+ */
+function FilledInSystemCell() {
+    return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+            <FileSignature size={11} /> Filled in system
+        </span>
+    );
+}
+
 function DocFilesCell({ files, showTag = true }: { files: DataDocFile[]; showTag?: boolean }) {
     if (files.length === 0) {
         return (
@@ -318,6 +338,17 @@ function MobileFact({ label, value }: { label: string; value?: string }) {
 }
 
 // ── Table columns / sort / pagination ─────────────────────────────────
+/**
+ * What a record detail page can do for a card rendered inside it.
+ *
+ * Just the one, for now: open the "add a copy" form. A card that offers "upload a signed
+ * copy" and then leaves somebody to find the Add record button on a table further down is
+ * offering a label rather than a route.
+ */
+export interface RecordDetailActions { addVersion: () => void }
+/** An extra section: a node, or a function given the page's own actions. */
+export type DetailExtra = ReactNode | ((actions: RecordDetailActions) => ReactNode);
+
 type DataColId = 'category' | 'type' | 'monitoring' | 'document' | 'records' | 'status';
 type SortCol = 'record' | DataColId;
 const DATA_COLUMNS: { id: DataColId; label: string }[] = [
@@ -1441,7 +1472,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, headerShowsSubject, onNavigate, accountId, onKpis, onActions }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, headerShowsSubject, onNavigate, accountId, onKpis, onActions, defaultCols }: {
     entity: EntityId;
     subjectId: string;
     /** Scopes which records this subject tracks (see `record-enablement`). */
@@ -1465,10 +1496,20 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     // Embedded inside an entity detail tab → drop the redundant subject header + big KPI cards for a compact, refined look.
     embedded?: boolean;
     // Optional extra section rendered inside a record's detail page (e.g. a "Fill out the form" card for DQ forms).
-    detailExtra?: ReactNode;
+    // A function form receives the detail page's own actions, so the card can offer them.
+    detailExtra?: DetailExtra;
     // Per-record variant of detailExtra — receives the open record so a list (e.g. the DQ Forms tab)
     // can render the RIGHT form's fill card. Falls back to detailExtra when not provided.
-    detailExtraFor?: (record: SafetyRecord) => ReactNode;
+    detailExtraFor?: (record: SafetyRecord) => DetailExtra;
+    /**
+     * Which columns this list starts with.
+     *
+     * The default suits the compliance catalog, where Category, Record Type and Monitoring
+     * each tell you something. A list of one carrier's POLICY FORMS is every record in the
+     * same category, of the same type, monitored the same way — three columns of identical
+     * values, pushing the one that matters off a narrow screen.
+     */
+    defaultCols?: DataColId[];
     // Hide the category tab row (e.g. the DQ Forms tab, where every record is one category → redundant).
     hideCategoryTabs?: boolean;
     // The page header already carries the back button and the subject's name, so the in-page
@@ -1492,7 +1533,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const [monitorFilter, setMonitorFilter] = useState<'all' | 'on' | 'off'>('all');
     const [groupBy, setGroupBy] = useState<GroupById>('none');
     const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' } | null>(null);
-    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(DEFAULT_DATA_COLS));
+    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(defaultCols ?? DEFAULT_DATA_COLS));
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
     const [manage, setManage] = useState<SafetyRecord | null>(null);
@@ -2938,11 +2979,13 @@ function DocColumnsDropdown({ record, cols, visible, onToggle }: { record: Safet
  * Rendered in TWO places: the record detail page's Documents tab, and INLINE inside the list's
  * expandable row. Reads `entry` live from the store, so Load-sample / Fill-demo data reflect here.
  */
-function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate, showTitle = true, accountId }: {
+function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, subjectLabel, entity, onNavigate, showTitle = true, accountId, addHandle }: {
     record: SafetyRecord; entry: RecordDataEntry; subjectId: string; setEntry: EntrySetter;
     compact?: boolean; subjectLabel?: string; entity?: EntityId; onNavigate?: (path: string) => void;
     /** The carrier — a record whose number is held once for the whole fleet reads it from there. */
     accountId?: string;
+    /** Lends this table's "add a record" action to a card rendered above it. */
+    addHandle?: React.MutableRefObject<(() => void) | null>;
     /** False when a tab strip above already names this section. */
     showTitle?: boolean;
 }) {
@@ -3074,6 +3117,18 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     };
 
     const isMulti = !!record.multiInstance;
+    /**
+     * A completed form being read back.
+     *
+     * Here rather than on the record page above, because this table is where the copies
+     * are listed — and it is the same table on the driver profile, on a record detail and
+     * embedded anywhere else, so one place to open one is one place, not three.
+     */
+    const [viewingForm, setViewingForm] = useState<ViewableForm | null>(null);
+    // Lent upward so a card ABOVE this table can offer the same action. A ref rather than a
+    // callback prop: a callback fired on every render is the trap that has bitten
+    // `onDetailChange` on this page before.
+    if (addHandle) addHandle.current = isMulti ? startAddPolicy : startAdd;
     // Insurer / Producer / Policy Limit are insurance-only columns — shown for the SYSTEM insurance
     // records, never for custom records (custom multi-document is just "several documents", and its
     // table shows only the fields defined in its form).
@@ -3263,6 +3318,8 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                     {pageRows.flatMap((row, ri) => {
                                         const v = row.version;
                                         const st = effectiveState(row.isCurrent);
+                                        // Null on the 36 record types that are not forms, so they gain nothing.
+                                        const form = viewableForm(record.id, v);
                                         const g = docGroupBy === 'none' ? null : docGroupOf(docGroupBy, row);
                                         const prevG = ri === 0 || docGroupBy === 'none' ? null : docGroupOf(docGroupBy, pageRows[ri - 1]);
                                         // Insurance policies with several documents → one row per document (primary row + "extra" rows).
@@ -3311,7 +3368,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 )}
                                                 {showCol('document') && (
                                                     <td className="px-4 py-3">
-                                                        <div className="max-w-[260px]"><DocFilesCell files={splitDocs ? [v.files[0]] : v.files} showTag={false} /></div>
+                                                        <div className="max-w-[260px]">
+                                                            {isFilledInSystem(v)
+                                                                ? <FilledInSystemCell />
+                                                                : <DocFilesCell files={splitDocs ? [v.files[0]] : v.files} showTag={false} />}
+                                                        </div>
                                                     </td>
                                                 )}
                                                 {showCol('uploaded') && <UploaderCell name={v.uploadedBy} at={v.uploadedAt} />}
@@ -3320,6 +3381,14 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                         {isMulti && row.isCurrent && row.instanceId && (
                                                             <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a renewal record to this policy"
                                                                 className="inline-flex h-8 items-center gap-1 px-2 rounded-lg border border-blue-200 bg-blue-50 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"><Plus size={13} /> Record</button>
+                                                        )}
+{/* A record that IS a form can be opened and read. Every copy on it, not
+                                                            only the ones filled in after answers started being kept: an older
+                                                            one opens rebuilt from the record, and says so. */}
+                                                        {form && (
+                                                            <button type="button" onClick={() => setViewingForm(form)}
+                                                                title={form.recovered ? 'View this form, rebuilt from the record' : 'View the completed form'}
+                                                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-700 hover:bg-violet-100"><Eye size={13} /> Form</button>
                                                         )}
                                                         <button type="button" onClick={() => startEdit(row)} title="Edit this record"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
@@ -3375,6 +3444,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                             {pageRows.map(row => {
                                 const v = row.version;
                                 const st = effectiveState(row.isCurrent);
+                                const form = viewableForm(record.id, v);
                                 return (
                                     <div key={row.key} className={cn('p-4 space-y-3', st === 'current' ? 'bg-emerald-50/40' : '')}>
                                         <div className="flex items-start justify-between gap-2">
@@ -3390,6 +3460,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 {isMulti && row.isCurrent && row.instanceId && (
                                                     <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a renewal record to this policy"
                                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"><Plus size={15} /></button>
+                                                )}
+                                                {form && (
+                                                    <button type="button" onClick={() => setViewingForm(form)}
+                                                        title={form.recovered ? 'View this form, rebuilt from the record' : 'View the completed form'}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"><Eye size={15} /></button>
                                                 )}
                                                 <button type="button" onClick={() => startEdit(row)} title="Edit this record"
                                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
@@ -3419,7 +3494,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         )}
                                         <div>
                                             <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</div>
-                                            <DocFilesCell files={v.files} />
+                                            {isFilledInSystem(v) ? <FilledInSystemCell /> : <DocFilesCell files={v.files} />}
                                         </div>
                                     </div>
                                 );
@@ -3453,6 +3528,16 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     onNavigate={onNavigate}
                 />
             )}
+            {/* A completed form, read back. Two views of the one copy — this app's shapes,
+                and the printable document with Print / Download on it. */}
+            {viewingForm && (
+                <FiledFormViewer
+                    filled={viewingForm.filled}
+                    recovered={viewingForm.recovered}
+                    onClose={() => setViewingForm(null)}
+                />
+            )}
+
             {pendingDelete && (
                 <ConfirmDialog
                     danger
@@ -3489,11 +3574,14 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
     /** The carrier — the broker of record on an insurance policy belongs to it, not to a policy. */
     accountId?: string;
     onBack: () => void;
-    detailExtra?: ReactNode;
+    detailExtra?: DetailExtra;
     onNavigate?: (path: string) => void;
     /** Embedded in a driver / asset profile the subject is already named in the page header. */
     showSubject?: boolean;
 }) {
+    // The documents table's own "add a record" action, lent upward so the card above can
+    // offer it — see `RecordDetailActions`.
+    const addHandle = useRef<(() => void) | null>(null);
     const [tab, setTab] = useState<DetailTab>('documents');
     // ── Pinned identity bar ──
     // The title bar sticks to the top of whatever container scrolls this page (this view is
@@ -3700,8 +3788,17 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                 </div>
             </div>
 
-            {/* Optional extra section (e.g. DQ "Fill out the form" card) */}
-            {detailExtra && <div className="mt-4">{detailExtra}</div>}
+            {/* Optional extra section (e.g. DQ "Fill out the form" card).
+                Given the page's OWN add action when it asks for one: a card that offers
+                "upload a signed copy" and then leaves you to find the Add record button on a
+                table below is offering a label, not a route. */}
+            {detailExtra && (
+                <div className="mt-4">
+                    {typeof detailExtra === 'function'
+                        ? (detailExtra as (a: RecordDetailActions) => ReactNode)({ addVersion: () => addHandle.current?.() })
+                        : detailExtra}
+                </div>
+            )}
 
             {/* The tabbed body. With one section there is no tab strip — the table's own
                 header is the heading. The strip itself is the app's standard one (`SubTabs`):
@@ -3727,7 +3824,7 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                 ) : tab === 'monitoring' && showMonitoring ? (
                     <MonitoringCalendarTab record={record} cfg={cfg ?? undefined} monitoredDate={monitoredDate} monitoringOn={monitoringOn} />
                 ) : (
-                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showTabs} accountId={accountId} />
+                    <DocumentsTable record={record} entry={entry} subjectId={subjectId} setEntry={setEntry} subjectLabel={subjectLabel} entity={entity} onNavigate={onNavigate} showTitle={!showTabs} accountId={accountId} addHandle={addHandle} />
                 )}
             </div>
         </div>
@@ -3950,6 +4047,15 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
     onNavigate?: (path: string) => void;
 }) {
     const v = version;
+    /**
+     * The completed form, openable from the edit sheet.
+     *
+     * The sheet is where somebody lands when they want to know what a record IS, and until
+     * now it answered with a file name and a date. Same resolver the records table uses, so
+     * a record type that is not a form still shows nothing.
+     */
+    const filedForm = viewableForm(baseRecord.id, v);
+    const [showForm, setShowForm] = useState(false);
     // The form asks for what THIS document has. A record can hold more than one kind — the
     // certificate of incorporation that never expires and the business licence that does — and
     // the whole form follows from the kind: its dates, what its number is called, the name of
@@ -4211,8 +4317,22 @@ export function VersionFields({ record: baseRecord, version, onChange, tagCatalo
                 <div className="border-t border-slate-200 pt-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isMultiDoc ? 'Uploaded Documents' : 'Uploaded Document'}</div>
-                        {isMultiDoc && <span className={cn('text-[10px] font-bold tabular-nums', v.files.length >= MAX_POLICY_DOCS ? 'text-amber-600' : 'text-slate-400')}>{v.files.length}/{MAX_POLICY_DOCS}</span>}
+                        <div className="flex items-center gap-2">
+                            {filedForm && (
+                                <button type="button" onClick={() => setShowForm(true)}
+                                    title={filedForm.recovered ? 'View this form, rebuilt from the record' : 'View the completed form'}
+                                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-700 hover:bg-violet-100">
+                                    <Eye size={12} /> Form
+                                </button>
+                            )}
+                            {isMultiDoc && <span className={cn('text-[10px] font-bold tabular-nums', v.files.length >= MAX_POLICY_DOCS ? 'text-amber-600' : 'text-slate-400')}>{v.files.length}/{MAX_POLICY_DOCS}</span>}
+                        </div>
                     </div>
+                    {showForm && filedForm && (
+                        <FiledFormViewer filled={filedForm.filled} recovered={filedForm.recovered}
+                            signedOn={v.issueDate} signedBy={v.uploadedBy} backLabel="Back to the record"
+                            onClose={() => setShowForm(false)} />
+                    )}
                     <div className="mb-1.5 text-[12px] font-semibold text-slate-600">{record.documentName || 'Document'}</div>
                     {isMultiDoc && <p className="mb-2 text-[11px] text-slate-400">{cf ? `This record can hold up to ${MAX_POLICY_DOCS} documents. Drag several files at once — each becomes its own tagged row.` : `This policy can hold up to ${MAX_POLICY_DOCS} documents (certificate, endorsements, declarations…). Drag several files at once — each becomes its own tagged row; the policy details above are shared.`}</p>}
                     {slots.length > 0 ? (
@@ -4654,10 +4774,14 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
     // On open, attach a real demo PDF to any file that's missing one (Save persists it).
     useEffect(() => {
         if (!hasDoc) return;
-        const missing = (vs: DocVersion[]) => vs.some(v => v.files.some(f => !f.url));
+        // A copy completed in the app has no scan and is not missing one: its file name was
+        // generated. Handing it a demo PDF would put a document behind a signature that was
+        // never on paper, which is the one place this self-heal must not reach.
+        const needsHeal = (v: DocVersion) => !isFilledInSystem(v) && v.files.some(f => !f.url);
+        const missing = (vs: DocVersion[]) => vs.some(needsHeal);
         if (!(isMulti ? instances.some(i => missing(i.versions)) : missing(versions))) return;
         const fixV = (v: DocVersion): DocVersion =>
-            v.files.some(f => !f.url) ? { ...v, files: v.files.map(f => (f.url ? f : withDemoPdf(record, f))) } : v;
+            needsHeal(v) ? { ...v, files: v.files.map(f => (f.url ? f : withDemoPdf(record, f))) } : v;
         if (isMulti) setInstances(list => list.map(i => ({ ...i, versions: i.versions.map(fixV) })));
         else setVersions(list => list.map(fixV));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4878,12 +5002,19 @@ function TagField({ tags, catalog, onAdd, onRemove }: {
 // ── Monitoring & notifications modal (row "monitoring" action) ────────
 // ── Refined upload dropzone (mirrors the settings-catalog Dropzone) ───
 function FileChip({ f, onRemove }: { f: DataDocFile; onRemove: () => void }) {
+    // A name the app wrote for a form completed here, not a document somebody chose.
+    const generated = !f.url && !f.size;
     return (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
-            <div className="h-9 w-9 rounded-lg bg-white text-emerald-500 shadow-sm flex items-center justify-center shrink-0"><FileText size={16} /></div>
+        <div className={cn('flex items-center gap-3 rounded-xl border p-2.5',
+            generated ? 'border-slate-200 bg-slate-50' : 'border-emerald-200 bg-emerald-50/50')}>
+            <div className={cn('h-9 w-9 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0',
+                generated ? 'text-slate-400' : 'text-emerald-500')}><FileText size={16} /></div>
             <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-semibold text-slate-800 truncate">{f.name}</div>
-                <div className="text-[11px] text-emerald-600">✓ Uploaded · {fmtSize(f.size)}</div>
+                {/* Nothing was uploaded when there is no file behind the name. */}
+                {generated
+                    ? <div className="text-[11px] text-slate-500">Generated by the app · no file</div>
+                    : <div className="text-[11px] text-emerald-600">✓ Uploaded · {fmtSize(f.size)}</div>}
             </div>
             {f.url && (
                 <button type="button" onClick={() => openFile(f)} title="View document"

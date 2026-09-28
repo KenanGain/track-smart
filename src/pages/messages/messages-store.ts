@@ -88,6 +88,24 @@ export interface CollectionLine {
   route: 'assigned' | 'carried' | 'handed';
 }
 
+/**
+ * A form riding on a collection — the receipt for the kit on the same card as the kit.
+ *
+ * The office used to assign the items here and go somewhere else for a signature, retyping
+ * the item list on the way. One card: here is what you are collecting, here is what you are
+ * signing for it.
+ */
+export interface CollectionForm {
+  /** The form in the system's catalog. */
+  defId: string;
+  title: string;
+  /** Where a signed copy is filed against the driver, in the compliance store. */
+  recordId: string;
+  status: 'pending' | 'signed';
+  signedAt?: string;
+  signedBy?: string;
+}
+
 export interface InventoryCollection {
   /** Shared id, so a confirmation flips every copy of the card. */
   id: string;
@@ -119,6 +137,11 @@ export interface InventoryCollection {
   /** When it needs to have happened by. Date, or date and time. */
   dueAt?: string;
   lines: CollectionLine[];
+  /**
+   * What they sign for it. Empty on a hand-back and on a card sent before this existed,
+   * which is why it is optional rather than an empty array everybody has to check.
+   */
+  forms?: CollectionForm[];
   issuedBy: string;
   note?: string;
   status: 'pending' | 'collected';
@@ -812,6 +835,38 @@ export function sendInventoryCollection(collection: InventoryCollection, text?: 
   };
   patch(convId, c => ({ ...c, lastAt: at, messages: [...c.messages, msg] }), true);
   return convId;
+}
+
+/**
+ * A form on a collection card came back signed.
+ *
+ * Flips every copy of the card, the same way a confirmation does, so the office's mirror of
+ * the thread shows the signature without anybody opening a record to find out. Returns the
+ * card as it now stands.
+ */
+export function signCollectionForm(
+  collectionId: string, defId: string, signedBy: string,
+): InventoryCollection | null {
+  let out: InventoryCollection | null = null;
+  const at = nowIso();
+  const mark = (c: InventoryCollection): InventoryCollection => ({
+    ...c,
+    forms: (c.forms ?? []).map(f => (f.defId === defId
+      ? { ...f, status: 'signed' as const, signedAt: at, signedBy }
+      : f)),
+  });
+  for (const c of conversations) {
+    if (!c.messages.some(m => m.collection?.id === collectionId)) continue;
+    patch(c.id, x => ({
+      ...x,
+      messages: x.messages.map(m => (m.collection?.id === collectionId
+        ? { ...m, collection: mark(m.collection) }
+        : m)),
+    }));
+    const hit = c.messages.find(m => m.collection?.id === collectionId);
+    if (hit?.collection) out = mark(hit.collection);
+  }
+  return out;
 }
 
 /**

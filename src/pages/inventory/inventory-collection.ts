@@ -19,13 +19,14 @@
 
 import {
     sendInventoryCollection, settleInventoryCollection,
-    type CollectionLine, type Conversation, type InventoryCollection,
+    type CollectionForm, type CollectionLine, type Conversation, type InventoryCollection,
 } from "@/pages/messages/messages-store";
 import { itemName, VENDORS, type InventoryItem } from "./inventory.data";
 import {
     loadHandover, saveHandover, handoverStatusOf, removeLines, type DriverHandover,
 } from "./handovers.data";
 import { logInventoryEvent } from "./inventory-activity";
+import { logFormsRequested } from "./inventory-forms";
 import { updateInventoryItem, currentInventoryItems } from "./inventory-store";
 
 let seq = 0;
@@ -119,6 +120,8 @@ export function requestCollection(input: {
     counterparty?: { kind: "office" | "person"; name?: string };
     /** When it has to have happened by. */
     dueAt?: string;
+    /** What they sign for it. Collections only — see `withForms`. */
+    forms?: CollectionForm[];
 }): string {
     const back = input.direction === "return";
     const where = input.counterparty?.kind === "person" && input.counterparty.name
@@ -133,6 +136,7 @@ export function requestCollection(input: {
         lines: input.lines,
         issuedBy: input.issuedBy,
         note: input.note,
+        forms: back ? undefined : input.forms,
         direction: back ? "return" : "collect",
         counterparty: input.counterparty,
         dueAt: input.dueAt,
@@ -148,6 +152,15 @@ export function requestCollection(input: {
                 : `${input.driverName} was asked to collect this from ${where}`)
                 + (input.dueAt ? ` by ${input.dueAt.replace("T", " ")}` : ""),
             by: input.issuedBy, role: "Office",
+        });
+    }
+    // The ask for a signature is its own fact on the trail. Somebody standing in front of a
+    // missing fuel card looks at the ITEM, and "a receipt was asked for and never came back"
+    // is the answer they need — it is not on the item unless it is written there.
+    if (!back && input.forms?.length) {
+        logFormsRequested({
+            accountId: input.accountId, lines: input.lines, forms: input.forms,
+            driverName: input.driverName, issuedBy: input.issuedBy,
         });
     }
     return convId;

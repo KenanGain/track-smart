@@ -1,7 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ChevronLeft, Eye, Printer, Download, Sparkles, Check, Share2 } from "lucide-react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { ChevronLeft, Eye, Printer, Download, Sparkles, Check, Share2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +8,10 @@ import { useCompanyBranding } from "../ats/company-branding.data";
 import type { CompanyBranding } from "../ats/company-branding.data";
 import { STATES_PROVINCES } from "./ApplicationSettingsPage";
 import { Field, Grid, SelectBox, YesNoField, SignaturePad } from "./FormKit";
-import { THEME_HEX, type PolicyFormDef, type PolicyBlock, type PolicyField, type ListItem } from "./policy-forms.data";
+import {
+    THEME_HEX, formatItemLines, parseItemLines,
+    type PolicyFormDef, type PolicyBlock, type PolicyField, type ListItem, type ReceiptItem,
+} from "./policy-forms.data";
 import { THEMES, type ThemeKey } from "./FormDocument";
 import { usePrefill } from "./application-prefill";
 
@@ -58,7 +59,24 @@ function NestedList({ items, depth = 0, mono }: { items: ListItem[]; depth?: num
     );
 }
 
-function Block({ block, values, preview, mono }: { block: PolicyBlock; values: Record<string, string>; preview: boolean; mono?: boolean }) {
+/**
+ * One block of a form's statement text.
+ *
+ * Exported because the statement is the part that legally matters, and a compact copy of
+ * the form — the one a driver fills in inside a chat card — must show the SAME words. A
+ * second renderer would be a second wording, and the one nobody reads is the one that ends
+ * up in front of the person signing.
+ */
+export function Block({ block, values, preview, mono, onToggleRow }: {
+    block: PolicyBlock; values: Record<string, string>; preview: boolean; mono?: boolean;
+    /**
+     * Makes a table's tick column live.
+     *
+     * Passed only where the form is being FILLED IN. On paper and on a filed copy the
+     * same boxes render as marks, because what was ticked then is not editable now.
+     */
+    onToggleRow?: (rowIndex: number) => void;
+}) {
     const body = mono ? "text-black" : "text-slate-600";
     const strong = mono ? "text-black" : "text-slate-800";
     if ("h" in block) return <p className={cn("mt-4 text-[13px] font-bold uppercase tracking-wide first:mt-0", strong)}>{block.h}</p>;
@@ -67,6 +85,59 @@ function Block({ block, values, preview, mono }: { block: PolicyBlock; values: R
     if ("ol" in block) return <ol className={cn("list-decimal space-y-2 pl-5 text-[13px] leading-relaxed", body)}>{block.ol.map((t, i) => <li key={i}>{t}</li>)}</ol>;
     if ("ul" in block) return <ul className={cn("list-disc space-y-1 pl-5 text-[13px] leading-relaxed", body)}>{block.ul.map((t, i) => <li key={i}>{t}</li>)}</ul>;
     if ("list" in block) return <NestedList items={block.list} mono={mono} />;
+    if ("table" in block) {
+        const t = block.table;
+        const line = mono ? "border-black" : "border-slate-300";
+        return (
+            <div className="space-y-1.5">
+                {t.title && <p className={cn("text-[12px] font-bold uppercase tracking-wide", strong)}>{t.title}</p>}
+                <div className={cn("overflow-hidden rounded border", line)}>
+                    <table className="w-full border-collapse text-left">
+                        <thead>
+                            <tr className={cn(mono ? "bg-white" : "bg-slate-50")}>
+                                {t.checks && (
+                                    <th className={cn("border-b px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide", line,
+                                        mono ? "text-black" : "text-slate-500")} style={{ width: 34 }}>{t.checkHeader ?? ""}</th>
+                                )}
+                                {t.headers.map((h, i) => (
+                                    <th key={i} className={cn("border-b px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide", line,
+                                        mono ? "text-black" : "text-slate-500")}>{h}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {t.rows.length === 0 ? (
+                                <tr><td colSpan={t.headers.length + (t.checks ? 1 : 0)} className={cn("px-2 py-2 text-[12px] italic", body)}>Nothing listed.</td></tr>
+                            ) : t.rows.map((r, ri) => {
+                                const on = !!t.checks?.[ri];
+                                return (
+                                <tr key={ri} className={cn(ri % 2 && !mono ? "bg-slate-50/50" : undefined, onToggleRow && "cursor-pointer")}
+                                    onClick={onToggleRow ? () => onToggleRow(ri) : undefined}>
+                                    {t.checks && (
+                                        <td className={cn("border-t px-2 py-1.5 align-top", line)}>
+                                            {/* A box on paper, a box you can press on a phone. Same box. */}
+                                            <span className={cn("flex h-4 w-4 items-center justify-center rounded border text-[11px] font-bold leading-none",
+                                                on ? (mono ? "border-black bg-white text-black" : "border-emerald-500 bg-emerald-500 text-white")
+                                                   : (mono ? "border-black bg-white" : "border-slate-300 bg-white"))}>
+                                                {on ? <Check className="h-3 w-3" strokeWidth={3} /> : ""}
+                                            </span>
+                                        </td>
+                                    )}
+                                    {r.map((c, ci) => (
+                                        <td key={ci} className={cn("border-t px-2 py-1.5 text-[12px] align-top", line,
+                                            ci === 0 ? cn("font-semibold", strong) : body,
+                                            t.checks && !on && "opacity-50")}>{c || "—"}</td>
+                                    ))}
+                                </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                {t.note && <p className={cn("text-[11px] italic", body)}>{t.note}</p>}
+            </div>
+        );
+    }
     if ("callout" in block) {
         const notice = (block.tone ?? "notice") === "notice";
         return (
@@ -80,12 +151,108 @@ function Block({ block, values, preview, mono }: { block: PolicyBlock; values: R
 }
 
 // Single underlined value + label, used for field rows and signature blocks in the document.
+/**
+ * The list field, as rows you can actually fill in.
+ *
+ * One input per item, with the number beside it, because that is what is being agreed to:
+ * a driver signing for "cab keys" has signed for nothing in particular, and a driver
+ * signing for "Spare Truck Keys (set) — KEY-983142" has signed for an object. Reads and
+ * writes the one newline-separated value the rest of the app already parses.
+ */
+export function ItemsField({ label, value, onChange, readOnly }: {
+    label: string; value: string; onChange: (v: string) => void; readOnly?: boolean;
+}) {
+    const rows = parseItemLines(value);
+    // Always one blank row to type into, so adding the first item is not a two-step job.
+    const shown = readOnly ? rows : [...rows, { name: "", serial: "" }];
+    const write = (next: ReceiptItem[]) => onChange(formatItemLines(next));
+    const setAt = (i: number, patch: Partial<ReceiptItem>) =>
+        write(shown.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+
+    return (
+        <div className="sm:col-span-2">
+            <Label className="text-slate-700">{label}</Label>
+            <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="flex-1">Item</span>
+                    <span className="w-44">Number / serial</span>
+                    {!readOnly && <span className="w-8" />}
+                </div>
+                {shown.length === 0 && (
+                    <p className="px-3 py-3 text-[12px] italic text-slate-400">No items listed.</p>
+                )}
+                {shown.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2 border-b border-slate-50 px-3 py-1.5 last:border-b-0">
+                        <input
+                            value={r.name}
+                            readOnly={readOnly}
+                            placeholder={i === shown.length - 1 && !readOnly ? "Add an item…" : ""}
+                            onChange={(e) => setAt(i, { name: e.target.value })}
+                            className={cn("h-8 flex-1 rounded-md border border-transparent px-2 text-[13px] text-slate-800 outline-none",
+                                readOnly ? "cursor-default" : "hover:border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20")}
+                        />
+                        <input
+                            value={r.serial ?? ""}
+                            readOnly={readOnly}
+                            onChange={(e) => setAt(i, { serial: e.target.value })}
+                            className={cn("h-8 w-44 rounded-md border border-transparent px-2 font-mono text-[12px] text-slate-600 outline-none",
+                                readOnly ? "cursor-default" : "hover:border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20")}
+                        />
+                        {!readOnly && (
+                            <button
+                                type="button"
+                                onClick={() => write(shown.filter((_, k) => k !== i))}
+                                disabled={i === shown.length - 1 && !r.name && !r.serial}
+                                title="Remove this item"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-0"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
+            {!readOnly && (
+                <p className="mt-1 text-xs text-slate-400">
+                    One line per item. The number is what identifies the actual object being handed over.
+                </p>
+            )}
+        </div>
+    );
+}
+
 function SignLine({ field, values, sigs, mono }: { field: PolicyField; values: Record<string, string>; sigs: Record<string, string>; mono?: boolean }) {
     const isSign = field.kind === "sign";
     const img = sigs[field.key];
     const line = mono ? "border-black" : "border-slate-400";
     const label = mono ? "text-black" : "text-slate-700";
     const valueCls = mono ? "text-black" : "text-slate-800";
+    // A list, on paper, is a table. The same rows a hand-out would have put here.
+    if (field.kind === "items") {
+        const rows = parseItemLines(values[field.key]);
+        const cell = mono ? "border-slate-400" : "border-slate-300";
+        return (
+            <div className="col-span-full">
+                <p className={cn("mb-1.5 text-[12px] font-bold", label)}>{field.label}</p>
+                <table className="w-full border-collapse text-[12px]">
+                    <tbody>
+                        <tr style={{ backgroundColor: mono ? "#f1f5f9" : "#f8fafc" }}>
+                            <td className={cn("border px-2 py-1.5 font-bold", cell)}>Item</td>
+                            <td className={cn("border px-2 py-1.5 font-bold", cell)} style={{ width: 200 }}>Number / serial</td>
+                        </tr>
+                        {rows.length === 0 ? (
+                            <tr><td className={cn("border px-2 py-2 italic", cell, valueCls)} colSpan={2}>&mdash;</td></tr>
+                        ) : rows.map((r, i) => (
+                            <tr key={i}>
+                                <td className={cn("border px-2 py-1.5", cell, valueCls)}>{r.name}</td>
+                                <td className={cn("border px-2 py-1.5", cell, valueCls)}>{r.serial || ""}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
     if (field.kind === "choice") {
         return (
             <div className="col-span-full">
@@ -138,6 +305,11 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
                     : compact ? "p-8 text-[11px]" : "p-10",
         );
         const tableCellBorder = mono ? "border-slate-400" : "border-slate-300";
+        const midFields = def.fields && (
+            <div className={cn("grid grid-cols-3 gap-4", def.fieldsFirst ? "mb-6" : "mt-6")}>
+                {def.fields.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} mono={mono} />)}
+            </div>
+        );
 
         return (
             <div ref={ref} id="app-doc" className={docCls} style={{ width: 794 }}>
@@ -188,6 +360,9 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
                     )}
                     {def.note && <p className="mb-4 text-[12px] font-semibold" style={{ color: accent }}>*****{def.note}</p>}
 
+                    {/* Mid fields, when the statement below refers to them ("listed above"). */}
+                    {def.fieldsFirst && midFields}
+
                     {/* Body */}
                     <div className="space-y-3">{def.body.map((b, i) => <Block key={i} block={b} values={values} preview mono={mono} />)}</div>
 
@@ -227,11 +402,7 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
                     )}
 
                     {/* Mid fields */}
-                    {def.fields && (
-                        <div className="mt-6 grid grid-cols-3 gap-4">
-                            {def.fields.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} mono={mono} />)}
-                        </div>
-                    )}
+                    {!def.fieldsFirst && midFields}
 
                     {/* Grouped field sections */}
                     {def.sections?.map((sec) => (
@@ -266,8 +437,11 @@ PolicyDocument.displayName = "PolicyDocument";
 // form's "Fill sample data" / "PDF view" from its own top navbar.
 export type PolicyFormHandle = { fillSample: () => void; togglePreview: () => void };
 
-export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onBack: () => void; embedded?: boolean; startPreview?: boolean; sharedSignature?: string; sharedValues?: Record<string, string>; onPreviewChange?: (preview: boolean) => void; agree?: { checked: boolean; onChange: () => void; label: string } }>(
-    function PolicyForm({ def, onBack, embedded, startPreview, sharedSignature, sharedValues, onPreviewChange, agree }, ref) {
+/** What a finished form hands back: everything typed, and everything signed. */
+export type PolicyFormResult = { values: Record<string, string>; sigs: Record<string, string> };
+
+export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onBack: () => void; embedded?: boolean; startPreview?: boolean; sharedSignature?: string; sharedSignatures?: Record<string, string>; sharedValues?: Record<string, string>; onPreviewChange?: (preview: boolean) => void; agree?: { checked: boolean; onChange: () => void; label: string }; onComplete?: (result: PolicyFormResult) => void; completeLabel?: string; readOnly?: boolean }>(
+    function PolicyForm({ def, onBack, embedded, startPreview, sharedSignature, sharedSignatures, sharedValues, onPreviewChange, agree, onComplete, completeLabel, readOnly }, ref) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
     const signKeys = def.signers.filter((s) => s.kind === "sign").map((s) => s.key);
@@ -286,7 +460,12 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
         } : { company: branding.name, prospEmployer: branding.name }),
         ...sharedValues,
     }));
-    const [sigs, setSigs] = useState<Record<string, string>>(() => sharedSignature ? Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) : {});
+    const [sigs, setSigs] = useState<Record<string, string>>(() => ({
+        ...(sharedSignature ? Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) : {}),
+        // An archived copy brings the signatures it was actually signed with, per field.
+        ...sharedSignatures,
+    }));
+    useEffect(() => { if (sharedSignatures) setSigs((p) => ({ ...p, ...sharedSignatures })); }, [sharedSignatures]);
     // When the parent shares a signature / values (e.g. "sign once → all forms"),
     // merge them in without wiping anything the driver edited per-form.
     useEffect(() => { if (sharedValues) setValues((v) => ({ ...v, ...sharedValues })); }, [sharedValues]);
@@ -296,6 +475,10 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
     const [downloading, setDownloading] = useState(false);
     const [shared, setShared] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);
+
+    // Signed means every pad the form draws has something in it. A receipt filed with a
+    // blank signature block is a piece of paper claiming somebody agreed to something.
+    const signedOff = allSignKeys.length > 0 && allSignKeys.every((k) => !!sigs[k]);
 
     const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }));
     const setSig = (k: string, v: string) => setSigs((p) => ({ ...p, [k]: v }));
@@ -325,6 +508,13 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
         if (!el) return;
         setDownloading(true);
         try {
+            // Loaded when somebody actually asks for a PDF. At module scope these two are
+            // the heaviest things in the bundle AND they touch `window.document` on import,
+            // so anything that merely rendered a document dragged them in — which is how
+            // the compliance page ended up loading a PDF generator to show a table.
+            const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+                import("html2canvas"), import("jspdf"),
+            ]);
             const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
             const pdf = new jsPDF({ unit: "pt", format: "a4" });
             const pageW = pdf.internal.pageSize.getWidth();
@@ -357,6 +547,10 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
             );
             return <SignaturePad key={f.key} label={f.label} onChange={(v) => setSig(f.key, v)} />;
         }
+        if (f.kind === "items") return (
+            <ItemsField key={f.key} label={f.label} value={values[f.key] || ""}
+                readOnly={readOnly} onChange={(v) => set(f.key, v)} />
+        );
         if (f.kind === "choice") return (
             <Field key={f.key} label={f.label} className="sm:col-span-2">
                 <div className="space-y-2">
@@ -385,6 +579,10 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
         );
     };
 
+    const fieldsBlock = def.fields && def.fields.length > 0
+        ? <Section title={def.fieldsTitle ?? "Details"} hex={hex}><Grid>{def.fields.map(renderField)}</Grid></Section>
+        : null;
+
     return (
         <div className={embedded ? "" : "min-h-screen bg-slate-50"}>
             <style>{`@media print {
@@ -403,14 +601,22 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                                 <button key={t.key} type="button" onClick={() => setTheme(t.key)} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", theme === t.key ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white")}>{t.name}</button>
                             ))}
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => setPreview(false)}>Edit</Button>
+                        {!readOnly && <Button variant="outline" size="sm" onClick={() => setPreview(false)}>Edit</Button>}
                         <Button variant="outline" size="sm" onClick={share}><Share2 className="h-4 w-4" /> {shared ? "Link copied" : "Share"}</Button>
                         <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
-                        <Button size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
+                        <Button variant={onComplete ? "outline" : "default"} size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
+                        {/* Where a host will FILE this, the last step is filing it — not
+                            downloading it and putting it somewhere by hand. */}
+                        {onComplete && (
+                            <Button size="sm" onClick={() => onComplete({ values, sigs })} disabled={!signedOff}
+                                title={signedOff ? undefined : "Sign it first — the signature block is still blank."}>
+                                <Check className="h-4 w-4" /> {completeLabel ?? "Save & file"}
+                            </Button>
+                        )}
                     </div>
                 ) : (
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={fillSample}><Sparkles className="h-4 w-4" /> Fill sample data</Button>
+                        {!readOnly && <Button variant="outline" size="sm" onClick={fillSample}><Sparkles className="h-4 w-4" /> Fill sample data</Button>}
                         <Button variant="outline" size="sm" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> PDF Preview</Button>
                     </div>
                 )}
@@ -442,6 +648,9 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                             </div>
                         </Section>
                     )}
+
+                    {/* A form that lists what its statement is about lists it first. */}
+                    {def.fieldsFirst && fieldsBlock}
 
                     {/* Statement text (read-only, so the signer sees what they agree to) */}
                     {def.body.length > 0 && (
@@ -500,9 +709,7 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                     )}
 
                     {/* Mid fields */}
-                    {def.fields && (
-                        <Section title={def.fieldsTitle ?? "Details"} hex={hex}><Grid>{def.fields.map(renderField)}</Grid></Section>
-                    )}
+                    {!def.fieldsFirst && fieldsBlock}
 
                     {/* Agree — placed just above the signature, inside the form */}
                     {agree && (
@@ -539,7 +746,13 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
 });
 PolicyForm.displayName = "PolicyForm";
 
-function Section({ title, hex, children }: { title: string; hex: string; children: React.ReactNode }) {
+/**
+ * A titled block with the form's accent bar beside it.
+ *
+ * Exported because a filed copy is read back in this same shape — a second definition
+ * of it would drift, and then the same document would look like two documents.
+ */
+export function Section({ title, hex, children }: { title: string; hex: string; children: React.ReactNode }) {
     return (
         <div>
             <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900"><span className="mr-2 inline-block h-3 w-1 rounded" style={{ backgroundColor: hex }} />{title}</h2>
