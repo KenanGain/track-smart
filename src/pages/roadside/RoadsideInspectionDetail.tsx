@@ -20,76 +20,51 @@
 
 import { useState } from "react";
 import {
-    CalendarClock, ClipboardCheck, Container, FileText, LayoutGrid, MapPin, Pencil, Receipt,
-    Rows3, Share2, ShieldAlert, ShieldCheck, StickyNote, Timer, Trash2, Truck, Upload, User, Wrench, History,
+    CalendarClock, ClipboardCheck, FileText, LayoutGrid, MapPin, Pencil, Receipt,
+    Share2, ShieldAlert, ShieldCheck, StickyNote, Timer, Trash2, Truck, Upload, User, Wrench, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BackLink } from "@/components/ui/BackLink";
+import { PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { SubTabs, type SubTab } from "@/components/ui/SubTabs";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ActivityTimeline, type ActivityEntry } from "@/components/ui/ActivityTimeline";
 import { ShareToChat, type ShareItem } from "@/components/share/ShareToChat";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
 import { currentUserName } from "@/data/users.data";
-import { DocShelf, DocList } from "./RoadsideDocs";
+import { DocTypesList, DocTypeDetail, SHELF_META, sampleDoc, shelfWanted, type Shelf } from "./RoadsideDocRecords";
+import { ViolationList, type ViolationRow } from "./RoadsideViolations";
 import {
     PARTY_LABEL, REMEDIATION_BY_LABEL, STAGE_LABEL, STAGE_TONE, allViolations, durationLabel,
     deleteInspection, hasVehicleViolation, inspectionStage, isMaintenanceRelated, saveInspection,
     unitsLabel, useInspection,
-    type PartyKind, type RoadsideInspection, type RoadsideParty,
+    type RoadsideInspection,
 } from "./roadside.data";
 
 const HOME = "/roadside-inspections";
 
 type TabId = "overview" | "violations" | "documents" | "activity";
 
-/** One labelled fact in the summary grid. */
-function Fact({ icon: Icon, label, value, tone }: {
-    icon: React.ElementType; label: string; value: React.ReactNode; tone?: string;
+/**
+ * One labelled fact.
+ *
+ * A cell in a block rather than a card of its own. Ten bordered cards of two
+ * lines each is ten boxes to scan for the one you want, and the whitespace
+ * between them is doing no work — these facts belong to one inspection and
+ * read as one thing.
+ */
+function Fact({ icon: Icon, label, value, tone, wide }: {
+    icon: React.ElementType; label: string; value: React.ReactNode; tone?: string; wide?: boolean;
 }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className={cn("min-w-0 px-4 py-3", wide && "sm:col-span-2")}>
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <Icon size={11} /> {label}
             </p>
-            <p className={cn("mt-1 text-[14px] font-semibold text-slate-800", tone)}>{value}</p>
+            <p className={cn("mt-0.5 truncate text-[14px] font-semibold text-slate-800", tone)} title={typeof value === "string" ? value : undefined}>
+                {value}
+            </p>
         </div>
-    );
-}
-
-/** One inspected party, and what was found against it. */
-function PartyPanel({ kind, party }: { kind: PartyKind; party: RoadsideParty }) {
-    const Icon = kind === "driver" ? User : kind === "trailer" ? Container : Truck;
-    const clean = !party.hasViolation || party.violations.length === 0;
-    return (
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
-                <p className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-slate-500">
-                    <Icon size={13} /> {PARTY_LABEL[kind]}
-                    {party.label && <span className="font-semibold normal-case tracking-normal text-slate-800">{party.label}</span>}
-                </p>
-                <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-bold",
-                    clean ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700")}>
-                    {!party.label ? "Not inspected" : clean ? "No violation" : `${party.violations.length} violation${party.violations.length === 1 ? "" : "s"}`}
-                </span>
-            </div>
-            {!clean && (
-                <ul className="divide-y divide-slate-50">
-                    {party.violations.map((v, i) => (
-                        <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-                            {v.code && (
-                                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">{v.code}</span>
-                            )}
-                            <span className="min-w-0 flex-1 text-[13px] font-medium text-slate-800">{v.subtype || v.label}</span>
-                            {v.category && <span className="text-[11px] text-slate-500">{v.category}</span>}
-                            {v.isOos && (
-                                <span className="rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">OOS</span>
-                            )}
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </section>
     );
 }
 
@@ -263,10 +238,21 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
     // Live: a driver-app upload lands on this page without a reload.
     const i = useInspection(inspectionId);
     const [tab, setTab] = useState<TabId>("overview");
-    const [sharing, setSharing] = useState(false);
-    // The list is for reading, the wells are for adding. A record with documents on
-    // it opens on the list; an empty one opens where the work is.
-    const [docView, setDocView] = useState<"list" | "upload">("list");
+    /**
+     * What is being shared.
+     *
+     * One dialog, three callers: the whole inspection, one document, one
+     * violation. They differ only in what goes in the subject and the attachment
+     * list, so a second dialog would be the same dialog with a different bug.
+     */
+    const [sharing, setSharing] = useState<null | { subject: string; items: ShareItem[]; sublabel: string }>(null);
+    /**
+     * Which kind of document is open, if any.
+     *
+     * The tab is the three kinds; clicking one opens its own records page, the
+     * same two steps Compliance & Documents has. Null is the list.
+     */
+    const [openShelf, setOpenShelf] = useState<Shelf | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
     if (!i) {
@@ -291,6 +277,13 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
     const stage = inspectionStage(i);
     const vios = allViolations(i);
     const docCount = i.reports.length + i.remediation.length + i.repairBills.length;
+    // How many shelves are expected and still empty — the denominator that makes
+    // "1 document" mean something.
+    const missingDocs = [
+        i.reports.length === 0,
+        (hasVehicleViolation(i) || i.oos) && i.remediation.length === 0,
+        isMaintenanceRelated(i) && i.repairBills.length === 0,
+    ].filter(Boolean).length;
     const partiesWithFindings = [i.truck, i.trailer, i.driver].filter((p) => p.hasViolation && p.violations.length).length;
 
     const tabs: SubTab<TabId>[] = [
@@ -335,7 +328,11 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                             </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                            <button onClick={() => setSharing(true)}
+                            <button onClick={() => setSharing({
+                                subject: `Roadside inspection ${i.date} — ${unitsLabel(i)}`,
+                                items: shareItems,
+                                sublabel: [unitsLabel(i), i.driver.label, STAGE_LABEL[stage]].filter(Boolean).join(" · "),
+                            })}
                                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
                                 <Share2 size={14} /> <span className="hidden sm:inline">Share</span>
                             </button>
@@ -359,46 +356,51 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
+                <div className={cn("space-y-5 py-5 sm:py-6", PAGE_PAD,
+                    // Only the overview wants a measure; a table wants the screen.
+                    tab === "overview" && "mx-auto w-full max-w-5xl")}>
 
                     {/* True on every tab, so it sits above them all. */}
-                    <NextStep i={i} onGoDocuments={() => { setTab("documents"); setDocView("upload"); }} />
+                    <NextStep i={i} onGoDocuments={() => {
+                            setTab("documents");
+                            // Straight into the kind that is actually owed.
+                            setOpenShelf(inspectionStage(i) === "awaiting-repair" ? "repairBills" : "remediation");
+                        }} />
 
                     {tab === "overview" && (
                         <>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                <Fact icon={CalendarClock} label="Inspection date" value={i.date} />
-                                <Fact icon={Timer} label="Time" value={durationLabel(i)} />
-                                <Fact icon={ClipboardCheck} label="Result" value={i.result}
-                                    tone={i.result === "Pass" ? "text-emerald-700" : "text-rose-700"} />
-                                <Fact icon={ShieldAlert} label="Citation"
-                                    value={i.citationIssued ? (i.citationNumber || "Issued") : "None issued"}
-                                    tone={i.citationIssued ? "text-rose-700" : undefined} />
-                                <Fact icon={MapPin} label="Location" value={i.location || "—"} />
-                                <Fact icon={ClipboardCheck} label="Level" value={i.level} />
-                                <Fact icon={Truck} label="Units" value={unitsLabel(i)} />
-                                <Fact icon={User} label="Driver" value={i.driver.label ?? "—"} />
-                            </div>
-
-                            {/* A summary, not the list — the list has its own tab. */}
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <button type="button" onClick={() => setTab("violations")}
-                                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-slate-300">
-                                    <span>
-                                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                            <ShieldAlert size={11} /> Violations found
-                                        </span>
-                                        <span className={cn("mt-1 block text-[14px] font-semibold", vios.length ? "text-rose-700" : "text-slate-800")}>
-                                            {vios.length === 0
-                                                ? "None"
-                                                : `${vios.length} across ${partiesWithFindings} part${partiesWithFindings === 1 ? "y" : "ies"}`}
-                                        </span>
-                                    </span>
-                                    <span className="text-[12px] font-semibold text-blue-600">View</span>
-                                </button>
-                                <Fact icon={Wrench} label="Maintenance related"
-                                    value={isMaintenanceRelated(i) ? "Yes — repair bill expected" : "No"} />
-                            </div>
+{/* One block. Every fact on this inspection, in the order somebody
+                                reads them off the report. */}
+                            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <p className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                    The inspection
+                                </p>
+                                <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4
+                                    [&>div]:border-b [&>div]:border-slate-100 sm:[&>div]:border-r sm:[&>div:nth-child(2n)]:border-r-0
+                                    lg:[&>div:nth-child(2n)]:border-r lg:[&>div:nth-child(4n)]:border-r-0">
+                                    <Fact icon={CalendarClock} label="Inspection date" value={i.date} />
+                                    <Fact icon={Timer} label="Time" value={durationLabel(i)} />
+                                    <Fact icon={ClipboardCheck} label="Result" value={i.result}
+                                        tone={i.result === "Pass" ? "text-emerald-700" : "text-rose-700"} />
+                                    <Fact icon={ShieldAlert} label="Citation"
+                                        value={i.citationIssued ? (i.citationNumber || "Issued") : "None issued"}
+                                        tone={i.citationIssued ? "text-rose-700" : undefined} />
+                                    <Fact icon={ClipboardCheck} label="Level" value={i.level} />
+                                    <Fact icon={MapPin} label="Location" value={i.location || "—"} />
+                                    <Fact icon={Truck} label="Units" value={unitsLabel(i)} />
+                                    <Fact icon={User} label="Driver" value={i.driver.label ?? "—"} />
+                                    <Fact icon={ShieldAlert} label="Violations found"
+                                        tone={vios.length ? "text-rose-700" : undefined}
+                                        value={vios.length === 0
+                                            ? "None"
+                                            : `${vios.length} across ${partiesWithFindings} part${partiesWithFindings === 1 ? "y" : "ies"}`} />
+                                    <Fact icon={Wrench} label="Maintenance related"
+                                        value={isMaintenanceRelated(i) ? "Yes — repair bill expected" : "No"} />
+                                    <Fact icon={FileText} label="Documents on file"
+                                        value={`${docCount} of ${docCount + missingDocs}`} />
+                                    <Fact icon={ShieldCheck} label="Recorded by" value={i.createdBy} />
+                                </div>
+                            </section>
 
                             {i.notes?.trim() && (
                                 <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -412,54 +414,55 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                     )}
 
                     {tab === "violations" && (
-                        <div className="space-y-3">
-                            <PartyPanel kind="truck" party={i.truck} />
-                            <PartyPanel kind="trailer" party={i.trailer} />
-                            <PartyPanel kind="driver" party={i.driver} />
-                            {vios.length === 0 && (
-                                <p className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-[13px] text-slate-500">
-                                    Nothing was found against the truck, the trailer or the driver.
-                                </p>
-                            )}
-                        </div>
+                        <ViolationList
+                            inspection={i}
+                            onAdd={() => onNavigate(`${HOME}/${i.id}/edit`)}
+                            onShare={(row: ViolationRow) => setSharing({
+                                subject: `${row.v.code ? `[${row.v.code}] ` : ""}${row.v.subtype || row.v.label}`,
+                                items: shareItems,
+                                sublabel: `${PARTY_LABEL[row.kind]} ${row.unit} · roadside inspection ${i.date}`,
+                            })}
+                            onRemove={(row: ViolationRow) => {
+                                const party = i[row.kind];
+                                const violations = party.violations.filter((_, k) => k !== row.index);
+                                saveInspection({ ...i, [row.kind]: { ...party, violations, hasViolation: violations.length > 0 } });
+                            }}
+                        />
                     )}
 
                     {tab === "documents" && (
-                        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
-                                <p className="flex-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Documents</p>
-                                <span className="flex items-center gap-2 text-[11px] text-slate-400">
-                                    <span className="inline-flex items-center gap-1" title="Inspection reports"><FileText size={11} /> {i.reports.length}</span>
-                                    <span className="inline-flex items-center gap-1" title="Remediation reports"><ShieldCheck size={11} /> {i.remediation.length}</span>
-                                    <span className="inline-flex items-center gap-1" title="Repair bills"><Receipt size={11} /> {i.repairBills.length}</span>
-                                </span>
-                                {/* Reading and adding are different jobs; one switch, not two screens. */}
-                                <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5">
-                                    {([["list", "List", Rows3], ["upload", "Upload", Upload]] as const).map(([id, label, Icon]) => (
-                                        <button key={id} type="button" onClick={() => setDocView(id)}
-                                            className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-bold transition-colors",
-                                                docView === id ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}>
-                                            <Icon size={12} /> {label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            {docView === "list" ? (
-                                <DocList
+                        openShelf
+                            ? (
+                                <DocTypeDetail
                                     inspection={i}
+                                    shelf={openShelf}
+                                    uploadedBy={who || "Safety Manager"}
+                                    onBack={() => setOpenShelf(null)}
                                     onChange={(next) => saveInspection(next)}
-                                    onAdd={() => setDocView("upload")}
+                                    onShare={(doc, kind) => setSharing({
+                                        subject: `${kind} — ${doc.name}`,
+                                        items: [{ name: doc.name, group: kind }],
+                                        sublabel: `Roadside inspection ${i.date} · ${unitsLabel(i)}`,
+                                    })}
                                 />
-                            ) : (
-                                <div className="p-4">
-                                    <DocShelf
-                                        inspection={i}
-                                        uploadedBy={who || "Safety Manager"}
-                                        onChange={(next) => saveInspection(next)}
-                                    />
-                                </div>
-                            )}
-                        </section>
+                            )
+                            : (
+                                <DocTypesList
+                                    inspection={i}
+                                    onOpen={setOpenShelf}
+                                    onSample={() => {
+                                        // One demo document under every kind this inspection
+                                        // actually wants, so the screen can be read before
+                                        // anybody has filed anything real.
+                                        let next = i;
+                                        for (const { key } of SHELF_META) {
+                                            if (!shelfWanted(i, key) || next[key].length > 0) continue;
+                                            next = { ...next, [key]: [...next[key], sampleDoc(next, key, who || "Safety Manager")] };
+                                        }
+                                        saveInspection(next);
+                                    }}
+                                />
+                            )
                     )}
 
                     {tab === "activity" && (
@@ -476,20 +479,20 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
             {sharing && (
                 <ShareToChat
                     open
-                    onClose={() => setSharing(false)}
-                    title={`Share roadside inspection — ${i.date}`}
-                    subtitle="Send the inspection and its documents in a chat, or to an outsider by email"
+                    onClose={() => setSharing(null)}
+                    title={`Share — ${sharing.subject}`}
+                    subtitle="Send it in a chat, or to an outsider by email"
                     source={{ type: "manual", id: i.id, label: `Roadside inspection ${i.date}` }}
-                    items={shareItems}
+                    items={sharing.items}
                     record={{
                         type: "roadside-inspection",
                         id: i.id,
                         label: `Roadside inspection · ${i.date}`,
-                        sublabel: [unitsLabel(i), i.driver.label, STAGE_LABEL[stage]].filter(Boolean).join(" · "),
+                        sublabel: sharing.sublabel,
                         path: HOME,
                     }}
                     defaultChannel="in-app"
-                    defaultSubject={`Roadside inspection ${i.date} — ${unitsLabel(i)}`}
+                    defaultSubject={sharing.subject}
                     currentUserName={who || currentUserName()}
                     onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate("/messages"); }}
                 />

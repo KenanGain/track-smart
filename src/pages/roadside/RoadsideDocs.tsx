@@ -20,7 +20,7 @@
 // how "Uploaded" ends up meaning something slightly different in each of them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Eye, FileText, Receipt, ShieldCheck, Trash2, Truck, Upload, Wrench, User } from "lucide-react";
+import { Eye, FileText, Receipt, ShieldCheck, Trash2, Truck, Wrench, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UploadZone } from "@/components/ui/UploadZone";
 import {
@@ -30,7 +30,6 @@ import {
 
 type Shelf = "reports" | "remediation" | "repairBills";
 
-const DOC_TH = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap";
 
 const fmtSize = (n?: number): string =>
     !n ? "" : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -179,24 +178,24 @@ function DocRow({ doc, shelf, units, onRemove, onPatch, readOnly }: {
     );
 }
 
-const SHELVES: { key: Shelf; icon: React.ElementType; title: string; blurb: string; cta: string }[] = [
+const SHELVES: { key: Shelf; icon: React.ElementType; title: string; blurb: string; accepts: string }[] = [
     {
         key: "reports", icon: FileText,
         title: "Inspection report",
         blurb: "The copy the inspector handed over at the roadside.",
-        cta: "Drag the inspection report here — or click",
+        accepts: "Attach the inspector's copy — PDF, JPG or PNG up to 10MB",
     },
     {
         key: "remediation", icon: ShieldCheck,
         title: "Remediation inspection report",
         blurb: "Performed after the defect was fixed. Say whether a mechanic or the driver did it.",
-        cta: "Drag the remediation report here — or click",
+        accepts: "Attach the signed re-inspection — PDF, JPG or PNG up to 10MB",
     },
     {
         key: "repairBills", icon: Receipt,
         title: "Vehicle repair bill",
         blurb: "What the work cost, filed against the units it was spent on.",
-        cta: "Drag the repair bill here — or click",
+        accepts: "Attach the shop invoice — PDF, JPG or PNG up to 10MB",
     },
 ];
 
@@ -234,7 +233,7 @@ export function DocShelf({ inspection, uploadedBy, onChange, readOnly }: {
 
     return (
         <div className="space-y-6">
-            {SHELVES.map(({ key, icon: Icon, title, blurb, cta }) => {
+            {SHELVES.map(({ key, icon: Icon, title, blurb, accepts }) => {
                 const docs = inspection[key];
                 // Why this shelf is empty, when it is. Three different reasons.
                 const idle = key === "remediation" ? !needsRemediation : key === "repairBills" ? !needsBill : false;
@@ -279,229 +278,23 @@ export function DocShelf({ inspection, uploadedBy, onChange, readOnly }: {
                                 </p>
                             )
                         ) : (
-                            <UploadZone compact multiple label={cta} onFiles={(files) => add(key, files)} />
+                            <>{/* The full panel while the shelf is empty, a slim strip once
+                               something is on it — the same two states the asset wizard's
+                               bill-of-sale upload has. A shelf with three documents on it
+                               does not need a six-line invitation to add a fourth. */}
+                            <UploadZone
+                                variant={docs.length === 0 ? "card" : "inline"}
+                                compact={docs.length > 0}
+                                multiple
+                                accept="image/*,application/pdf"
+                                label={docs.length === 0 ? "Click to upload or drag & drop" : "Add another"}
+                                hint={docs.length === 0 ? accepts : undefined}
+                                onFiles={(files) => add(key, files)}
+                            /></>
                         )}
                     </section>
                 );
             })}
-        </div>
-    );
-}
-
-// ── The same documents, as a list ───────────────────────────────────────────
-
-/**
- * Every document on the inspection, in one table.
- *
- * The shelves are the right shape for PUTTING something on the record — three
- * labelled wells that say what belongs in each. They are the wrong shape for
- * READING it: three quarters of that screen is empty dropzone, and a record with
- * five documents on it makes you scroll past two upload targets to see the third
- * one. So the tab opens on the list, and the wells are one click away.
- *
- * The rows that are NOT there are in the list too. A missing remediation report
- * is the most important thing this record has to say, and a list that only shows
- * what exists cannot say it.
- */
-export function DocList({ inspection, onChange, onAdd, readOnly }: {
-    inspection: RoadsideInspection;
-    onChange: (next: RoadsideInspection) => void;
-    /** Switch to the upload wells, scrolled to the shelf that wants something. */
-    onAdd?: (shelf: Shelf) => void;
-    readOnly?: boolean;
-}) {
-    const units = unitOptionsFor(inspection);
-    const needsRemediation = hasVehicleViolation(inspection) || inspection.oos;
-    const needsBill = isMaintenanceRelated(inspection);
-
-    const rows = SHELVES.flatMap(({ key, icon, title }) =>
-        inspection[key].map((doc) => ({ key, icon, title, doc })),
-    );
-
-    /** The line that says what this particular document IS, beyond its filename. */
-    const details = (key: Shelf, doc: RoadsideDoc): string => {
-        if (key === "remediation") {
-            return [
-                doc.performedBy ? `${REMEDIATION_BY_LABEL[doc.performedBy]} performed it` : "Performer not stated",
-                doc.performedOn || null,
-            ].filter(Boolean).join(" · ");
-        }
-        if (key === "repairBills") {
-            const named = units.filter((u) => doc.assetIds?.includes(u.id)).map((u) => u.label);
-            return [doc.amount ? `$${doc.amount}` : null, named.length ? named.join(" + ") : "No unit assigned"]
-                .filter(Boolean).join(" · ");
-        }
-        return fmtSize(doc.size) || "—";
-    };
-
-    /** A shelf that is expected and empty. Not an error — a job. */
-    const missing = ([
-        needsRemediation && inspection.remediation.length === 0 ? "remediation" : null,
-        needsBill && inspection.repairBills.length === 0 ? "repairBills" : null,
-        inspection.reports.length === 0 ? "reports" : null,
-    ].filter(Boolean) as Shelf[]);
-
-    const remove = (shelf: Shelf, id: string) =>
-        onChange({ ...inspection, [shelf]: inspection[shelf].filter((d) => d.id !== id) });
-
-    const TONE: Record<Shelf, string> = {
-        reports: "bg-slate-100 text-slate-500",
-        remediation: "bg-emerald-50 text-emerald-600",
-        repairBills: "bg-amber-50 text-amber-600",
-    };
-
-    return (
-        <div>
-            {/* Desk: a table. Nine words per row beats a card three rows tall. */}
-            <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[760px]">
-                    <thead className="border-b border-slate-200 bg-slate-50/70">
-                        <tr>
-                            <th className={DOC_TH}>Document</th>
-                            <th className={DOC_TH}>Kind</th>
-                            <th className={DOC_TH}>Details</th>
-                            <th className={DOC_TH}>Uploaded by</th>
-                            <th className={DOC_TH}>Filed</th>
-                            <th className={cn(DOC_TH, "pr-5 text-right")}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {rows.map(({ key, icon: Icon, title, doc }) => (
-                            <tr key={doc.id} className="align-middle">
-                                <td className="px-4 py-3">
-                                    <div className="flex items-center gap-2.5">
-                                        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", TONE[key])}>
-                                            <Icon size={14} />
-                                        </span>
-                                        <span className="min-w-0">
-                                            <span className="block max-w-[260px] truncate text-[13px] font-semibold text-slate-800" title={doc.name}>{doc.name}</span>
-                                            {doc.source === "driver-app" && (
-                                                <span className="mt-0.5 inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700">
-                                                    Driver app
-                                                </span>
-                                            )}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-600">{title}</td>
-                                <td className="px-4 py-3 text-[13px] text-slate-600">{details(key, doc)}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-600">{doc.uploadedBy}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-500">{fmtWhen(doc.uploadedAt)}</td>
-                                <td className="px-4 py-3 pr-5">
-                                    <div className="flex items-center justify-end gap-1.5">
-                                        {doc.url && (
-                                            <a href={doc.url} target="_blank" rel="noreferrer" title={`View ${doc.name}`}
-                                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">
-                                                <Eye size={12} /> View
-                                            </a>
-                                        )}
-                                        {!readOnly && (
-                                            <button type="button" onClick={() => remove(key, doc.id)} title="Remove this document"
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-
-                        {/* What is still owed, as rows, because that is what a reader is here for. */}
-                        {missing.map((key) => {
-                            const meta = SHELVES.find((s) => s.key === key)!;
-                            const Icon = meta.icon;
-                            return (
-                                <tr key={`missing-${key}`} className="bg-rose-50/30">
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2.5">
-                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dashed border-rose-300 bg-white text-rose-400">
-                                                <Icon size={14} />
-                                            </span>
-                                            <span className="text-[13px] font-semibold text-rose-700">Not on file yet</span>
-                                        </div>
-                                    </td>
-                                    <td className="whitespace-nowrap px-4 py-3 text-[13px] text-slate-600">{meta.title}</td>
-                                    <td className="px-4 py-3 text-[12px] text-slate-500" colSpan={2}>{meta.blurb}</td>
-                                    <td className="px-4 py-3" />
-                                    <td className="px-4 py-3 pr-5 text-right">
-                                        {!readOnly && onAdd && (
-                                            <button type="button" onClick={() => onAdd(key)}
-                                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 text-[11px] font-bold text-white hover:bg-rose-700">
-                                                <Upload size={12} /> Upload
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-
-                        {rows.length === 0 && missing.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className="px-4 py-10 text-center text-[13px] text-slate-400">
-                                    No documents on this inspection, and none outstanding.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Phone: the same rows, stacked. */}
-            <div className="divide-y divide-slate-100 md:hidden">
-                {rows.map(({ key, icon: Icon, title, doc }) => (
-                    <div key={doc.id} className="flex items-start gap-3 p-4">
-                        <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", TONE[key])}>
-                            <Icon size={15} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-[13px] font-semibold text-slate-800" title={doc.name}>{doc.name}</p>
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{title}</p>
-                            <p className="mt-0.5 text-[12px] text-slate-600">{details(key, doc)}</p>
-                            <p className="mt-0.5 text-[11px] text-slate-400">{doc.uploadedBy} &middot; {fmtWhen(doc.uploadedAt)}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                            {doc.url && (
-                                <a href={doc.url} target="_blank" rel="noreferrer"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700">
-                                    <Eye size={13} />
-                                </a>
-                            )}
-                            {!readOnly && (
-                                <button type="button" onClick={() => remove(key, doc.id)}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-                {missing.map((key) => {
-                    const meta = SHELVES.find((s) => s.key === key)!;
-                    const Icon = meta.icon;
-                    return (
-                        <div key={`missing-${key}`} className="flex items-start gap-3 bg-rose-50/30 p-4">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-rose-300 bg-white text-rose-400">
-                                <Icon size={15} />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                                <p className="text-[13px] font-semibold text-rose-700">{meta.title} not on file yet</p>
-                                <p className="mt-0.5 text-[12px] text-slate-500">{meta.blurb}</p>
-                            </div>
-                            {!readOnly && onAdd && (
-                                <button type="button" onClick={() => onAdd(key)}
-                                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 text-[11px] font-bold text-white">
-                                    <Upload size={12} /> Upload
-                                </button>
-                            )}
-                        </div>
-                    );
-                })}
-                {rows.length === 0 && missing.length === 0 && (
-                    <p className="px-4 py-10 text-center text-[13px] text-slate-400">
-                        No documents on this inspection, and none outstanding.
-                    </p>
-                )}
-            </div>
         </div>
     );
 }

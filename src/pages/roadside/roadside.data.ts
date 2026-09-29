@@ -470,7 +470,8 @@ export function unitOptionsFor(i: RoadsideInspection): UnitOption[] {
 // exists to show: clean, waiting on a re-inspection, and closed with the bill
 // filed. Seeded once — after that the store is whatever the user has done.
 
-const SEEDED_KEY = "tracksmart_roadside_seeded_v1";
+// Bumped when the seeded demo changes, so a carrier already seeded picks it up.
+const SEEDED_KEY = "tracksmart_roadside_seeded_v2";
 
 function seedViolation(label: string, code: string, category: string, group: string, oos: boolean): TicketViolation {
     return { label, subtype: label, code, category, group, isOos: oos, source: "sms" };
@@ -485,7 +486,15 @@ export function seedInspections(accountId: string): void {
     } catch {
         return;
     }
-    if (records.some((r) => r.accountId === accountId)) return;
+    // Anything the user recorded stays; only the previous demo rows are replaced. The
+     // seeded ids are namespaced for exactly this, so a seed that gets richer can reach a
+     // carrier that was seeded with the older one.
+    const SEED_PREFIX = `RSI-SEED-${accountId}-`;
+    const mine = records.filter((r) => r.accountId === accountId);
+    if (mine.some((r) => !r.id.startsWith(SEED_PREFIX))) {
+        // This carrier has real records. Leave it alone entirely.
+        if (mine.length > 0) return;
+    }
 
     const trucks = truckOptions(accountId);
     const trailers = trailerOptions(accountId);
@@ -532,6 +541,9 @@ export function seedInspections(accountId: string): void {
             notes: "Placed out of service at the scale. Towed to Elkhart Truck Center the same afternoon.",
             reports: [{
                 id: "seed-rep-1", name: "IN-inspection-report.pdf", size: 184_320,
+                // A real file behind it: a seeded row whose View opens nothing teaches
+                // the wrong thing about the screen it is demonstrating.
+                url: "/demo-docs/annual-inspection.pdf",
                 uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
             }],
             remediation: [],
@@ -559,15 +571,25 @@ export function seedInspections(accountId: string): void {
             notes: "Minor leak at the steer hub. Repaired in-house.",
             reports: [{
                 id: "seed-rep-2", name: "PA-inspection-report.pdf", size: 152_064,
+                url: "/demo-docs/annual-inspection.pdf",
                 uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
             }],
             remediation: [{
                 id: "seed-rem-2", name: "re-inspection-signed.pdf", size: 98_304,
+                url: "/demo-docs/compliance-document.pdf",
                 uploadedAt: now, uploadedBy: "Fleet Shop", source: "portal",
                 performedBy: "mechanic", performedOn: dayBefore(11),
+            }, {
+                // A second copy, from the driver's phone — the list has to be able to
+                // show more than one record under a kind, and to say where each came from.
+                id: "seed-rem-2b", name: "driver-photo-recheck.pdf", size: 61_440,
+                url: "/demo-docs/compliance-document.pdf",
+                uploadedAt: now, uploadedBy: d1.label, source: "driver-app",
+                performedBy: "driver", performedOn: dayBefore(10),
             }],
             repairBills: [{
                 id: "seed-bill-2", name: "shop-invoice-44812.pdf", size: 76_800,
+                url: "/demo-docs/business-registration.pdf",
                 uploadedAt: now, uploadedBy: "Safety Manager", source: "portal",
                 assetIds: [t1.id], amount: "412.60",
             }],
@@ -591,6 +613,7 @@ export function seedInspections(accountId: string): void {
             notes: "Credentials only. Clean.",
             reports: [{
                 id: "seed-rep-3", name: "NE-inspection-report.pdf", size: 121_856,
+                url: "/demo-docs/annual-inspection.pdf",
                 uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
             }],
             remediation: [],
@@ -600,5 +623,5 @@ export function seedInspections(accountId: string): void {
         },
     ];
 
-    commit([...seeded, ...records]);
+    commit([...seeded, ...records.filter((r) => !r.id.startsWith(SEED_PREFIX))]);
 }
