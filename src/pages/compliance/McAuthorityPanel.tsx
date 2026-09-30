@@ -19,6 +19,7 @@ import { nextSort, type SortState } from '@/components/ui/list-chrome';
 import {
     fetchMcAuthority, usd, type McAuthorityRecord, type McInsuranceFiling, type McProcessAgent,
 } from '@/pages/compliance/mc-authority.data';
+import { useComplianceData, currentVersion, CARRIER_SUBJECT } from '@/pages/compliance/compliance-data-store';
 
 /**
  * Load the authority for one MC number, with the states a network call really has.
@@ -502,3 +503,121 @@ export function McProcessAgentTab({ mcNumber }: { mcNumber: string }) {
         </>
     );
 }
+
+// ── The carrier profile's copy ──────────────────────────────────────────────
+
+/**
+ * The MC number on the certificate in force, for whoever wants to print it.
+ *
+ * Exported because the profile's General Information line shows it beside the DOT and
+ * CVOR numbers — the three identifiers a carrier is known by belong together, and this is
+ * the one place that knows where it is kept.
+ *
+ * Falls back to the newest version that carries a number: a carrier that pinned an older
+ * certificate as current may have left the field off it.
+ */
+export function useMcNumber(accountId?: string): string {
+    const { getEntry } = useComplianceData(accountId);
+    const entry = getEntry(CARRIER_SUBJECT, 'mc');
+    const cur = currentVersion(entry);
+    return (cur?.numberValue ?? '').trim()
+        || entry.versions.find(v => v.numberValue?.trim())?.numberValue?.trim()
+        || '';
+}
+
+/**
+ * The operating authority, folded into the profile's Operations & Authority block.
+ *
+ * Four facts, and none of them is a copy: the required insurance and the status reason are
+ * what FMCSA says about this authority today, and the coverage type and company name are
+ * the BOC-3 designation in force. Nothing here is entered or edited anywhere in this app.
+ *
+ * Deliberately small, and deliberately unlabelled. It sits UNDER four rows of chips that
+ * are the section's subject and directly under that section's own heading, so a title of
+ * its own would be the third heading for one idea. The MC number lives in General
+ * Information with the other identifiers, and the certificate's own page carries the dates,
+ * the status and the full BOC-3 list.
+ */
+export function McCertificateFacts({ accountId }: { accountId?: string }) {
+    const mcNumber = useMcNumber(accountId);
+    const { data, loading } = useMcAuthority(mcNumber);
+    const a = data?.authority;
+
+    /**
+     * The designation in force, most recently received.
+     *
+     * Superseded ones are still on file and can — after a re-filing — read as though they
+     * were current, so the sort runs over the active ones and only falls back to the whole
+     * list when a carrier has none in force at all. Picking the newest of everything would
+     * name an agent nobody may serve papers on.
+     */
+    const agents = a?.processAgents ?? [];
+    const byNewest = (list: McProcessAgent[]) =>
+        [...list].sort((x, y) => (y.receivedDate || '').localeCompare(x.receivedDate || ''))[0];
+    const inForce = agents.filter(p => p.companyStatus === 'Active');
+    const agent = byNewest(inForce.length ? inForce : agents);
+
+    if (!mcNumber) {
+        return (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+                <p className="text-[12px] text-slate-500">
+                    <span className="font-semibold text-slate-700">No MC certificate on file yet.</span>{' '}
+                    The operating authority is read from the MC Certificate record under Default
+                    Compliances &amp; Documents — add the certificate and its number, and it fills in here.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="mt-6 border-t border-slate-100 pt-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                <Compact label="Minimum insurance">
+                    {!a ? <Waiting loading={loading} /> : (
+                        <>
+                            <span className="tabular-nums">BIPD {usd(a.bipdRequired)}</span>
+                            {a.cargoRequired > 0 && (
+                                <span className="ml-1.5 font-normal text-slate-500 tabular-nums">Cargo {usd(a.cargoRequired)}</span>
+                            )}
+                        </>
+                    )}
+                </Compact>
+                <Compact label="Status reason">
+                    {a ? (a.statusReason || <Dash />) : <Waiting loading={loading} />}
+                </Compact>
+                {/* The BOC-3 designation in force. A carrier has several on file, so the two
+                    fields are the most recent active one and the count says as much — the
+                    certificate's own page lists the rest. */}
+                <Compact label="Coverage type">
+                    {!a ? <Waiting loading={loading} /> : (agent?.coverageType || <Dash />)}
+                </Compact>
+                <Compact label="Company name">
+                    {!a ? <Waiting loading={loading} /> : (agent?.companyName || <Dash />)}
+                </Compact>
+            </div>
+
+            <p className="mt-2.5 text-[11px] leading-snug text-slate-400">
+                Filed with FMCSA and read-only here.
+                {agents.length > 1 && <> The process agent is the most recent of {agents.length} on file.</>}
+            </p>
+        </div>
+    );
+}
+
+/** A label over a value, at the size the rest of this strip runs at. */
+function Compact({ label, children, className }: {
+    label: string;
+    children: React.ReactNode;
+    className?: string;
+}) {
+    return (
+        <div className={cn('min-w-0', className)}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+            <div className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{children}</div>
+        </div>
+    );
+}
+
+/** The lookup is a network call; an empty cell is not the same as no answer. */
+const Waiting = ({ loading }: { loading: boolean }) =>
+    loading ? <span className="font-normal text-slate-400">Looking up…</span> : <Dash />;

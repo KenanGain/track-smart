@@ -30,20 +30,15 @@ import {
 import { WizardHeader, WizardSection, WizardStepBar, type WizardStep } from "@/components/ui/WizardEditor";
 import { PAGE_PAD } from "@/components/ui/ListPageHeader";
 import {
-    INVENTORY_ITEMS, getInventoryForCarrier, ACME_DRIVERS,
-    driverOfAsset, itemName, itemTravelsWithDriver, type Assignment, type InventoryItem,
+    INVENTORY_ITEMS, getInventoryForCarrier,
+    itemName, itemTravelsWithDriver, type Assignment, type InventoryItem,
 } from "./inventory.data";
-import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import { assetsFor } from "./inventory-assignment";
 import {
-    rollupByDriver, rollupByAsset, unassignedItems,
+    rollupByDriver, rollupByAsset, assignableTo,
     VIA_TONE, VIA_LABEL, removeActionFor as removeActionFor_,
     type HeldItem, type HolderKind, type HolderRow,
 } from "./inventory-rollup";
-import {
-    useDriverHandovers, removeLines, handoverStatusOf, seedDemoHandovers, handedToMap,
-    type DriverHandover,
-} from "./handovers.data";
 import { logInventoryEvent } from "./inventory-activity";
 import { useInventoryAdditions } from "./inventory-store";
 import { getOrCreateDriverConversation, setMessagesFocus } from "@/pages/messages/messages-store";
@@ -56,7 +51,6 @@ import { PolicyForm } from "@/pages/hiring-process/PolicyForm";
 import { collectionLineFor } from "./inventory-collection";
 import { inventoryFormDef, issueFormValues } from "./inventory-forms";
 import { currentUserName } from "@/data/users.data";
-import { todayISO } from "../hiring-process/FormKit";
 import { backTarget, backLabel } from "@/lib/nav-history";
 import { cn } from "@/lib/utils";
 
@@ -73,10 +67,21 @@ const SECTIONS = [
 ] as const;
 type SectionId = typeof SECTIONS[number]["id"];
 
-const STEPS: readonly WizardStep[] = SECTIONS.map((s) => ({ id: s.id, label: s.label, icon: s.icon }));
+/**
+ * A unit is not told anything.
+ *
+ * The second step drafts the message that lands in the driver app, and on an asset it was
+ * a step with a permanent empty state under it — a wizard whose second page exists to say
+ * "there is nobody to write to". Assigning something to a person is the only case where
+ * somebody has to be asked to come and get it.
+ */
+const stepsFor = (isDriver: boolean): readonly WizardStep[] =>
+    SECTIONS.filter((x) => isDriver || x.id !== "notify")
+        .map((x) => ({ id: x.id, label: x.label, icon: x.icon }));
 
 export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: Props) {
     const isDriver = kind === "driver";
+    const STEPS = stepsFor(isDriver);
     const acct = accountId ?? "acct-001";
     const back = isDriver ? "/inventory/drivers" : "/inventory/assets";
 
@@ -86,31 +91,39 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         return additions.length ? [...additions, ...base] : base;
     }, [accountId, additions, applyEdit]);
 
-    const { records, get, save } = useDriverHandovers(acct);
-
-    useEffect(() => {
-        const roster = (CARRIER_DRIVERS[acct] ?? ACME_DRIVERS)
-            .filter((d: any) => d.status === "Active")
-            .map((d: any) => ({ id: d.id, name: d.name ?? `${d.firstName ?? ""} ${d.lastName ?? ""}`.trim() }));
-        seedDemoHandovers(acct, records, roster, items, "Fleet Manager");
-    }, [acct, records, items]);
-
-    const handedTo = useMemo(() => handedToMap(records, acct), [records, acct]);
-
     // The holder's own row, off the same rollup the tabs read — so "what they hold" cannot
     // disagree between the list and this page.
     const row: HolderRow | undefined = useMemo(() => {
-        const rows = (isDriver ? rollupByDriver : rollupByAsset)(items, accountId, handedTo);
+        const rows = (isDriver ? rollupByDriver : rollupByAsset)(items, accountId);
         return rows.find((r) => r.id === holderId);
-    }, [isDriver, items, accountId, handedTo, holderId]);
+    }, [isDriver, items, accountId, holderId]);
 
-    const available = useMemo(() => unassignedItems(items, handedTo), [items, handedTo]);
+    /**
+     * What can still be put on THIS holder.
+     *
+     * Free for this kind, not free altogether: a fuel card already on a truck is still
+     * waiting for somebody to be made answerable for it, so the driver page must offer it
+     * even though the asset page must not. And an item has to be ticked for this kind at
+     * all — offering a reefer sensor on a driver’s page is offering nonsense.
+     */
+    const available = useMemo(() => {
+        // ...minus whatever is already on this holder's own list above. A fuel card on the
+        // truck this driver drives is in their hands AND has nobody named on it, which put
+        // it in both halves of the same page — the same row twice, once greyed out and
+        // once with a plus beside it.
+        const alreadyHere = new Set((row?.items ?? []).map((h) => h.item.id));
+        return assignableTo(items, kind).filter((it) => !alreadyHere.has(it.id));
+    }, [items, kind, row?.items]);
 
     const holderLabel = row?.label ?? "—";
-    const handDriver = isDriver
-        ? { id: holderId, name: holderLabel }
-        : driverOfAsset(holderId, accountId);
-    const existing: DriverHandover | undefined = handDriver ? get(handDriver.id) : undefined;
+    /**
+     * The person this page is about, and only on the driver page.
+     *
+     * It used to fall back to whoever drives the vehicle, which is how filing a spare key
+     * against a truck ended up messaging somebody about a key they were never given. A unit
+     * is not a person and has nobody to tell.
+     */
+    const handDriver = isDriver ? { id: holderId, name: holderLabel } : null;
 
     // ── Draft ────────────────────────────────────────────────────────────────
     const me = currentUserName();
@@ -119,11 +132,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     // Whoever is signed in is doing this. A receipt the office types a name into is a
     // receipt nobody signed.
     const issuedBy = me;
-    // Read once and written back untouched. Nothing on this page can change either any
-    // more — signed hand-overs are not a thing this flow creates — but a record that already
-    // carries a driver's signature must not lose it just because a save passed through here.
-    const [verified] = useState<Set<string>>(() => new Set(existing?.verifiedItemIds ?? []));
-    const [driverConfirmed] = useState(!!existing?.driverSignoff?.done);
 
     // ── The message ──────────────────────────────────────────────────────────
     // Off until there is something to tell them about, and editable, because "come and get
@@ -141,25 +149,19 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     // The rule lives with the rollup: the asset form shows the same pile and offers the
     // same undo, and two copies of it would drift.
-    const removeActionFor = (h: HeldItem) => removeActionFor_(h, kind, holderId, !!handDriver);
+    const removeActionFor = (h: HeldItem) => removeActionFor_(h, kind, holderId);
 
     const rows = (row?.items ?? []).map((h) => ({ ...h, action: removeActionFor(h) }));
 
     /**
-     * Does this item travel with the person, or stay on the unit?
+     * Where ticking a row would put it, in words, for the list's own column.
      *
-     * The item's own answer, given when it was added. An item from before the field existed
-     * has no answer, and the safer guess is that it stays put: filing something against a
-     * driver who never took it is harder to notice than the reverse.
+     * This holder, and only this holder. It used to answer the driver's name on the asset
+     * page for anything that rides in the cab — which read as though ticking the row put
+     * the item on a person. It does not: the person is a separate line, made on their own
+     * page, and an item can carry both.
      */
-    const travelsWithDriver = (it: InventoryItem) => itemTravelsWithDriver(it);
-
-    /** Where ticking a row would put it, in words, for the list's own column. */
-    const destinationFor = (it: InventoryItem): string => {
-        if (isDriver) return holderLabel;
-        if (!travelsWithDriver(it)) return holderLabel;
-        return handDriver?.name ?? `whoever drives ${holderLabel}`;
-    };
+    const destinationFor = (_it: InventoryItem): string => holderLabel;
 
     /**
      * What this holder has, as rows for the one list.
@@ -178,7 +180,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
             removeBlocked: action ? null
                 : `This is filed against something else — change it from there.`,
         };
-    }), [row?.items, kind, holderId, handDriver?.id, toRemove, verified]);
+    }), [row?.items, kind, holderId, toRemove]);
 
 
 
@@ -194,21 +196,10 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
     const pickRemove = (id: string) => toggle(toRemove, id, setToRemove);
 
 
-    const unhanding = [...toRemove].filter((id) => rows.find((r) => r.item.id === id)?.action === "unhand");
     const unassigning = [...toRemove].filter((id) => rows.find((r) => r.item.id === id)?.action === "unassign");
 
-    // Nothing on this page is on a signed checklist any more: an item is on the vehicle,
-    // and the returnable half of it travels with whoever drives that vehicle.
-    const handedRows: typeof rows = [];
-
-    const wasVerified = new Set(existing?.verifiedItemIds ?? []);
-    const receiptChanged =
-        handedRows.some((r) => verified.has(r.item.id) !== wasVerified.has(r.item.id))
-        || driverConfirmed !== !!existing?.driverSignoff?.done;
-
-
     const givingIds = [...toAssign];
-    const changeCount = givingIds.length + toRemove.size + (receiptChanged ? 1 : 0);
+    const changeCount = givingIds.length + toRemove.size;
 
     /**
      * What this save changes, said in the one vocabulary that decides who gets told.
@@ -223,30 +214,18 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         const self = { id: holderId, name: holderLabel };
         const out: Movement[] = [];
 
+        // Only a person is ever told anything, so only the driver page produces movements.
+        if (!isDriver) return out;
         for (const id of toAssign) {
             const item = free(id);
-            if (!item) continue;
-            out.push(isDriver
-                ? { kind: "assign-driver", item, person: self }
-                // Carried is the ITEM's answer, so the message is right per item rather
-                // than right for whichever box was ticked when the lot was saved.
-                : { kind: "assign-vehicle", item, person: handDriver, holderLabel, carried: travelsWithDriver(item) });
+            if (item) out.push({ kind: "assign-driver", item, person: self });
         }
         for (const id of unassigning) {
             const r = heldRow(id);
-            if (!r) continue;
-            out.push(isDriver
-                ? { kind: "unassign-driver", item: r.item, person: self }
-                // Only somebody carrying it has to do anything: a spare key coming off a
-                // parked truck moves on paper only.
-                : { kind: "unassign-vehicle", item: r.item, person: handDriver, holderLabel, carried: r.via === "returnable" });
-        }
-        for (const id of unhanding) {
-            const r = heldRow(id);
-            if (r && handDriver) out.push({ kind: "take-back", item: r.item, person: handDriver, holderLabel: isDriver ? undefined : holderLabel });
+            if (r) out.push({ kind: "unassign-driver", item: r.item, person: self });
         }
         return out;
-    }, [toAssign, toRemove, available, rows, isDriver, holderId, holderLabel, handDriver?.id]);
+    }, [toAssign, toRemove, available, rows, isDriver, holderId, holderLabel]);
 
     /**
      * What the driver has to come and get.
@@ -266,16 +245,15 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         [toRemove, row?.items],
     );
 
-    const collecting = useMemo(
-        () => [...toAssign].map((id) => available.find((it) => it.id === id))
-            .filter((it): it is InventoryItem => !!it && travelsWithDriver(it)),
-        [toAssign, available],
-    );
-    const stayingOn = useMemo(
-        () => [...toAssign].map((id) => available.find((it) => it.id === id))
-            .filter((it): it is InventoryItem => !!it && !travelsWithDriver(it)),
-        [toAssign, available],
-    );
+    /**
+     * What the driver has to come and get: everything ticked.
+     *
+     * It used to be a subset — the ticked items that "travel with the driver" — with the
+     * rest listed underneath as staying on the vehicle. That split only made sense while a
+     * driver could be given something by way of the truck they drive. This page files
+     * against the person, so everything on it is theirs to collect.
+     */
+    const collecting = givingItems;
 
     /**
      * Has the notification step been opened?
@@ -288,7 +266,10 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     /** The messages this save would send, with any wording somebody has typed. */
     const plans = useMovementPlans(movements, notifyState);
-    const sending = sendablePlans(plans, notifyState);
+    // Nothing goes out from the asset page. Filing a transponder against a truck asks
+    // nobody to do anything, and the one message that would make sense there — come and
+    // collect this — is the driver page's job, where the person is the subject.
+    const sending = isDriver ? sendablePlans(plans, notifyState) : [];
 
     /**
      * Does this save have to be read before it happens?
@@ -329,10 +310,17 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
 
     const filled = (id: SectionId): number => {
         switch (id) {
-            case "items": return givingIds.length + toRemove.size + (receiptChanged ? 1 : 0);
+            case "items": return givingIds.length + toRemove.size;
             case "notify": return sending.length;
         }
     };
+
+    // A step that is not on this page cannot be the one you are standing on: switching from
+    // a driver to an asset used to leave the wizard showing a page its own stepper no
+    // longer listed.
+    useEffect(() => {
+        if (!STEPS.some((x) => x.id === activeStep)) setActiveStep(STEPS[0].id as SectionId);
+    }, [STEPS, activeStep]);
 
     // ── Save ─────────────────────────────────────────────────────────────────
     // Nothing here is undoable from this page: the items move, the messages go, and the
@@ -345,50 +333,23 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         if (changeCount === 0) return;
         setConfirming(false);
 
-        // Where each one lands is its own answer: driver returnable rides with whoever
-        // drives the vehicle, asset removable stays on it.
+        // One field each, so an item can be on this unit and on a person at the same time
+        // and neither page can wipe the other’s answer.
         for (const itemId of toAssign) {
-            const item = available.find((it) => it.id === itemId);
-            const assignedTo: Assignment = isDriver
-                ? { kind: "driver", targetId: holderId }
-                : { kind: assetKind, targetId: holderId, alsoDriverOfAsset: !!item && travelsWithDriver(item) };
-            update(itemId, { assignedTo });
+            update(itemId, isDriver
+                ? { assignedDriverId: holderId }
+                : { assignedTo: { kind: assetKind, targetId: holderId } as Assignment });
         }
-        for (const itemId of unassigning) update(itemId, { assignedTo: undefined });
-
-        // Nothing here creates a hand-over any more. What is left is taking an existing
-        // one back, and recording the receipts against it.
-        if (handDriver && (unhanding.length > 0 || receiptChanged)) {
-            const stamp = Date.now();
-            const sign = { name: issuedBy.trim() || me, role: "Fleet Manager", date: todayISO(), sig: "", done: true };
-            let rec: DriverHandover = existing ?? {
-                driverId: handDriver.id, accountId: acct, checklistName: "Hand-over",
-                lines: [], issuedByName: sign.name, issuedByTitle: "Fleet Manager",
-                verifiedItemIds: [], updatedAt: stamp,
-            };
-            if (unhanding.length) rec = removeLines(rec, unhanding);
-            // Receipt is recorded against the lines that survived, so an item taken back
-            // cannot leave a tick behind claiming the driver still has it.
-            const stillOn = new Set(rec.lines.map((l) => l.itemId));
-            rec = { ...rec, verifiedItemIds: [...verified].filter((id) => stillOn.has(id)) };
-            if (driverConfirmed) {
-                rec = { ...rec, driverSignoff: { name: handDriver.name, role: "Driver", date: todayISO(), sig: "", done: true } };
-            } else if (rec.driverSignoff?.done) {
-                rec = { ...rec, driverSignoff: { ...rec.driverSignoff, done: false } };
-            }
-            save(rec);
+        for (const itemId of unassigning) {
+            update(itemId, isDriver ? { assignedDriverId: undefined } : { assignedTo: undefined });
         }
 
         // ── The trail ────────────────────────────────────────────────────────
         for (const itemId of toAssign) {
-            const item = available.find((it) => it.id === itemId);
-            const rides = !isDriver && !!item && travelsWithDriver(item);
             logInventoryEvent({
                 itemId, accountId: acct, kind: "assigned",
                 title: isDriver ? "Assigned to driver" : "Assigned to vehicle",
-                // Which of the two it was, so the trail says where the thing actually went.
-                detail: rides ? `${holderLabel} · rides with its driver` : holderLabel,
-                by: me, role: "Office",
+                detail: holderLabel, by: me, role: "Office",
             });
         }
         for (const itemId of unassigning) {
@@ -397,28 +358,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                 title: "Unassigned", detail: `Taken back from ${holderLabel}`, by: me, role: "Office",
             });
         }
-        for (const r of handedRows) {
-            const now = verified.has(r.item.id);
-            if (now === wasVerified.has(r.item.id)) continue;
-            logInventoryEvent({
-                itemId: r.item.id, accountId: acct,
-                kind: now ? "verified" : "updated",
-                title: now ? "Confirmed received by driver" : "Receipt withdrawn",
-                detail: now
-                    ? `${handDriver?.name ?? "The driver"} confirmed they have this`
-                    : `${handDriver?.name ?? "The driver"} no longer confirms this`,
-                by: me, role: "Office",
-            });
-        }
-        for (const itemId of unhanding) {
-            logInventoryEvent({
-                itemId, accountId: acct, kind: "updated",
-                title: "Returned by driver",
-                detail: `Taken off ${handDriver?.name ?? holderLabel}'s hand-over checklist`,
-                by: me, role: "Office",
-            });
-        }
-
         // ── …and tell them ───────────────────────────────────────────────────
         // A driver cannot collect what nobody told them about, which is why this sits in the
         // same save rather than being a thing to remember afterwards.
@@ -448,8 +387,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
         );
     }
 
-    const status = existing ? handoverStatusOf(existing) : "not-issued";
-
     return (
         <div className="flex h-full flex-col bg-[#F8FAFC] text-slate-900">
             <WizardHeader
@@ -466,9 +403,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                     [
                         isDriver ? "Driver" : `${row.kindLabel ?? "Asset"} · ${row.sub}`,
                         `${row.items.length} item${row.items.length === 1 ? "" : "s"} held`,
-                        !isDriver && handDriver ? `driven by ${handDriver.name}` : null,
-                        status === "verified" ? "hand-over verified"
-                            : status === "handed-over" ? "awaiting driver" : null,
                     ].filter(Boolean).join(" · ")
                 }
             />
@@ -539,7 +473,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                         )}
                     >
                         {notifyPending
-                            ? <><MessageSquare size={16} /> {STEPS[1].label} <ChevronRight size={16} /></>
+                            ? <><MessageSquare size={16} /> {SECTIONS[1].label} <ChevronRight size={16} /></>
                             : <><Check size={16} /> {saveLabel}</>}
                     </button>
                 </div>
@@ -581,7 +515,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                             {/* What you just picked, split by whether anybody has to move.
                                 Checking the message without being able to see what it is about
                                 meant going back a step to read the ticks again. */}
-                            {(collecting.length > 0 || stayingOn.length > 0) && (
+                            {collecting.length > 0 && (
                                 <div className="mb-4 overflow-hidden rounded-xl border border-slate-200">
                                     <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
                                         <PackageCheck size={13} className="shrink-0 text-blue-600" />
@@ -611,14 +545,6 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                                                 </li>
                                             ))}
                                         </ul>
-                                    )}
-                                    {/* Said once, so the count above is not read as "you forgot some". */}
-                                    {stayingOn.length > 0 && (
-                                        <p className="border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-[11px] leading-snug text-slate-500">
-                                            {stayingOn.length} other{stayingOn.length === 1 ? "" : "s"} stay{stayingOn.length === 1 ? "s" : ""} on
-                                            {" "}{holderLabel} — fitted to it rather than carried, so nobody has to
-                                            fetch {stayingOn.length === 1 ? "it" : "them"}.
-                                        </p>
                                     )}
                                 </div>
                             )}
@@ -675,7 +601,7 @@ export function AssignInventoryPage({ onNavigate, kind, holderId, accountId }: P
                                 onBack={() => setReadingForm(null)}
                                 sharedValues={issueFormValues({
                                     driverName: handDriver?.name ?? holderLabel,
-                                    lines: collecting.map((it) => collectionLineFor(it, "carried")),
+                                    lines: collecting.map((it) => collectionLineFor(it, "assigned")),
                                     holderLabel: isDriver ? undefined : holderLabel,
                                     issuedBy,
                                 })}

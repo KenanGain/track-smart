@@ -80,6 +80,7 @@ import { type SubTab } from '@/components/ui/SubTabs';
 import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
 import { PaginationBar, ColumnsDropdown } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
+import { McCertificateFacts, useMcNumber } from '@/pages/compliance/McAuthorityPanel';
 
 
 // --- HELPER COMPONENTS ---
@@ -665,6 +666,8 @@ export function CarrierProfilePage({
         return null;
     })();
     const profileBundle = useMemo(() => buildProfileBundle(accountId), [accountId]);
+    // Read, never typed: the MC number lives on the MC Certificate record.
+    const mcNumber = useMcNumber(accountId);
     const [viewData] = useState(profileBundle?.viewData ?? INITIAL_VIEW_DATA);
     const [formConfig, setFormConfig] = useState(profileBundle?.uiData ?? UI_DATA);
     const [activeModal, setActiveModal] = useState<any>(null);
@@ -1324,10 +1327,10 @@ export function CarrierProfilePage({
             {!isAssetDetailActive && !isAssetFormActive && (
                 <ListPageHeader
                     Icon={Building2}
-                    title="Carrier Profile"
+                    title="Carrier Fleet Profile"
                     description={`${viewData.page.carrierHeader.name} — ${profileBundle?.assets?.length ?? INITIAL_ASSETS.length} assets \u00b7 ${drivers.length} drivers`}
                     condensed={condensed}
-                    tabsLabel="Carrier profile sections"
+                    tabsLabel="Carrier fleet profile sections"
                     tabs={tabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
@@ -1384,6 +1387,14 @@ export function CarrierProfilePage({
                                                         <div className="flex items-center gap-2" title="Ontario CVOR · Canadian NSC · Registered Importer Number">
                                                             <span className="text-sm font-bold text-slate-500">CVOR/NSC/RIN:</span>
                                                             <span className="text-sm font-bold font-mono text-slate-900">{combinedCvorNscRin || <span className="text-slate-400 italic font-normal">—</span>}</span>
+                                                        </div>
+                                                        {/* The third identifier a carrier is known by, beside the
+                                                            other two. It is not typed here — it is read off the
+                                                            MC Certificate record, which is the only place it is
+                                                            captured. */}
+                                                        <div className="flex items-center gap-2" title="FMCSA Motor Carrier operating authority number, from the MC Certificate record">
+                                                            <span className="text-sm font-bold text-slate-500">MC:</span>
+                                                            <span className="text-sm font-bold font-mono text-slate-900">{mcNumber || <span className="text-slate-400 italic font-normal">—</span>}</span>
                                                         </div>
                                                     </div>
                                                 );
@@ -1478,6 +1489,14 @@ export function CarrierProfilePage({
                                                 <OpsChips values={opsData.fmcsaAuthorityType} icon={Truck} tone="emerald" />
                                             </div>
                                         </div>
+
+                                        {/* The MC authority itself, under the chips that describe it.
+                                            It was a card of its own directly below this one, which put
+                                            the same heading on the screen twice and left the reader to
+                                            work out that "Authority Types" and "Operating Authority"
+                                            were the same subject. The pencil above edits the chips
+                                            only — everything below the rule is read-only, and says so. */}
+                                        <McCertificateFacts accountId={accountId} />
                                     </div>
                                 </div>
 

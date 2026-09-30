@@ -15,8 +15,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { searchLocations, addressLine, type RoadsideLocation } from "./roadside-locations";
 import {
-    CalendarClock, ClipboardCheck, FileText, Save, ShieldAlert, Truck, User, Container, StickyNote,
+    CalendarClock, ClipboardCheck, FileText, MapPin, Save, Search, ShieldAlert, Truck, User, Container, StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,33 +25,45 @@ import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from "@/c
 import { ViolationPicker } from "@/pages/tickets/ViolationPicker";
 import { DocShelf } from "./RoadsideDocs";
 import {
-    INSPECTION_LEVELS, ROADSIDE_PRESETS, blankInspection, driverOptions, emptyParty, getInspectionById,
+    DISTANCE_UNITS, INSPECTION_LEVELS, VIOLATION_BASICS,
+    blankInspection, driverOptions, emptyParty, getInspectionById,
     saveInspection, trailerOptions, truckOptions,
-    type InspectionResult, type PartyKind, type RoadsideInspection, type RoadsideParty, type UnitOption,
+    type DistanceUnit, type InspectionResult, type PartyKind, type RoadsideInspection, type RoadsideParty, type UnitOption,
 } from "./roadside.data";
 
+/**
+ * The order the report is read in.
+ *
+ * Outcome sits after the three parties, not before them: pass or fail, out of
+ * service, a citation — those are conclusions drawn from what was found, and a
+ * form that asks for the conclusion first invites it to be typed before anybody
+ * has looked. It sits immediately before Documents because failing is what makes
+ * a remediation report due, and that is the next thing the form asks for.
+ */
 const STEPS: WizardStep[] = [
     { id: "inspection", label: "The inspection", icon: CalendarClock },
-    { id: "outcome", label: "Outcome", icon: ShieldAlert },
     { id: "truck", label: "Truck", icon: Truck },
     { id: "trailer", label: "Trailer", icon: Container },
     { id: "driver", label: "Driver", icon: User },
+    { id: "outcome", label: "Outcome", icon: ShieldAlert },
     { id: "documents", label: "Documents", icon: FileText },
     { id: "notes", label: "Notes", icon: StickyNote },
 ];
 
 // ── Small form furniture, matched to the rest of the app's editors ──────────
 
-const FIELD = "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
+const FIELD = "w-full h-9 px-3 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400";
 
 function Field({ label, required, hint, className, children }: {
     label: string; required?: boolean; hint?: string; className?: string; children: React.ReactNode;
 }) {
     return (
         <div className={className}>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                {label}{required && <span className="text-rose-500"> *</span>}
-            </label>
+            {/* The compliance form's label, pill and all — see `Field` there. */}
+            <span className="mb-1 flex items-center gap-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                {required && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
+            </span>
             <div className="mt-1.5">{children}</div>
             {hint && <p className="mt-1 text-[11px] text-slate-400">{hint}</p>}
         </div>
@@ -92,6 +105,96 @@ function YesNo({ value, onChange, yes = "Yes", no = "No", danger }: {
     );
 }
 
+
+/**
+ * Where it happened, looked up rather than typed.
+ *
+ * Free text here produced "I80 mm214", "I-80 WB Mile 214" and "Elkhart scale"
+ * for one scale house, which is three places to every count and filter in the
+ * app. Picking from the lookup fills the structured address alongside the label,
+ * so the record keeps city, state and country as data.
+ *
+ * Typing is still allowed — an inspection can happen somewhere the gazetteer has
+ * never heard of, and a field that refuses the truth is worse than one that
+ * takes it unstructured.
+ */
+function LocationField({ value, onPick, onType, sub }: {
+    value: string;
+    onPick: (l: RoadsideLocation) => void;
+    onType: (v: string) => void;
+    sub?: string;
+}) {
+    const [open, setOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [hits, setHits] = useState<RoadsideLocation[]>([]);
+    const seq = useRef(0);
+
+    // Every keystroke starts a search; only the newest one is allowed to answer.
+    // Without the guard a slow early request lands after a fast later one, and the
+    // list shows results for something the person has already finished typing.
+    useEffect(() => {
+        if (!open) return;
+        const mine = ++seq.current;
+        setBusy(true);
+        searchLocations(value).then((r) => {
+            if (seq.current !== mine) return;
+            setHits(r);
+            setBusy(false);
+        });
+    }, [value, open]);
+
+    return (
+        <div className="relative">
+            <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                    className={cn(FIELD, "pl-8")}
+                    value={value}
+                    placeholder="Search a scale, a crossing, a mile marker…"
+                    onFocus={() => setOpen(true)}
+                    onChange={(e) => { onType(e.target.value); setOpen(true); }}
+                    onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+                />
+            </div>
+            {sub && <p className="mt-1 text-[11px] text-slate-500">{sub}</p>}
+
+            {open && (
+                <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                    {busy && hits.length === 0 && (
+                        <p className="px-3 py-2.5 text-[12px] text-slate-400">Searching…</p>
+                    )}
+                    {!busy && hits.length === 0 && (
+                        <p className="px-3 py-2.5 text-[12px] text-slate-500">
+                            Nothing found. What you have typed is kept as it is.
+                        </p>
+                    )}
+                    <ul className="max-h-64 overflow-y-auto">
+                        {hits.map((l) => (
+                            <li key={l.label}>
+                                <button
+                                    type="button"
+                                    // onMouseDown, not onClick: the input's blur fires first and
+                                    // would close the list before the click ever landed.
+                                    onMouseDown={(e) => { e.preventDefault(); onPick(l); setOpen(false); }}
+                                    className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-blue-50/60"
+                                >
+                                    <MapPin size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                                    <span className="min-w-0">
+                                        <span className="block truncate text-[13px] font-semibold text-slate-800">{l.label}</span>
+                                        <span className="block truncate text-[11px] text-slate-500">
+                                            {l.kind} &middot; {addressLine(l)}
+                                        </span>
+                                    </span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** The roster picker for one inspected unit or person. */
 function UnitSelect({ options, value, onChange, placeholder }: {
     options: UnitOption[]; value?: string; onChange: (o?: UnitOption) => void; placeholder: string;
@@ -118,11 +221,13 @@ function UnitSelect({ options, value, onChange, placeholder }: {
  * means the same thing here as it does on a citation, and giving this page its
  * own list would give the fleet two violation histories to reconcile.
  */
-function PartyCard({ kind, party, options, isCanada, onChange }: {
+function PartyCard({ kind, party, options, isCanada, extra, onChange }: {
     kind: PartyKind;
     party: RoadsideParty;
     options: UnitOption[];
     isCanada: boolean;
+    /** The one question this party has that the others do not — an odometer, a logbook. */
+    extra?: React.ReactNode;
     onChange: (next: RoadsideParty) => void;
 }) {
     const noun = kind === "driver" ? "Driver" : kind === "truck" ? "Truck" : "Trailer";
@@ -157,6 +262,7 @@ function PartyCard({ kind, party, options, isCanada, onChange }: {
                         />
                     </Field>
                 )}
+                {inspected && extra}
             </div>
 
             {!inspected && (
@@ -172,7 +278,10 @@ function PartyCard({ kind, party, options, isCanada, onChange }: {
                     value={party.violations}
                     onChange={(violations) => onChange({ ...party, violations })}
                     isCanada={isCanada}
-                    presets={ROADSIDE_PRESETS[kind]}
+                    /* Only the four buckets the inspector writes under. A longer chip
+                       list is a list to scan; the specific defect comes off the paper
+                       report and is found by its code in the search below. */
+                    presets={VIOLATION_BASICS}
                     label={`${noun} violation categories`}
                     hint="· tap what the inspector wrote, or search the code"
                 />
@@ -246,9 +355,9 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
         switch (id) {
             case "inspection": return [form.date, form.location.trim(), form.startTime, form.endTime].filter(Boolean).length;
             case "outcome": return [form.result, form.oos ? "oos" : "", form.citationNumber?.trim()].filter(Boolean).length;
-            case "truck": return form.truck.id ? 1 + form.truck.violations.length : 0;
+            case "truck": return form.truck.id ? 1 + form.truck.violations.length + (form.truckOdometer?.trim() ? 1 : 0) : 0;
             case "trailer": return form.trailer.id ? 1 + form.trailer.violations.length : 0;
-            case "driver": return form.driver.id ? 1 + form.driver.violations.length : 0;
+            case "driver": return form.driver.id ? 1 + form.driver.violations.length + (form.driver.logbookInspected === undefined ? 0 : 1) : 0;
             case "documents": return form.reports.length + form.remediation.length + form.repairBills.length;
             case "notes": return form.notes?.trim() ? 1 : 0;
             default: return 0;
@@ -288,10 +397,15 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                 actions={
                     <>
                         <Button variant="ghost" onClick={() => onNavigate(home)} className="text-slate-600">Discard</Button>
-                        <Button onClick={save} disabled={problems.length > 0} title={problems.length ? `Still needs ${problems[0]}` : undefined}
-                            className="h-10 px-8 text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-blue-500/10">
-                            <Save size={16} className="mr-2" /> {isEdit ? "Save changes" : "Save inspection"}
-                        </Button>
+                        {/* Blue, whether or not it can be pressed yet. A grey slab reads as
+                            "this screen is broken"; a dimmed blue one reads as "not yet", which
+                            is what it means — and what is missing is listed under the form. */}
+                        <button type="button" onClick={save} disabled={problems.length > 0}
+                            title={problems.length ? `Still needs ${problems[0]}` : undefined}
+                            className={cn("inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition-colors",
+                                problems.length > 0 ? "cursor-not-allowed bg-blue-300" : "bg-blue-600 hover:bg-blue-700")}>
+                            <Save size={16} /> {isEdit ? "Save changes" : "Save inspection"}
+                        </button>
                     </>
                 }
             />
@@ -319,12 +433,71 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                                 <Field label="End time" hint="How long a driver was held is worth keeping — it is the part that costs the day.">
                                     <input type="time" className={FIELD} value={form.endTime ?? ""} onChange={(e) => set("endTime", e.target.value)} />
                                 </Field>
-                                <Field label="Location" required className="sm:col-span-2"
-                                    hint="Where the report says — the scale, the mile marker, the town.">
-                                    <input className={FIELD} placeholder="I-80 WB, Mile 214 — Elkhart, IN"
-                                        value={form.location} onChange={(e) => set("location", e.target.value)} />
+                                <Field label="Location" required className="sm:col-span-2">
+                                    <LocationField
+                                        value={form.location}
+                                        onType={(v) => setForm((f) => ({
+                                            // Typing over a picked place drops the address with it:
+                                            // a city that belongs to a different location is worse
+                                            // than none.
+                                            ...f, location: v,
+                                            locationCity: undefined, locationState: undefined, locationCountry: undefined,
+                                        }))}
+                                        onPick={(l) => setForm((f) => ({
+                                            ...f, location: l.label,
+                                            locationCity: l.city, locationState: l.state, locationCountry: l.country,
+                                        }))}
+                                        sub={form.locationCity
+                                            ? `${form.locationCity}, ${form.locationState} · ${form.locationCountry}`
+                                            : "Where the report says. Pick one to fill the address with it."}
+                                    />
                                 </Field>
                             </div>
+                        </WizardSection>
+
+                        <WizardSection allowOverflow id="truck" icon={Truck} title="Truck" subtitle="The power unit inspected, and what was found against it.">
+                            <PartyCard kind="truck" party={form.truck} options={trucks} isCanada={!!isCanada}
+                                onChange={(truck) => set("truck", truck)}
+                                extra={form.truck.id ? (
+                                    <Field label="Odometer"
+                                        hint="What it had run at the roadside — the repair bill is read against this.">
+                                        <div className="flex gap-2">
+                                            <input className={FIELD} inputMode="numeric" placeholder="412,860"
+                                                value={form.truckOdometer ?? ""}
+                                                onChange={(e) => set("truckOdometer", e.target.value)} />
+                                            {/* Asked, never assumed: the same fleet runs both. */}
+                                            <select className={cn(FIELD, "w-24 shrink-0")}
+                                                value={form.truckOdometerUnit ?? "mi"}
+                                                onChange={(e) => set("truckOdometerUnit", e.target.value as DistanceUnit)}>
+                                                {DISTANCE_UNITS.map((u) => <option key={u} value={u}>{u === "mi" ? "Miles" : "Kilometres"}</option>)}
+                                            </select>
+                                        </div>
+                                    </Field>
+                                ) : undefined}
+                            />
+                        </WizardSection>
+
+                        <WizardSection allowOverflow id="trailer" icon={Container} title="Trailer" subtitle="The trailer it was pulling, if it was pulling one.">
+                            <PartyCard kind="trailer" party={form.trailer} options={trailers} isCanada={!!isCanada}
+                                onChange={(trailer) => set("trailer", trailer)} />
+                        </WizardSection>
+
+                        <WizardSection allowOverflow id="driver" icon={User} title="Driver" subtitle="Who was driving, and what was found against them.">
+                            <PartyCard kind="driver" party={form.driver} options={drivers} isCanada={!!isCanada}
+                                onChange={(driver) => set("driver", driver)}
+                                /* A Level III with no HOS violation means two different things
+                                   depending on whether the book was opened. The report says
+                                   which; so does this. */
+                                extra={form.driver.id ? (
+                                    <Field label="Logbook inspected"
+                                        hint="Whether the inspector actually looked at the hours of service.">
+                                        <YesNo
+                                            value={form.driver.logbookInspected === true}
+                                            onChange={(v) => set("driver", { ...form.driver, logbookInspected: v })}
+                                        />
+                                    </Field>
+                                ) : undefined}
+                            />
                         </WizardSection>
 
                         <WizardSection id="outcome" icon={ShieldAlert} title="Outcome"
@@ -357,21 +530,6 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                                     &mdash; and, where the fault was a maintenance one, the repair bill with it.
                                 </p>
                             )}
-                        </WizardSection>
-
-                        <WizardSection allowOverflow id="truck" icon={Truck} title="Truck" subtitle="The power unit inspected, and what was found against it.">
-                            <PartyCard kind="truck" party={form.truck} options={trucks} isCanada={!!isCanada}
-                                onChange={(truck) => set("truck", truck)} />
-                        </WizardSection>
-
-                        <WizardSection allowOverflow id="trailer" icon={Container} title="Trailer" subtitle="The trailer it was pulling, if it was pulling one.">
-                            <PartyCard kind="trailer" party={form.trailer} options={trailers} isCanada={!!isCanada}
-                                onChange={(trailer) => set("trailer", trailer)} />
-                        </WizardSection>
-
-                        <WizardSection allowOverflow id="driver" icon={User} title="Driver" subtitle="Who was driving, and what was found against them.">
-                            <PartyCard kind="driver" party={form.driver} options={drivers} isCanada={!!isCanada}
-                                onChange={(driver) => set("driver", driver)} />
                         </WizardSection>
 
                         <WizardSection id="documents" icon={FileText} title="Documents"
@@ -408,9 +566,11 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
 
                         <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
                             <Button variant="outline" onClick={() => onNavigate(home)}>Cancel</Button>
-                            <Button onClick={save} disabled={problems.length > 0}>
-                                <Save size={16} className="mr-2" /> {isEdit ? "Save changes" : "Save inspection"}
-                            </Button>
+                            <button type="button" onClick={save} disabled={problems.length > 0}
+                                className={cn("inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition-colors",
+                                    problems.length > 0 ? "cursor-not-allowed bg-blue-300" : "bg-blue-600 hover:bg-blue-700")}>
+                                <Save size={16} /> {isEdit ? "Save changes" : "Save inspection"}
+                            </button>
                         </div>
                     </div>
                 </div>

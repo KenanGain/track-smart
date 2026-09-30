@@ -43,7 +43,7 @@ import { AssetModal } from '@/pages/assets/AssetModal';
 import { commitOwnershipDoc } from '@/pages/assets/ownership-docs-bridge';
 import { commitPlateRecord } from '@/pages/assets/plate-record-bridge';
 import { commitAssetRecords, assetRecordsFromForm } from '@/pages/assets/asset-records-bridge';
-import { commitAssetInventory, currentDriverOf, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
+import { commitAssetInventory, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
 import { currentUserName } from '@/data/users.data';
 import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled, calculateDriverComplianceStats } from '@/utils/compliance-utils';
@@ -433,7 +433,6 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
                     assetKind: data.assetCategory === 'Non-CMV' ? 'non-cmv' : 'cmv',
                     items: inventoryItemsForCarrier(accountId),
                     draft: inventory,
-                    driver: currentDriverOf(accountId, id),
                     capturedBy: currentUserName(),
                 });
             }

@@ -4,7 +4,7 @@ import {
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
     UploadCloud, FileText, Trash2, Gauge, Wrench, Zap, Check, CalendarClock, FileSignature,
-    Boxes, MessageSquare, PackageCheck, Undo2, ArrowRight, X
+    Boxes, PackageCheck, Undo2, X
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -14,15 +14,12 @@ import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { useInventoryAdditions } from '@/pages/inventory/inventory-store';
-import { useDriverHandovers, handedToMap } from '@/pages/inventory/handovers.data';
 import { unassignedItems, rollupByAsset, VIA_LABEL, VIA_TONE } from '@/pages/inventory/inventory-rollup';
-import { getInventoryForCarrier, INVENTORY_ITEMS, itemName, itemTravelsWithDriver } from '@/pages/inventory/inventory.data';
+import { getInventoryForCarrier, INVENTORY_ITEMS, itemName } from '@/pages/inventory/inventory.data';
 import { emptyAssetInventoryDraft, type AssetInventoryDraft } from './asset-inventory-bridge';
 import { plateRecordFor, plateSlotLabels, plateHasCabCard } from './plate-record-bridge';
 import { assetRecordFor } from './asset-records-bridge';
-import { MovementNotify, useMovementPlans } from '@/pages/inventory/MovementNotify';
 import { ItemPickList } from '@/pages/inventory/ItemPickList';
-import type { Movement } from '@/pages/inventory/inventory-movements';
 import { removeActionFor } from '@/pages/inventory/inventory-rollup';
 import { GvwrTag } from './GvwrTag';
 import {
@@ -470,8 +467,10 @@ const STEPS: readonly WizardStep[] = [
     // still holding the certificates, not after the money questions have moved them on.
     { id: 'service', label: 'Safety & maintenance', icon: Wrench },
     { id: 'ownership', label: 'Ownership & financial', icon: KeyRound },
-    { id: 'notes', label: 'Notes', icon: FileText },
+    // Insurance before notes: the last required thing, then the free-text box. A form
+    // that ends on a question is a form people stop filling in at the paragraph.
     { id: 'insurance', label: 'Insurance & status', icon: Shield },
+    { id: 'notes', label: 'Notes', icon: FileText },
 ];
 
 // --- Main Asset Form Page (in-page wizard, mirrors the Add Accident layout) ---
@@ -766,27 +765,20 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     // exactly the way the Inventory tabs read them, so the two cannot disagree about what
     // is free to give away.
     const { additions, applyEdit: applyItemEdit } = useInventoryAdditions(accountId);
-    const { records: handoverRecords } = useDriverHandovers(accountId ?? 'acct-001');
     const inventoryItems = useMemo(() => {
         const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyItemEdit);
         return additions.length ? [...additions, ...base] : base;
     }, [accountId, additions, applyItemEdit]);
-    const handedTo = useMemo(() => handedToMap(handoverRecords, accountId ?? 'acct-001'), [handoverRecords, accountId]);
-    const freeItems = useMemo(() => unassignedItems(inventoryItems, handedTo), [inventoryItems, handedTo]);
+    const freeItems = useMemo(() => unassignedItems(inventoryItems), [inventoryItems]);
     // What it already holds — only ever on an edit, since a new asset holds nothing.
     const heldRow = useMemo(() => (
         asset?.id
-            ? rollupByAsset(inventoryItems, accountId, handedTo).find(r => r.id === asset.id)
+            ? rollupByAsset(inventoryItems, accountId).find(r => r.id === asset.id)
             : undefined
-    ), [asset?.id, inventoryItems, handedTo, accountId]);
+    ), [asset?.id, inventoryItems, accountId]);
 
     const [inventoryDraft, setInventoryDraft] = useState<AssetInventoryDraft>(emptyAssetInventoryDraft);
-    const setInv = (p: Partial<AssetInventoryDraft>) => setInventoryDraft(d => ({ ...d, ...p }));
-    /**
-     * The two ticks stack here, because this is a vehicle: something handed to a driver off
-     * a truck is still the truck's. Un-assigning it takes the hand-over with it, since a
-     * hand-over of something the vehicle does not own is a record of nothing.
-     */
+    /** One tick: this item is filed against this unit, or it is not. */
     const toggleItem = (id: string) => setInventoryDraft(d => {
         const on = d.itemIds.includes(id);
         return {
@@ -796,145 +788,27 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     });
 
 
-    // Whoever is driving it according to THIS form, not the saved record: on a new asset
-    // there is no saved record, and on an edit the driver may be changing in this very
-    // session. The current assignment is the one with no end date.
-    const driverAssignments = watch('driverAssignments');
-    const currentDriver = useMemo(() => {
-        const list: any[] = driverAssignments ?? [];
-        const current = list.find(a => a?.driverId && !a.endDate) ?? list.find(a => a?.driverId);
-        if (!current) return null;
-        const d = drivers.find(x => x.id === current.driverId);
-        return d ? { id: d.id, name: d.name } : null;
-    }, [driverAssignments, drivers]);
-
-    const pickedItems = useMemo(
-        () => freeItems.filter(it => inventoryDraft.itemIds.includes(it.id)),
-        [freeItems, inventoryDraft.itemIds],
-    );
-
-    // — The driver is changing —
-    // Who was driving it according to the SAVED record, against who the form now names.
-    // The kit in the cab does not follow by itself: a fuel card is in somebody’s pocket,
-    // and until it comes back through the office the next driver has not got it.
-    const previousDriver = useMemo(() => {
-        const list: any[] = asset?.driverAssignments ?? [];
-        const current = list.find(a => a?.driverId && !a.endDate) ?? list.find(a => a?.driverId);
-        if (!current) return null;
-        const d = drivers.find(x => x.id === current.driverId);
-        return d ? { id: d.id, name: d.name } : null;
-    }, [asset?.driverAssignments, drivers]);
-
-    const driverChanged = !!previousDriver && previousDriver.id !== (currentDriver?.id ?? '');
-    // Only what travels with the person. Kit filed on the vehicle stays on the vehicle —
-    // nobody carries a spare wheel chock home.
-    const cabItems = useMemo(
-        () => (driverChanged
-            ? (heldRow?.items ?? [])
-                .filter(h => h.via === 'returnable' && !inventoryDraft.removeIds.includes(h.item.id))
-                .map(h => h.item)
-            : []),
-        [driverChanged, heldRow, inventoryDraft.removeIds],
-    );
-
-    // Everything in the cab moves unless somebody says otherwise, and the block resets
-    // itself if the driver is put back to who it was.
-    useEffect(() => {
-        setInventoryDraft(d => ({
-            ...d,
-            changeover: {
-                ...d.changeover,
-                outgoing: driverChanged ? previousDriver : null,
-                itemIds: driverChanged ? cabItems.map(i => i.id) : [],
-            },
-        }));
-    }, [driverChanged, previousDriver?.id, cabItems.map(i => i.id).join(',')]);
-
-    // What may come off this vehicle, and by which route. The rule lives with the rollup,
-    // because the Inventory assign page shows the same pile and offers the same undo — a
-    // remove that the next render puts straight back is a lie.
-    const onChecklist = useMemo(() => {
-        const rec = currentDriver ? handoverRecords[`${accountId ?? 'acct-001'}::${currentDriver.id}`] : undefined;
-        return new Set((rec?.lines ?? []).map(l => l.itemId));
-    }, [handoverRecords, currentDriver?.id, accountId]);
-
+    /*
+     * Who drives this vehicle is not this section's business any more.
+     *
+     * There used to be four things here that all rested on one assumption — that kit filed
+     * against a truck is in the hands of whoever drives it: the current driver, the outgoing
+     * one, the cab's contents to move between them, and the messages asking each to make a
+     * trip to the office. An item is on a unit, on a person, or on both, and a person's line
+     * is set on their own page. Changing a truck's driver moves nothing.
+     */
+    // What may come off this vehicle. The rule lives with the rollup, because the Inventory
+    // assign page shows the same pile and offers the same undo — a remove that the next
+    // render puts straight back is a lie.
     const heldRows = useMemo(() => (heldRow?.items ?? []).map(h => ({
         ...h,
-        action: removeActionFor(h, 'asset', asset?.id ?? '', onChecklist.has(h.item.id)),
-    })), [heldRow, asset?.id, onChecklist]);
+        action: removeActionFor(h, 'asset', asset?.id ?? ''),
+    })), [heldRow, asset?.id]);
 
     const toggleRemove = (id: string) => setInventoryDraft(d => ({
         ...d,
         removeIds: d.removeIds.includes(id) ? d.removeIds.filter(x => x !== id) : [...d.removeIds, id],
-        // Something being taken off the truck is not also something to move to the next
-        // driver: it is not going to a driver at all.
-        changeover: { ...d.changeover, itemIds: d.changeover.itemIds.filter(x => x !== id) },
     }));
-
-    // Of the ones coming off, the ones somebody is physically holding: kit in the cab, and
-    // anything signed across. A spare key in a parked truck is already where it lives.
-    const removedInHand = useMemo(
-        // Only what somebody is actually holding: a reefer sensor bolted to the truck is
-        // already where it lives, and nobody has to bring it anywhere.
-        () => heldRows.filter(h => inventoryDraft.removeIds.includes(h.item.id)
-            && h.via === 'returnable'),
-        [heldRows, inventoryDraft.removeIds],
-    );
-
-    const movingItems = useMemo(
-        () => cabItems.filter(i => inventoryDraft.changeover.itemIds.includes(i.id)),
-        [cabItems, inventoryDraft.changeover.itemIds],
-    );
-
-    // Nobody to tell about a spare key that stays in a yarded truck: the message needs both
-    // a driver and kit that actually travels with them.
-    const handItems = useMemo(
-        () => [],
-        [],
-    );
-    // What the incoming driver would be asked to pick up: the cab's kit coming back the
-    // other way, anything assigned that rides with them, and anything signed across.
-    /**
-     * Everything this save would move, in the vocabulary that decides who gets told.
-     *
-     * The same list the bridge builds at save time — built here too so the form can show the
-     * messages before they go, rather than promising something the save then works out
-     * differently.
-     */
-    const inventoryMovements = useMemo<Movement[]>(() => {
-        const label = watch('unitNumber') || 'this vehicle';
-        const out: Movement[] = [];
-        if (inventoryDraft.changeover.askReturn && previousDriver) {
-            for (const item of movingItems) {
-                out.push({ kind: 'unassign-vehicle', item, person: previousDriver, holderLabel: label, carried: true });
-            }
-        }
-        if (inventoryDraft.changeover.tellIncoming) {
-            for (const item of movingItems) {
-                out.push({ kind: 'assign-vehicle', item, person: currentDriver, holderLabel: label, carried: true });
-            }
-        }
-        for (const item of pickedItems) {
-            // Per item, from the item: the preview has to say the same thing the save will.
-            out.push({ kind: 'assign-vehicle', item, person: currentDriver, holderLabel: label, carried: itemTravelsWithDriver(item) });
-        }
-        for (const item of handItems) {
-            out.push({ kind: 'hand-over', item, person: currentDriver, holderLabel: label });
-        }
-        if (inventoryDraft.askBack && currentDriver) {
-            for (const h of removedInHand) {
-                out.push({
-                    kind: 'unassign-vehicle',
-                    item: h.item, person: currentDriver, holderLabel: label, carried: true,
-                });
-            }
-        }
-        return out;
-    }, [movingItems, pickedItems, handItems, removedInHand, previousDriver, currentDriver,
-        inventoryDraft.changeover.askReturn, inventoryDraft.changeover.tellIncoming,
-        inventoryDraft.askBack, watch('unitNumber')]);
-
-    const inventoryPlans = useMovementPlans(inventoryMovements, inventoryDraft.notify);
 
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
@@ -1019,8 +893,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
             );
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
-            case 'inventory': return inventoryDraft.itemIds.length
-                + inventoryDraft.changeover.itemIds.length + inventoryDraft.removeIds.length;
+            case 'inventory': return inventoryDraft.itemIds.length + inventoryDraft.removeIds.length;
             // The document counts too — it is asked for in this section, so a section that has
             // one should not read the same as one that does not.
             case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined, (showBill && billDoc.files.length > 0) || undefined);
@@ -1313,9 +1186,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                                             of it; anything else is somebody else's record to undo. */}
                                                         {h.action && (
                                                             <button type="button" onClick={() => toggleRemove(h.item.id)}
-                                                                title={off ? "Keep it on this vehicle"
-                                                                    : h.action === "unhand" ? `Take it off ${currentDriver?.name ?? "the driver"}’s hand-over`
-                                                                    : "Take it off this vehicle"}
+                                                                title={off ? "Keep it on this vehicle" : "Take it off this vehicle"}
                                                                 className={cn("ml-0.5 rounded p-0.5 transition-colors",
                                                                     off ? "text-slate-500 hover:bg-slate-200/70" : "text-slate-400 hover:bg-rose-100 hover:text-rose-600")}>
                                                                 {off ? <Undo2 size={11} /> : <X size={11} />}
@@ -1336,117 +1207,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                                 <p className="text-[11px] font-semibold text-rose-700">
                                                     {inventoryDraft.removeIds.length} coming off this vehicle when you save.
                                                 </p>
-                                                {/* Taking it off the record does not take it out of a pocket. */}
-                                                {removedInHand.length > 0 && currentDriver && (
-                                                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-2">
-                                                        <input type="checkbox" checked={inventoryDraft.askBack}
-                                                            onChange={e => setInv({ askBack: e.target.checked })}
-                                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
-                                                        <span className="min-w-0">
-                                                            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
-                                                                <Undo2 size={12} className="text-amber-600" />
-                                                                Ask {currentDriver.name} to hand {removedInHand.length === 1 ? "it" : "them"} in at the office
-                                                            </span>
-                                                            <span className="block text-[11px] leading-snug text-slate-500">
-                                                                {currentDriver.name} is holding {removedInHand.length === 1 ? "this one" : `${removedInHand.length} of these`}.
-                                                                {" "}Taking {removedInHand.length === 1 ? "it" : "them"} off the record does not take
-                                                                {" "}{removedInHand.length === 1 ? "it" : "them"} out of a pocket.
-                                                            </span>
-                                                        </span>
-                                                    </label>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* — The driver is changing —
-                                    The kit in the cab does not follow by itself. One of them has it in
-                                    their pocket, and the office is the only place it can change hands. */}
-                                {driverChanged && cabItems.length > 0 && (
-                                    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-                                        <div className="flex flex-wrap items-center gap-2 text-[12px] font-bold text-amber-900">
-                                            <Undo2 size={14} />
-                                            Driver change
-                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-amber-200">
-                                                {previousDriver!.name}
-                                                <ArrowRight size={11} className="text-amber-500" />
-                                                {currentDriver?.name ?? "nobody yet"}
-                                            </span>
-                                        </div>
-                                        <p className="mt-1.5 text-[11px] leading-snug text-slate-600">
-                                            {previousDriver!.name} is carrying {cabItems.length === 1 ? "an item" : `${cabItems.length} items`} that
-                                            {" "}belong{cabItems.length === 1 ? "s" : ""} to this vehicle. Until {cabItems.length === 1 ? "it comes" : "they come"} back
-                                            {" "}through the office, {currentDriver?.name ?? "the next driver"} has not got {cabItems.length === 1 ? "it" : "them"}.
-                                        </p>
-
-                                        <div className="mt-2 space-y-1">
-                                            {cabItems.map(item => {
-                                                const on = inventoryDraft.changeover.itemIds.includes(item.id);
-                                                return (
-                                                    <label key={item.id} className={cn(
-                                                        "flex cursor-pointer items-center gap-2.5 rounded-lg border bg-white px-2.5 py-1.5",
-                                                        on ? "border-amber-300" : "border-slate-200",
-                                                    )}>
-                                                        <input type="checkbox" checked={on}
-                                                            onChange={() => setInv({ changeover: {
-                                                                ...inventoryDraft.changeover,
-                                                                itemIds: on
-                                                                    ? inventoryDraft.changeover.itemIds.filter(x => x !== item.id)
-                                                                    : [...inventoryDraft.changeover.itemIds, item.id],
-                                                            } })}
-                                                            className="h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
-                                                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-800">{itemName(item)}</span>
-                                                        {item.serial && <span className="shrink-0 font-mono text-[10px] text-slate-400">{item.serial}</span>}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {movingItems.length > 0 && (
-                                            <div className="mt-2.5 space-y-2 border-t border-amber-200/70 pt-2.5">
-                                                <label className="flex cursor-pointer items-start gap-2.5">
-                                                    <input type="checkbox" checked={inventoryDraft.changeover.askReturn}
-                                                        onChange={e => setInv({ changeover: { ...inventoryDraft.changeover, askReturn: e.target.checked } })}
-                                                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30" />
-                                                    <span className="min-w-0">
-                                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
-                                                            <MessageSquare size={12} className="text-amber-600" />
-                                                            Ask {previousDriver!.name} to hand {movingItems.length === 1 ? "it" : "them"} in at the office
-                                                        </span>
-                                                        <span className="block text-[11px] leading-snug text-slate-500">
-                                                            Sends the same checklist, pointed the other way. They tick off what they drop in.
-                                                        </span>
-                                                    </span>
-                                                </label>
-
-
-                                                <label className={cn("flex items-start gap-2.5 border-t border-amber-200/70 pt-2",
-                                                    currentDriver ? "cursor-pointer" : "cursor-not-allowed opacity-60")}>
-                                                    <input type="checkbox" checked={inventoryDraft.changeover.tellIncoming && !!currentDriver}
-                                                        disabled={!currentDriver}
-                                                        onChange={e => setInv({ changeover: { ...inventoryDraft.changeover, tellIncoming: e.target.checked } })}
-                                                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30" />
-                                                    <span className="min-w-0">
-                                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
-                                                            <PackageCheck size={12} className="text-blue-600" />
-                                                            Tell {currentDriver?.name ?? "the new driver"} to collect {movingItems.length === 1 ? "it" : "them"} from the office
-                                                        </span>
-                                                        <span className="block text-[11px] leading-snug text-slate-500">
-                                                            {currentDriver
-                                                                ? "Added to their collection list below, so it is one trip to the office."
-                                                                : "Nobody is driving it yet — assign a driver above and they can be told."}
-                                                        </span>
-                                                    </span>
-                                                </label>
-
-                                                <p className="flex items-start gap-1.5 rounded-lg bg-white/70 px-2.5 py-2 text-[11px] leading-snug text-slate-500 ring-1 ring-amber-200/70">
-                                                    <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
-                                                    Saving takes {movingItems.length === 1 ? "it" : "them"} off the cab straight away, so until somebody
-                                                    picks {movingItems.length === 1 ? "it" : "them"} up the list shows {movingItems.length === 1 ? "it" : "them"} on
-                                                    the vehicle with nobody carrying {movingItems.length === 1 ? "it" : "them"} — which is where
-                                                    {movingItems.length === 1 ? " it is" : " they are"}: a shelf in the office.
-                                                </p>
                                             </div>
                                         )}
                                     </div>
@@ -1460,32 +1220,16 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     assigned={new Set(inventoryDraft.itemIds)}
                                     onAssign={toggleItem}
                                     holderNoun="vehicle"
-                                    destinationFor={(item) => (
-                                        itemTravelsWithDriver(item)
-                                            ? currentDriver?.name ?? 'whoever drives it'
-                                            : watch('unitNumber') || 'this vehicle'
-                                    )}
-                                    emptyAll={<>Every item in this carrier’s inventory is already on a vehicle, a person or a hand-over.</>}
+                                    destinationFor={() => watch('unitNumber') || 'this vehicle'}
+                                    emptyAll={<>Every item in this carrier’s inventory is already on a vehicle.</>}
                                 />
 
 
 
-                                {/* Tell them — the same block the Add Inventory form and the assign
-                                    page show, so the office reads the messages it is about to send
-                                    rather than three checkboxes that imply them. */}
-                                <MovementNotify
-                                    plans={inventoryPlans}
-                                    state={inventoryDraft.notify}
-                                    onChange={(next) => setInv({ notify: { ...inventoryDraft.notify, ...next } })}
-                                    emptyHint={
-                                        inventoryDraft.itemIds.length === 0
-                                            && inventoryDraft.removeIds.length === 0 && movingItems.length === 0
-                                            ? <>Nothing is changing hands yet. Pick something from the list above, or change the driver, and the messages it needs will be drafted here.</>
-                                            : !currentDriver
-                                                ? <>Nobody drives this vehicle yet. Assign a driver in <span className="font-semibold">Driver Assignment</span> above and the messages can go out with the save.</>
-                                                : <>This kit stays with the vehicle, so nobody has to collect or return anything — the <span className="font-semibold">Goes to</span> column says which of the two each item is.</>
-                                    }
-                                />
+                                {/* No "tell them" block. A unit is not told anything, and asking a
+                                    person to come and collect something is the driver page’s job —
+                                    where the person is the subject rather than a guess about who
+                                    happens to be driving this truck. */}
                             </div>
                         </WizardSection>
 
@@ -1664,15 +1408,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                         </AssetSection>
 
                         {/* 8. Notes */}
-                        <AssetSection id="notes" title="Additional Notes" subtitle="Free-form details about this asset." icon={FileText}>
-                            <div className="col-span-full">
-                                <FormInput label="Notes (Max 2000 Chars)">
-                                    <textarea {...register('notes')} className="w-full h-32 p-3 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-blue-500" placeholder="Enter additional asset details..." />
-                                </FormInput>
-                            </div>
-                        </AssetSection>
-
-                        {/* 9. Insurance & Operational Status */}
                         <AssetSection id="insurance" title="Insurance & Operational Status" subtitle="Fleet & insurance dates and operational state." icon={Shield}>
                             {/* The pink slip. It lives in the cab, it expires, and the
                                 person who finds a lapsed one is usually an officer at the
@@ -1754,6 +1489,17 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                 )}
                             </div>
                         </AssetSection>
+
+                        <AssetSection id="notes" title="Additional Notes" subtitle="Free-form details about this asset." icon={FileText}>
+                            <div className="col-span-full">
+                                <FormInput label="Notes (Max 2000 Chars)">
+                                    <textarea {...register('notes')} className="w-full h-32 p-3 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-blue-500" placeholder="Enter additional asset details..." />
+                                </FormInput>
+                            </div>
+                        </AssetSection>
+
+                        {/* 9. Insurance & Operational Status */}
+
                     </form>
                 </div>
             </div>

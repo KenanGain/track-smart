@@ -13,7 +13,7 @@ import { AssetModal } from './AssetModal';
 import { commitOwnershipDoc } from './ownership-docs-bridge';
 import { commitPlateRecord } from './plate-record-bridge';
 import { commitAssetRecords, assetRecordsFromForm } from './asset-records-bridge';
-import { commitAssetInventory, currentDriverOf, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
+import { commitAssetInventory, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
 import { currentUserName } from '@/data/users.data';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
@@ -335,7 +335,6 @@ export function AssetDirectoryPage({
                     assetKind: data.assetCategory === 'Non-CMV' ? 'non-cmv' : 'cmv',
                     items: inventoryItemsForCarrier(accountId),
                     draft: inventory,
-                    driver: currentDriverOf(accountId, id),
                     capturedBy: currentUserName(),
                 });
             }

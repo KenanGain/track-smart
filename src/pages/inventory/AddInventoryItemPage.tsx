@@ -19,6 +19,9 @@ import {
     INVENTORY_ITEMS,
     itemName,
     itemCategoryId,
+    itemHandlings,
+    itemAssetAssignment,
+    itemDriverId,
     inventoryMonitoring,
     type Assignment,
     type InventoryItem,
@@ -53,7 +56,7 @@ type Props = {
 export type InventoryFormPayload = {
     vendorId: string;
     categoryId?: string;
-    handling?: ItemHandling;
+    handling?: ItemHandling[];
     name?: string;
     serial: string;
     pin: string;
@@ -62,6 +65,7 @@ export type InventoryFormPayload = {
     status: InventoryStatus;
     monitoring: InventoryItemDraft["monitoring"];
     assignedTo?: Assignment;
+    assignedDriverId?: string;
 };
 
 /** Who the trail records as the author: whoever is signed in. */
@@ -99,14 +103,17 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
             // things opened from a truck are — and both are still editable below.
             if (!preset) return blank;
             return preset.kind === "driver"
-                ? { ...blank, assignmentKind: "driver" as const, targetId: preset.targetId }
-                : { ...blank, assignmentKind: "cmv" as const, targetId: preset.targetId, alsoDriverOfAsset: true };
+                // Opened from a person: they are answerable for it, and it is on no unit.
+                ? { ...blank, handling: ["driver-returnable" as const], assignedDriverId: preset.targetId, assignmentKind: "" as const, targetId: "" }
+                // Opened from a vehicle: on the unit, and on whoever drives it — which is
+                // what most things opened from a truck turn out to be. Both still editable.
+                : { ...blank, handling: ["asset-removable" as const, "driver-returnable" as const], assignmentKind: "cmv" as const, targetId: preset.targetId };
         }
         return {
             ...blank,
             vendorId: editing.vendorId,
             categoryId: itemCategoryId(editing),
-            handling: editing.handling ?? blank.handling,
+            handling: itemHandlings(editing),
             name: itemName(editing),
             serial: editing.serial,
             pin: editing.pin,
@@ -114,9 +121,9 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
             expiryDate: editing.expiryDate,
             status: editing.status,
             monitoring: inventoryMonitoring(editing),
-            assignmentKind: editing.assignedTo?.kind ?? "cmv",
-            targetId: editing.assignedTo?.targetId ?? "",
-            alsoDriverOfAsset: !!editing.assignedTo?.alsoDriverOfAsset,
+            assignmentKind: itemAssetAssignment(editing)?.kind ?? "cmv",
+            targetId: itemAssetAssignment(editing)?.targetId ?? "",
+            assignedDriverId: itemDriverId(editing) ?? "",
         };
     });
 
@@ -167,6 +174,12 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId, preset }: 
             status: draft.status,
             monitoring: draft.monitoring,
             assignedTo: draftAssignment(draft),
+            // Only kept while the item is still ticked as somebody’s responsibility. Unticking
+            // Driver and saving has to let the person go, or the row keeps a name the form
+            // no longer shows.
+            assignedDriverId: draft.handling.includes("driver-returnable")
+                ? (draft.assignedDriverId || undefined)
+                : undefined,
         };
         if (!editing) {
             // A new item goes straight into the list the way the pop-up's did — the page

@@ -6,7 +6,7 @@ import {
   CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe, Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TabScroller } from '@/components/ui/TabScroller';
+import { ProfileTabs } from '@/components/ui/ProfileTabs';
 import { SectionNav } from '@/components/ui/SectionNav';
 import { sectionId } from '@/components/ui/section-anchor';
 // Removed: import { Badge } from '../../components/ui/Badge';
@@ -2236,45 +2236,14 @@ const HEADER_TRANSITION =
           </div>
         </div>
 
-        {/* Tab Navigation — sectioned underline strip with thin vertical
-            dividers between groups (Identity · Records · Operations · Safety
-            · Finance · Other). Same pattern as the Asset Detail page so the
-            two profile views read consistently. */}
-        <div className="w-full px-4 sm:px-8 border-b border-slate-200">
-          <TabScroller ariaLabel="Driver sections" activeKey={activeTab}>
-            {tabs.map((tab, idx) => {
-              const showSeparator = idx > 0 && tabs[idx - 1]!.group !== tab.group;
-              const active = activeTab === tab.id;
-              const Icon = tab.icon;
-              return (
-                <React.Fragment key={tab.id}>
-                  {showSeparator && (
-                    <div aria-hidden className="h-5 w-px bg-slate-200 mx-1.5 self-center shrink-0" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`relative py-3 px-3 text-sm font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1.5 border-b-2 ${
-                      active
-                        ? 'text-blue-600 border-blue-600'
-                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300'
-                    }`}
-                    aria-current={active ? 'page' : undefined}
-                    data-tab-active={active || undefined}
-                  >
-                    {Icon && <Icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />}
-                    <span>{tab.label}</span>
-                    {typeof tab.count === 'number' && tab.count > 0 && (
-                      <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </TabScroller>
-        </div>
+        {/* Tab Navigation — the shared strip. The groups (Identity · Records ·
+            Operations · Safety · Other) are this page's; how they are drawn is not. */}
+        <ProfileTabs
+          ariaLabel="Driver sections"
+          activeId={activeTab}
+          onChange={setActiveTab}
+          tabs={tabs}
+        />
       </div>
 
       {/* Body — the only scrolling region on the page, so the header band above
@@ -3030,6 +2999,7 @@ const HEADER_TRANSITION =
                         holderId={driverData.id}
                         accountId={accountId}
                         onNavigate={onNavigate}
+                        showManage
                     />
                 </div>
             )}

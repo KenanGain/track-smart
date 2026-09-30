@@ -29,21 +29,26 @@ import { ShareToChat } from "@/components/share/ShareToChat";
 import { type RecordRef } from "@/pages/messages/messages-store";
 import { HolderInventoryPanel, useHolderInventory } from "./HolderInventoryPanel";
 import {
-    itemName, inventoryMonitoring, itemTravelsWithDriver, driverOfAsset,
+    itemName, inventoryMonitoring, assignmentOf,
     type InventoryItem,
 } from "./inventory.data";
 import { MONITOR_BASIS_LABEL, monitoredDateFor } from "@/pages/compliance/monitoring-schedule";
 import { fmtDate, daysUntil } from "./inventory-assignment";
-import { VIA_LABEL, VIA_TONE, type HeldItem, type HolderKind } from "./inventory-rollup";
+import { VIA_TONE, type HolderKind } from "./inventory-rollup";
 import { inventoryTrailSortable, useInventoryActivityStore } from "./inventory-activity";
-import { useDriverHandovers } from "./handovers.data";
 import { ActivityTimeline, type ActivityEntry } from "@/components/ui/ActivityTimeline";
 import { BackLink } from "@/components/ui/BackLink";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
-import { visualFor } from "./inventory-visuals";
-import { itemCategoryId } from "./inventory.data";
 
-type Tab = "inventory" | "driver" | "monitoring" | "activity";
+/**
+ * Four tabs, the same four on a unit and on a person.
+ *
+ * Overview comes first because it answers "what am I looking at" — who holds this, how
+ * much of it there is, and what of it is somebody’s to hand back. The tab that used to sit
+ * here was called "Driver" on a unit and "Carried" on a person, which made the two pages
+ * read as two different screens when they are one.
+ */
+type Tab = "overview" | "inventory" | "monitoring" | "activity";
 
 type Props = {
     onNavigate: (path: string) => void;
@@ -56,32 +61,23 @@ type Props = {
 };
 
 export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label, sub }: Props) {
-    const [tab, setTab] = useState<Tab>("inventory");
+    const [tab, setTab] = useState<Tab>("overview");
     const [shareOpen, setShareOpen] = useState(false);
 
     const isDriver = kind === "driver";
     const back = isDriver ? "/inventory/drivers" : "/inventory/assets";
     const { held, expiring, expired } = useHolderInventory(kind, holderId, accountId);
 
-    // Who is on it. A vehicle's driver is read off the vehicle rather than stored, so it
-    // follows a change of driver instead of naming whoever was on it last week.
-    const driver = useMemo(
-        () => (isDriver ? { id: holderId, name: label ?? "—" } : driverOfAsset(holderId, accountId)),
-        [isDriver, holderId, accountId, label],
-    );
-
     /**
-     * What the person actually carries.
+     * How much of this pile is ALSO filed somewhere else.
      *
-     * Not everything on the truck: a reefer sensor is bolted to it, and listing it under a
-     * driver's name would say they are responsible for something they cannot take off.
+     * The two assignments are independent, so a unit can hold something a person is
+     * answerable for too, and a person can hold something that belongs to a unit. That
+     * overlap is the only thing about the pile that is not already a column in the table,
+     * which is why it is the one number here that is not a date.
      */
-    const carried = useMemo(
-        () => held.filter((h) => itemTravelsWithDriver(h.item)),
-        [held],
-    );
-    const stays = useMemo(
-        () => held.filter((h) => !itemTravelsWithDriver(h.item)),
+    const alsoElsewhere = useMemo(
+        () => held.filter((h) => assignmentOf(h.item) === "both").length,
         [held],
     );
 
@@ -94,8 +90,6 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
         }).filter((r) => r.due);
         return rows.sort((a, b) => (a.days ?? 9e9) - (b.days ?? 9e9));
     }, [held]);
-
-    const { records } = useDriverHandovers(accountId ?? "acct-001");
 
     /**
      * A HOLDER's trail is the trails of everything it holds, merged newest-first.
@@ -113,17 +107,14 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
         const scope = accountId ?? "acct-001";
         const rows: (ActivityEntry & { sortAt: number })[] = [];
         for (const h of held) {
-            const handover = Object.values(records).find(
-                (r) => r.accountId === scope && r.lines.some((l) => l.itemId === h.item.id),
-            );
             const mine = (events[h.item.id] ?? []).filter((e) => e.accountId === scope);
-            for (const e of inventoryTrailSortable(h.item, accountId, handover, mine)) {
+            for (const e of inventoryTrailSortable(h.item, accountId, mine)) {
                 rows.push({ ...e, detail: [itemName(h.item), e.detail].filter(Boolean).join(" · ") });
             }
         }
         return rows.sort((a, b) => b.sortAt - a.sortAt).slice(0, 60)
             .map(({ sortAt: _s, ...rest }) => rest);
-    }, [held, records, accountId, events]);
+    }, [held, accountId, events]);
 
     const title = label ?? holderId;
 
@@ -157,8 +148,8 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
     };
 
     const TABS = [
+        { id: "overview" as const, label: "Overview", icon: UserRound },
         { id: "inventory" as const, label: "Inventory", icon: Boxes, count: held.length },
-        { id: "driver" as const, label: isDriver ? "Carried" : "Driver", icon: UserRound, count: carried.length },
         { id: "monitoring" as const, label: "Monitoring", icon: BellRing, count: watched.length },
         { id: "activity" as const, label: "Activity", icon: History, count: trail.length },
     ];
@@ -179,25 +170,22 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
                                 <h1 className="truncate text-xl font-black text-slate-900">{title}</h1>
                                 <p className="mt-0.5 truncate text-sm text-slate-500">
                                     {sub}
-                                    {!isDriver && driver && <> · driven by <span className="font-semibold text-slate-700">{driver.name}</span></>}
                                     {expired > 0 && <> · <span className="font-semibold text-rose-600">{expired} expired</span></>}
                                     {expired === 0 && expiring > 0 && <> · <span className="font-semibold text-amber-600">{expiring} expiring</span></>}
                                 </p>
                             </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                            {/* The one thing you came to do, on a VEHICLE. Inventory is filed
-                                against the vehicle and a driver holds the returnable half of
-                                whatever they drive, so there is nothing on a driver to assign —
-                                the button would open a form that writes to the truck behind them. */}
-                            {!isDriver && (
-                                <button
-                                    onClick={() => onNavigate(`${back}/${holderId}/assign`)}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
-                                >
-                                    <ClipboardList size={15} /> Manage inventory
-                                </button>
-                            )}
+                            {/* The one thing you came to do, and it is the same on both. A
+                                person can be made answerable for an item on their own — that
+                                is what the Driver tick means — so a driver’s page has just as
+                                much to assign as a truck’s. */}
+                            <button
+                                onClick={() => onNavigate(`${back}/${holderId}/assign`)}
+                                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
+                            >
+                                <ClipboardList size={15} /> Manage inventory
+                            </button>
                             <KebabMenu items={[
                                 { label: "Share to chat", icon: Share2, onClick: () => setShareOpen(true) },
                             ]} />
@@ -220,52 +208,26 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
                         <HolderInventoryPanel kind={kind} holderId={holderId} accountId={accountId} onNavigate={onNavigate} />
                     )}
 
-                    {/* ── Who carries it ──────────────────────────────── */}
-                    {tab === "driver" && (
+                    {/* ── What am I looking at ────────────────────────── */}
+                    {tab === "overview" && (
                         <div className="space-y-5">
-                            {!isDriver && (
-                                <Card
-                                    title={driver ? driver.name : "Nobody drives this yet"}
-                                    subtitle={driver
-                                        ? "Read off the vehicle, so it follows a change of driver."
-                                        : "Assign a driver on the asset and anything that rides in the cab goes with them."}
-                                    right={driver && (
-                                        <button
-                                            onClick={() => onNavigate(`/inventory/drivers/${driver.id}`)}
-                                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-                                        >
-                                            Their page ↗
-                                        </button>
-                                    )}
-                                >
-                                    <ItemLines
-                                        rows={carried}
-                                        kind={kind}
-                                        onNavigate={onNavigate}
-                                        empty={<>Nothing on {title} travels with its driver. Everything here is
-                                            fitted to the vehicle rather than carried.</>}
-                                    />
-                                </Card>
-                            )}
-                            {isDriver && (
-                                <Card
-                                    title="Driver returnable"
-                                    subtitle="What this person carries, and has to hand back."
-                                >
-                                    <ItemLines rows={carried} kind={kind} onNavigate={onNavigate}
-                                        empty={<>Nothing they hold travels with them.</>} />
-                                </Card>
-                            )}
-
-                            {/* Said rather than omitted: the count above is a subset, not a total. */}
-                            {stays.length > 0 && (
-                                <Card
-                                    title={isDriver ? "Stays with the vehicle" : "Stays on this vehicle"}
-                                    subtitle="Fitted to the unit rather than carried, so nobody hands it back."
-                                >
-                                    <ItemLines rows={stays} kind={kind} onNavigate={onNavigate} muted />
-                                </Card>
-                            )}
+                            {/* The numbers the rest of the page is about, said before any of
+                                it. The returnable / removable split used to be here; it was
+                                the item's TICK, not where it had gone, and now that the two
+                                assignments are independent the answer worth having is how
+                                much of this pile is filed in both places. */}
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <Stat label="Items held" value={held.length} />
+                                <Stat label={isDriver ? "Also on a unit" : "Also on a driver"}
+                                    value={alsoElsewhere} tone="blue" />
+                                <Stat label="Expiring soon" value={expiring} tone="amber" />
+                                <Stat label="Expired" value={expired} tone="rose" />
+                            </div>
+                            {/* No item lists here. Both of them  + what travels with the driver,
+                                what stays on the unit  + were the item's own tick read back as
+                                though it said where the thing had gone. The Inventory tab is
+                                the list, with an Assigned to column that says which of the
+                                two  + or both  + each row actually is. */}
                         </div>
                     )}
 
@@ -352,6 +314,23 @@ export function HolderDetailPage({ onNavigate, kind, holderId, accountId, label,
 
 // ── Furniture ───────────────────────────────────────────────────────────────
 
+/** One number on the Overview strip. */
+function Stat({ label, value, tone }: { label: string; value: number; tone?: "blue" | "amber" | "rose" }) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+            <p className={cn("mt-0.5 text-2xl font-black tabular-nums",
+                value === 0 ? "text-slate-300"
+                    : tone === "rose" ? "text-rose-600"
+                    : tone === "amber" ? "text-amber-600"
+                    : tone === "blue" ? "text-blue-700"
+                    : "text-slate-900")}>
+                {value}
+            </p>
+        </div>
+    );
+}
+
 function Card({ title, subtitle, right, children }: {
     title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode;
 }) {
@@ -369,55 +348,6 @@ function Card({ title, subtitle, right, children }: {
     );
 }
 
-/** One item per line, with the route that put it there. */
-function ItemLines({ rows, kind, onNavigate, empty, muted }: {
-    rows: HeldItem[];
-    kind: HolderKind;
-    onNavigate: (path: string) => void;
-    empty?: React.ReactNode;
-    muted?: boolean;
-}) {
-    if (rows.length === 0) {
-        return <p className="py-5 text-center text-[13px] leading-snug text-slate-400">{empty ?? "Nothing here."}</p>;
-    }
-    return (
-        <ul className="divide-y divide-slate-100">
-            {rows.map((h) => {
-                const visual = visualFor(itemCategoryId(h.item));
-                return (
-                    <li key={h.item.id}>
-                        <button
-                            onClick={() => onNavigate(`/inventory/items/${h.item.id}`)}
-                            className="flex w-full items-center gap-2.5 py-2.5 text-left"
-                        >
-                            <span className={cn(
-                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                                muted ? "bg-slate-100 text-slate-400" : cn(visual.avatarBg, visual.avatarText),
-                            )}>
-                                <visual.icon size={14} />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <span className={cn(
-                                    "block truncate text-[13px] font-semibold",
-                                    muted ? "text-slate-600" : "text-slate-800",
-                                )}>
-                                    {itemName(h.item)}
-                                </span>
-                                {h.item.serial && <span className="block truncate font-mono text-[11px] text-slate-500">{h.item.serial}</span>}
-                            </span>
-                            <span className={cn(
-                                "shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                VIA_TONE[h.via].chip,
-                            )}>
-                                {VIA_LABEL[kind][h.via]}
-                            </span>
-                        </button>
-                    </li>
-                );
-            })}
-        </ul>
-    );
-}
 
 // Icons kept for the tabs' own vocabulary.
 void PackageCheck; void AlertTriangle;

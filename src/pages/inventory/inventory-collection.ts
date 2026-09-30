@@ -22,12 +22,9 @@ import {
     type CollectionForm, type CollectionLine, type Conversation, type InventoryCollection,
 } from "@/pages/messages/messages-store";
 import { itemName, VENDORS, type InventoryItem } from "./inventory.data";
-import {
-    loadHandover, saveHandover, handoverStatusOf, removeLines, type DriverHandover,
-} from "./handovers.data";
 import { logInventoryEvent } from "./inventory-activity";
 import { logFormsRequested } from "./inventory-forms";
-import { updateInventoryItem, currentInventoryItems } from "./inventory-store";
+import { updateInventoryItem } from "./inventory-store";
 
 let seq = 0;
 const newId = () => `col-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -76,7 +73,6 @@ export function draftMovementNote(input: {
     const list = input.lines.map((l) => `• ${l.name}${l.serial ? ` (${l.serial})` : ""}`).join("\n");
     const person = input.counterparty?.kind === "person" ? input.counterparty.name?.trim() : "";
     const by = input.dueAt ? ` by ${formatDue(input.dueAt)}` : "";
-    const signing = input.lines.some((l) => l.route === "handed");
 
     // Which vehicle it is for. A driver who runs three units this month cannot act on
     // "collect two items" without being told which truck they belong to.
@@ -85,9 +81,7 @@ export function draftMovementNote(input: {
 
     if (input.direction === "collect") {
         return `Hi ${who} — you’ve been assigned ${what}${forUnit}. Please collect ${it} from ${person || "the office"}${by}:\n${list}\n\n`
-            + (signing
-                ? "You’ll be asked to sign for these when you pick them up."
-                : "Tick them off below once you have them.");
+            + "Tick them off below once you have them.";
     }
     const drop = person ? `hand ${it} to ${person}` : `drop ${it} back to the office`;
     return `Hi ${who} — could you ${drop}${by}${unit ? `, ${what} from ${unit}` : ""}:\n${list}\n\n`
@@ -198,41 +192,16 @@ export function confirmCollection(collectionId: string, collectedItemIds: string
     if (settled.direction === "return") return confirmReturn(settled, collectedItemIds);
 
     const got = new Set(collectedItemIds);
-    const handed = settled.lines.filter((l) => l.route === "handed" && got.has(l.itemId));
 
-    if (handed.length) {
-        const rec: DriverHandover | undefined = loadHandover(settled.accountId, settled.driverId);
-        if (rec) {
-            const verified = new Set(rec.verifiedItemIds ?? []);
-            // Only lines still on the checklist can be verified — an item taken back while the
-            // message sat unread must not come back as received.
-            const onList = new Set(rec.lines.map((l) => l.itemId));
-            for (const l of handed) if (onList.has(l.itemId)) verified.add(l.itemId);
-            saveHandover({ ...rec, verifiedItemIds: [...verified], updatedAt: Date.now() });
-        }
-    }
-
-    // A carried item that was waiting at the office is in a cab again. `alsoDriverOfAsset`
-    // is what the whole app reads as "the driver of this vehicle has it", so it goes back on
-    // — until it does, the list is right to show the vehicle holding it and nobody carrying it.
-    const carriedBack = settled.lines.filter((l) => l.route === "carried" && got.has(l.itemId));
-    if (carriedBack.length) {
-        const items = currentInventoryItems(settled.accountId);
-        for (const l of carriedBack) {
-            const it = items.find((x) => x.id === l.itemId);
-            if (it?.assignedTo && it.assignedTo.kind !== "driver") {
-                updateInventoryItem(l.itemId, { assignedTo: { ...it.assignedTo, alsoDriverOfAsset: true } });
-            }
-        }
-    }
-
+    // Picking it up does not change where it is filed. It was already assigned to this
+    // person — that is why they were asked to come and get it — so all that is recorded
+    // here is that they now physically have it.
     for (const l of settled.lines) {
         if (!got.has(l.itemId)) continue;
         logInventoryEvent({
             itemId: l.itemId, accountId: settled.accountId, kind: "verified",
             title: "Collected by driver",
-            detail: `${settled.driverName} confirmed they picked this up`
-                + (l.route === "handed" ? " — receipt recorded on the hand-over" : ""),
+            detail: `${settled.driverName} confirmed they picked this up`,
             by: settled.driverName, role: "Driver",
         });
     }
@@ -287,28 +256,17 @@ export function collectionsForDriver(convs: Conversation[], driverId: string): I
  */
 function confirmReturn(settled: InventoryCollection, returnedItemIds: string[]): InventoryCollection {
     const back = new Set(returnedItemIds);
-    const items = currentInventoryItems(settled.accountId);
-
-    const handedBack = settled.lines.filter((l) => l.route === "handed" && back.has(l.itemId));
-    if (handedBack.length) {
-        const rec: DriverHandover | undefined = loadHandover(settled.accountId, settled.driverId);
-        if (rec) saveHandover(removeLines(rec, handedBack.map((l) => l.itemId)));
-    }
 
     for (const l of settled.lines) {
         if (!back.has(l.itemId)) continue;
-        const it = items.find((x) => x.id === l.itemId);
-        if (l.route === "carried" && it?.assignedTo && it.assignedTo.kind !== "driver") {
-            const { alsoDriverOfAsset: _dropped, ...stays } = it.assignedTo;
-            updateInventoryItem(l.itemId, { assignedTo: stays });
-        } else if (l.route === "assigned") {
-            updateInventoryItem(l.itemId, { assignedTo: undefined });
-        }
+        // The PERSON lets go of it. Any unit it is also filed against keeps it: a fuel card
+        // handed in at the office still belongs to the truck it was issued for, and clearing
+        // that here would take a second thing off the record nobody asked to change.
+        updateInventoryItem(l.itemId, { assignedDriverId: undefined });
         logInventoryEvent({
             itemId: l.itemId, accountId: settled.accountId, kind: "updated",
             title: "Handed back to the office",
-            detail: `${settled.driverName} dropped this in`
-                + (l.route === "carried" ? " — waiting for the next driver" : ""),
+            detail: `${settled.driverName} dropped this in`,
             by: settled.driverName, role: "Driver",
         });
     }
@@ -324,11 +282,6 @@ function confirmReturn(settled: InventoryCollection, returnedItemIds: string[]):
     }
 
     return settled;
-}
-
-/** Whether a driver's hand-over now reads as fully verified — for the office-side badge. */
-export function handoverStatusFor(accountId: string, driverId: string) {
-    return handoverStatusOf(loadHandover(accountId, driverId));
 }
 
 /** What a vendor is called, for the card's second line. */

@@ -30,9 +30,15 @@ import {
 } from "./inventory-collection";
 import type { CollectionForm, CollectionLine } from "@/pages/messages/messages-store";
 
+/**
+ * The two things that can happen to a person, and the two that can happen to a unit.
+ *
+ * There used to be six. `hand-over` and `take-back` were a signed checklist — a third way
+ * for a driver to "have" something beside being assigned it — and they are gone: an item is
+ * on a unit, on a person, or on both, and each of those is one field.
+ */
 export type MovementKind =
     | "assign-driver" | "unassign-driver"
-    | "hand-over" | "take-back"
     | "assign-vehicle" | "unassign-vehicle";
 
 export { OFFICE, type Counterparty } from "./inventory-collection";
@@ -45,8 +51,6 @@ export interface Movement {
     person?: { id: string; name: string } | null;
     /** The vehicle it is filed against, for the card's second line. */
     holderLabel?: string;
-    /** Only true of a vehicle: it rides with whoever drives it. */
-    carried?: boolean;
 }
 
 /** One message, to one person, in one direction. */
@@ -69,16 +73,13 @@ export interface MovementPlan {
     note: string;
 }
 
-const routeFor = (m: Movement): CollectionLine["route"] =>
-    m.kind === "hand-over" || m.kind === "take-back" ? "handed"
-        : m.carried ? "carried"
-        : "assigned";
-
+// One route left. A line on a collection card is something the person is answerable for,
+// which is the only way anything reaches them now.
 const lineFor = (m: Movement): CollectionLine => ({
     itemId: m.item.id,
     name: itemName(m.item),
     serial: m.item.serial || undefined,
-    route: routeFor(m),
+    route: "assigned",
 });
 
 /**
@@ -89,24 +90,18 @@ const lineFor = (m: Movement): CollectionLine => ({
  */
 function directionOf(m: Movement): "collect" | "return" | null {
     switch (m.kind) {
-        case "assign-driver":
-        case "hand-over":
-            return "collect";
-        case "unassign-driver":
-        case "take-back":
-        case "unassign-vehicle":
-            return "return";
+        case "assign-driver": return "collect";
+        case "unassign-driver": return "return";
+        // A unit is not told anything. Filing a transponder against a truck asks nobody to
+        // do anything, and whether a person also has it is their own line.
         case "assign-vehicle":
-            return m.carried ? "collect" : null;
+        case "unassign-vehicle":
+            return null;
     }
 }
 
 /** Who a movement concerns, or nothing when it concerns no one. */
-function personOf(m: Movement): { id: string; name: string } | null {
-    if (m.kind === "assign-vehicle" && !m.carried) return null;
-    if (m.kind === "unassign-vehicle" && !m.carried) return null;
-    return m.person ?? null;
-}
+const personOf = (m: Movement) => m.person ?? null;
 
 
 /**

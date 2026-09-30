@@ -36,8 +36,8 @@ export interface InventoryItemDraft {
     vendorId: string;
     /** What kind of thing it is. Starts from the vendor's category, then it is the item's. */
     categoryId: string;
-    /** Who it follows off the asset — the driver, or the asset itself. */
-    handling: ItemHandling;
+    /** Where it can be filed — the unit, the driver, or both. Never empty. */
+    handling: ItemHandling[];
     name: string;
     serial: string;
     pin: string;
@@ -52,8 +52,8 @@ export interface InventoryItemDraft {
      */
     assignmentKind: AssignmentKind | "";
     targetId: string;
-    /** Only meaningful on a vehicle: the item is carried by whoever drives it. */
-    alsoDriverOfAsset: boolean;
+    /** The person filed against it, carried through the same way. */
+    assignedDriverId: string;
 }
 
 /** The sections, in order — the rail's steps and the cards on the page. */
@@ -71,9 +71,10 @@ export function emptyInventoryDraft(vendor?: Vendor): InventoryItemDraft {
     return {
         vendorId: vendor?.id ?? "",
         categoryId: vendor?.categoryId ?? "",
-        // The commoner of the two by a distance: most of what a carrier issues is signed
-        // out to a person. Something fitted to a truck says so.
-        handling: "driver-returnable",
+        // The unit’s until somebody says otherwise. Ticking Driver as well is a deliberate
+        // act, so the form must not start by claiming a person is answerable for something
+        // nobody has handed out.
+        handling: ["asset-removable"],
         name: defaultItemName(vendor),
         serial: "",
         pin: "",
@@ -83,19 +84,14 @@ export function emptyInventoryDraft(vendor?: Vendor): InventoryItemDraft {
         monitoring: defaultInventoryMonitoring(),
         assignmentKind: "cmv",
         targetId: "",
-        alsoDriverOfAsset: false,
+        assignedDriverId: "",
     };
 }
 
-/** The assignment a draft describes, or nothing while no target has been picked. */
+/** The unit assignment a draft describes, or nothing while no target has been picked. */
 export function draftAssignment(d: InventoryItemDraft): Assignment | undefined {
-    if (!d.assignmentKind || !d.targetId) return undefined;
-    return {
-        kind: d.assignmentKind,
-        targetId: d.targetId,
-        // Only ever true of a vehicle: a driver holding it directly IS the driver.
-        ...(d.assignmentKind !== "driver" && d.alsoDriverOfAsset ? { alsoDriverOfAsset: true } : {}),
-    };
+    if (!d.assignmentKind || !d.targetId || d.assignmentKind === "driver") return undefined;
+    return { kind: d.assignmentKind, targetId: d.targetId };
 }
 
 /** Enough to file: who it is from, what its number is, and when it was issued. */
@@ -106,7 +102,7 @@ export const draftIsValid = (d: InventoryItemDraft): boolean =>
 export function sectionFilled(id: InventorySectionId, d: InventoryItemDraft): number {
     const count = (...vals: unknown[]) => vals.filter(Boolean).length;
     switch (id) {
-        case "item": return count(d.vendorId, d.categoryId, d.handling, d.status, d.name.trim());
+        case "item": return count(d.vendorId, d.categoryId, d.handling.length > 0, d.status, d.name.trim());
         case "details": return count(d.serial.trim(), d.pin.trim(), d.issueDate, d.expiryDate, d.monitoring.enabled);
     }
 }
@@ -188,24 +184,33 @@ export function InventoryItemSection({ id, draft, onChange, accountId, vendors: 
                     </Select>
                 </Field>
 
-                {/* Who the item follows. Either way it is filed against the asset — what
-                    this settles is who it leaves with: a fuel card goes wherever the driver
-                    goes, a transponder stays screwed to the cab. It is the difference
-                    between asking somebody for it and going to fetch it. */}
+                {/* Where the item is filed, and it can be both. A truck’s fuel card belongs
+                    to the unit AND is in the driver’s pocket: tick both and it is assigned in
+                    both places, which is the difference between going to fetch something
+                    and asking somebody for it. */}
                 <div className="sm:col-span-2">
-                    <Field label="Assigned to" required>
+                    <Field label="Assigned to" required
+                        hint="Tick both where the item belongs to the unit and a person is answerable for it.">
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {ITEM_HANDLING.map((h) => {
-                                const on = draft.handling === h.id;
+                                const on = draft.handling.includes(h.id);
                                 return (
                                     <label key={h.id} className={cn(
                                         "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
                                         on ? "border-blue-300 bg-blue-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
                                     )}>
+                                        {/* Untickable down to one, not down to none: an item
+                                            filed nowhere is an item no list can offer. */}
                                         <input
-                                            type="radio" name="item-handling" value={h.id} checked={on}
-                                            onChange={() => set({ handling: h.id })}
-                                            className="mt-0.5 h-4 w-4 shrink-0 border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                                            type="checkbox" checked={on}
+                                            onChange={() => set({
+                                                handling: on
+                                                    ? (draft.handling.length > 1
+                                                        ? draft.handling.filter((x) => x !== h.id)
+                                                        : draft.handling)
+                                                    : [...draft.handling, h.id],
+                                            })}
+                                            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
                                         />
                                         <span className="min-w-0">
                                             <span className={cn("block text-[13px] font-semibold", on ? "text-blue-800" : "text-slate-800")}>{h.label}</span>

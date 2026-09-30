@@ -20,9 +20,6 @@ import {
     itemName, type InventoryItem,
 } from "./inventory.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
-import {
-    useDriverHandovers, handoverStatusOf, seedDemoHandovers, type HandoverStatus,
-} from "./handovers.data";
 import { KIND_TONE } from "./inventory-assignment";
 import {
     rollupByDriver, rollupByAsset, rollupTotals,
@@ -169,32 +166,9 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
         return additions.length ? [...additions, ...base] : base;
     }, [accountId, additions, applyEdit]);
 
-    const { records } = useDriverHandovers(accountId ?? "acct-001");
-
-    // Same seed as the List — a carrier landing on this tab first should still see who
-    // is holding what, rather than a Handed column of zeroes.
-    useEffect(() => {
-        const scope = accountId ?? "acct-001";
-        const roster = (CARRIER_DRIVERS[scope] ?? ACME_DRIVERS)
-            .filter((d: any) => d.status === "Active")
-            .map((d: any) => ({ id: d.id, name: d.name ?? `${d.firstName ?? ""} ${d.lastName ?? ""}`.trim() }));
-        seedDemoHandovers(scope, records, roster, items, "Fleet Manager");
-    }, [accountId, records, items]);
-
-    const handedTo = useMemo(() => {
-        const scope = accountId ?? "acct-001";
-        const m = new Map<string, { driverId: string; status: HandoverStatus }>();
-        for (const rec of Object.values(records)) {
-            if (rec.accountId !== scope) continue;
-            const status = handoverStatusOf(rec);
-            for (const line of rec.lines) m.set(line.itemId, { driverId: rec.driverId, status });
-        }
-        return m;
-    }, [records, accountId]);
-
     const allRows = useMemo(
-        () => (isDriver ? rollupByDriver : rollupByAsset)(items, accountId, handedTo),
-        [isDriver, items, accountId, handedTo],
+        () => (isDriver ? rollupByDriver : rollupByAsset)(items, accountId),
+        [isDriver, items, accountId],
     );
 
     /**
@@ -257,7 +231,6 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
             if (!q) return true;
             return r.label.toLowerCase().includes(q)
                 || r.sub.toLowerCase().includes(q)
-                || (r.driverLabel ?? "").toLowerCase().includes(q)
                 // Searching for a fuel card should find who has it, not just the card.
                 || r.items.some(({ item }) => itemName(item).toLowerCase().includes(q) || item.serial.toLowerCase().includes(q));
         });
@@ -327,7 +300,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
     // is not a table, and hiding the menu would leave no way to assign anything.
     const pickerColumns: PickerColumn<ColId>[] = [
         { id: "holder", label: isDriver ? "Driver" : "Asset", locked: true },
-        { id: "context", label: isDriver ? "Status" : "Driver" },
+        { id: "context", label: "Status" },
         // Only the Drivers tab has a driver type, and only the Assets tab has two kinds
         // of load to split. Offering either on the wrong tab offers a column of dashes.
         ...(isDriver
@@ -474,7 +447,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                         <thead>
                                             <tr>
                                                 <TH>{isDriver ? "Driver" : "Asset"}</TH>
-                                                {show("context") && (isDriver ? <TH>Status</TH> : <TH>Driver</TH>)}
+                                                {show("context") && <TH>Status</TH>}
                                                 {show("dq") && <TH>Driver type</TH>}
                                                 {/* On the Drivers tab this is the whole pile AND the returnable
                                                     count, which are the same number there — so it is named for
@@ -548,7 +521,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                                                 </div>
                                                             </div>
                                                         </TD>
-                                                        {show("context") && (isDriver ? (
+                                                        {show("context") && (
                                                             <TD>
                                                                 <span className={cn(
                                                                     "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
@@ -558,13 +531,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                                                     {r.status}
                                                                 </span>
                                                             </TD>
-                                                        ) : (
-                                                            <TD className="max-w-[12rem]">
-                                                                {r.driverLabel
-                                                                    ? <span className="truncate text-sm text-slate-700">{r.driverLabel}</span>
-                                                                    : <span className="text-xs text-slate-300">—</span>}
-                                                            </TD>
-                                                        ))}
+                                                        )}
                                                         {show("dq") && (
                                                             <TD>
                                                                 {dq ? (
@@ -609,16 +576,18 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                                             the row is for, and a menu that names only "Share to chat"
                                                             leaves the main verb to be guessed at.
 
-                                                            Assignment is an ASSET action. Nothing is filed against a
-                                                            person any more — a driver holds the returnable half of
-                                                            whatever they drive — so on the Drivers tab it opened a
-                                                            page to do something the model no longer does. */}
+                                                            Both tabs can assign. Inventory is the asset’s by default, so
+                                                            a driver holding something is a deliberate act — and the
+                                                            place to do it is the row of the person doing the
+                                                            holding. */}
                                                         <TD className="w-px text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
                                                             <KebabMenu items={[
                                                                 { label: isDriver ? "Open driver" : "Open asset", icon: ExternalLink, onClick: () => onNavigate(`${back}/${r.id}`) },
-                                                                ...(isDriver ? [] : [
-                                                                    { label: "Manage inventory", icon: ClipboardList, onClick: () => onNavigate(`${back}/${r.id}/assign`) },
-                                                                ]),
+                                                                {
+                                                                    label: isDriver ? "Assign inventory" : "Manage inventory",
+                                                                    icon: ClipboardList,
+                                                                    onClick: () => onNavigate(`${back}/${r.id}/assign`),
+                                                                },
                                                                 { label: "Share to chat", icon: Share2, onClick: () => setSharing(r) },
                                                             ]} />
                                                         </TD>

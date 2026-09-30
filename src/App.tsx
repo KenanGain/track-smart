@@ -37,9 +37,6 @@ import { AssignInventoryPage } from '@/pages/inventory/AssignInventoryPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
 import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
 import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
-import { DriverHandoverPage } from '@/pages/inventory/DriverHandoverPage'
-import { DriverInventoryPage } from '@/pages/inventory/DriverInventoryPage'
-import { TakeBackPage } from '@/pages/inventory/TakeBackPage'
 import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
@@ -426,9 +423,13 @@ function App() {
                 />
             )
         }
-        if (path === "/inventory/handover" || path === "/inventory/driver-inventory") {
-            // Hand Over & Driver Inventory are now folded into the List tab
-            // (via its handed-over switch). Bare links resolve to the List.
+        // The Hand Over, Driver Inventory and Take Back pages are gone: who holds an item
+        // is an assignment now, made on the driver's own page or the unit's, and a signed
+        // checklist was a third answer to a question that may only have one. Old links land
+        // on the List rather than on nothing.
+        if (path === "/inventory/handover" || path === "/inventory/driver-inventory"
+            || path.startsWith("/inventory/handover/") || path.startsWith("/inventory/driver-inventory/")
+            || path.startsWith("/inventory/take-back/")) {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return (
@@ -436,45 +437,6 @@ function App() {
                     onNavigate={handleNavigate}
                     accountId={account?.id}
                     accountName={account?.dbaName ?? account?.legalName}
-                />
-            )
-        }
-        if (path.startsWith("/inventory/handover/")) {
-            const account = selectedAccount
-                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            const initialDriverId = path.slice("/inventory/handover/".length)
-            return (
-                <DriverHandoverPage
-                    onNavigate={handleNavigate}
-                    accountId={account?.id}
-                    accountName={account?.dbaName ?? account?.legalName}
-                    initialDriverId={initialDriverId}
-                />
-            )
-        }
-        if (path.startsWith("/inventory/driver-inventory/")) {
-            const account = selectedAccount
-                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            const initialDriverId = path.slice("/inventory/driver-inventory/".length)
-            return (
-                <DriverInventoryPage
-                    onNavigate={handleNavigate}
-                    accountId={account?.id}
-                    accountName={account?.dbaName ?? account?.legalName}
-                    initialDriverId={initialDriverId}
-                />
-            )
-        }
-        if (path.startsWith("/inventory/take-back/")) {
-            const account = selectedAccount
-                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            const driverId = path.slice("/inventory/take-back/".length)
-            return (
-                <TakeBackPage
-                    onNavigate={handleNavigate}
-                    accountId={account?.id}
-                    accountName={account?.dbaName ?? account?.legalName}
-                    driverId={driverId}
                 />
             )
         }

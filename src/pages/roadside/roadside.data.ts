@@ -79,6 +79,14 @@ export const REMEDIATION_BY_LABEL: Record<RemediationBy, string> = {
 /** Where a document came in from. A driver's phone upload is worth marking. */
 export type DocSource = "portal" | "driver-app";
 
+/** The two dollars a North American fleet is billed in. */
+export type BillCurrency = "USD" | "CAD";
+export const BILL_CURRENCIES: BillCurrency[] = ["USD", "CAD"];
+
+/** Miles or kilometres. Asked, never assumed — the same fleet runs both. */
+export type DistanceUnit = "mi" | "km";
+export const DISTANCE_UNITS: DistanceUnit[] = ["mi", "km"];
+
 // ── Records ─────────────────────────────────────────────────────────────────
 
 /** One uploaded file on an inspection. */
@@ -91,8 +99,24 @@ export interface RoadsideDoc {
     uploadedAt: string;
     uploadedBy: string;
     source: DocSource;
-    /** Remediation reports only — who actually did the re-inspection. */
+    /**
+     * The date ON the document.
+     *
+     * Not `uploadedAt`: an inspection report written at the roadside on Tuesday
+     * and photographed on Friday has two dates, and the one that matters to
+     * anybody reading the record is the first.
+     */
+    documentDate?: string;
+    /** Remediation reports only — whether a mechanic or the driver did it. */
     performedBy?: RemediationBy;
+    /**
+     * Remediation reports only — the PERSON, by name.
+     *
+     * "A mechanic" is a category; an auditor asking who signed off a brake repair
+     * wants the name on the sheet. The two are kept apart because one is a fact
+     * about the kind of work and the other is a fact about who did it.
+     */
+    performedByName?: string;
     /** Remediation reports only — the day the re-inspection happened. */
     performedOn?: string;
     /**
@@ -103,8 +127,24 @@ export interface RoadsideDoc {
      * the other.
      */
     assetIds?: string[];
-    /** Repair bills only — what the shop charged, as typed. */
+    /** Repair bills only — what the shop charged in total, as typed. */
     amount?: string;
+
+    // Repair bills only — who did the work, and what it came to. Kept on the
+    // document rather than on the inspection: one inspection can send the tractor
+    // to one shop and the trailer to another, and each bill is its own vendor.
+    vendorName?: string;
+    vendorCompany?: string;
+    vendorEmail?: string;
+    vendorPhone?: string;
+    /** Which dollar. A cross-border fleet gets both, and an unlabelled number is
+     *  the one that turns into a reconciliation argument. */
+    currency?: BillCurrency;
+    labour?: string;
+    parts?: string;
+    /** What the vehicle had run when the work was done. */
+    odometer?: string;
+    odometerUnit?: DistanceUnit;
 }
 
 /** One of the three inspected parties, and what was found against it. */
@@ -116,6 +156,14 @@ export interface RoadsideParty {
     hasViolation: boolean;
     /** Only meaningful when `hasViolation` — the linked violation categories. */
     violations: TicketViolation[];
+    /**
+     * The driver only: was the logbook actually looked at?
+     *
+     * A Level III with no hours-of-service violation means two different things
+     * depending on this, and the report says which. Undefined means nobody
+     * recorded it, which is not the same as "no".
+     */
+    logbookInspected?: boolean;
 }
 
 export const emptyParty = (): RoadsideParty => ({ hasViolation: false, violations: [] });
@@ -132,6 +180,21 @@ export const emptyParty = (): RoadsideParty => ({ hasViolation: false, violation
  * roadside inspection is actually written up for, each carrying its real FMCSA
  * code so the category and group fill themselves in from the master chart.
  */
+/**
+ * The four buckets an inspector writes a violation under.
+ *
+ * Offered first, on every party, because they are what a person reading the paper
+ * report is looking at — the specific code comes off the sheet afterwards, in the
+ * search below. A list that opens on seven specific defects makes you scan for
+ * yours; a list that opens on four categories matches the form in your hand.
+ */
+export const VIOLATION_BASICS: readonly { label: string; code: string }[] = [
+    { label: "Vehicle Maintenance", code: "396.3" },
+    { label: "Driver Fitness", code: "391.11" },
+    { label: "Cargo Securement", code: "392.9A" },
+    { label: "Hours of Service Compliance", code: "395.8" },
+];
+
 export const ROADSIDE_PRESETS: Record<PartyKind, readonly { label: string; code: string }[]> = {
     truck: [
         { label: "Brakes out of adjustment", code: "393.47(e)" },
@@ -171,6 +234,10 @@ export interface RoadsideInspection {
     endTime?: string;
     level: InspectionLevel;
     location: string;
+    /** The looked-up address behind `location`, when it came from the lookup. */
+    locationCity?: string;
+    locationState?: string;
+    locationCountry?: string;
     result: InspectionResult;
     /** Anything placed out of service — the vehicle, the trailer, or the driver. */
     oos: boolean;
@@ -182,6 +249,10 @@ export interface RoadsideInspection {
     truck: RoadsideParty;
     trailer: RoadsideParty;
     driver: RoadsideParty;
+
+    /** What the power unit had run at the roadside, and in which unit of distance. */
+    truckOdometer?: string;
+    truckOdometerUnit?: DistanceUnit;
 
     notes?: string;
 
@@ -246,10 +317,21 @@ export const isMaintenanceRelated = (i: RoadsideInspection): boolean =>
  * found on the equipment → it needs a remediation inspection, and if the fault
  * was a maintenance one it needs the bill for the work as well.
  */
+/**
+ * Is a re-inspection owed on this one?
+ *
+ * The RESULT decides it, not a reading of the violation list. A failed inspection
+ * is a failed inspection: something has to be put right and somebody has to say
+ * it was, whether what failed was a brake drum or the driver's logbook. Reading
+ * it off the categories instead meant a Fail could quietly close itself because
+ * nothing on it looked mechanical.
+ */
+export const remediationRequired = (i: RoadsideInspection): boolean => i.result === "Fail" || i.oos;
+
 export function inspectionStage(i: RoadsideInspection): InspectionStage {
-    if (!hasVehicleViolation(i) && !i.oos) {
-        // A driver-only violation has nothing to re-inspect: no light to fix, no
-        // shop to visit. It is closed as soon as it is recorded.
+    if (!remediationRequired(i)) {
+        // Passed, and nothing ordered off the road. A violation noted on a pass is
+        // recorded and done — there is nothing outstanding to chase.
         return allViolations(i).length > 0 ? "closed" : "clean";
     }
     if (i.remediation.length === 0) return "awaiting-report";

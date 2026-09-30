@@ -3,7 +3,7 @@ import {
     Plus, Boxes, Search,
     Truck, IdCard, Pencil, Layers,
     CircleCheck, Clock, AlertTriangle, CircleSlash,
-    PackageCheck, Share2, Tag,
+    Share2, Tag, UserRoundPlus,
     Bell, BellOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,26 +12,22 @@ import {
     getInventoryForCarrier,
     VENDORS,
     VENDOR_CATEGORIES,
-    ACME_DRIVERS,
     CARRIER_NAME,
     itemName,
     itemCategoryId,
-    itemTravelsWithDriver,
-    handlingLabel,
-    HANDLING_ALL_LABEL,
+    itemAssetAssignment,
     inventoryMonitoring,
     type InventoryItem,
     type InventoryStatus,
     type VendorCategory,
 } from "./inventory.data";
 import { MONITOR_BASIS_LABEL } from "@/pages/compliance/monitoring-schedule";
-import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import {
-    useDriverHandovers, handoverStatusOf, seedDemoHandovers, type HandoverStatus,
-} from "./handovers.data";
-import {
-    resolveAsset, resolveDriver, itemOnAsset, KIND_TONE, fmtDate,
+    resolveAsset, resolveDriver, itemAssigned, KIND_TONE, fmtDate,
 } from "./inventory-assignment";
+import { AssignItemDialog, type AssignmentPatch } from "./AssignItemDialog";
+import { logInventoryEvent } from "./inventory-activity";
+import { currentUserName } from "@/data/users.data";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
 import { setMessagesFocus, consumePendingRecord, type RecordRef } from "@/pages/messages/messages-store";
@@ -58,14 +54,16 @@ type InvGroupBy = "none" | "where" | "status" | "category" | "vendor";
 /**
  * The two questions a status cannot answer.
  *
- * Where it is — out on something, or on a shelf — and what kind of thing it is: something
- * a person signs for and gives back, or something bolted to a unit. Chasing a driver who is
- * leaving is the first list; stripping a truck that is going is the second.
+ * Where it is — out on something, or on a shelf.
+ *
+ * It used to ask a second question beside this one — Both / Driver / Asset, which kind of
+ * thing each row was. That split is the item’s own answer and it is already printed in the
+ * Asset and Driver columns; as a filter it only ever told you what you could already see,
+ * one half at a time.
  */
 type InvAssign = "all" | "assigned" | "unassigned";
-type InvHandling = "all" | "returnable" | "removable";
 
-/** Is it on a vehicle, or on nothing. The only question assignment asks. */
+/** Is it on a unit or a person, or on nothing. The only question assignment asks. */
 const INV_ASSIGN: { id: InvAssign; label: string }[] = [
     { id: "all", label: "All items" },
     { id: "assigned", label: "Assigned" },
@@ -74,17 +72,6 @@ const INV_ASSIGN: { id: InvAssign; label: string }[] = [
     { id: "unassigned", label: "Available" },
 ];
 
-/**
- * And if it is on one: does it come back with the driver, or come off the unit.
- *
- * A question ABOUT the vehicle an item is on, which is why it is asked second and only of
- * assigned items. Of something sitting on a shelf it has no answer.
- */
-const INV_HANDLING: { id: InvHandling; label: string }[] = [
-    { id: "all", label: HANDLING_ALL_LABEL },
-    { id: "returnable", label: handlingLabel("driver-returnable") },
-    { id: "removable", label: handlingLabel("asset-removable") },
-];
 
 // One word each, and the control names itself once. "Assignment" rather than "where it is"
 // because that is what the bands say: on a vehicle, with a driver, not assigned.
@@ -153,7 +140,6 @@ const TD = ({ children, className, onClick }: {
 export function InventoryListPage({ onNavigate, accountId, accountName }: Props) {
     const [search, setSearch] = useState("");
     const [assign, setAssign] = useState<InvAssign>("all");
-    const [handling, setHandling] = useState<InvHandling>("all");
     const [activeCat, setActiveCat] = useState<string>("All");
     const [groupBy, setGroupBy] = useState<InvGroupBy>("none");
     const [page, setPage] = useState(0);
@@ -167,7 +153,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     // The two localStorage overlays on the frozen seed: items added in the app, and edits
     // made to any item. Without the second, saving a change to a seeded row did nothing
     // visible here — the list re-read the module and showed the original values.
-    const { additions, applyEdit } = useInventoryAdditions(accountId);
+    const { additions, applyEdit, update } = useInventoryAdditions(accountId);
 
     // Inventory items are scoped to the active carrier, with any inline-added
     // items layered on top. With no `accountId` we fall back to the global
@@ -176,39 +162,34 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
         const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyEdit);
         return additions.length ? [...additions, ...base] : base;
     }, [accountId, additions, applyEdit]);
-
-    // Item ids currently on some driver's hand-over list (from the Hand Over
-    // module) — drives the Handed over / Not handed over switch.
-    const { records } = useDriverHandovers(accountId ?? "acct-001");
-
-    // Which driver holds which item, off the same hand-over records. `itemsHandedElsewhere`
-    // answers "is it out?"; the Driver column has to say WHO, so the lines are read again
-    // here into an item → driver map.
-    const handedTo = useMemo(() => {
-        const scope = accountId ?? "acct-001";
-        const m = new Map<string, { driverId: string; status: HandoverStatus }>();
-        for (const rec of Object.values(records)) {
-            if (rec.accountId !== scope) continue;
-            const status = handoverStatusOf(rec);
-            for (const line of rec.lines) m.set(line.itemId, { driverId: rec.driverId, status });
-        }
-        return m;
-    }, [records, accountId]);
-
-    // The demo hand-overs used to be written only when the Hand Over page was opened, so a
-    // carrier that came straight here had none — and the Driver column and the
-    // "Handed to driver" filter had nothing to show. Seeding is a no-op once the carrier has
-    // any record of its own.
-    useEffect(() => {
-        const scope = accountId ?? "acct-001";
-        const roster = (CARRIER_DRIVERS[scope] ?? ACME_DRIVERS)
-            .filter((d: any) => d.status === "Active")
-            .map((d: any) => ({ id: d.id, name: d.name ?? `${d.firstName ?? ""} ${d.lastName ?? ""}`.trim() }));
-        seedDemoHandovers(scope, records, roster, items, "Fleet Manager");
-    }, [accountId, records, items]);
-
     // An item being shared into a chat. Null when the dialog is closed.
     const [shareItem, setShareItem] = useState<InventoryItem | null>(null);
+
+    /**
+     * The item being assigned, from its own row. Null when the dialog is closed.
+     *
+     * Inventory is the asset’s until somebody says otherwise, so putting a person on one is
+     * a per-item act rather than something the form guesses from what kind of thing it is.
+     * The trail records which of the two it went to, because "Assigned" on its own does not
+     * tell you where to go and look for it.
+     */
+    const [assignItem, setAssignItem] = useState<InventoryItem | null>(null);
+    const saveAssignment = (item: InventoryItem, patch: AssignmentPatch, label: string) => {
+        // The patch only carries the destinations the item is ticked for, so saving a
+        // driver cannot quietly clear the unit the item is also on.
+        update(item.id, patch);
+        const gone = patch.assignedTo === undefined && patch.assignedDriverId === undefined;
+        logInventoryEvent({
+            itemId: item.id, accountId: accountId ?? "acct-001",
+            kind: gone ? "updated" : "assigned",
+            title: gone ? "Unassigned"
+                : patch.assignedTo && patch.assignedDriverId ? "Assigned to vehicle and driver"
+                : patch.assignedDriverId ? "Assigned to driver" : "Assigned to vehicle",
+            detail: gone ? "Taken back from " + label : label,
+            by: currentUserName(), role: "Office",
+        });
+        setAssignItem(null);
+    };
     const itemRef = (it: InventoryItem): RecordRef => {
         const vendor = VENDORS.find((v) => v.id === it.vendorId);
         return {
@@ -236,7 +217,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             if (it.status === "Active") active++;
             else if (it.status === "Expiring Soon") expiring++;
             else if (it.status === "Expired") expired++;
-            if (!itemOnAsset(it.assignedTo)) unassigned++;
+            if (!itemAssigned(it)) unassigned++;
         }
         return { total: items.length, active, expiring, expired, unassigned };
     }, [items]);
@@ -256,57 +237,27 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     // bands all four places at once rather than showing one at a time.
     const baseFiltered = useMemo(
         () => items.filter((it) => {
-            // Assigned means one thing: it is on a vehicle.
-            const on = itemOnAsset(it.assignedTo);
+            // Assigned means one thing: it is on a unit, or on a named person.
+            const on = itemAssigned(it);
             if (assign === "assigned" && !on) return false;
             if (assign === "unassigned" && on) return false;
-            // …and, of the ones that are, which kind. Narrowing to a kind is itself a
-            // statement that the item is on something, so it carries the assignment with it
-            // rather than leaving you a selection that describes nothing.
-            if (handling !== "all" && !on) return false;
-            if (handling === "returnable" && !itemTravelsWithDriver(it)) return false;
-            if (handling === "removable" && itemTravelsWithDriver(it)) return false;
             return true;
         }),
-        [items, assign, handling],
+        [items, assign],
     );
 
-    /**
-     * What each chip would find if you pressed it.
-     *
-     * Each group is counted with the OTHER group's chip already applied, and neither is
-     * counted against itself. So with "Available" held down, "Driver returnable 3" means
-     * three unassigned returnables — pressing it really does leave you three rows. Counting
-     * both off the whole list would promise numbers the list cannot show.
-     */
+    /** What each chip would find if you pressed it. */
     const whatCounts = useMemo(() => {
-        // The assignment chips are counted within the kind you are holding, so pressing one
-        // really does leave you that many rows. The kind chips are counted within the
-        // ASSIGNED items only, because that is the only set they describe.
-        const keepKind = (it: InventoryItem) =>
-            handling === "all" ? true
-                : handling === "returnable" ? itemTravelsWithDriver(it)
-                : !itemTravelsWithDriver(it);
-
-        let kindTotal = 0, assignedIn = 0, assignedTotal = 0, returnableIn = 0;
-        for (const it of items) {
-            const on = itemOnAsset(it.assignedTo);
-            if (keepKind(it)) { kindTotal += 1; if (on) assignedIn += 1; }
-            if (on) { assignedTotal += 1; if (itemTravelsWithDriver(it)) returnableIn += 1; }
-        }
+        let assigned = 0;
+        for (const it of items) if (itemAssigned(it)) assigned += 1;
         return {
             assign: {
-                all: kindTotal,
-                assigned: assignedIn,
-                unassigned: kindTotal - assignedIn,
+                all: items.length,
+                assigned,
+                unassigned: items.length - assigned,
             } as Record<InvAssign, number>,
-            handling: {
-                all: assignedTotal,
-                returnable: returnableIn,
-                removable: assignedTotal - returnableIn,
-            } as Record<InvHandling, number>,
         };
-    }, [items, assign, handling]);
+    }, [items]);
 
     const tabs = useMemo(() => {
         const present = VENDOR_CATEGORIES.filter((c) => baseFiltered.some((it) => categoryIdOf(it) === c.id));
@@ -361,7 +312,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
         // It used to have four bands, two of which ("Signed across to a driver", "With a
         // driver") described how somebody came to be holding the thing rather than what it
         // is assigned to. Who is carrying it is the Driver column's job.
-        return itemOnAsset(it.assignedTo)
+        return itemAssigned(it)
             ? { rank: 0, label: "Assigned" }
             : { rank: 1, label: "Available" };
     };
@@ -388,7 +339,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     }, [groupedRows, groupBy]);
 
     // Pagination over the filtered item rows.
-    useEffect(() => { setPage(0); }, [search, assign, handling, activeCat, groupBy, accountId]);
+    useEffect(() => { setPage(0); }, [search, assign, activeCat, groupBy, accountId]);
     const pageCount = Math.max(1, Math.ceil(groupedRows.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
     const pagedRows = groupedRows.slice(safePage * perPage, safePage * perPage + perPage);
@@ -469,9 +420,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     to be asked. A status filter would be a fourth way to say "Expired" —
                     the KPI tiles, the category strip and the pill on every row say it. */}
                 <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 bg-slate-50/40 px-5 py-2">
-                    {/* Is it on a vehicle. Dropping to "Available" drops the kind with
-                        it: an item on nothing is neither returnable from nor removable
-                        off anything. */}
+                    {/* Is it on anything. One question, three chips. */}
                     {INV_ASSIGN.map((o) => (
                         <FilterChip
                             key={o.id}
@@ -479,28 +428,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             count={whatCounts.assign[o.id]}
                             on={assign === o.id}
                             always={o.id === "all"}
-                            onClick={() => {
-                                setAssign(o.id);
-                                if (o.id === "unassigned") setHandling("all");
-                            }}
-                        />
-                    ))}
-                    <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" aria-hidden />
-                    {/* And of the assigned ones, which kind. Picking one says "assigned"
-                        as well, because that is the only set it can describe — otherwise
-                        the row would sit reading "Available + Driver returnable" over
-                        an empty table. */}
-                    {INV_HANDLING.map((o) => (
-                        <FilterChip
-                            key={o.id}
-                            label={o.label}
-                            count={whatCounts.handling[o.id]}
-                            on={handling === o.id}
-                            always={o.id === "all"}
-                            onClick={() => {
-                                setHandling(o.id);
-                                if (o.id !== "all" && assign === "unassigned") setAssign("assigned");
-                            }}
+                            onClick={() => setAssign(o.id)}
                         />
                     ))}
                     <select
@@ -516,15 +444,14 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     >
                         {INV_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
-                    {/* Five controls can be left set at once — two chip groups, the category
-                        tab, the grouping and the search box. This puts all five back, and is
-                        only here while one of them is set. */}
+                    {/* Four controls can be left set at once — the assignment chips, the
+                        category tab, the grouping and the search box. This puts all four
+                        back, and is only here while one of them is set. */}
                     <ResetFilters
-                        on={assign !== "all" || handling !== "all" || groupBy !== "none"
+                        on={assign !== "all" || groupBy !== "none"
                             || activeCat !== "All" || search.trim() !== ""}
                         onReset={() => {
                             setAssign("all");
-                            setHandling("all");
                             setGroupBy("none");
                             setActiveCat("All");
                             setSearch("");
@@ -541,10 +468,10 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                 ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
                                 : "Try a different category, or show all items."}
                         </p>
-                        {(search.trim() || assign !== "all" || handling !== "all" || activeCat !== "All") && (
+                        {(search.trim() || assign !== "all" || activeCat !== "All") && (
                             <button
                                 type="button"
-                                onClick={() => { setSearch(""); setAssign("all"); setHandling("all"); setActiveCat("All"); }}
+                                onClick={() => { setSearch(""); setAssign("all"); setActiveCat("All"); }}
                                 className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
                             >
                                 Clear filters
@@ -577,8 +504,8 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                     const prev = i === 0 || groupBy === "none" ? null : groupOfItem(pagedRows[i - 1]);
                                     const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                     const visual = visualFor(categoryIdOf(item) ?? "");
-                                    const onAsset = resolveAsset(item.assignedTo, accountId);
-                                    const withDriver = resolveDriver(item.assignedTo, accountId, handedTo.get(item.id));
+                                    const onAsset = resolveAsset(itemAssetAssignment(item), accountId);
+                                    const withDriver = resolveDriver(item, accountId);
                                     return (
                                         <Fragment key={item.id}>
                                         {g && (!prev || prev.label !== g.label) && (
@@ -675,17 +602,16 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     <span className="text-xs text-slate-300">—</span>
                                                 )}
                                             </TD>
-                                            {/* The person — assigned to them, driving the vehicle it is on, or
-                                                holding it on a signed hand-over. */}
+                                            {/* The person this is filed against. One route, because there
+                                                is only one: somebody put it on them. */}
                                             <TD className="border-l border-slate-100">
                                                 {withDriver ? (
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <span className={cn(
                                                             "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0",
-                                                            withDriver.via === "handed" ? KIND_TONE.violet : KIND_TONE.emerald
+                                                            KIND_TONE.emerald
                                                         )}>
-                                                            {withDriver.via === "handed" ? <PackageCheck size={10} /> : <IdCard size={10} />}
-                                                            {withDriver.via === "handed" ? "Handed" : "Driver"}
+                                                            <IdCard size={10} /> Driver
                                                         </span>
                                                         <div className="min-w-0 leading-tight">
                                                             <div className="text-sm font-semibold text-slate-900 truncate">{withDriver.label}</div>
@@ -727,6 +653,11 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                         Tickets and the compliance records — one overflow menu per row rather
                                                         than a widening strip of icons. */}
                                                     <KebabMenu items={[
+                                                        {
+                                                            label: itemAssigned(item) ? "Change assignment" : "Assign",
+                                                            icon: UserRoundPlus,
+                                                            onClick: () => setAssignItem(item),
+                                                        },
                                                         { label: "Share to chat", icon: Share2, onClick: () => setShareItem(item) },
                                                     ]} />
                                                 </div>
@@ -751,6 +682,15 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             </div>
             </div>
             </div>
+
+            {assignItem && (
+                <AssignItemDialog
+                    item={assignItem}
+                    accountId={accountId}
+                    onClose={() => setAssignItem(null)}
+                    onSave={(patch, label) => saveAssignment(assignItem, patch, label)}
+                />
+            )}
 
             <VendorCategoriesModal
                 open={categoriesOpen}

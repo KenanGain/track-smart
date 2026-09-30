@@ -22,8 +22,7 @@
 import { useEffect, useState } from "react";
 import { activityMeta, ACTIVITY_BADGE_TONE, type ActivityKind } from "@/components/ui/activity-kinds";
 import type { ActivityEntry } from "@/components/ui/ActivityTimeline";
-import { VENDORS, itemName, type InventoryItem } from "./inventory.data";
-import { handoverStatusOf, type DriverHandover } from "./handovers.data";
+import { VENDORS, itemName, itemAssetAssignment, type InventoryItem } from "./inventory.data";
 import { resolveAsset, resolveDriver, driverNameOf, parseCalendarDate } from "./inventory-assignment";
 
 export type InventoryEvent = {
@@ -99,8 +98,12 @@ export function describeChanges(before: InventoryItem, after: InventoryItem): st
     const aa = before.assignedTo, bb = after.assignedTo;
     if (aa?.kind !== bb?.kind || aa?.targetId !== bb?.targetId) {
         out.push(`Assignment: ${aa ? `${aa.kind} ${aa.targetId}` : "none"} → ${bb ? `${bb.kind} ${bb.targetId}` : "none"}`);
-    } else if (!!aa?.alsoDriverOfAsset !== !!bb?.alsoDriverOfAsset) {
-        out.push(bb?.alsoDriverOfAsset ? "Now carried by the vehicle's driver" : "No longer carried by the vehicle's driver");
+    }
+    // The person is a separate line from the unit, so it is diffed separately: an item can
+    // change hands without leaving the truck.
+    const ad = before.assignedDriverId, bd = after.assignedDriverId;
+    if (ad !== bd) {
+        out.push(`Driver: ${ad ? driverNameOf(ad, undefined) ?? ad : "none"} → ${bd ? driverNameOf(bd, undefined) ?? bd : "none"}`);
     }
     const am = before.monitoring, bm = after.monitoring;
     if (!!am?.enabled !== !!bm?.enabled) out.push(bm?.enabled ? "Alert turned on" : "Alert turned off");
@@ -160,7 +163,6 @@ function derived(
 export function inventoryTrailSortable(
     item: InventoryItem,
     accountId: string | undefined,
-    handover: DriverHandover | undefined,
     events: InventoryEvent[],
 ): (ActivityEntry & { sortAt: number })[] {
     const rows: (ActivityEntry & { sortAt: number })[] = [];
@@ -177,39 +179,14 @@ export function inventoryTrailSortable(
 
     // Where it went. Dated to the issue date because that is the only date the record
     // carries for it — an assignment changed later leaves a recorded "Updated" entry.
-    const onAsset = resolveAsset(item.assignedTo, accountId);
-    const withDriver = resolveDriver(item.assignedTo, accountId, undefined);
+    const onAsset = resolveAsset(itemAssetAssignment(item), accountId);
+    const withDriver = resolveDriver(item, accountId);
     if (onAsset || withDriver) {
         const where = [
             onAsset && `${onAsset.kindLabel} ${onAsset.label}`,
-            withDriver && (withDriver.via === "drives" ? `carried by ${withDriver.label}` : withDriver.label),
+            withDriver && withDriver.label,
         ].filter(Boolean).join(" · ");
         rows.push(derived(`${item.id}-assigned`, "assigned", item.issueDate, "Assigned", where));
-    }
-
-    if (handover) {
-        const status = handoverStatusOf(handover);
-        const who = driverNameOf(handover.driverId, accountId) ?? "a driver";
-        if (handover.staffSignoff?.done && handover.staffSignoff.date) {
-            rows.push(derived(
-                `${item.id}-handed`, "signed", handover.staffSignoff.date,
-                "Handed over to driver",
-                `${who} · ${handover.checklistName || "Hand-over checklist"}`,
-                handover.staffSignoff.name || handover.issuedByName,
-            ));
-        }
-        if (status === "verified" && handover.driverSignoff?.date) {
-            rows.push(derived(
-                `${item.id}-verified`, "verified", handover.driverSignoff.date,
-                "Receipt confirmed by driver", `${who} signed for the items`, who,
-            ));
-        }
-        if ((handover.takeBackRequestedItemIds ?? []).includes(item.id)) {
-            rows.push(derived(
-                `${item.id}-takeback`, "requested", fmtIsoOf(handover.updatedAt),
-                "Return requested", `${who} has been asked to hand this back`,
-            ));
-        }
     }
 
     if (item.expiryDate) {
@@ -233,17 +210,11 @@ export function inventoryTrailSortable(
 export function inventoryTrail(
     item: InventoryItem,
     accountId: string | undefined,
-    handover: DriverHandover | undefined,
     events: InventoryEvent[],
 ): ActivityEntry[] {
-    return inventoryTrailSortable(item, accountId, handover, events)
+    return inventoryTrailSortable(item, accountId, events)
         .map(({ sortAt: _sortAt, ...rest }) => rest);
 }
-
-const fmtIsoOf = (ms: number) => {
-    const d = new Date(ms);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
 
 /** Live view of the whole recorded trail, keyed by item. */
 export function useInventoryActivityStore(): Store {

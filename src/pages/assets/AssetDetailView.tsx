@@ -14,6 +14,7 @@ import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { Asset } from './assets.data';
 import { GvwrTag } from './GvwrTag';
+import { ProfileTabs } from '@/components/ui/ProfileTabs';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import { CreateOrderModal } from './CreateOrderModal';
@@ -1670,44 +1671,18 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
             </div>
         </div>
 
-        {/* Tabs strip — grouped by `group` field with thin vertical
-            separators between categories so the bar reads as four sections:
-            Compliance · Operations · Safety · Alerts. Same blue-underline
-            active style as the SubTabs component. */}
-        <div className="bg-white px-4 sm:px-8 border-b border-slate-200">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
-            {tabs.map((tab, idx) => {
-              const showSeparator = idx > 0 && tabs[idx - 1].group !== tab.group;
-              const active = activeTab === tab.name;
-              const Icon = tab.icon;
-              return (
-                <React.Fragment key={tab.name}>
-                  {showSeparator && (
-                    <div aria-hidden="true" className="h-5 w-px bg-slate-200 mx-2 self-center shrink-0" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(tab.name)}
-                    className={`relative py-3 px-3 text-sm font-medium whitespace-nowrap transition-colors inline-flex items-center gap-2 border-b-2 ${
-                      active
-                        ? 'text-blue-600 border-blue-600'
-                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300'
-                    }`}
-                    aria-current={active ? 'page' : undefined}
-                  >
-                    <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                    <span>{tab.label ?? tab.name}</span>
-                    {tab.count > 0 && (
-                      <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
+        {/* Tabs strip — the same component the driver profile uses, so the two pages
+            cannot drift apart again on icon size, spacing or where the underline sits.
+            The groups (Compliance · Operations · Safety · Alerts) still come from this
+            page's own list; the strip only draws them. */}
+        <ProfileTabs
+          ariaLabel="Asset sections"
+          activeId={activeTab}
+          onChange={setActiveTab}
+          tabs={tabs.map((t) => ({
+            id: t.name, label: t.label ?? t.name, icon: t.icon, count: t.count, group: t.group,
+          }))}
+        />
         </div>{/* end sticky top section */}
 
         {/* Tab content — slate-50 page background visible around the content,
@@ -3586,19 +3561,18 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
               </div>
             )}
 
-            {/* Inventory Content — same shape as Maintenance: header card
-                with title, search + sort row, status chips, table, and the
-                shared PaginationBar. */}
+            {/* Inventory Content — the panel brings its own card, exactly as it does on a
+                driver's profile. Wrapping it in another one put a white panel inside a
+                white panel with two sets of padding between the tab and the table. */}
             {activeTab === 'Inventory' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <Card className="p-5">
-                  <HolderInventoryPanel
-                    kind="asset"
-                    holderId={asset.id}
-                    accountId={accountId}
-                    onNavigate={onNavigate}
-                  />
-                </Card>
+                <HolderInventoryPanel
+                  kind="asset"
+                  holderId={asset.id}
+                  accountId={accountId}
+                  onNavigate={onNavigate}
+                  showManage
+                />
               </div>
             )}
 

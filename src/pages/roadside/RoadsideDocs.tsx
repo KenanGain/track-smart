@@ -20,15 +20,33 @@
 // how "Uploaded" ends up meaning something slightly different in each of them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Eye, FileText, Receipt, ShieldCheck, Trash2, Truck, Wrench, User } from "lucide-react";
+import { Eye, FileText, Receipt, ShieldCheck, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UploadZone } from "@/components/ui/UploadZone";
+import { DocFields, billTotal } from "./RoadsideDocFields";
 import {
-    REMEDIATION_BY_LABEL, isMaintenanceRelated, hasVehicleViolation, newDoc, unitOptionsFor,
-    type RemediationBy, type RoadsideDoc, type RoadsideInspection,
+    isMaintenanceRelated, remediationRequired, newDoc, unitOptionsFor,
+    type RoadsideDoc, type RoadsideInspection,
 } from "./roadside.data";
 
 type Shelf = "reports" | "remediation" | "repairBills";
+
+/** What a filed document says about itself, for a row nobody can edit. */
+function docSummary(
+    shelf: Shelf, doc: RoadsideDoc, units: { id: string; label: string }[],
+): string {
+    if (shelf === "reports") return doc.documentDate ? `Dated ${doc.documentDate}` : "No date on the report.";
+    if (shelf === "remediation") {
+        return [doc.performedByName?.trim() || "Performer not stated", doc.performedOn || null]
+            .filter(Boolean).join(" · ");
+    }
+    const named = units.filter((u) => doc.assetIds?.includes(u.id)).map((u) => u.label);
+    return [
+        billTotal(doc) ? `${doc.currency ?? "USD"} ${billTotal(doc)}` : null,
+        doc.vendorCompany?.trim() || doc.vendorName?.trim() || null,
+        named.length ? named.join(" + ") : "No unit assigned",
+    ].filter(Boolean).join(" · ");
+}
 
 
 const fmtSize = (n?: number): string =>
@@ -40,7 +58,8 @@ const fmtWhen = (iso: string): string => {
 };
 
 /** One filed document, with whatever that shelf makes it say about itself. */
-function DocRow({ doc, shelf, units, onRemove, onPatch, readOnly }: {
+function DocRow({ inspection, doc, shelf, units, onRemove, onPatch, readOnly }: {
+    inspection: RoadsideInspection;
     doc: RoadsideDoc;
     shelf: Shelf;
     units: { id: string; label: string }[];
@@ -84,96 +103,18 @@ function DocRow({ doc, shelf, units, onRemove, onPatch, readOnly }: {
                 )}
             </div>
 
-            {/* A remediation report has to say who performed it. Asked on the document,
-                not on the inspection: two re-inspections can be done by two people. */}
-            {shelf === "remediation" && (
-                <div className="grid gap-3 border-t border-emerald-100 pt-3 sm:grid-cols-2">
-                    <div>
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Performed by</p>
-                        {readOnly ? (
-                            <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-700">
-                                {doc.performedBy === "driver" ? <User size={13} /> : <Wrench size={13} />}
-                                {doc.performedBy ? REMEDIATION_BY_LABEL[doc.performedBy] : "Not stated"}
-                            </p>
-                        ) : (
-                            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
-                                {(["mechanic", "driver"] as RemediationBy[]).map((k) => (
-                                    <button key={k} type="button" onClick={() => onPatch?.({ performedBy: k })}
-                                        className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                                            doc.performedBy === k ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}>
-                                        {k === "driver" ? <User size={12} /> : <Wrench size={12} />} {REMEDIATION_BY_LABEL[k]}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Re-inspected on</p>
-                        {readOnly
-                            ? <p className="text-[13px] font-semibold text-slate-700">{doc.performedOn || "—"}</p>
-                            : <input type="date" value={doc.performedOn ?? ""} onChange={(e) => onPatch?.({ performedOn: e.target.value })}
-                                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-800 outline-none focus:border-emerald-500" />}
-                    </div>
-                    {!doc.performedBy && !readOnly && (
-                        <p className="text-[11px] text-amber-700 sm:col-span-2">
-                            Say whether a mechanic or the driver performed it &mdash; the two are not the same evidence.
-                        </p>
-                    )}
+            {/* The same questions the Add-record dialog asks. One definition, so a bill
+                filed here and one filed there cannot end up holding different things. */}
+            {!readOnly && onPatch ? (
+                <div className="border-t border-slate-100 pt-3">
+                    <DocFields inspection={inspection} shelf={shelf} doc={doc} onPatch={onPatch} />
                 </div>
+            ) : (
+                <p className="border-t border-slate-100 pt-3 text-[12px] text-slate-600">
+                    {docSummary(shelf, doc, units)}
+                </p>
             )}
 
-            {/* A repair bill belongs to units. Often two of them. */}
-            {shelf === "repairBills" && (
-                <div className="space-y-3 border-t border-amber-100 pt-3">
-                    <div>
-                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                            Units this bill covers
-                        </p>
-                        {units.length === 0 ? (
-                            <p className="text-[12px] italic text-slate-400">No truck or trailer on this inspection yet.</p>
-                        ) : readOnly ? (
-                            <div className="flex flex-wrap gap-1.5">
-                                {units.filter((u) => doc.assetIds?.includes(u.id)).map((u) => (
-                                    <span key={u.id} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-amber-800">
-                                        <Truck size={12} /> {u.label}
-                                    </span>
-                                ))}
-                                {!doc.assetIds?.length && <span className="text-[12px] italic text-slate-400">Not assigned to a unit.</span>}
-                            </div>
-                        ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                                {units.map((u) => {
-                                    const on = !!doc.assetIds?.includes(u.id);
-                                    return (
-                                        <button key={u.id} type="button"
-                                            onClick={() => onPatch?.({
-                                                assetIds: on
-                                                    ? (doc.assetIds ?? []).filter((x) => x !== u.id)
-                                                    : [...(doc.assetIds ?? []), u.id],
-                                            })}
-                                            className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors",
-                                                on ? "border-amber-500 bg-amber-100 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300")}>
-                                            <Truck size={12} /> {u.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                    <div className="sm:w-44">
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Amount</p>
-                        {readOnly
-                            ? <p className="text-[13px] font-semibold text-slate-700">{doc.amount ? `$${doc.amount}` : "—"}</p>
-                            : <input value={doc.amount ?? ""} onChange={(e) => onPatch?.({ amount: e.target.value })} placeholder="412.60"
-                                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-800 outline-none focus:border-amber-500" />}
-                    </div>
-                    {!doc.assetIds?.length && !readOnly && units.length > 0 && (
-                        <p className="text-[11px] text-amber-700">
-                            Pick the unit (or both) this bill was spent on, or the cost is lost against the vehicle.
-                        </p>
-                    )}
-                </div>
-            )}
         </div>
     );
 }
@@ -213,7 +154,9 @@ export function DocShelf({ inspection, uploadedBy, onChange, readOnly }: {
     readOnly?: boolean;
 }) {
     const units = unitOptionsFor(inspection);
-    const needsRemediation = hasVehicleViolation(inspection) || inspection.oos;
+    // A FAILED inspection needs a re-inspection, whatever it failed on. Reading it off
+     // the violation categories instead is what put "nothing to re-inspect" under a Fail.
+    const needsRemediation = remediationRequired(inspection);
     const needsBill = isMaintenanceRelated(inspection);
 
     const add = (shelf: Shelf, files: FileList | null) => {
@@ -261,14 +204,14 @@ export function DocShelf({ inspection, uploadedBy, onChange, readOnly }: {
                         <p className="text-[11px] text-slate-500">{blurb}</p>
 
                         {docs.map((d) => (
-                            <DocRow key={d.id} doc={d} shelf={key} units={units} readOnly={readOnly}
+                            <DocRow key={d.id} inspection={inspection} doc={d} shelf={key} units={units} readOnly={readOnly}
                                 onPatch={(p) => patch(key, d.id, p)} onRemove={() => remove(key, d.id)} />
                         ))}
 
                         {idle && docs.length === 0 ? (
                             <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[12px] text-slate-500">
                                 {key === "remediation"
-                                    ? "Nothing was found against the equipment, so there is nothing to re-inspect."
+                                    ? "This inspection passed and nothing was put out of service, so there is nothing to re-inspect."
                                     : "No maintenance-related violation on this inspection, so no repair to bill for."}
                             </p>
                         ) : readOnly ? (

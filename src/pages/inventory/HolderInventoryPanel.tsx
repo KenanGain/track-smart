@@ -18,19 +18,18 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
-    Boxes, Search, Pencil, Plus, AlertTriangle, Clock, ChevronRight,
+    Boxes, Search, Pencil, AlertTriangle, Clock, ChevronRight, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TablePager } from "./TablePager";
 import {
     INVENTORY_ITEMS, getInventoryForCarrier, itemName, VENDORS, VENDOR_CATEGORIES,
-    getCategoryLabel, itemTravelsWithDriver, itemCategoryId, handlingLabel, HANDLING_ALL_LABEL,
+    getCategoryLabel, itemCategoryId, assignmentOf, ASSIGNED_TO_LABEL, type AssignedTo,
     type InventoryItem, type InventoryStatus,
 } from "./inventory.data";
 import { TabScroller } from "@/components/ui/TabScroller";
 import { ResetFilters } from "@/components/ui/ListChrome";
 import { useInventoryAdditions } from "./inventory-store";
-import { useDriverHandovers, handedToMap } from "./handovers.data";
 import {
     rollupByDriver, rollupByAsset,
     type HeldItem, type HolderKind,
@@ -43,7 +42,7 @@ import { fmtDate, daysUntil } from "./inventory-assignment";
  * `handling` first, because it is the one the item itself answers and the one that decides
  * who has to do something about it.
  */
-type GroupBy = "none" | "handling" | "status" | "category" | "vendor";
+type GroupBy = "none" | "assigned" | "status" | "category" | "vendor";
 
 /**
  * `assetOnly` marks the question only a vehicle can answer. A driver holds the returnable
@@ -52,18 +51,40 @@ type GroupBy = "none" | "handling" | "status" | "category" | "vendor";
  */
 const GROUPS: { id: GroupBy; label: string; assetOnly?: boolean }[] = [
     { id: "none", label: "Group by" },
-    { id: "handling", label: "Handling", assetOnly: true },
+    // Where it is FILED, which both kinds can answer now that the two assignments are
+    // independent: a driver's pile can hold something that is also on a unit, and a unit's
+    // can hold something somebody is also answerable for.
+    { id: "assigned", label: "Assigned to" },
     { id: "status", label: "Status" },
     { id: "category", label: "Category" },
     { id: "vendor", label: "Vendor" },
 ];
 
+/** Where an item is filed, in one chip. */
+const ASSIGNED_TONE: Record<AssignedTo, string> = {
+    both: "border-violet-200 bg-violet-50 text-violet-700",
+    driver: "border-blue-200 bg-blue-50 text-blue-700",
+    asset: "border-slate-200 bg-slate-50 text-slate-600",
+    none: "border-slate-200 bg-white text-slate-400",
+};
+
+function AssignedChip({ where }: { where: AssignedTo }) {
+    return (
+        <span className={cn(
+            "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+            ASSIGNED_TONE[where],
+        )}>
+            {ASSIGNED_TO_LABEL[where]}
+        </span>
+    );
+}
+
 /** Which band a row falls in, and where that band sits. */
 function groupOf(by: GroupBy, h: HeldItem): { rank: number; label: string } {
-    if (by === "handling") {
-        return itemTravelsWithDriver(h.item)
-            ? { rank: 0, label: handlingLabel("driver-returnable") }
-            : { rank: 1, label: handlingLabel("asset-removable") };
+    if (by === "assigned") {
+        const where = assignmentOf(h.item);
+        const rank = { both: 0, driver: 1, asset: 2, none: 3 }[where];
+        return { rank, label: ASSIGNED_TO_LABEL[where] };
     }
     if (by === "status") {
         // Worst first, as everywhere else in this module.
@@ -108,26 +129,20 @@ const categoryOf = (it: InventoryItem) => {
  */
 export function useHolderInventory(kind: HolderKind, holderId: string, accountId?: string) {
     const { additions, applyEdit } = useInventoryAdditions(accountId);
-    const { records } = useDriverHandovers(accountId ?? "acct-001");
 
     const items = useMemo(() => {
         const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyEdit);
         return additions.length ? [...additions, ...base] : base;
     }, [accountId, additions, applyEdit]);
 
-    const handedTo = useMemo(
-        () => handedToMap(records, accountId ?? "acct-001"),
-        [records, accountId],
-    );
-
     const row = useMemo(() => {
-        const rows = (kind === "driver" ? rollupByDriver : rollupByAsset)(items, accountId, handedTo);
+        const rows = (kind === "driver" ? rollupByDriver : rollupByAsset)(items, accountId);
         return rows.find((r) => r.id === holderId);
-    }, [kind, items, accountId, handedTo, holderId]);
+    }, [kind, items, accountId, holderId]);
 
     return {
         held: row?.items ?? [],
-        via: row?.via ?? { direct: 0, carried: 0, handed: 0 },
+        via: row?.via ?? { returnable: 0, removable: 0 },
         expiring: row?.expiring ?? 0,
         expired: row?.expired ?? 0,
     };
@@ -135,16 +150,25 @@ export function useHolderInventory(kind: HolderKind, holderId: string, accountId
 
 type SortKey = "expiry" | "vendor" | "issued";
 
-export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: {
+export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate, showManage }: {
     kind: HolderKind;
     holderId: string;
     accountId?: string;
     /** Without it the panel still reads; it just cannot offer to change anything. */
     onNavigate?: (path: string) => void;
+    /**
+     * Show the Manage inventory button above the table.
+     *
+     * Off by default, and on for the two places this panel is EMBEDDED — the driver
+     * profile and the asset record. Those pages have their own headers, full of their own
+     * actions, and nothing in them is about inventory; without this the tab is a table you
+     * can read and not a screen you can do anything on. The inventory module’s own holder
+     * page leaves it off, because its header already carries the same button.
+     */
+    showManage?: boolean;
 }) {
     const { held, expiring, expired } = useHolderInventory(kind, holderId, accountId);
     const isDriver = kind === "driver";
-    const back = isDriver ? "drivers" : "assets";
 
     const [search, setSearch] = useState("");
     /**
@@ -154,17 +178,18 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
      * What you filter by is what you are chasing: a driver leaving hands back everything
      * returnable, and a truck going off the road gives up everything removable.
      */
-    const [handling, setHandling] = useState<"all" | "returnable" | "removable">("all");
     const [groupBy, setGroupBy] = useState<GroupBy>("none");
     const [status, setStatus] = useState<InventoryStatus | "all">("all");
     const [cat, setCat] = useState<string>(ALL_CAT);
-    // Nine columns on a vehicle, eight on a driver: "Comes back" would read the same on
-    // every row of a driver's pile, because a driver holds only the returnable half.
-    const COLS = isDriver
-        ? ["Item", "Type", "Serial #", "PIN #", "Issued", "Expires", "Status", ""]
-        // "Assigned to", as the item form asks it — the cell under it now reads "Driver"
-        // or "Asset", and "Comes back: Driver" is not a sentence.
-        : ["Item", "Type", "Serial #", "PIN #", "Issued", "Expires", "Assigned to", "Status", ""];
+    /**
+     * The same nine on both kinds.
+     *
+     * "Assigned to" used to be an asset-only column printing the item’s own tick, on the
+     * grounds that every row of a driver’s pile would read the same. It no longer does: the
+     * two assignments are independent, so a driver’s row can say Driver or Both, and that
+     * is exactly what somebody looking at their pile wants to know.
+     */
+    const COLS = ["Item", "Type", "Serial", "PIN", "Issued", "Expires", "Assigned to", "Status", ""];
     const groupOptions = GROUPS.filter((g) => !isDriver || !g.assetOnly);
     const [sort, setSort] = useState<SortKey>("expiry");
     const [dir, setDir] = useState<1 | -1>(1);
@@ -175,8 +200,6 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
         const q = search.trim().toLowerCase();
         const list = held.filter((h) => {
             if (cat !== ALL_CAT && (itemCategoryId(h.item) || "") !== cat) return false;
-            if (handling === "returnable" && !itemTravelsWithDriver(h.item)) return false;
-            if (handling === "removable" && itemTravelsWithDriver(h.item)) return false;
             if (status !== "all" && h.item.status !== status) return false;
             if (!q) return true;
             return itemName(h.item).toLowerCase().includes(q)
@@ -194,7 +217,7 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
         // pages and a page never opens mid-group with no heading above it.
         if (groupBy === "none") return sorted;
         return sorted.sort((a, b) => groupOf(groupBy, a).rank - groupOf(groupBy, b).rank);
-    }, [held, search, cat, handling, status, sort, dir, groupBy]);
+    }, [held, search, cat, status, sort, dir, groupBy]);
 
     // Counts are of the WHOLE filtered list, not of the page: a band reading "2" on page one
     // and "2" again on page two is two different twos.
@@ -210,7 +233,7 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
     }, [rows, groupBy]);
 
     // A filter that empties the page should not leave you on page 4 of nothing.
-    useEffect(() => { setPage(0); }, [search, cat, handling, status, groupBy]);
+    useEffect(() => { setPage(0); }, [search, cat, status, groupBy]);
 
     /**
      * The category strip, built from what this holder actually has.
@@ -240,14 +263,6 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
     }, [catTabs, cat]);
 
     const paged = rows.slice(page * perPage, page * perPage + perPage);
-    const handlingTabs = useMemo(() => {
-        const ret = held.filter((h) => itemTravelsWithDriver(h.item)).length;
-        return [
-            { id: "all" as const, label: HANDLING_ALL_LABEL, count: held.length },
-            { id: "returnable" as const, label: handlingLabel("driver-returnable"), count: ret },
-            { id: "removable" as const, label: handlingLabel("asset-removable"), count: held.length - ret },
-        ];
-    }, [held]);
 
     const sortBtn = (key: SortKey, label: string) => (
         <button
@@ -266,22 +281,20 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
         <div className="space-y-4">
             {/* No heading: all three callers render this under a tab that already says
                 "Inventory", on a page whose title is the holder. */}
-            <div className="flex flex-wrap items-center justify-end gap-3">
-                {onNavigate && (
-                    <div className="flex flex-wrap items-center gap-2">
-                        {/* Putting something that already exists onto this holder is the page's
-                            own action, and the page header already has it. Two buttons to the
-                            same route is a choice between identical things. */}
-                        <button
-                            type="button"
-                            onClick={() => onNavigate(`/inventory/${back}/${holderId}/add`)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
-                        >
-                            <Plus size={14} /> Add inventory
-                        </button>
-                    </div>
-                )}
-            </div>
+            {/* One action, and it is the same screen the inventory module opens: the whole
+                pile, what is free to add to it, and one save. There is no second route
+                that skips the list. */}
+            {showManage && onNavigate && (
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={() => onNavigate(`/inventory/${isDriver ? "drivers" : "assets"}/${holderId}/assign`)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
+                    >
+                        <ClipboardList size={15} /> Manage inventory
+                    </button>
+                </div>
+            )}
 
             {/* What needs attention, if anything does. A row of zeroes is noise. */}
             {(expiring > 0 || expired > 0) && (
@@ -355,27 +368,11 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                     </select>
                 </div>
 
-                {/* What KIND of thing, which is the question you have when a driver leaves
-                    (everything returnable comes back) or a truck goes off the road
-                    (everything removable comes off). HOW it got here stays a column. */}
+                {/* The Both / Driver / Asset switch used to sit here. It filtered on the
+                    same answer the "Assigned to" column already prints, one half at a
+                    time — and the Handling grouping below says it for the whole pile at
+                    once, which is what somebody stripping a truck actually needs. */}
                 <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2">
-                    {!isDriver && handlingTabs.map((t) => (
-                        <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => setHandling(t.id)}
-                            disabled={t.count === 0 && t.id !== "all"}
-                            className={cn(
-                                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-bold transition-colors",
-                                handling === t.id ? "bg-blue-600 text-white"
-                                    : t.count === 0 && t.id !== "all" ? "cursor-not-allowed text-slate-300"
-                                    : "text-slate-600 hover:bg-slate-100",
-                            )}
-                        >
-                            {t.label}
-                            <span className={cn("text-[11px]", handling === t.id ? "text-blue-100" : "text-slate-400")}>{t.count}</span>
-                        </button>
-                    ))}
                     <select
                         value={groupBy}
                         onChange={(e) => setGroupBy(e.target.value as GroupBy)}
@@ -389,14 +386,13 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                     >
                         {groupOptions.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
-                    {/* Five here: the category tab, the handling chips, the status select,
-                        the grouping and the search box. */}
+                    {/* Four here: the category tab, the status select, the grouping and the
+                        search box. */}
                     <ResetFilters
-                        on={cat !== ALL_CAT || handling !== "all" || status !== "all"
+                        on={cat !== ALL_CAT || status !== "all"
                             || groupBy !== "none" || search.trim() !== ""}
                         onReset={() => {
                             setCat(ALL_CAT);
-                            setHandling("all");
                             setStatus("all");
                             setGroupBy("none");
                             setSearch("");
@@ -443,7 +439,7 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                                     const days = item.expiryDate ? daysUntil(item.expiryDate) : null;
                                     const band = groupBy === "none" ? null : groupOf(groupBy, h);
                                     const prev = i === 0 || groupBy === "none" ? null : groupOf(groupBy, paged[i - 1]);
-                                    const rides = itemTravelsWithDriver(item);
+                                    const where = assignmentOf(item);
                                     return (
                                         <Fragment key={item.id}>
                                         {band && (!prev || prev.label !== band.label) && (
@@ -490,19 +486,12 @@ export function HolderInventoryPanel({ kind, holderId, accountId, onNavigate }: 
                                                     </>
                                                 ) : <span className="text-slate-400">no expiry</span>}
                                             </td>
-                                            {/* What the ITEM says about itself, which is what decides who has
-                                                to do something when a driver leaves or a truck goes off road.
-                                                Not on a driver: every row there would read the same. */}
-                                            {!isDriver && (
-                                                <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
-                                                    <span className={cn(
-                                                        "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                        rides ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600",
-                                                    )}>
-                                                        {handlingLabel(rides ? "driver-returnable" : "asset-removable")}
-                                                    </span>
-                                                </td>
-                                            )}
+                                            {/* Where it is filed, not what it is ticked for. An item can be
+                                                on a unit and on a person at once, and that is the answer
+                                                somebody chasing it needs. */}
+                                            <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
+                                                <AssignedChip where={where} />
+                                            </td>
                                             <td className="whitespace-nowrap border-l border-slate-200 px-3 py-2">
                                                 <span className={cn(
                                                     "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",

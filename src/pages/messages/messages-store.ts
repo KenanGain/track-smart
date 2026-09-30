@@ -82,8 +82,10 @@ export interface CollectionLine {
   name: string;
   serial?: string;
   /**
-   * How they came to hold it: filed against them or their vehicle, riding in the cab of
-   * a vehicle they drive, or signed across on a hand-over checklist.
+   * How they came to hold it. Only `assigned` is written now — somebody filed the item
+   * against this person. The other two are a cab they happened to be driving and a signed
+   * hand-over checklist, neither of which exists any more; they stay in the type so cards
+   * sent before the change still read.
    */
   route: 'assigned' | 'carried' | 'handed';
 }

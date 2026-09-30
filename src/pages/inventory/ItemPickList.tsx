@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { TabScroller } from "@/components/ui/TabScroller";
 import { TablePager } from "./TablePager";
 import {
-    itemName, itemCategoryId, itemTravelsWithDriver, handlingLabel, HANDLING_ALL_LABEL,
+    itemName, itemCategoryId, goesToDriver, goesToAsset, itemDriverId, handlingLabel,
     VENDORS, VENDOR_CATEGORIES,
     type InventoryItem, type InventoryStatus,
 } from "./inventory.data";
@@ -56,6 +56,36 @@ const vendorOf = (it: InventoryItem) => {
     const v = VENDORS.find((x) => x.id === it.vendorId);
     return v?.companyName || v?.name || "—";
 };
+
+/** The category an item is in, in the words the tabs use. */
+const categoryLabelOf = (it: InventoryItem): string =>
+    VENDOR_CATEGORIES.find((c) => c.id === itemCategoryId(it))?.name ?? "Other";
+
+/**
+ * Is a person answerable for this one?
+ *
+ * Three answers, not two. An item that has been ASKED — its own ticks — says Yes or No
+ * and means it. One that has never been asked and is filed against nobody reads N/A,
+ * which is the true answer to "what did somebody say about this item": nothing yet.
+ */
+function ReturnablePill({ item }: { item: InventoryItem }) {
+    if (item.handling === undefined && !itemDriverId(item)) {
+        return (
+            <span title="Nobody has set this on the item yet"
+                className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-semibold text-slate-400">
+                N/A
+            </span>
+        );
+    }
+    const yes = goesToDriver(item);
+    return (
+        <span title={yes ? handlingLabel("driver-returnable") : handlingLabel("asset-removable")}
+            className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-bold",
+                yes ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600")}>
+            {yes ? "Yes" : "No"}
+        </span>
+    );
+}
 
 /** One of the two ticks on a row. */
 export function Tick({ on, tone, label, disabledReason, onToggle }: {
@@ -128,7 +158,6 @@ function StatusPill({ status }: { status: InventoryStatus }) {
 const ALL = "All";
 
 type PickWhat = "all" | "on" | "free";
-type PickHandling = "all" | "returnable" | "removable";
 type PickGroup = "none" | "assignment" | "category" | "vendor" | "handling" | "status";
 
 const PICK_GROUPS: { id: PickGroup; label: string }[] = [
@@ -180,7 +209,6 @@ export function ItemPickList({
     // does it come back with the driver. Same chips, same Group by, same Reset as the
     // Inventory list and the holder panel.
     const [what, setWhat] = useState<PickWhat>("all");
-    const [handling, setHandling] = useState<PickHandling>("all");
     const [groupBy, setGroupBy] = useState<PickGroup>("none");
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
@@ -218,7 +246,7 @@ export function ItemPickList({
 
     // Narrowing the list puts you back at the start of it: page 4 of a list that now has
     // two pages is an empty table, which reads as "nothing matches".
-    useEffect(() => { setPage(0); }, [cat, search, what, handling, groupBy]);
+    useEffect(() => { setPage(0); }, [cat, search, what, groupBy]);
 
     // The tab and the search box narrow both halves, so a category with nothing free in it
     // still shows what is already on the vehicle rather than reading as empty.
@@ -249,33 +277,28 @@ export function ItemPickList({
         return out.filter((r) => {
             if (what === "on" && !r.on) return false;
             if (what === "free" && r.on) return false;
-            if (handling === "returnable" && !itemTravelsWithDriver(r.item)) return false;
-            if (handling === "removable" && itemTravelsWithDriver(r.item)) return false;
             return true;
         });
-    }, [held, items, matches, what, handling]);
+    }, [held, items, matches, what]);
 
-    /** What each chip would find, before it narrows anything. */
+    /**
+     * What each chip would find, before it narrows anything.
+     *
+     * Driver-returnable is no longer one of them. Splitting the list by it hid half
+     * the carrier's kit behind a chip whose two answers are a PROPERTY of each row,
+     * not two different lists — so it is a column now, and everything is on screen.
+     */
     const counts = useMemo(() => {
         const base: { item: InventoryItem; on: boolean }[] = [
             ...held.filter((h) => matches(h.item)).map((h) => ({ item: h.item, on: true })),
             ...items.filter(matches).map((it) => ({ item: it, on: false })),
         ];
-        const kept = base.filter(({ item }) =>
-            handling === "all" ? true
-                : handling === "returnable" ? itemTravelsWithDriver(item)
-                : !itemTravelsWithDriver(item));
-        const inWhat = base.filter(({ on }) => what === "all" ? true : what === "on" ? on : !on);
-        const ret = inWhat.filter(({ item }) => itemTravelsWithDriver(item)).length;
         return {
-            all: kept.length,
-            on: kept.filter((r) => r.on).length,
-            free: kept.filter((r) => !r.on).length,
-            kindAll: inWhat.length,
-            returnable: ret,
-            removable: inWhat.length - ret,
+            all: base.length,
+            on: base.filter((r) => r.on).length,
+            free: base.filter((r) => !r.on).length,
         };
-    }, [held, items, matches, what, handling]);
+    }, [held, items, matches]);
 
     /** Which band a row falls in, and where that band sits. */
     const groupOfRow = (r: { item: InventoryItem; on: HeldPickRow | null }): { rank: number; label: string } => {
@@ -287,9 +310,13 @@ export function ItemPickList({
         }
         if (groupBy === "vendor") return { rank: 0, label: vendorOf(r.item) || "No vendor" };
         if (groupBy === "handling") {
-            return itemTravelsWithDriver(r.item)
-                ? { rank: 0, label: handlingLabel("driver-returnable") }
-                : { rank: 1, label: handlingLabel("asset-removable") };
+            // Three bands, because "both" is a real answer and folding it into one of the
+            // other two hides the rows somebody is most likely looking for.
+            const d = goesToDriver(r.item), a = goesToAsset(r.item);
+            if (d && a) return { rank: 0, label: "Unit and driver" };
+            return d
+                ? { rank: 1, label: handlingLabel("driver-returnable") }
+                : { rank: 2, label: handlingLabel("asset-removable") };
         }
         if (groupBy === "status") return { rank: PICK_STATUS_RANK[r.item.status] ?? 9, label: r.item.status };
         const id = itemCategoryId(r.item) || "";
@@ -406,12 +433,6 @@ export function ItemPickList({
                         <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" aria-hidden />
                     </>
                 )}
-                <FilterChip label={HANDLING_ALL_LABEL} count={counts.kindAll} on={handling === "all"} always
-                    onClick={() => setHandling("all")} />
-                <FilterChip label={handlingLabel("driver-returnable")} count={counts.returnable} on={handling === "returnable"}
-                    onClick={() => setHandling("returnable")} />
-                <FilterChip label={handlingLabel("asset-removable")} count={counts.removable} on={handling === "removable"}
-                    onClick={() => setHandling("removable")} />
                 <select
                     value={groupBy}
                     onChange={(e) => setGroupBy(e.target.value as PickGroup)}
@@ -426,11 +447,10 @@ export function ItemPickList({
                     {PICK_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                 </select>
                 <ResetFilters
-                    on={what !== "all" || handling !== "all" || groupBy !== "none"
+                    on={what !== "all" || groupBy !== "none"
                         || cat !== ALL || search.trim() !== ""}
                     onReset={() => {
                         setWhat("all");
-                        setHandling("all");
                         setGroupBy("none");
                         setCat(ALL);
                         setSearch("");
@@ -454,10 +474,13 @@ export function ItemPickList({
                                     The heading used to explain itself in two lines, which is what
                                     made a list of things look like a form. */}
                                 <TH className="w-px" />
-                                <TH className="border-l border-slate-200">Item</TH>
-                                <TH className="border-l border-slate-200">Number / PIN</TH>
-                                <TH className="border-l border-slate-200">Issued</TH>
-                                <TH className="border-l border-slate-200">Expires</TH>
+                                <TH className="border-l border-slate-200">Item name</TH>
+                                <TH className="border-l border-slate-200">Category</TH>
+                                <TH className="border-l border-slate-200">Serial</TH>
+                                {/* The chip that used to split this list, said per row. */}
+                                <TH className="border-l border-slate-200">Driver returnable</TH>
+                                <TH className="border-l border-slate-200">Issue date</TH>
+                                <TH className="border-l border-slate-200">Expiry date</TH>
                                 <TH className="border-l border-slate-200">Status</TH>
                             </tr>
                         </thead>
@@ -475,7 +498,7 @@ export function ItemPickList({
                                 return (
                                     <Fragment key={`${r.on ? "on" : "free"}-${item.id}`}>
                                     {band && (!prev || prev.label !== band.label) && (
-                                        <TableGroupBand label={band.label} count={groupCounts.get(band.label) ?? 0} colSpan={6} />
+                                        <TableGroupBand label={band.label} count={groupCounts.get(band.label) ?? 0} colSpan={8} />
                                     )}
                                     <tr className={cn(
                                         "transition-colors",
@@ -520,9 +543,15 @@ export function ItemPickList({
                                                 </div>
                                             </div>
                                         </td>
+                                        <td className="whitespace-nowrap px-3 py-2 align-middle text-[12px] text-slate-600">
+                                            {categoryLabelOf(item)}
+                                        </td>
                                         <td className="whitespace-nowrap px-3 py-2 align-middle">
                                             <div className="font-mono text-[11px] leading-tight text-slate-700">{item.serial || "—"}</div>
                                             {item.pin && <div className="font-mono text-[10px] leading-tight text-slate-400">PIN {item.pin}</div>}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-2 align-middle">
+                                            <ReturnablePill item={item} />
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-2 align-middle text-[11px] text-slate-600">
                                             {item.issueDate ? fmtDate(item.issueDate) : "—"}

@@ -11,17 +11,16 @@
 
 import { useMemo, useState } from "react";
 import {
-    Boxes, Pencil, Share2, Truck, IdCard, PackageCheck, BellRing, BellOff,
+    Boxes, Pencil, Share2, Truck, IdCard, BellRing, BellOff,
     Info, History, Hash, Calendar, Store, Tag, StickyNote, Phone, CircleSlash,
     type LucideIcon,
 } from "lucide-react";
 import { BackLink } from "@/components/ui/BackLink";
 import {
     INVENTORY_ITEMS, getInventoryForCarrier, VENDORS, VENDOR_CATEGORIES,
-    itemName, inventoryMonitoring, type InventoryItem,
+    itemName, inventoryMonitoring, itemAssetAssignment, type InventoryItem,
 } from "./inventory.data";
 import { MONITOR_BASIS_LABEL, monitoredDateFor, recurrenceLabel } from "@/pages/compliance/monitoring-schedule";
-import { useDriverHandovers, handoverStatusOf } from "./handovers.data";
 import { resolveAsset, resolveDriver, KIND_TONE, fmtDate, daysUntil } from "./inventory-assignment";
 import { useInventoryActivity, inventoryTrail } from "./inventory-activity";
 import { ActivityTimeline } from "@/components/ui/ActivityTimeline";
@@ -91,14 +90,6 @@ export function InventoryItemDetailPage({ onNavigate, itemId, accountId }: Props
         return [...additions, ...base, ...INVENTORY_ITEMS].find((i) => i.id === itemId);
     }, [itemId, accountId, additions]);
 
-    const { records } = useDriverHandovers(accountId ?? "acct-001");
-    const handover = useMemo(() => {
-        const scope = accountId ?? "acct-001";
-        return Object.values(records).find(
-            (r) => r.accountId === scope && r.lines.some((l) => l.itemId === itemId),
-        );
-    }, [records, accountId, itemId]);
-
     const events = useInventoryActivity(itemId);
 
     // An id that matches nothing is a dead link, not a blank page.
@@ -123,14 +114,11 @@ export function InventoryItemDetailPage({ onNavigate, itemId, accountId }: Props
     const vendor = VENDORS.find((v) => v.id === item.vendorId);
     const category = VENDOR_CATEGORIES.find((c) => c.id === vendor?.categoryId);
     const mon = inventoryMonitoring(item);
-    const onAsset = resolveAsset(item.assignedTo, accountId);
-    const handedTo = handover
-        ? { driverId: handover.driverId, status: handoverStatusOf(handover) }
-        : undefined;
-    const withDriver = resolveDriver(item.assignedTo, accountId, handedTo);
+    const onAsset = resolveAsset(itemAssetAssignment(item), accountId);
+    const withDriver = resolveDriver(item, accountId);
     const dueDate = (mon.enabled ? monitoredDateFor(mon, item) : "") || item.expiryDate || "";
     const days = daysUntil(dueDate);
-    const trail = inventoryTrail(item, accountId, handover, events);
+    const trail = inventoryTrail(item, accountId, events);
 
     const itemRef: RecordRef = {
         type: "inventory", id: item.id, label: itemName(item),
@@ -248,10 +236,9 @@ export function InventoryItemDetailPage({ onNavigate, itemId, accountId }: Props
                                             <div className="mt-2 flex items-center gap-2.5">
                                                 <span className={cn(
                                                     "inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                    withDriver.via === "handed" ? KIND_TONE.violet : KIND_TONE.emerald,
+                                                    KIND_TONE.emerald,
                                                 )}>
-                                                    {withDriver.via === "handed" ? <PackageCheck size={10} /> : <IdCard size={10} />}
-                                                    {withDriver.via === "handed" ? "Handed" : "Driver"}
+                                                    <IdCard size={10} /> Driver
                                                 </span>
                                                 <div className="min-w-0 leading-tight">
                                                     <div className="truncate text-sm font-bold text-slate-900">{withDriver.label}</div>

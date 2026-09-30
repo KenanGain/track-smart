@@ -21,16 +21,17 @@
 
 import { useMemo, useState } from "react";
 import {
-    Calendar, ChevronRight, CircleAlert, Eye, FileText, Plus, Receipt, Search, Sparkles,
-    Share2, ShieldCheck, Trash2, Truck, Upload, User, Wrench, X,
+    ChevronRight, CircleAlert, Eye, FileText, Plus, Receipt, Search, Sparkles,
+    Share2, ShieldCheck, Trash2, Upload, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { PaginationBar } from "@/components/ui/DataListToolbar";
 import { UploadZone } from "@/components/ui/UploadZone";
 import {
-    REMEDIATION_BY_LABEL, hasVehicleViolation, isMaintenanceRelated, newDoc, todayIso, unitOptionsFor,
-    type RemediationBy, type RoadsideDoc, type RoadsideInspection,
+    REMEDIATION_BY_LABEL, isMaintenanceRelated, newDoc,
+    remediationRequired, todayIso, unitOptionsFor,
+    type RoadsideDoc, type RoadsideInspection,
 } from "./roadside.data";
 
 /**
@@ -65,7 +66,10 @@ export function sampleDoc(inspection: RoadsideInspection, shelf: Shelf, by: stri
     return base;
 }
 
-export type Shelf = "reports" | "remediation" | "repairBills";
+// Both live with the fields that produce them; re-exported so every importer of
+// this module keeps working.
+export { billTotal, type Shelf } from "./RoadsideDocFields";
+import { DocFields, billTotal, docProblems, type DocDraft, type Shelf } from "./RoadsideDocFields";
 
 export const SHELF_META: {
     key: Shelf; icon: React.ElementType; title: string; blurb: string; accepts: string; tone: string;
@@ -98,7 +102,8 @@ export const shelfMeta = (k: Shelf) => SHELF_META.find((s) => s.key === k)!;
 /** Is this kind expected on this inspection at all? */
 export function shelfWanted(i: RoadsideInspection, k: Shelf): boolean {
     if (k === "reports") return true;
-    if (k === "remediation") return hasVehicleViolation(i) || i.oos;
+    // A FAILED inspection is what makes a re-inspection due — see `remediationRequired`.
+    if (k === "remediation") return remediationRequired(i);
     return isMaintenanceRelated(i);
 }
 
@@ -113,15 +118,20 @@ const fmtWhen = (iso: string): string => {
 /** What this particular document says about itself, beyond its filename. */
 export function docDetails(i: RoadsideInspection, shelf: Shelf, doc: RoadsideDoc): string {
     if (shelf === "remediation") {
-        return [
-            doc.performedBy ? `${REMEDIATION_BY_LABEL[doc.performedBy]} performed it` : "Performer not stated",
-            doc.performedOn || null,
-        ].filter(Boolean).join(" · ");
+        // The person first, the kind of person second: "Dale Foster (Mechanic)" is what
+        // an auditor asked for, and "Mechanic" alone is what they said was not enough.
+        const who = doc.performedByName?.trim()
+            ? `${doc.performedByName.trim()}${doc.performedBy ? ` (${REMEDIATION_BY_LABEL[doc.performedBy]})` : ""}`
+            : doc.performedBy ? `${REMEDIATION_BY_LABEL[doc.performedBy]} performed it` : "Performer not stated";
+        return [who, doc.performedOn || null].filter(Boolean).join(" · ");
     }
     if (shelf === "repairBills") {
         const named = unitOptionsFor(i).filter((u) => doc.assetIds?.includes(u.id)).map((u) => u.label);
-        return [doc.amount ? `$${doc.amount}` : null, named.length ? named.join(" + ") : "No unit assigned"]
-            .filter(Boolean).join(" · ");
+        return [
+            billTotal(doc) ? `${doc.currency ?? "USD"} ${billTotal(doc)}` : null,
+            doc.vendorCompany?.trim() || doc.vendorName?.trim() || null,
+            named.length ? named.join(" + ") : "No unit assigned",
+        ].filter(Boolean).join(" · ");
     }
     return fmtSize(doc.size) || "—";
 }
@@ -511,8 +521,6 @@ function ViewChip({ doc }: { doc: RoadsideDoc }) {
 
 // ── Adding one ──────────────────────────────────────────────────────────────
 
-const FIELD = "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
-
 /**
  * The add form, which is a different form for each kind.
  *
@@ -532,26 +540,27 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
     const units = unitOptionsFor(inspection);
 
     const [file, setFile] = useState<File | null>(null);
-    const [performedBy, setPerformedBy] = useState<RemediationBy | null>(null);
-    const [performedOn, setPerformedOn] = useState(todayIso());
-    const [amount, setAmount] = useState("");
-    // Pre-ticked to every unit on the inspection: one is the common case and two
-    // is the next, and both beat starting at none.
-    const [assetIds, setAssetIds] = useState<string[]>(() => units.map((u) => u.id));
+    // Started with what the inspection already knows: the date, the units, the
+    // distance unit. A form that makes you retype what the record above it says is
+    // a form that gets a different answer.
+    const [draft, setDraft] = useState<DocDraft>(() => ({
+        documentDate: inspection.date,
+        performedOn: todayIso(),
+        currency: "USD",
+        odometerUnit: inspection.truckOdometerUnit ?? "mi",
+        assetIds: shelf === "repairBills" ? units.map((u) => u.id) : undefined,
+    }));
+    const patch = (p: DocDraft) => setDraft((d) => ({ ...d, ...p }));
 
-    const problems: string[] = [];
-    if (!file) problems.push("a file");
-    if (shelf === "remediation" && !performedBy) problems.push("who performed the re-inspection");
-    if (shelf === "repairBills" && units.length > 0 && assetIds.length === 0) problems.push("which unit it was spent on");
+    const problems = docProblems(shelf, draft, !!file, units.length);
 
     const save = () => {
         if (!file || problems.length) return;
         const base = newDoc(file, uploadedBy);
-        onSave(
-            shelf === "remediation" ? { ...base, performedBy: performedBy!, performedOn }
-                : shelf === "repairBills" ? { ...base, assetIds, amount: amount.trim() || undefined }
-                    : base,
-        );
+        const trimmed: DocDraft = shelf === "repairBills"
+            ? { ...draft, amount: billTotal(draft) || undefined }
+            : draft;
+        onSave({ ...base, ...trimmed });
     };
 
     return (
@@ -572,73 +581,13 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                 </div>
 
                 <div className="space-y-4 px-5 py-4">
-                    {/* Who re-inspected it — the question this document exists to answer. */}
-                    {shelf === "remediation" && (
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                    Performed by <span className="text-rose-500">*</span>
-                                </label>
-                                <div className="mt-1.5 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                                    {(["mechanic", "driver"] as RemediationBy[]).map((k) => (
-                                        <button key={k} type="button" onClick={() => setPerformedBy(k)}
-                                            className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                                                performedBy === k ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}>
-                                            {k === "driver" ? <User size={12} /> : <Wrench size={12} />} {REMEDIATION_BY_LABEL[k]}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Re-inspected on</label>
-                                <div className="relative mt-1.5">
-                                    <input type="date" value={performedOn} onChange={(e) => setPerformedOn(e.target.value)} className={FIELD} />
-                                    <Calendar size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* What it cost, and what it was spent on. */}
-                    {shelf === "repairBills" && (
-                        <div className="space-y-4">
-                            <div className="sm:w-48">
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Amount</label>
-                                <div className="relative mt-1.5">
-                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
-                                    <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="412.60"
-                                        className={cn(FIELD, "pl-7")} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                    Units this bill covers {units.length > 0 && <span className="text-rose-500">*</span>}
-                                </label>
-                                {units.length === 0 ? (
-                                    <p className="mt-1.5 text-[12px] italic text-slate-400">No truck or trailer on this inspection.</p>
-                                ) : (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {units.map((u) => {
-                                            const on = assetIds.includes(u.id);
-                                            return (
-                                                <button key={u.id} type="button"
-                                                    onClick={() => setAssetIds((p) => (on ? p.filter((x) => x !== u.id) : [...p, u.id]))}
-                                                    className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors",
-                                                        on ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300")}>
-                                                    <Truck size={12} /> {u.label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    <DocFields inspection={inspection} shelf={shelf} doc={draft} onPatch={patch} />
 
                     <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                            Document <span className="text-rose-500">*</span>
-                        </label>
+                        <span className="mb-1 flex items-center gap-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Document</span>
+                            <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>
+                        </span>
                         <div className="mt-1.5">
                             {file ? (
                                 <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
@@ -647,7 +596,7 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                                     </span>
                                     <div className="min-w-0 flex-1">
                                         <p className="truncate text-[13px] font-semibold text-slate-800">{file.name}</p>
-                                        <p className="text-[11px] text-emerald-600">Ready to file &middot; {fmtSize(file.size)}</p>
+                                        <p className="text-[11px] text-emerald-600">Ready to file</p>
                                     </div>
                                     <button type="button" onClick={() => setFile(null)} title="Choose a different file"
                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-rose-600">
@@ -680,7 +629,7 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                     </button>
                     <button type="button" onClick={save} disabled={problems.length > 0}
                         className={cn("inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-bold text-white transition-colors",
-                            problems.length > 0 ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700")}>
+                            problems.length > 0 ? "cursor-not-allowed bg-blue-300" : "bg-blue-600 hover:bg-blue-700")}>
                         <Upload size={14} /> File the record
                     </button>
                 </div>

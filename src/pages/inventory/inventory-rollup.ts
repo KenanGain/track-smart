@@ -17,9 +17,11 @@
 //     says which route put it there.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { driverOfAsset, inventoryMonitoring, itemTravelsWithDriver, type InventoryItem } from "./inventory.data";
+import {
+    goesToAsset, goesToDriver, inventoryMonitoring, itemAssetAssignment,
+    itemDriverId, itemTravelsWithDriver, type InventoryItem,
+} from "./inventory.data";
 import { driversFor, assetsFor, resolveAsset, resolveDriver, daysUntil } from "./inventory-assignment";
-import type { HandoverStatus } from "./handovers.data";
 
 export type HolderKind = "driver" | "asset";
 
@@ -65,8 +67,6 @@ export type HolderRow = {
     statusTone: "emerald" | "amber" | "rose" | "slate";
     /** Assets only — CMV / Non-CMV. */
     kindLabel?: string;
-    /** Assets only — whoever drives it now, if anyone. */
-    driverLabel?: string;
     items: HeldItem[];
     via: ViaCounts;
     /** Items running out within 30 days, and items already past their date. */
@@ -75,8 +75,6 @@ export type HolderRow = {
     /** Items with an expiry date and no alert armed — the ones that lapse quietly. */
     unwatched: number;
 };
-
-export type HandedMap = Map<string, { driverId: string; status: HandoverStatus }>;
 
 const DRIVER_TONE: Record<string, HolderRow["statusTone"]> = {
     Active: "emerald", "On Leave": "amber", Inactive: "slate", Terminated: "rose",
@@ -109,17 +107,21 @@ function tally(held: HeldItem[]) {
 export function rollupByDriver(
     items: InventoryItem[],
     accountId: string | undefined,
-    handedTo: HandedMap,
 ): HolderRow[] {
     const byId = new Map<string, HeldItem[]>();
     const via = new Map<string, ViaCounts>();
 
-    // A driver holds the RETURNABLE half of whatever they are driving. Nothing is filed
-    // against a person any more, so this is a view of the vehicle's pile rather than a
-    // second record that has to be kept in step with it.
+    // Three ways a driver comes to hold something, all three decided by `resolveDriver`:
+    // filed against them, riding along with the unit they drive, or signed for on a
+    // hand-over. The "rides along" route already checks the item’s own ticks, so there is
+    // nothing left for this loop to second-guess.
     for (const item of items) {
-        if (!itemTravelsWithDriver(item)) continue;
-        const held = resolveDriver(item.assignedTo, accountId, handedTo.get(item.id));
+        // Ticked for a driver, or it does not belong on a driver’s page at all. A reefer
+        // sensor reaches a person only by accident — a stale field, a hand-over somebody
+        // filed wrong — and listing it under their name asks them to hand back something
+        // that is bolted to a trailer.
+        if (!goesToDriver(item)) continue;
+        const held = resolveDriver(item, accountId);
         if (!held) continue;
         if (!byId.has(held.id)) { byId.set(held.id, []); via.set(held.id, NO_COUNTS()); }
         byId.get(held.id)!.push({ item, via: "returnable" });
@@ -156,15 +158,15 @@ export function rollupByDriver(
 export function rollupByAsset(
     items: InventoryItem[],
     accountId: string | undefined,
-    // Kept in the signature so every caller reads the same way; a vehicle's pile is decided
-    // by what is filed against it, and a signed checklist no longer changes that.
-    _handedTo: HandedMap,
 ): HolderRow[] {
     const byId = new Map<string, HeldItem[]>();
     const via = new Map<string, ViaCounts>();
 
     for (const item of items) {
-        const on = resolveAsset(item.assignedTo, accountId);
+        // Same rule, the other way round: a unit’s page lists what is ticked for a unit.
+        // A hi-vis vest sized to a person is not the truck’s to hand back.
+        if (!goesToAsset(item)) continue;
+        const on = resolveAsset(itemAssetAssignment(item), accountId);
         if (!on) continue;
         if (!byId.has(on.id)) { byId.set(on.id, []); via.set(on.id, NO_COUNTS()); }
         // What it IS, not how it arrived: the item answers this on its own form.
@@ -175,11 +177,6 @@ export function rollupByAsset(
 
     const rows: HolderRow[] = assetsFor(accountId).map((a: any) => {
         const mine = byId.get(a.id) ?? [];
-        // Whoever drives this VEHICLE, read off the vehicle. Deriving it from the first
-        // item on the truck was wrong twice over: a truck whose first item happened not to
-        // be a carried one showed no driver at all, and a truck holding nothing showed none
-        // even when somebody was driving it every day.
-        const driver = driverOfAsset(a.id, accountId);
         return {
             id: a.id,
             label: a.unitNumber,
@@ -187,7 +184,6 @@ export function rollupByAsset(
             status: ASSET_STATUS_LABEL[a.operationalStatus] ?? a.operationalStatus ?? "—",
             statusTone: ASSET_TONE[a.operationalStatus] ?? "slate",
             kindLabel: a.assetCategory === "Non-CMV" ? "Non-CMV" : "CMV",
-            driverLabel: driver?.name,
             items: mine,
             via: via.get(a.id) ?? NO_COUNTS(),
             ...tally(mine),
@@ -226,31 +222,36 @@ function sortRows(rows: HolderRow[]): HolderRow[] {
 /**
  * How a held item can be taken back from this holder, if at all.
  *
- * Each route can only be undone by whoever owns the record behind it:
- *
- *   unassign — the item is filed against THIS holder, so this holder can let go of it.
- *   unhand   — it is on a driver's signed hand-over checklist. Both surfaces can create
- *              one, so both can undo one; returning it leaves any vehicle assignment intact.
- *   null     — it is here because of somebody else's record. A driver carrying a vehicle's
- *              fuel card cannot give it up from their own page: the next render reads it
- *              straight back off the vehicle, so the button would be a lie.
+ * Only what is filed against THIS holder can be let go of here. A row that got onto this
+ * page some other way cannot be undone from it — there is no such row any more, but the
+ * null is kept so a stale record cannot grow a button that does nothing.
  */
-export type RemoveAction = "unassign" | "unhand" | null;
+export type RemoveAction = "unassign" | null;
 
-export function removeActionFor(
-    h: HeldItem, kind: HolderKind, holderId: string, _hasHandDriver: boolean,
-): RemoveAction {
-    const a = h.item.assignedTo;
-    // Inventory is filed against the VEHICLE, so the vehicle is the only place it can be
-    // taken off. A driver holds the returnable half of what they drive — that is a view
-    // of the truck's record, and the next render reads it straight back, so a button here
-    // would undo nothing.
-    if (kind === "driver") return null;
-    return a && a.kind !== "driver" && a.targetId === holderId ? "unassign" : null;
+export function removeActionFor(h: HeldItem, kind: HolderKind, holderId: string): RemoveAction {
+    // Each holder can let go of what is filed against IT. A driver carrying the fuel card
+    // of a truck they happen to drive is not one of those: that line is the truck’s record,
+    // the next render reads it straight back, and a button here would undo nothing.
+    if (kind === "driver") return itemDriverId(h.item) === holderId ? "unassign" : null;
+    return itemAssetAssignment(h.item)?.targetId === holderId ? "unassign" : null;
 }
 
-export function unassignedItems(items: InventoryItem[], handedTo: HandedMap): InventoryItem[] {
-    return items.filter((it) => !it.assignedTo && !handedTo.has(it.id));
+/**
+ * What this holder can still be given.
+ *
+ * Free FOR THIS KIND of holder, which is not the same as free altogether: a fuel card on a
+ * truck and on its driver is fully filed, while the same card on the truck alone is still
+ * waiting for somebody to be made answerable for it. And the item has to be ticked for this
+ * kind at all — offering a reefer sensor on a driver’s page is offering nonsense.
+ */
+export function assignableTo(items: InventoryItem[], kind: HolderKind): InventoryItem[] {
+    return items.filter((it) => kind === "driver"
+        ? goesToDriver(it) && !itemDriverId(it)
+        : goesToAsset(it) && !itemAssetAssignment(it));
+}
+
+export function unassignedItems(items: InventoryItem[]): InventoryItem[] {
+    return items.filter((it) => !itemAssetAssignment(it) && !itemDriverId(it));
 }
 
 export function rollupTotals(rows: HolderRow[]) {

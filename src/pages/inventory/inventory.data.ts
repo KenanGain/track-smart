@@ -102,32 +102,29 @@ export type Assignment = {
     /** id of the CMV asset, Non-CMV asset, or driver. */
     targetId: string;
     /**
-     * The item goes with the VEHICLE, and is in the hands of whoever drives it.
+     * @deprecated The old way of saying "and whoever drives this unit has it".
      *
-     * A fuel card issued to a truck is carried by that truck's driver; a spare key lives in the
-     * yard. Both are assigned to the vehicle, and only one of them is a person's
-     * responsibility — which is the difference this records. The driver is never stored: it is
-     * read off the vehicle, so a change of driver cannot leave the item pointing at the one
-     * who handed it back.
+     * That is the Driver tick on the item now, and the person is named in
+     * `assignedDriverId`. Nothing writes this any more; it is still READ, once, by
+     * `itemHandlings`, so stored records from before the change still say what they meant.
      */
     alsoDriverOfAsset?: boolean;
 };
 
 /**
- * How an item comes back — the two shapes a return takes, and never both:
+ * Where an item can be filed — and it can be filed in both places at once.
  *
- *   driver-returnable — a person signs for it and hands it back: a fuel card, a set of keys,
- *                        a hi-vis vest. The item leaves with them and has to be asked for.
- *   asset-removable   — it is fitted to a vehicle and comes off it: a transponder, an ELD,
- *                        a dashcam. Nobody carries it anywhere; it is removed.
+ *   asset-removable   — it belongs to a unit and comes off it: a transponder, an ELD, a
+ *                        dashcam. It leaves when the unit leaves the fleet.
+ *   driver-returnable — a person is answerable for it and hands it back: PPE, a uniform.
+ *
+ * A truck’s fuel card is BOTH: it lives on the unit and it is in the driver’s pocket, and
+ * losing it is one person’s problem. Forcing a choice between the two is what left the
+ * Driver column empty on half the fleet.
  */
 export type ItemHandling = "driver-returnable" | "asset-removable";
 /**
- * Who the item follows once it is on a vehicle.
- *
- * Both are filed against the ASSET — that has not changed. What differs is who it leaves
- * with: a fuel card goes wherever the driver goes, a transponder stays screwed to the cab
- * and only moves when the truck does.
+ * The two ticks on the item form. Neither excludes the other.
  */
 export const ITEM_HANDLING: { id: ItemHandling; label: string; blurb: string }[] = [
     {
@@ -141,14 +138,6 @@ export const ITEM_HANDLING: { id: ItemHandling; label: string; blurb: string }[]
 ];
 export const handlingLabel = (h?: ItemHandling) => ITEM_HANDLING.find((x) => x.id === h)?.label ?? "";
 
-/**
- * What the "no filter" chip is called in the lists.
- *
- * "Both", not "All": there are exactly two answers, and a list that offers All / Driver /
- * Asset invites you to wonder what the third one is.
- */
-export const HANDLING_ALL_LABEL = "Both";
-
 export type InventoryItem = {
     id: string;
     vendorId: string;
@@ -158,8 +147,14 @@ export type InventoryItem = {
      * also cuts keys sells two categories of item, and the vendor can only say one.
      */
     categoryId?: string;
-    /** Who it follows off the asset. See `ItemHandling`. */
-    handling?: ItemHandling;
+    /**
+     * Where this item can be filed. See `ItemHandling` — both together is allowed, and is
+     * what most of a truck’s kit actually is.
+     *
+     * Read through `itemHandlings`, never directly: items from before this was a list carry
+     * a single value, and items from before the field existed carry nothing at all.
+     */
+    handling?: ItemHandling | ItemHandling[];
     /**
      * What this item is CALLED. Defaults to the vendor and the category it falls under
      * ("Comdata — Fuel Card"), which is what tells one row from another where a carrier holds
@@ -184,36 +179,86 @@ export type InventoryItem = {
     status: InventoryStatus;
     contactName?: string;
     contactInfo?: string;
-    /** One-to-one assignment to a CMV / Non-CMV asset or a driver. */
+    /**
+     * The UNIT this is filed against. A legacy `kind: "driver"` value is still read (see
+     * `itemDriverId`) but nothing writes one any more — a person goes in the field below,
+     * so an item can be on a truck and on a driver at the same time.
+     */
     assignedTo?: Assignment;
+    /** The PERSON this is filed against, when somebody has been made answerable for it. */
+    assignedDriverId?: string;
     notes?: string;
 };
 
 // ── What an item is called ───────────────────────────────────────
 
-/**
- * Categories whose things are FITTED to a vehicle rather than carried by a person.
- *
- * An ELD, a toll transponder, a dashcam, a tracker: nobody puts one in their pocket, and
- * taking it back means going to the truck with a screwdriver.
- */
-const FITTED_CATEGORIES = ["cat-eld-provider", "cat-transponder", "cat-dashcam", "cat-gps-tracking"];
+/** What an item is asked about itself, for the readers below. */
+type HandlingSource = Pick<InventoryItem, "handling" | "assignedTo" | "assignedDriverId">;
 
 /**
- * Does this item travel with whoever drives the vehicle, or stay on it?
+ * Where this item can be filed — one answer, both, and never neither.
  *
- * The item's own answer where it has one — `handling`, asked on its form. Everything from
- * before that field existed has none, and defaulting those to "stays on the vehicle" would
- * quietly stop every fuel card in the fleet travelling with the driver who uses it. So the
- * fallback makes the same judgement from the category: fitted kit stays, the rest goes.
+ * The stored value has had three shapes: nothing at all, a single value, and the list it is
+ * now. All three are read here so that one place decides, and the fallback reads the item’s
+ * own record rather than guessing from its category — something already filed against a
+ * person is plainly a person’s to hand back, whatever kind of thing it is.
  */
-export function itemTravelsWithDriver(
-    item: Pick<InventoryItem, "handling" | "categoryId" | "vendorId">,
-    vendors: Vendor[] = VENDORS,
-): boolean {
-    if (item.handling) return item.handling === "driver-returnable";
-    return !FITTED_CATEGORIES.includes(itemCategoryId(item, vendors));
+export function itemHandlings(item: HandlingSource): ItemHandling[] {
+    const raw = item.handling;
+    const set = new Set<ItemHandling>(Array.isArray(raw) ? raw : raw ? [raw] : []);
+    if (set.size === 0) {
+        set.add("asset-removable");
+        if (item.assignedDriverId || item.assignedTo?.kind === "driver" || item.assignedTo?.alsoDriverOfAsset) {
+            set.add("driver-returnable");
+        }
+    }
+    return [...set];
 }
+
+/** Is a person answerable for this — the "Driver" tick on the item form. */
+export const goesToDriver = (item: HandlingSource): boolean =>
+    itemHandlings(item).includes("driver-returnable");
+
+/** Does this belong to a unit — the "Asset" tick on the item form. */
+export const goesToAsset = (item: HandlingSource): boolean =>
+    itemHandlings(item).includes("asset-removable");
+
+/** The older name for `goesToDriver`, kept because half the app asks the question that way. */
+export const itemTravelsWithDriver = goesToDriver;
+
+/**
+ * The person this item is filed against, if anybody.
+ *
+ * `assignedDriverId` is where a driver assignment goes now. The legacy shape — an
+ * `assignedTo` whose kind is "driver" — is still read, because localStorage is full of them.
+ */
+export const itemDriverId = (item: Pick<InventoryItem, "assignedTo" | "assignedDriverId">): string | undefined =>
+    item.assignedDriverId ?? (item.assignedTo?.kind === "driver" ? item.assignedTo.targetId : undefined);
+
+/** The unit this item is filed against, if any. */
+export const itemAssetAssignment = (item: Pick<InventoryItem, "assignedTo">): Assignment | undefined =>
+    item.assignedTo && item.assignedTo.kind !== "driver" ? item.assignedTo : undefined;
+
+/**
+ * Where this item is actually filed. Four answers, and they are read off the two fields
+ * rather than off the ticks.
+ *
+ * The ticks (`handling`) say where an item MAY go; this says where it HAS gone. They are
+ * different questions and the lists kept answering the first one while labelling it the
+ * second — a fuel card ticked for a driver read as "Driver" on a truck's page whether or
+ * not anybody had ever been made answerable for it.
+ */
+export type AssignedTo = "both" | "driver" | "asset" | "none";
+
+export const assignmentOf = (item: Pick<InventoryItem, "assignedTo" | "assignedDriverId">): AssignedTo => {
+    const onUnit = !!itemAssetAssignment(item);
+    const onPerson = !!itemDriverId(item);
+    return onUnit && onPerson ? "both" : onPerson ? "driver" : onUnit ? "asset" : "none";
+};
+
+export const ASSIGNED_TO_LABEL: Record<AssignedTo, string> = {
+    both: "Both", driver: "Driver", asset: "Asset", none: "Unassigned",
+};
 
 /**
  * The category an item is IN: its own, falling back to the one its vendor sells. Every list,
@@ -619,6 +664,19 @@ function statusForExpiry(expiryDate: string): InventoryStatus {
     return days < 0 ? "Expired" : days <= 30 ? "Expiring Soon" : "Active";
 }
 
+/**
+ * Which ticks a vendor’s kind of thing carries.
+ *
+ * A fuel card and a toll transponder are the truck’s AND the driver’s: they live on the unit
+ * and they are in somebody’s pocket. Everything else a vendor supplies is bolted on.
+ */
+const VENDOR_BOTH = ["cat-fuel-card", "cat-transponder"];
+function handlingForVendor(vendor: Vendor): ItemHandling[] {
+    return VENDOR_BOTH.includes(vendor.categoryId)
+        ? ["asset-removable", "driver-returnable"]
+        : ["asset-removable"];
+}
+
 function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undefined {
     const assets = CARRIER_ASSETS[vendor.accountId] ?? [];
     const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");
@@ -638,14 +696,9 @@ function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undef
     }
 
     const truck = trucks[offset % Math.max(trucks.length, 1)];
-    // A fuel card and a toll transponder are assigned to the truck but used by whoever is
-    // driving it, so they carry the "also the driver of this vehicle" flag. A GPS unit bolted
-    // to a trailer is not in anybody's hands, and does not.
-    if (truck) return {
-        kind: "cmv",
-        targetId: truck.id,
-        alsoDriverOfAsset: vendor.categoryId === "cat-fuel-card" || vendor.categoryId === "cat-transponder",
-    };
+    // Who is holding it is a separate field now (see `driverAssignmentFor`), so the unit
+    // assignment says only what it means: this thing belongs to this truck.
+    if (truck) return { kind: "cmv", targetId: truck.id };
 
     const anyAsset = assets[offset % Math.max(assets.length, 1)];
     if (anyAsset) {
@@ -660,6 +713,23 @@ function assignmentForVendor(vendor: Vendor, offset: number): Assignment | undef
     return undefined;
 }
 
+/**
+ * The person a unit-assigned item lands on, when the item is a person’s responsibility too.
+ *
+ * Whoever drives the unit right now. Nothing derives this at read time any more — a driver
+ * who hands the truck over should not silently hand over the fuel card with it, and the
+ * office should see the name it has to change.
+ */
+function driverAssignmentFor(
+    handling: ItemHandling[],
+    assignment: Assignment | undefined,
+    accountId: string,
+): string | undefined {
+    if (!handling.includes("driver-returnable")) return undefined;
+    if (!assignment || assignment.kind === "driver") return undefined;
+    return driverOfAsset(assignment.targetId, accountId)?.id;
+}
+
 function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
     const seed = inventoryHash(`${vendor.accountId}:${vendor.id}:${index}`);
     const prefix = SERIAL_PREFIX_BY_CATEGORY[vendor.categoryId] ?? "INV";
@@ -670,6 +740,8 @@ function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
     const expiryDate = daysFromToday(expiryOffsetDays(seed));
     const issueDate = addYears(expiryDate, -yearsOut);
     const status = statusForExpiry(expiryDate);
+    const handling = handlingForVendor(vendor);
+    const assignedTo = assignmentForVendor(vendor, index);
 
     return {
         id: `inv-${vendor.accountId.replace("acct-", "")}-${String(index + 1).padStart(3, "0")}`,
@@ -686,7 +758,11 @@ function buildInventoryItem(vendor: Vendor, index: number): InventoryItem {
         status,
         contactName: vendor.contactName,
         contactInfo: vendor.contactInfo ?? vendor.email ?? vendor.phone,
-        assignedTo: assignmentForVendor(vendor, index),
+        handling,
+        assignedTo,
+        // Both ticks on, and the unit has a driver: that person is answerable for it. This
+        // is the "assigned to both" case, filed in both places rather than inferred from one.
+        assignedDriverId: driverAssignmentFor(handling, assignedTo, vendor.accountId),
         notes: vendor.categoryId === "cat-repair-maintenance"
             ? "Service vendor inventory record tied to fleet maintenance coverage."
             : undefined,
@@ -746,20 +822,21 @@ const COMPANY_ACCESSORIES: AccessorySeed[] = [
     { catId: "cat-cards-docs", name: "IFTA / IRP Documents" },
 
     // ── Yard stock ───────────────────────────────────────────────────────────
-    // Spares the office holds and issues as they are needed. These are what the assign and
-    // hand-over pickers offer: with only three of them the pools were too thin to tell
-    // whether the filters, the category rule and the take-back actually worked.
-    { catId: "cat-keys", name: "Spare Truck Keys (set)", yardStock: true },
-    { catId: "cat-keys", name: "Spare Yard Gate Fob", yardStock: true },
-    { catId: "cat-safety-ppe", name: "Spare Hi-Vis Vests (box)", yardStock: true },
-    { catId: "cat-safety-ppe", name: "Spare Safety Gloves (box)", yardStock: true },
+    // Spares the office holds and issues as they are needed. These are what the assign
+    // pickers offer, so between them they have to cover all three shapes: things only a
+    // unit can take, things only a person can take, and things both pages can take. With
+    // every spare marked unit-only the driver page had nothing to give and looked broken.
+    { catId: "cat-keys", name: "Spare Truck Keys (set)", withDriver: true, yardStock: true },
+    { catId: "cat-keys", name: "Spare Yard Gate Fob", withDriver: true, yardStock: true },
+    { catId: "cat-safety-ppe", name: "Spare Hi-Vis Vests (box)", toDriver: true, yardStock: true },
+    { catId: "cat-safety-ppe", name: "Spare Safety Gloves (box)", toDriver: true, yardStock: true },
     { catId: "cat-safety-ppe", name: "Spare First-Aid Kits", yardStock: true },
     { catId: "cat-equipment", name: "Wheel Chocks", yardStock: true },
     { catId: "cat-equipment", name: "Spare Ratchet Straps", yardStock: true },
     { catId: "cat-equipment", name: "Snow Chains", yardStock: true },
     { catId: "cat-devices", name: "Spare Dashcam", yardStock: true },
-    { catId: "cat-devices", name: "Spare Tablet", yardStock: true },
-    { catId: "cat-cards-docs", name: "Blank Logbooks", yardStock: true },
+    { catId: "cat-devices", name: "Spare Tablet", toDriver: true, yardStock: true },
+    { catId: "cat-cards-docs", name: "Blank Logbooks", toDriver: true, yardStock: true },
 
     // ── Personal issue ───────────────────────────────────────────────────────
     // Sized to a person, so filed against one. Without a few more of these the Drivers tab
@@ -801,14 +878,23 @@ for (const accountId of Object.keys(CARRIER_ASSETS)) {
             recurrence: rec,
             reminder: hasExpiry && i % 8 !== 5 ? "1 month" : "None",
             status: statusForExpiry(expiryDate),
-            // Yard stock is on nobody. Everything else is on a TRUCK — including the vest
-            // and the uniform, which are sized to a person but still issued against the
-            // vehicle they climb into: driver-returnable means it goes back when the
-            // driver hands the truck over, which is a fact about the truck's crew, not a
-            // second place to file the item.
-            assignedTo: def.yardStock
+            // Three shapes, and the ticks say which:
+            //
+            //   toDriver   — sized to a person. On the driver, not on the truck.
+            //   withDriver — on the truck AND on whoever drives it. Both ticks, both fields.
+            //   neither    — fitted to the unit. Nobody is answerable for it personally.
+            //
+            // Yard stock is ticked for whichever it would go to and filed against nothing,
+            // which is what makes it show up as available on the assignment pickers.
+            handling: def.toDriver ? ["driver-returnable"]
+                : def.withDriver ? ["asset-removable", "driver-returnable"]
+                : ["asset-removable"],
+            assignedTo: def.yardStock || def.toDriver
                 ? undefined
-                : { kind: "cmv", targetId: truck.id, alsoDriverOfAsset: !!(def.withDriver || def.toDriver) },
+                : { kind: "cmv", targetId: truck.id },
+            assignedDriverId: def.yardStock ? undefined
+                : (def.toDriver || def.withDriver) ? driverOfAsset(truck.id, accountId)?.id
+                : undefined,
         });
     });
 }
@@ -824,7 +910,7 @@ export function getInventoryByAssetId(assetId: string): InventoryItem[] {
 }
 
 export function getInventoryByDriverId(driverId: string): InventoryItem[] {
-    return INVENTORY_ITEMS.filter((it) => it.assignedTo?.kind === "driver" && it.assignedTo.targetId === driverId);
+    return INVENTORY_ITEMS.filter((it) => itemDriverId(it) === driverId);
 }
 
 export function getInventoryForCarrier(accountId: string): InventoryItem[] {

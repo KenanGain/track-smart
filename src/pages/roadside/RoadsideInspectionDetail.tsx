@@ -20,7 +20,7 @@
 
 import { useState } from "react";
 import {
-    CalendarClock, ClipboardCheck, FileText, LayoutGrid, MapPin, Pencil, Receipt,
+    CalendarClock, ClipboardCheck, FileText, Gauge, LayoutGrid, Mail, MapPin, Pencil, Phone, Receipt,
     Share2, ShieldAlert, ShieldCheck, StickyNote, Timer, Trash2, Truck, Upload, User, Wrench, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,11 +32,11 @@ import { ActivityTimeline, type ActivityEntry } from "@/components/ui/ActivityTi
 import { ShareToChat, type ShareItem } from "@/components/share/ShareToChat";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
 import { currentUserName } from "@/data/users.data";
-import { DocTypesList, DocTypeDetail, SHELF_META, sampleDoc, shelfWanted, type Shelf } from "./RoadsideDocRecords";
+import { DocTypesList, DocTypeDetail, SHELF_META, billTotal, sampleDoc, shelfWanted, type Shelf } from "./RoadsideDocRecords";
 import { ViolationList, type ViolationRow } from "./RoadsideViolations";
 import {
-    PARTY_LABEL, REMEDIATION_BY_LABEL, STAGE_LABEL, STAGE_TONE, allViolations, durationLabel,
-    deleteInspection, hasVehicleViolation, inspectionStage, isMaintenanceRelated, saveInspection,
+    PARTY_LABEL, REMEDIATION_BY_LABEL, STAGE_LABEL, STAGE_TONE, allViolations, durationLabel, unitOptionsFor,
+    deleteInspection, inspectionStage, isMaintenanceRelated, remediationRequired, saveInspection,
     unitsLabel, useInspection,
     type RoadsideInspection,
 } from "./roadside.data";
@@ -68,6 +68,96 @@ function Fact({ icon: Icon, label, value, tone, wide }: {
     );
 }
 
+
+/**
+ * Who did the repair work, and what it came to.
+ *
+ * On the Overview because it is the question the office asks about a fixed
+ * defect that nothing else on this page answers: not "is it closed" but "who
+ * did it, what did we pay, and who do I ring when it fails again in March".
+ * Built from the bills themselves rather than from a separate vendor field, so
+ * it cannot disagree with the invoices it is summarising.
+ */
+function VendorBlock({ inspection }: { inspection: RoadsideInspection }) {
+    const bills = inspection.repairBills.filter(
+        (b) => b.vendorCompany?.trim() || b.vendorName?.trim() || billTotal(b),
+    );
+    if (bills.length === 0) return null;
+
+    const units = unitOptionsFor(inspection);
+    return (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                <p className="flex-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Repair vendors
+                    <span className="ml-1.5 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-500 ring-1 ring-slate-200">
+                        {bills.length}
+                    </span>
+                </p>
+                <p className="text-[11px] text-slate-400">Who did the work, and what it came to.</p>
+            </div>
+            <div className="divide-y divide-slate-100">
+                {bills.map((b) => {
+                    const named = units.filter((u) => b.assetIds?.includes(u.id)).map((u) => u.label);
+                    return (
+                        <div key={b.id} className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]">
+                            <div className="min-w-0">
+                                <p className="truncate text-[14px] font-semibold text-slate-800">
+                                    {b.vendorCompany?.trim() || b.vendorName?.trim() || "Vendor not named"}
+                                </p>
+                                {b.vendorCompany?.trim() && b.vendorName?.trim() && (
+                                    <p className="truncate text-[12px] text-slate-500">{b.vendorName}</p>
+                                )}
+                                {named.length > 0 && (
+                                    <p className="mt-1 flex flex-wrap gap-1">
+                                        {named.map((n) => (
+                                            <span key={n} className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-px text-[11px] font-semibold text-slate-600">
+                                                <Truck size={10} /> {n}
+                                            </span>
+                                        ))}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="min-w-0 space-y-0.5 text-[12px]">
+                                {b.vendorEmail?.trim() && (
+                                    <a href={`mailto:${b.vendorEmail}`} className="flex items-center gap-1.5 truncate text-blue-600 hover:underline">
+                                        <Mail size={11} className="shrink-0" /> {b.vendorEmail}
+                                    </a>
+                                )}
+                                {b.vendorPhone?.trim() && (
+                                    <a href={`tel:${b.vendorPhone}`} className="flex items-center gap-1.5 truncate text-slate-600 hover:underline">
+                                        <Phone size={11} className="shrink-0" /> {b.vendorPhone}
+                                    </a>
+                                )}
+                                {b.odometer?.trim() && (
+                                    <p className="flex items-center gap-1.5 text-slate-500">
+                                        <Gauge size={11} className="shrink-0" /> {b.odometer} {b.odometerUnit ?? "mi"}
+                                    </p>
+                                )}
+                                {!b.vendorEmail?.trim() && !b.vendorPhone?.trim() && (
+                                    <p className="italic text-slate-400">No contact details on the bill.</p>
+                                )}
+                            </div>
+
+                            {/* Labour and parts as they were invoiced, and the sum of them. */}
+                            <div className="text-right">
+                                <p className="text-[15px] font-bold tabular-nums text-slate-900">
+                                    {billTotal(b) ? `${b.currency ?? "USD"} ${billTotal(b)}` : "\u2014"}
+                                </p>
+                                <p className="text-[11px] tabular-nums text-slate-500">
+                                    {[b.labour?.trim() ? `Labour ${b.labour}` : null, b.parts?.trim() ? `Parts ${b.parts}` : null]
+                                        .filter(Boolean).join(" \u00b7 ") || "Not itemised"}
+                                </p>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </section>
+    );
+}
+
 /**
  * What to do next, in a sentence.
  *
@@ -92,9 +182,9 @@ function NextStep({ i, onGoDocuments }: { i: RoadsideInspection; onGoDocuments: 
                 <ShieldCheck size={16} className="mt-0.5 shrink-0 text-slate-500" />
                 <p className="text-[13px] leading-relaxed text-slate-700">
                     <span className="font-bold">Closed.</span>{" "}
-                    {hasVehicleViolation(i)
-                        ? "The defect was re-inspected and the paperwork is on file."
-                        : "Nothing was found against the equipment, so there was nothing to re-inspect."}
+                    {remediationRequired(i)
+                        ? "It was re-inspected and the paperwork is on file."
+                        : "It passed, so there was nothing to put right."}
                 </p>
             </div>
         );
@@ -215,7 +305,7 @@ function activityOf(i: RoadsideInspection): ActivityEntry[] {
         } as ActivityEntry & { sort: string });
     }
 
-    if (inspectionStage(i) === "closed" && hasVehicleViolation(i)) {
+    if (inspectionStage(i) === "closed" && remediationRequired(i)) {
         const last = [...i.remediation, ...i.repairBills].map((d) => d.uploadedAt).sort().pop() ?? i.createdAt;
         out.push({
             id: "closed", sort: last, icon: ShieldCheck, iconTone: "bg-slate-400",
@@ -281,7 +371,7 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
     // "1 document" mean something.
     const missingDocs = [
         i.reports.length === 0,
-        (hasVehicleViolation(i) || i.oos) && i.remediation.length === 0,
+        remediationRequired(i) && i.remediation.length === 0,
         isMaintenanceRelated(i) && i.repairBills.length === 0,
     ].filter(Boolean).length;
     const partiesWithFindings = [i.truck, i.trailer, i.driver].filter((p) => p.hasViolation && p.violations.length).length;
@@ -396,11 +486,22 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                                             : `${vios.length} across ${partiesWithFindings} part${partiesWithFindings === 1 ? "y" : "ies"}`} />
                                     <Fact icon={Wrench} label="Maintenance related"
                                         value={isMaintenanceRelated(i) ? "Yes — repair bill expected" : "No"} />
+                                    <Fact icon={Gauge} label="Odometer"
+                                        value={i.truckOdometer?.trim()
+                                            ? `${i.truckOdometer} ${i.truckOdometerUnit ?? "mi"}`
+                                            : "—"} />
+                                    {/* Undefined is not "no": it means nobody wrote it down. */}
+                                    <Fact icon={ClipboardCheck} label="Logbook inspected"
+                                        value={i.driver.logbookInspected === undefined
+                                            ? "Not recorded"
+                                            : i.driver.logbookInspected ? "Yes" : "No"} />
                                     <Fact icon={FileText} label="Documents on file"
                                         value={`${docCount} of ${docCount + missingDocs}`} />
                                     <Fact icon={ShieldCheck} label="Recorded by" value={i.createdBy} />
                                 </div>
                             </section>
+
+                            <VendorBlock inspection={i} />
 
                             {i.notes?.trim() && (
                                 <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

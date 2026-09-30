@@ -8,10 +8,12 @@
 // gets updated in one place and forgotten in the other.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { ACME_ASSETS, ACME_DRIVERS, driverOfAsset, type Assignment } from "./inventory.data";
+import {
+    ACME_ASSETS, ACME_DRIVERS, itemAssetAssignment, itemDriverId,
+    type Assignment, type InventoryItem,
+} from "./inventory.data";
 import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
-import type { HandoverStatus } from "./handovers.data";
 
 // Carrier-scoped lookup: prefer the active carrier's drivers / assets, falling back to
 // Acme's so the display continues to work for the legacy hand-curated INVENTORY_ITEMS
@@ -27,16 +29,26 @@ export const driverNameOf = (driverId: string, accountId: string | undefined): s
     return name || null;
 };
 
-/**
- * Is this item assigned — that is, is it on a vehicle?
- *
- * The only question assignment answers. An item filed against a person is left over from
- * before inventory moved onto the vehicle, and a hand-over is a separate fact about who is
- * carrying something, not about what it is assigned to. Counting either as "assigned" is
- * how the Assigned chip and the Unassigned tile ended up disagreeing about the same item.
- */
+/** Is this item filed against a unit? */
 export const itemOnAsset = (a: Assignment | undefined): boolean =>
     !!a && (a.kind === "cmv" || a.kind === "non-cmv");
+
+/** The item, for the two questions below. */
+type Filed = Pick<InventoryItem, "assignedTo" | "assignedDriverId">;
+
+/** Is a unit answerable for it. */
+export const assignedToAsset = (it: Filed): boolean => !!itemAssetAssignment(it);
+/** Is a person answerable for it. */
+export const assignedToDriver = (it: Filed): boolean => !!itemDriverId(it);
+
+/**
+ * Is this item on ANYTHING — a unit, a person, or both.
+ *
+ * The question the Assigned / Available chips ask. An item can now be on a truck AND on
+ * the driver of that truck, and a list that answered "Available" for something already in
+ * somebody’s cab would send the office looking for it on a shelf.
+ */
+export const itemAssigned = (it: Filed): boolean => assignedToAsset(it) || assignedToDriver(it);
 
 /**
  * The VEHICLE an item is assigned to, or null when it is not on one.
@@ -57,51 +69,31 @@ export function resolveAsset(a: Assignment | undefined, accountId: string | unde
 }
 
 /**
- * The PERSON holding an item, and how they came to hold it. Three routes, in order:
+ * The PERSON holding an item. One route, and it is a record rather than an inference:
+ * somebody put this item on this driver.
  *
- *   assigned  — the item is filed against the driver directly.
- *   drives    — the item goes with a vehicle and is carried by whoever drives it. The driver is
- *               read off the vehicle NOW, so a change of driver cannot leave the item pointing
- *               at the one who handed it back.
- *   handed    — the item is on a driver's signed hand-over checklist.
- *
- * A direct assignment outranks a hand-over because it is the item's own record of where it
- * belongs; the hand-over says who physically took it, which is shown as the sub-line when it
- * is the only thing we know.
+ * There used to be two more. An item could reach a driver by riding along with a unit they
+ * happened to drive, or by sitting on a signed hand-over checklist — so the same fuel card
+ * could be "on" three people at once depending on which list you were reading, and taking it
+ * off one of them did nothing, because the next render read it straight back off the other.
+ * An item is on a unit, on a person, or on both, and each of those is a field somebody set.
  */
 export function resolveDriver(
-    a: Assignment | undefined,
+    item: Pick<InventoryItem, "assignedTo" | "assignedDriverId">,
     accountId: string | undefined,
-    handedTo: { driverId: string; status: HandoverStatus } | undefined,
 ) {
-    if (a?.kind === "driver") {
-        const drivers = driversFor(accountId);
-        const d = drivers.find((x: any) => x.id === a.targetId) ?? ACME_DRIVERS.find((x) => x.id === a.targetId);
-        if (!d) return { id: a.targetId, label: "—", sub: "Unknown driver", via: "assigned" as const };
-        const name = (d as any).name ?? `${(d as any).firstName ?? ""} ${(d as any).lastName ?? ""}`.trim();
-        return {
-            id: (d as any).id as string,
-            label: name || "—",
-            sub: (d as any).licenseNumber ? `License ${(d as any).licenseNumber}` : "Assigned directly",
-            via: "assigned" as const,
-        };
-    }
-    if (a && a.alsoDriverOfAsset) {
-        const held = driverOfAsset(a.targetId, accountId);
-        if (held) return { id: held.id, label: held.name, sub: "Drives this vehicle", via: "drives" as const };
-    }
-    if (handedTo) {
-        const name = driverNameOf(handedTo.driverId, accountId);
-        if (name) {
-            return {
-                id: handedTo.driverId,
-                label: name,
-                sub: handedTo.status === "verified" ? "Hand-over verified" : "Handed over",
-                via: "handed" as const,
-            };
-        }
-    }
-    return null;
+    const named = itemDriverId(item);
+    if (!named) return null;
+    const drivers = driversFor(accountId);
+    const d = drivers.find((x: any) => x.id === named) ?? ACME_DRIVERS.find((x) => x.id === named);
+    if (!d) return { id: named, label: "—", sub: "Unknown driver", via: "assigned" as const };
+    const name = (d as any).name ?? `${(d as any).firstName ?? ""} ${(d as any).lastName ?? ""}`.trim();
+    return {
+        id: (d as any).id as string,
+        label: name || "—",
+        sub: (d as any).licenseNumber ? `License ${(d as any).licenseNumber}` : "Assigned directly",
+        via: "assigned" as const,
+    };
 }
 
 export const KIND_TONE: Record<string, string> = {

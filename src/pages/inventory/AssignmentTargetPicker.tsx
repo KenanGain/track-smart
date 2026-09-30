@@ -287,10 +287,10 @@ export function AssignmentTargetPicker({ kind, selectedId, onSelect, placeholder
                                             ))}
                                         </div>
                                         <div className="text-xs text-slate-600 mt-0.5 truncate">{opt.secondary}</div>
-                                        {/* Who drives it. The next question on the form asks whether the
-                                            item is carried by this vehicle's driver, and until now the list
-                                            you pick from never said which vehicles have one — so that
-                                            checkbox arrived already disabled, with no warning. */}
+                                        {/* Who drives it, as CONTEXT for telling two similar units apart —
+                                            never as a route an item takes. Filing something against this
+                                            truck says nothing about whose pocket it is in; that is its own
+                                            line, made on a driver's page. */}
                                         {kind !== "driver" && (
                                             <div className="mt-0.5 inline-flex items-center gap-1 truncate text-[11px]">
                                                 <IdCard size={10} className={opt.driver ? "text-emerald-500" : "text-slate-300"} />
