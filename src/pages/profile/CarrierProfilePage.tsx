@@ -64,7 +64,11 @@ import { cn } from '@/lib/utils';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
-import { addCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
+import { addCarrierDriver, removeCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
+import { consumePendingRecordRef } from '@/pages/messages/messages-store';
+import { RowActions } from '@/components/ui/RowActions';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { driverSharePayload, type ShareableDriver } from '@/components/share/share-payloads';
 import { commitTravelDocs } from '@/pages/compliance/travel-docs-bridge';
 import { AddDriverApplication } from './AddDriverApplication';
 import { addTicket } from '@/pages/tickets/tickets.store';
@@ -681,7 +685,29 @@ export function CarrierProfilePage({
     const [activeModal, setActiveModal] = useState<any>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
     const [activeTab, setActiveTab] = useState("fleet");
+    /**
+     * Arrived at by following a shared record link out of a chat.
+     *
+     * This page is the destination for three KINDS of record — a unit, a driver and a
+     * yard — behind three tabs, so the link carries its type as well as its id. Without
+     * it the link landed on whatever tab was last open with the record nowhere in sight,
+     * which reads as the link being broken rather than as having arrived.
+     *
+     * Read once, on mount, because it is a hand-off and not a state: coming back to this
+     * page later must not re-open a record somebody has since closed.
+     */
+    const [openAssetId, setOpenAssetId] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        const ref = consumePendingRecordRef('/account/profile');
+        if (!ref) return;
+        if (ref.type === 'asset') { setActiveTab('assets'); setOpenAssetId(ref.id); }
+        else if (ref.type === 'driver') { setActiveTab('drivers'); handleDriverClick(ref.id); }
+        else if (ref.type === 'location') { setActiveTab('locations'); }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [viewingDriverId, setViewingDriverId] = useState<string | null>(null);
+    /** The driver whose Share dialog is open, already flattened for the payload. */
+    const [sharingDriver, setSharingDriver] = useState<ShareableDriver | null>(null);
     // True while AssetDirectoryPage is showing AssetDetailView. Used to hide
     // the carrier breadcrumb/dropdown/tabs so the asset detail page reads
     // cleanly with only its own breadcrumb + back button.
@@ -1742,6 +1768,7 @@ export function CarrierProfilePage({
                             onDetailViewChange={setIsAssetDetailActive}
                             onFormActiveChange={setIsAssetFormActive}
                             accountId={accountId}
+                            initialAssetId={openAssetId}
                         />
                     </div>
                 )}
@@ -2032,13 +2059,47 @@ export function CarrierProfilePage({
                                                             {/* Opaque, and opaque again on hover — a see-through sticky
                                                                 cell shows the scrolled columns through itself. */}
                                                             <td className="sticky right-0 z-10 border-l border-slate-200 bg-white py-3 pl-4 pr-5 text-right group-hover:bg-blue-50/40">
-                                                                <div className="flex items-center justify-end gap-1">
-                                                                    <button onClick={(e) => { e.stopPropagation(); onNavigate?.('/dq-files'); }} title="Open DQ Files" className="rounded p-1.5 text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-600">
-                                                                        <ListChecks className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} title="Edit driver" className="rounded p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600">
-                                                                        <Edit3 className="h-4 w-4" />
-                                                                    </button>
+                                                                {/* The same four as every other list, plus the one thing
+                                                                    only a driver row can do. DQ Files was a bare icon here
+                                                                    that nothing else in the product used, so it reads as a
+                                                                    named item instead of a glyph to be recognised. */}
+                                                                <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                                                                    <RowActions
+                                                                        noun="driver"
+                                                                        name={driver.name}
+                                                                        /* Open goes to the profile; Edit goes to the FORM.
+                                                                           The pencil here used to open the profile too, so
+                                                                           the only way to correct a driver's details was to
+                                                                           open them and find Edit a second time. */
+                                                                        onOpen={() => handleDriverClick(driver.id)}
+                                                                        onEdit={() => handleEditProfileInit(driver)}
+                                                                        onShare={() => setSharingDriver({
+                                                                            id: driver.id,
+                                                                            name: driver.name,
+                                                                            status: driver.status,
+                                                                            hireDate: (driver as any).hireDate,
+                                                                            email: driver.email,
+                                                                            phone: driver.phone,
+                                                                            licenseNumber: driver.licenseNumber,
+                                                                            licenseState: driver.licenseState,
+                                                                            licenseExpiry: driver.licenseExpiry,
+                                                                            dqPercent: dqHealth.pct,
+                                                                            complianceNote: [
+                                                                                stats.expired ? `${stats.expired} expired` : '',
+                                                                                (stats.missingNumber + stats.missingExpiry + stats.missingDoc)
+                                                                                    ? `${stats.missingNumber + stats.missingExpiry + stats.missingDoc} missing` : '',
+                                                                                stats.expiring ? `${stats.expiring} expiring` : '',
+                                                                            ].filter(Boolean).join(' · ') || 'Compliant',
+                                                                        })}
+                                                                        extra={[{ label: 'Open DQ file', icon: ListChecks, onClick: () => onNavigate?.('/dq-files') }]}
+                                                                        onDelete={() => {
+                                                                            // Both stores, or the roster hands the driver
+                                                                            // back on the next load and the delete reads
+                                                                            // as having silently failed.
+                                                                            removeCarrierDriver(accountId, driver.id);
+                                                                            setDrivers((prev: any[]) => prev.filter((d) => d.id !== driver.id));
+                                                                        }}
+                                                                    />
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -2060,6 +2121,18 @@ export function CarrierProfilePage({
                                     setDriverPage(1);
                                 }}
                             />
+
+                            {/* Share — the driver, their licence and whatever is already
+                                filed against them, read from the same store the dialog's own
+                                "Add from app" picker reads. */}
+                            {sharingDriver && (
+                                <ShareToChat
+                                    open
+                                    onClose={() => setSharingDriver(null)}
+                                    {...driverSharePayload(sharingDriver)}
+                                    defaultChannel="in-app"
+                                />
+                            )}
                         </div>
                     </div>
                 )}

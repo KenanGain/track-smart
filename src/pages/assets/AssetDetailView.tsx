@@ -5,8 +5,8 @@ import {
   ShieldCheck, Hash, Clock,
   Settings, MapPin, ChevronDown, Wrench, Trash2,
   X, UploadCloud, FileDown, FileKey, FileCheck, AlertOctagon,
-  Search, Calendar, CalendarClock,
-  ArrowUp, ArrowDown, ArrowUpDown, ArrowLeft,
+  Calendar, CalendarClock,
+  ArrowLeft,
   User, Activity,
   LayoutDashboard, History,
 } from 'lucide-react';
@@ -852,20 +852,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
     }));
   }, [asset.id]);
 
-  // ── Per-asset Maintenance UI state (filters, search, sort) ─────────────
-  type OrderStatusFilter = 'all' | 'open' | 'completed' | 'cancelled';
-
-  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>('all');
-  const [orderSearch, setOrderSearch]             = useState('');
-  const [orderSort, setOrderSort]                 = useState<'created' | 'due' | 'status'>('created');
-  const [orderSortDir, setOrderSortDir]           = useState<'asc' | 'desc'>('desc');
-  const [orderPage, setOrderPage]                 = useState(1);
-  const [orderRowsPerPage, setOrderRowsPerPage]   = useState(5);
-
-
-  // Reset to page 1 whenever filters change so the user always lands on visible rows.
-  useEffect(() => { setOrderPage(1); }, [orderStatusFilter, orderSearch, orderSort, orderSortDir, orderRowsPerPage]);
-
   // Real metrics derived from this asset's actual tasks/orders.
   const maintenanceMetrics = useMemo(() => {
     const openOrders = assetOrders.filter(o => o.status === 'open').length;
@@ -902,48 +888,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
 
     return { openOrders, overdueTasks, dueTasks, ytdSpend, upcomingTask, lastCompletion };
   }, [assetTasks, assetOrders, asset.id]);
-
-  // Filtered + sorted work orders.
-  const filteredOrders = useMemo(() => {
-    const q = orderSearch.trim().toLowerCase();
-    let list = assetOrders.filter(o => {
-      if (orderStatusFilter !== 'all' && o.status !== orderStatusFilter) return false;
-      if (q) {
-        const vendorName = vendors.find((v: any) => v.id === o.vendorId)?.companyName?.toLowerCase() ?? '';
-        return [o.id, vendorName, o.notes ?? ''].some(v => v.toLowerCase().includes(q));
-      }
-      return true;
-    });
-
-    const ORDER_STATUS_ORDER: Record<string, number> = { open: 0, completed: 1, cancelled: 2 };
-    const dir = orderSortDir === 'asc' ? 1 : -1;
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-      if (orderSort === 'status') cmp = (ORDER_STATUS_ORDER[a.status] ?? 99) - (ORDER_STATUS_ORDER[b.status] ?? 99);
-      else if (orderSort === 'due') cmp = new Date(a.dueDate ?? 0).getTime() - new Date(b.dueDate ?? 0).getTime();
-      else cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return cmp * dir;
-    });
-    return list;
-  }, [assetOrders, orderStatusFilter, orderSearch, orderSort, orderSortDir]);
-
-  const orderStatusCounts = useMemo(() => ({
-    all: assetOrders.length,
-    open: assetOrders.filter(o => o.status === 'open').length,
-    completed: assetOrders.filter(o => o.status === 'completed').length,
-    cancelled: assetOrders.filter(o => o.status === 'cancelled').length,
-  }), [assetOrders]);
-
-  // Clamp page when filtered list shrinks.
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(filteredOrders.length / orderRowsPerPage));
-    if (orderPage > maxPage) setOrderPage(maxPage);
-  }, [filteredOrders.length, orderRowsPerPage, orderPage]);
-
-  const pagedOrders = useMemo(() => {
-    const start = (orderPage - 1) * orderRowsPerPage;
-    return filteredOrders.slice(start, start + orderRowsPerPage);
-  }, [filteredOrders, orderPage, orderRowsPerPage]);
 
   // Inventory: filter → sort → paginate. Same shape as the tasks/orders
   // pipelines above.
@@ -3361,205 +3305,20 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                     onStartTracking={() => onNavigate?.('/maintenance')}
                 />
 
-                {/* ─────────── What has been sent to a shop about it ─────────── */}
-                    <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
-                            <div className="flex items-center gap-2">
-                                <FileText size={16} className="text-slate-500" />
-                                <h3 className="font-bold text-slate-800 text-sm">Work Orders</h3>
-                                <Badge variant="neutral" className="ml-2">{filteredOrders.length} of {assetOrders.length}</Badge>
-                            </div>
-                            <Button
-                                size="sm"
-                                onClick={() => setIsCreateOrderModalOpen(true)}
-                                className="gap-1.5 h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200"
-                            >
-                                <Plus size={13}/> Add Work Order
-                            </Button>
-                        </div>
+                {/*
+                    No work-order list here.
 
-                        {/* Search + Sort */}
-                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
-                            <div className="relative flex-1 min-w-0">
-                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                <input
-                                    type="text"
-                                    value={orderSearch}
-                                    onChange={(e) => setOrderSearch(e.target.value)}
-                                    placeholder="Search WO #, vendor, notes…"
-                                    className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                                />
-                                {orderSearch && (
-                                    <button onClick={() => setOrderSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100" aria-label="Clear">
-                                        <X size={12} />
-                                    </button>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (orderSort === 'created') setOrderSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                                    else { setOrderSort('created'); setOrderSortDir('desc'); }
-                                }}
-                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${orderSort === 'created' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                                title="Sort by created date"
-                            >Created {orderSort === 'created' ? (orderSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
-                            <button
-                                onClick={() => {
-                                    if (orderSort === 'due') setOrderSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                                    else { setOrderSort('due'); setOrderSortDir('asc'); }
-                                }}
-                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${orderSort === 'due' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                                title="Sort by due date"
-                            >Due {orderSort === 'due' ? (orderSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
-                        </div>
+                    The tab answers what this unit OWES; what has been sent to a shop about
+                    it is a different question with its own screen — the maintenance module's
+                    Work Orders tab, which lists them across the fleet and can be filtered to
+                    this unit. Keeping a second copy here meant two lists of the same orders
+                    with different filters in front of them, and the one on this tab was the
+                    one nobody could act on.
 
-                        {/* Status filter chips */}
-                        <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
-                            {([
-                                { id: 'all',       label: 'All' },
-                                { id: 'open',      label: 'Open' },
-                                { id: 'completed', label: 'Completed' },
-                                { id: 'cancelled', label: 'Cancelled' },
-                            ] as Array<{ id: OrderStatusFilter; label: string }>).map(chip => {
-                                const active = orderStatusFilter === chip.id;
-                                const count = (orderStatusCounts as Record<string, number>)[chip.id] ?? 0;
-                                return (
-                                    <button
-                                        key={chip.id}
-                                        onClick={() => setOrderStatusFilter(chip.id)}
-                                        className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
-                                    >
-                                        {chip.label}
-                                        <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Work Orders table — same column shape as the
-                            central AssetMaintenancePage (Order # · Vendor ·
-                            Tasks · Progress · Created · Due · Status), trimmed
-                            to drop the Assets column since the page is already
-                            scoped to one asset. */}
-                        <div className="bg-white overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-4 py-2.5 font-semibold">Order #</th>
-                                        <th className="px-4 py-2.5 font-semibold">Vendor</th>
-                                        <th className="px-4 py-2.5 font-semibold">Tasks</th>
-                                        <th className="px-4 py-2.5 font-semibold">Progress</th>
-                                        <th className="px-4 py-2.5 font-semibold">Created</th>
-                                        <th className="px-4 py-2.5 font-semibold">Due</th>
-                                        <th className="px-4 py-2.5 font-semibold">Total</th>
-                                        <th className="px-4 py-2.5 font-semibold">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {pagedOrders.length > 0 ? pagedOrders.map(order => {
-                                        const vendor = vendors.find((v: any) => v.id === order.vendorId);
-                                        const lastCompletion = (order.completions ?? []).slice(-1)[0];
-                                        const orderTotal = lastCompletion?.assetBreakdowns?.find(b => b.assetId === asset.id)?.costs?.totalPaid ?? 0;
-                                        const currency = lastCompletion?.currency ?? (currentVehicle.country === 'Canada' ? 'CAD' : 'USD');
-                                        // Resolve tasks attached to this order to compute progress + service names.
-                                        const orderTasks = INITIAL_TASKS.filter(t => order.taskIds.includes(t.id));
-                                        const completedCount = orderTasks.filter(t => t.status === 'completed').length;
-                                        const totalCount = orderTasks.length;
-                                        const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-                                        const serviceNames = orderTasks
-                                            .map(t => INITIAL_SERVICE_TYPES.find(s => s.id === t.serviceTypeIds[0])?.name)
-                                            .filter(Boolean)
-                                            .join(', ');
-                                        return (
-                                            <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
-                                                <td className="px-4 py-3 font-mono text-xs">
-                                                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold">
-                                                        #{order.id.slice(-6).toUpperCase()}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={vendor?.companyName ?? ''}>
-                                                    {vendor?.companyName ?? <span className="text-slate-400">Unassigned</span>}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="text-slate-900 font-medium">{totalCount} task{totalCount === 1 ? '' : 's'}</div>
-                                                    {serviceNames && (
-                                                        <div className="text-[11px] text-slate-500 truncate max-w-[200px]" title={serviceNames}>
-                                                            {serviceNames}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-1.5 bg-slate-100 rounded-full w-20 overflow-hidden">
-                                                            <div
-                                                                className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
-                                                                style={{ width: `${progress}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-[11px] font-medium text-slate-500 tabular-nums">{progress}%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
-                                                    {formatDate(order.createdAt)}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
-                                                    {order.dueDate ? formatDate(order.dueDate) : <span className="text-slate-400">—</span>}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-700 font-semibold tabular-nums whitespace-nowrap">
-                                                    {orderTotal > 0
-                                                        ? formatMoney(orderTotal, currency as 'USD' | 'CAD')
-                                                        : <span className="text-slate-400 font-normal">—</span>}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <Badge variant={order.status === 'completed' ? 'success' : order.status === 'cancelled' ? 'neutral' : 'Drafted'}>
-                                                        {order.status}
-                                                    </Badge>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }) : (
-                                        <tr>
-                                            <td colSpan={8} className="px-4 py-12 text-center">
-                                                <div className="flex flex-col items-center justify-center text-slate-400">
-                                                    <FileText size={36} className="mb-2 opacity-25" />
-                                                    <span className="text-sm font-semibold text-slate-600">
-                                                        {assetOrders.length === 0 ? 'No work orders' : 'No work orders match the filter'}
-                                                    </span>
-                                                    <span className="text-xs text-slate-400 mt-1">
-                                                        {assetOrders.length === 0
-                                                            ? 'Create a work order from one or more scheduled tasks.'
-                                                            : 'Try clearing the search or selecting a different status.'}
-                                                    </span>
-                                                    {(orderStatusFilter !== 'all' || orderSearch) && (
-                                                        <button
-                                                            onClick={() => { setOrderSearch(''); setOrderStatusFilter('all'); }}
-                                                            className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
-                                                        >
-                                                            Clear filters
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
-                        {filteredOrders.length > 0 && (
-                            <PaginationBar
-                                totalItems={filteredOrders.length}
-                                currentPage={orderPage}
-                                rowsPerPage={orderRowsPerPage}
-                                onPageChange={setOrderPage}
-                                onRowsPerPageChange={(rows) => {
-                                    setOrderRowsPerPage(rows);
-                                    setOrderPage(1);
-                                }}
-                            />
-                        )}
-                    </Card>
+                    The figure stays: the "Open Work Orders" card above is read from the same
+                    orders, and the interval list's own Create work order button still raises
+                    them.
+                */}
               </div>
             )}
 

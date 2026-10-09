@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
-import { Search, Plus, Building2, Edit3, ChevronDown, Check, X, Grid, DoorClosed, Camera, UserCircle, Lock, Trash2 } from 'lucide-react';
+import { Search, Plus, Building2, ChevronDown, Check, X, Grid, DoorClosed, Camera, UserCircle, Lock } from 'lucide-react';
 import {
     LOCATIONS_UI,
     INITIAL_LOCATIONS_DATA,
     type Location,
     type LocationsTableData
 } from './locations.data';
+import { RowActions } from '@/components/ui/RowActions';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { locationSharePayload } from '@/components/share/share-payloads';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
 
@@ -53,9 +56,10 @@ interface LocationsTableProps {
     onEditLocation: (loc: Location) => void;
     onViewLocation: (loc: Location) => void;
     onDeleteLocation: (loc: Location) => void;
+    onShareLocation: (loc: Location) => void;
 }
 
-const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters, onEditLocation, onViewLocation, onDeleteLocation }) => {
+const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters, onEditLocation, onViewLocation, onDeleteLocation, onShareLocation }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -193,21 +197,19 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); onEditLocation(loc); }}
-                                                        className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded text-slate-400 transition-colors"
-                                                        title="Edit"
-                                                    >
-                                                        <Edit3 className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); onDeleteLocation(loc); }}
-                                                        className="p-1 hover:text-red-600 hover:bg-red-50 rounded text-slate-400 transition-colors"
-                                                        title="Delete"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                {/* The same four, in the same order, as every other list.
+                                                    A red bin sitting a pixel from Edit is a mis-click
+                                                    waiting to happen, and it was the only list that had
+                                                    no way to share a yard at all. */}
+                                                <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                                    <RowActions
+                                                        noun="yard terminal"
+                                                        name={loc.name}
+                                                        onOpen={() => onViewLocation(loc)}
+                                                        onEdit={() => onEditLocation(loc)}
+                                                        onShare={() => onShareLocation(loc)}
+                                                        onDelete={() => onDeleteLocation(loc)}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>
@@ -237,6 +239,8 @@ export function LocationsPage({ hideBreadcrumb = false }: { hideBreadcrumb?: boo
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+    /** The yard whose Share dialog is open. */
+    const [sharingLocation, setSharingLocation] = useState<Location | null>(null);
     const [viewingLocation, setViewingLocation] = useState<Location | null>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
 
@@ -299,8 +303,10 @@ export function LocationsPage({ hideBreadcrumb = false }: { hideBreadcrumb?: boo
         setEditingLocation(null);
     };
 
+    // Asked for by RowActions before this is reached, in the same words used of an asset
+    // or a driver — so it stays here rather than being asked twice.
     const handleDeleteLocation = (loc: Location) => {
-        if (confirm(`Are you sure you want to remove ${loc.name}?`)) {
+        {
             setLocationsData(prev => ({
                 ...prev,
                 groups: prev.groups.map(g => ({
@@ -380,6 +386,7 @@ export function LocationsPage({ hideBreadcrumb = false }: { hideBreadcrumb?: boo
                 onEditLocation={handleOpenEditLocation}
                 onViewLocation={(loc) => { setViewingLocation(loc); setIsViewModalOpen(true); }}
                 onDeleteLocation={handleDeleteLocation}
+                onShareLocation={setSharingLocation}
             />
 
             {/* Modals */}
@@ -401,6 +408,18 @@ export function LocationsPage({ hideBreadcrumb = false }: { hideBreadcrumb?: boo
                     if (viewingLocation) handleOpenEditLocation(viewingLocation);
                 }}
             />
+
+            {/* Share — the yard, its address and how it is actually secured. Both halves
+                of the security answer travel: a list of only what IS in place reads as a
+                clean bill of health to whoever receives it. */}
+            {sharingLocation && (
+                <ShareToChat
+                    open
+                    onClose={() => setSharingLocation(null)}
+                    {...locationSharePayload(sharingLocation)}
+                    defaultChannel="in-app"
+                />
+            )}
 
             {/* Toast */}
             <Toast

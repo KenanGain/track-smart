@@ -348,6 +348,29 @@ export function addCarrierDriver(accountId: string | undefined, driver: Driver):
     } catch { /* ignore */ }
 }
 
+/**
+ * Take a driver off the roster.
+ *
+ * Removed from the live list AND from the persisted additions, or a driver deleted in the
+ * UI comes back on the next reload — the merge on load upserts whatever is in storage over
+ * whatever is in memory, so forgetting the second half looks like the delete silently
+ * failing some time later.
+ *
+ * Records that name this driver (accidents, tickets) resolve by id and fall back to the
+ * name they captured, so they keep reading correctly rather than emptying out.
+ */
+export function removeCarrierDriver(accountId: string | undefined, driverId: string): void {
+    if (!accountId || !driverId) return;
+    CARRIER_DRIVERS[accountId] = (CARRIER_DRIVERS[accountId] ?? []).filter(d => d.id !== driverId);
+    try {
+        const extra = loadExtraDrivers();
+        if (extra[accountId]) {
+            extra[accountId] = extra[accountId].filter(d => d.id !== driverId);
+            localStorage.setItem(EXTRA_DRIVERS_KEY, JSON.stringify(extra));
+        }
+    } catch { /* ignore */ }
+}
+
 export const getDriversForAccount = (accountId: string): Driver[] =>
     CARRIER_DRIVERS[accountId] ?? [];
 

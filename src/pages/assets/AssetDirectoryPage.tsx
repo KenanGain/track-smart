@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { calculateAssetComplianceStats } from '@/utils/compliance-utils';
 import {
-    Search, Plus, Download, MoreHorizontal,
-    Check, Edit2, FileText,
-    RotateCcw, Trash2, Copy, Calendar, Truck,
+    Search, Plus, Download,
+    Check, FileText,
+    RotateCcw, Copy, Calendar, Truck,
     AlertCircle, Briefcase, LayoutGrid, XCircle,
     Columns, ChevronDown,
     ArrowUp, ArrowDown, ArrowUpDown, X as XIcon, Filter,
@@ -21,6 +21,9 @@ import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 import { useBackAwareView } from '@/lib/use-back-aware-view';
+import { RowActions } from '@/components/ui/RowActions';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { assetSharePayload } from '@/components/share/share-payloads';
 
 // --- UI Utility ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -181,7 +184,15 @@ export function AssetDirectoryPage({
     onFormActiveChange,
     accountId,
     onNavigate,
+    initialAssetId,
 }: {
+    /**
+     * Open straight onto one unit's record.
+     *
+     * Set when the list is arrived at by following a shared record link out of a chat —
+     * landing on the list with the unit somewhere on page 2 is not "opening the record".
+     */
+    initialAssetId?: string;
     isEmbedded?: boolean;
     /** Opening an inventory item or its form from the asset detail view needs the router. */
     onNavigate?: (path: string) => void;
@@ -206,8 +217,10 @@ export function AssetDirectoryPage({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
-    const [selectedAsset, setSelectedAsset] = useState<DetailedAsset | null>(null);
+    /** The row whose Share dialog is open. */
+    const [sharingAsset, setSharingAsset] = useState<Asset | null>(null);
+    const [selectedAsset, setSelectedAsset] = useState<DetailedAsset | null>(() =>
+        (initialAssetId ? (assetsProp ?? INITIAL_ASSETS).find((a) => a.id === initialAssetId) as DetailedAsset | undefined : undefined) ?? null);
     // Back closes the asset rather than leaving the app.
     useBackAwareView(!!selectedAsset, () => setSelectedAsset(null), "asset");
 
@@ -631,46 +644,18 @@ export function AssetDirectoryPage({
                                                         </TD>
                                                         <TD><Badge variant={asset.operationalStatus}>{asset.operationalStatus}</Badge></TD>
                                                         <TD align="right" className="pr-6">
-                                                            <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity relative">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-9 w-9 hover:text-[#2563EB] hover:bg-blue-50 rounded-xl"
-                                                                    onClick={(e) => { e.stopPropagation(); setEditingAsset(asset); setIsModalOpen(true); }}
-                                                                >
-                                                                    <Edit2 size={15} />
-                                                                </Button>
-                                                                <div className="relative">
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-9 w-9 rounded-xl"
-                                                                        onClick={(e) => { e.stopPropagation(); setOpenActionMenuId(openActionMenuId === asset.id ? null : asset.id); }}
-                                                                    >
-                                                                        <MoreHorizontal size={18} />
-                                                                    </Button>
-
-                                                                    {openActionMenuId === asset.id && (
-                                                                        <>
-                                                                            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenActionMenuId(null); }} />
-                                                                            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-[100] p-1.5" onClick={(e) => e.stopPropagation()}>
-                                                                                <button
-                                                                                    onClick={(e) => { e.stopPropagation(); setEditingAsset(asset); setIsModalOpen(true); setOpenActionMenuId(null); }}
-                                                                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all"
-                                                                                >
-                                                                                    <Edit2 size={14} /> Edit Asset
-                                                                                </button>
-                                                                                <div className="h-px bg-slate-100 my-1" />
-                                                                                <button 
-                                                                                    onClick={(e) => { e.stopPropagation(); /* Add delete handler here */ }}
-                                                                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 transition-all"
-                                                                                >
-                                                                                    <Trash2 size={14} /> Delete
-                                                                                </button>
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
+                                                            {/* Always visible. It used to fade in on hover, which hides
+                                                                the only way to act on a row from anyone reading with a
+                                                                keyboard or on a touch screen, where there is no hover. */}
+                                                            <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                                                                <RowActions
+                                                                    noun="asset"
+                                                                    name={asset.unitNumber}
+                                                                    onOpen={() => setSelectedAsset(asset as DetailedAsset)}
+                                                                    onEdit={() => { setEditingAsset(asset); setIsModalOpen(true); }}
+                                                                    onShare={() => setSharingAsset(asset)}
+                                                                    onDelete={() => setAssets((prev) => prev.filter((x) => x.id !== asset.id))}
+                                                                />
                                                             </div>
                                                         </TD>
                                                     </tr>
@@ -720,6 +705,18 @@ export function AssetDirectoryPage({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Share — the unit, its plating and everything already filed against it.
+                Built by the shared payload so an asset shared from here and the same asset
+                shared from the maintenance module arrive carrying the same thing. */}
+            {sharingAsset && (
+                <ShareToChat
+                    open
+                    onClose={() => setSharingAsset(null)}
+                    {...assetSharePayload(sharingAsset)}
+                    defaultChannel="in-app"
+                />
             )}
         </>
     );

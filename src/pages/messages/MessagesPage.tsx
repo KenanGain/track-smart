@@ -860,7 +860,7 @@ export function MessagesPage({ currentUserName, accountId, onNavigate }: {
   };
 
   // Open a shared record link — stash the id for the destination page, then navigate.
-  const openRecord = (rec: RecordRef) => { setPendingRecord(rec.path, rec.id); onNavigate?.(rec.path); };
+  const openRecord = (rec: RecordRef) => { setPendingRecord(rec.path, rec.id, rec.type); onNavigate?.(rec.path); };
   const completeWidget = (msgId: string) => { if (selected) { setWidgetStatus(selected.id, msgId, 'done'); notify('Task completed'); } };
 
   return (

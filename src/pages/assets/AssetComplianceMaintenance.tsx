@@ -26,7 +26,8 @@
 // Each level owns its own way back, so there is one Back button on screen at a time.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { scrollAncestorsToTop } from '@/lib/scroll-to-top';
 import {
     Wrench, ChevronRight, ChevronLeft, ClipboardCheck, FileText, Eye, Sparkles, Search,
     SlidersHorizontal,
@@ -84,6 +85,9 @@ export function AssetComplianceMaintenance({
     /** The interval list's own page. Separate: the two lists are never on screen together,
      *  and sharing one page number silently put you on page 2 of a six-row list. */
     const [intervalPage, setIntervalPage] = useState(0);
+    /** Whichever level is on screen, for the scroll reset below. */
+    const levelRef = useRef<HTMLDivElement | null>(null);
+    const keepLevel = (el: HTMLDivElement | null) => { if (el) levelRef.current = el; };
     const [intervalPerPage, setIntervalPerPage] = useState(15);
 
     const meter: MeterReading = useMemo(() => ({
@@ -200,6 +204,20 @@ export function AssetComplianceMaintenance({
         }), ...prev]);
     };
 
+    /*
+     * Each level opens at the top of itself.
+     *
+     * Drilling in REPLACES the view, so the scroll position that belonged to the level
+     * above means nothing here — and on an asset's page, where the header folds, arriving
+     * part-way down springs the header open and pushes what you just opened off the bottom
+     * of the screen. The ref follows whichever level is rendered; the one being left is
+     * unmounted by the time the effect runs, which is why the last live node is kept.
+     *
+     * Above every early return below: React counts hooks per render, and a level that
+     * skipped it would run fewer than the previous one did, which unmounts the page.
+     */
+    useLayoutEffect(() => { scrollAncestorsToTop(levelRef.current); }, [openIntervalId]);
+
     // ── The form ───────────────────────────────────────────────────────────
     if (adding && openRule) {
         return (
@@ -223,13 +241,14 @@ export function AssetComplianceMaintenance({
         );
     }
 
+
     // ── One interval's records, read the way every other record's versions are ──
     if (openRule) {
         const clocks = clocksFor(openRule.id, rows, meta, asset.id, meter);
         const first = soonestClock(clocks);
         const last = pairHistory[0];
         return (
-            <div className="space-y-4">
+            <div ref={keepLevel} className="space-y-4">
                 {/* One head, one Back. This level's way out is back to the intervals; the
                     level above's is back to the compliance list, and only one of them is
                     ever on screen. */}
@@ -454,7 +473,7 @@ export function AssetComplianceMaintenance({
 
     // ── The intervals on this unit: names, and nothing else ────────────────
     return (
-        <div className="space-y-4">
+        <div ref={keepLevel} className="space-y-4">
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                 <button
                     type="button"

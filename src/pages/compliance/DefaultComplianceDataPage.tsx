@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { scrollAncestorsToTop } from '@/lib/scroll-to-top';
 import { useCondensingAnchor, useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
 import { ListPageHeader } from '@/components/ui/ListPageHeader';
 import { type KpiChip } from '@/components/ui/KpiChipStrip';
@@ -1554,6 +1555,16 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const [page, setPage] = useState(1);
     const [manage, setManage] = useState<SafetyRecord | null>(null);
     const [detailRecord, setDetailRecord] = useState<SafetyRecord | null>(null); // row → dedicated detail page
+    /*
+     * A record opens at the top of itself, and so does the list you come back to.
+     *
+     * Opening one from a scrolled list kept the list's position, which on an asset's page
+     * meant arriving at scroll 82 with the header sprung back to its full 575px and the
+     * record's own first card at y=589 — below the fold, on a screen 800 tall. You could
+     * scroll, but what you had just opened was never where you were looking.
+     */
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    useLayoutEffect(() => { scrollAncestorsToTop(panelRef.current); }, [detailRecord]);
     const [confirmClear, setConfirmClear] = useState(false);                     // Clear → "are you sure?"
     // Which records this subject tracks. `listedDisabled` is a snapshot, so flipping a row's
     // switch marks it rather than moving it out from under the cursor; `refresh` is what
@@ -1702,7 +1713,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
 
     return (
-        <div className="space-y-5">
+        <div ref={panelRef} className="space-y-5">
             {detailRecord && detailFor?.(detailRecord, () => setDetailRecord(null)) ? (
                 detailFor(detailRecord, () => setDetailRecord(null))
             ) : detailRecord ? (

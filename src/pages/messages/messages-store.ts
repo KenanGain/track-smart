@@ -741,11 +741,26 @@ export function setMessagesFocus(id: string) { pendingFocus = id; }
 export function consumeMessagesFocus(): string | null { const f = pendingFocus; pendingFocus = null; return f; }
 
 // ── deep-link to a record (shared record link in a chat → open the record) ────
-let pendingRecord: { path: string; id: string } | null = null;
-export function setPendingRecord(path: string, id: string) { pendingRecord = { path, id }; }
+/**
+ * `type` is carried as well as the id.
+ *
+ * One page can be the destination for several KINDS of record: the carrier profile holds
+ * assets, drivers and yard terminals behind three tabs, and an id on its own does not say
+ * which tab to open or which list to look in. Pages that host a single kind ignore it and
+ * keep using {@link consumePendingRecord}.
+ */
+let pendingRecord: { path: string; id: string; type?: string } | null = null;
+export function setPendingRecord(path: string, id: string, type?: string) { pendingRecord = { path, id, type }; }
 /** A destination page calls this on mount with its own path; gets the id to open (once). */
 export function consumePendingRecord(path: string): string | null {
   if (pendingRecord && pendingRecord.path === path) { const id = pendingRecord.id; pendingRecord = null; return id; }
+  return null;
+}
+/** The same, for a page that hosts more than one kind of record. */
+export function consumePendingRecordRef(path: string): { id: string; type?: string } | null {
+  if (pendingRecord && pendingRecord.path === path) {
+    const { id, type } = pendingRecord; pendingRecord = null; return { id, type };
+  }
   return null;
 }
 
