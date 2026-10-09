@@ -44,7 +44,10 @@ const Combobox = React.forwardRef<HTMLDivElement, ComboboxProps>(
                             className="fixed inset-0 z-40"
                             onClick={() => setOpen(false)}
                         />
-                        <div className="absolute z-50 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg">
+                        {/* Above anything the page puts after it, and tall enough to be a
+                            list: eight rows of shops rather than the two and a half a
+                            256px box showed under a 40px search field. */}
+                        <div className="absolute z-[100] mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-xl">
                             <div className="p-2 border-b border-slate-200">
                                 <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-md">
                                     <Search className="h-4 w-4 text-slate-500" />
@@ -58,7 +61,7 @@ const Combobox = React.forwardRef<HTMLDivElement, ComboboxProps>(
                                     />
                                 </div>
                             </div>
-                            <div className="max-h-64 overflow-y-auto p-1">
+                            <div className="max-h-80 overflow-y-auto p-1">
                                 {filteredOptions.length === 0 ? (
                                     <div className="py-6 text-center text-sm text-slate-500">
                                         No results found.

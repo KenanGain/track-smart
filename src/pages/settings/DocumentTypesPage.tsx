@@ -37,6 +37,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 // --- FOLDER TREE & DOCUMENT EDITOR ---
 // Imported from reusable components
 import { DocumentTypeEditor } from '@/components/settings/DocumentTypeEditor';
+import { useBackAwareView } from '@/lib/use-back-aware-view';
 
 // --- DOCUMENT TYPES LIST PAGE ---
 
@@ -50,6 +51,8 @@ const DocumentTypesPage: React.FC<DocumentTypesPageProps> = ({ onNavigate }) => 
     // Top Level Navigation State
     const [pageMode, setPageMode] = useState<'types' | 'tags'>('types');
     const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
+    // Back leaves the editor rather than the app.
+    useBackAwareView(viewMode === 'editor', () => setViewMode('list'), 'document-type');
 
     const [activeTab, setActiveTab] = useState('All');
     const [editingId, setEditingId] = useState<string | null>(null);

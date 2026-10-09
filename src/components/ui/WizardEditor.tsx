@@ -167,6 +167,11 @@ export function WizardSection({ id, icon, title, subtitle, right, allowOverflow,
      * A section holding a combobox clips its own dropdown: the popover is positioned
      * inside the card, and `overflow-hidden` cuts it off at the border — the search
      * results end mid-row. Opt-in, so every existing section keeps clipping.
+     *
+     * It also has to out-stack the section BELOW it. Sections are siblings in source
+     * order, so without a stacking context of its own the next card paints over the open
+     * list — the dropdown escapes the card and then disappears behind the one under it,
+     * which looks exactly like the clipping it just stopped doing.
      */
     allowOverflow?: boolean;
     children: React.ReactNode;
@@ -174,7 +179,7 @@ export function WizardSection({ id, icon, title, subtitle, right, allowOverflow,
     return (
         <section data-step={id} id={`section-${id}`}
             className={cn("scroll-mt-6 rounded-xl border border-slate-200 bg-white shadow-sm",
-                allowOverflow ? "overflow-visible" : "overflow-hidden")}>
+                allowOverflow ? "relative z-30 overflow-visible" : "overflow-hidden")}>
             <WizardSectionHeader icon={icon} title={title} subtitle={subtitle} right={right} />
             <div className="p-6">{children}</div>
         </section>

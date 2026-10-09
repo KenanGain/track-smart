@@ -90,11 +90,18 @@ const SelectTrigger = React.forwardRef<
 })
 SelectTrigger.displayName = "SelectTrigger"
 
-const SelectValue: React.FC<{ placeholder?: string }> = ({ placeholder }) => {
+const SelectValue: React.FC<{ placeholder?: string; children?: React.ReactNode }> = ({ placeholder, children }) => {
     const { value, labelMap } = React.useContext(SelectContext)
-    // Fall back to the raw value so the current selection shows even before the
-    // options have mounted (SelectContent only registers labels when opened).
-    const display = labelMap[value] || value || placeholder || "Select..."
+    /*
+     * What the box says, in order of what can be trusted.
+     *
+     * Children win: a caller that already knows what it picked should not have to hope
+     * the list has been opened. Labels are only registered when SelectContent mounts, so
+     * until somebody opens the list there is nothing to look the value up in — and the
+     * fallback is the raw value, which is how a picker comes to show "a7f3c0" or
+     * "AST-001-0001" where a unit number belongs.
+     */
+    const display = children ?? (labelMap[value] || value || placeholder || "Select...")
 
     return (
         <span className={cn("block truncate", !value && "text-slate-500")}>

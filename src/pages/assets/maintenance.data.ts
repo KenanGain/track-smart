@@ -34,6 +34,25 @@ export type ServiceGroup =
     | "Inspections"
     | "Other";
 
+/**
+ * The same eight, as a list you can render.
+ *
+ * Every picker in the app had its own copy, and the catalog form had a DIFFERENT eight
+ * ("Safety Inspection", "Major Overhaul"...) that no record used — so the class you
+ * picked when adding a service type was one nothing could be filed under, and Engine,
+ * the class most of the catalog is in, could not be chosen at all.
+ */
+export const SERVICE_GROUPS: readonly ServiceGroup[] = [
+    "Engine",
+    "Brakes",
+    "Tires & Wheels",
+    "Suspension & Steering",
+    "Body & Coupling",
+    "Lamps & Electrical",
+    "Inspections",
+    "Other",
+];
+
 export type ServiceType = {
     id: string;
     name: string;
@@ -98,12 +117,54 @@ export type OrderCompletionEvent = {
     currency: "CAD" | "USD";
     taskIds: string[]; // Tasks completed in this event
     assetBreakdowns: AssetCostBreakdown[]; // Individual cost breakdown per asset
+    /**
+     * What to put back if this is reversed.
+     *
+     * Marking an order done moves the fleet’s countdowns on: an interval’s last service
+     * becomes the shop’s reading, the next service is raised from it, and an annual
+     * inspection files a new certificate. Marking it NOT done has to move all of that back,
+     * and nothing left on the screen can work out what the figures were beforehand — so the
+     * completion carries them.
+     */
+    revert?: {
+        /** The enrolment as it stood before, per rule and asset. */
+        enrolment: {
+            ruleId: string;
+            assetId: string;
+            enabled?: boolean;
+            lastOdometer?: number;
+            lastEngineHours?: number;
+            lastServiceDate?: string;
+        }[];
+        /** The tasks this completion raised. They have not happened, so they go. */
+        raisedTaskIds: string[];
+        /** A certificate it filed, and the one that was current before it. */
+        certificates?: { assetId: string; versionId: string; previousCurrentId?: string }[];
+    };
 };
 
 export type TaskOrder = {
     id: string;
+    /**
+     * What this order is called.
+     *
+     * Typed on the form where somebody wants to call it something ("Fall PM run"); left
+     * empty it is named after its own work and unit, which is how it gets talked about
+     * anyway. Never an id — those belong in the database, not on a screen.
+     */
+    name?: string;
     taskIds: string[];
     vendorId: string;
+    /**
+     * The driver this was handed to, where it is not going to a shop at all.
+     *
+     * Plenty of maintenance is done by the person driving the truck %s a trailer light, a
+     * fluid top-up, a tyre pressure check. An order for that is still an order: it says
+     * what to do and by when, it is the thing that gets closed, and it is the reason the
+     * countdown resets. It simply has a name on it instead of a vendor.
+     */
+    assignedDriverId?: string;
+    assignedDriverName?: string;
     customVendor?: {
         name: string;
         email: string;
@@ -119,10 +180,79 @@ export type TaskOrder = {
         engineHoursRequired: boolean;
         engineHours?: number;
     }
+    /**
+     * The repair bill, where the work was done before the order was raised.
+     *
+     * A driver gets a tyre fixed on the road and hands in the invoice; the order exists to
+     * file what was spent. Who did it matters as much as what it cost — a bill with no
+     * name on it is an amount nobody owns — and so does which unit it was spent on, because
+     * a cost filed against the wrong trailer stays there for the life of the unit.
+     */
+    bill?: {
+        performedBy: 'driver' | 'mechanic';
+        driverId?: string;
+        driverName?: string;
+        mechanicName?: string;
+        labour?: string;
+        parts?: string;
+        currency: 'USD' | 'CAD';
+        total?: number;
+        odometer?: string;
+        odometerUnit?: 'mi' | 'km';
+        /** The units this bill was spent on. */
+        assetIds: string[];
+        files: { name: string; size: number; url?: string }[];
+    }
     notes?: string;
+    /**
+     * Paper that belongs to the ORDER rather than to one of its services.
+     *
+     * The work sheet that went out, the shop's quote, the photo the driver sent of the
+     * cracked bracket. Kept apart from the records' own files because they answer
+     * different questions — these are what the order was raised and sent with, and a
+     * record's invoice is what one line came back with — and because withdrawing a
+     * service takes its documents with it and must not take the order's.
+     */
+    documents?: OrderDocument[];
     completions: OrderCompletionEvent[];
+    /**
+     * The jobs on this order the shop is not doing.
+     *
+     * One order carries several service intervals, and they are answered one at a time:
+     * the oil change was done, the brake parts never arrived, the fifth wheel turned out
+     * not to need greasing. Forcing one verdict onto the whole visit means either closing
+     * work that was not done or chasing work that was — so each line keeps its own.
+     *
+     * Called off here is not cancelled everywhere: the job still needs doing, just not on
+     * this order, so the task goes back to being outstanding and can go on another one.
+     * That leaves the order itself as the only place the refusal can be recorded.
+     */
+    cancelledTaskIds?: string[];
     batchId?: string; // Links orders created together
 };
+
+/** One file on an order, under the heading the Document tab files it beneath. */
+export interface OrderDocument {
+    name: string;
+    size?: number;
+    url?: string;
+    /** Where it came from — "Sent with the order", "Quote", "Shop paperwork". */
+    group: string;
+    /**
+     * What it is, out of the same tag catalog the compliance documents use.
+     *
+     * The group says where a file came FROM and the tags say what it IS, and they are
+     * genuinely different questions: a certificate that arrived with the quote is still
+     * a certificate. One field doing both work means searching for "certificate" finds
+     * the ones that came back from the shop and misses the one that went out.
+     */
+    tags?: string[];
+    /** When it was attached, which is not when the work was done. */
+    addedAt?: string;
+}
+
+export { SAMPLE_DOC_URL } from './sample-doc';
+import { SAMPLE_DOC_URL } from './sample-doc';
 
 // --- Seed Data ---
 
@@ -462,7 +592,8 @@ const ACME_INITIAL_TASKS: MaintenanceTask[] = [
         assetId: "a3",
         scheduleId: "sch_a3_grease",
         serviceTypeIds: ["grease_fifth_wheel"],
-        status: "in_progress",
+        // Called off on wo_a3_open, so it is not with a shop — it is overdue and free.
+        status: "overdue",
         meterSnapshot: { odometer: 311500, engineHours: 16230, capturedAt: "2026-05-04T10:00:00Z" },
         dueRule: { unit: "miles", frequencyEvery: 5000, upcomingThreshold: 1000, dueAtOdometer: 311000 },
         createdAt: "2026-04-22T10:00:00Z",
@@ -542,6 +673,45 @@ const ACME_INITIAL_TASKS: MaintenanceTask[] = [
         meterSnapshot: { odometer: 165500, engineHours: 5415, capturedAt: "2026-05-01T10:00:00Z" },
         dueRule: { unit: "miles", frequencyEvery: 25000, upcomingThreshold: 3000, dueAtOdometer: 165000 },
         createdAt: "2026-02-15T10:00:00Z",
+    },
+
+    // ── PM Service A — one rule on three clocks: 25,000 mi, 500 h or 180 days,
+    //    whichever comes first. A task can only carry one of them, so it carries the one
+    //    that will fall due first; the other two live on the rule (SEED_INTERVAL_META in
+    //    `service-intervals.ts`) and are worked out per asset from its own last service.
+    {
+        id: "task_pm_a1",
+        assetId: "a1",
+        scheduleId: "sch_pm_a",
+        serviceTypeIds: ["oil_filter", "brake_inspection", "grease_fifth_wheel"],
+        status: "due",
+        meterSnapshot: { odometer: 221000, engineHours: 7800, capturedAt: "2026-08-20T10:00:00Z" },
+        // Miles first: 500 of its 25,000 left, against 170 of its 500 hours.
+        dueRule: { unit: "miles", frequencyEvery: 25000, upcomingThreshold: 2500, dueAtOdometer: 246000 },
+        createdAt: "2026-08-20T10:00:00Z",
+    },
+    {
+        id: "task_pm_a3",
+        assetId: "a3",
+        scheduleId: "sch_pm_a",
+        serviceTypeIds: ["oil_filter", "brake_inspection", "grease_fifth_wheel"],
+        status: "overdue",
+        meterSnapshot: { odometer: 290000, engineHours: 15900, capturedAt: "2026-04-02T10:00:00Z" },
+        // Past its six months while both meters still have room — the case a single
+        // due figure could never show.
+        dueRule: { unit: "days", frequencyEvery: 180, upcomingThreshold: 36, dueAtDate: "2026-09-29T08:00:00Z" },
+        createdAt: "2026-04-02T10:00:00Z",
+    },
+    {
+        id: "task_pm_a6",
+        assetId: "a6",
+        scheduleId: "sch_pm_a",
+        serviceTypeIds: ["oil_filter", "brake_inspection", "grease_fifth_wheel"],
+        status: "due",
+        meterSnapshot: { odometer: 430000, engineHours: 4950, capturedAt: "2026-06-01T10:00:00Z" },
+        // Inside its hour window with 5,000 miles still to run (TR-6001 reads 450,000).
+        dueRule: { unit: "engine_hours", frequencyEvery: 500, upcomingThreshold: 50, dueAtEngineHours: 5450 },
+        createdAt: "2026-06-01T10:00:00Z",
     },
 
     // ── a7 — TR-7044 (CMV truck) ───────────────────────────────────
@@ -769,6 +939,11 @@ const ACME_INITIAL_ORDERS: TaskOrder[] = [
             engineHoursRequired: false,
         },
         notes: "Driver flagged a soft brake pedal on the morning pre-trip — please prioritise the brake check.",
+        documents: [
+            { name: "work-order-TR-1049.pdf", size: 86_400, url: SAMPLE_DOC_URL, group: "Sent with the order", tags: ["Work order"], addedAt: "2026-04-29T10:05:00Z" },
+            { name: "brake-quote-fleetfix.pdf", size: 54_200, url: SAMPLE_DOC_URL, group: "Quote", tags: ["Quote", "Brakes"], addedAt: "2026-04-30T09:20:00Z" },
+            { name: "pre-trip-defect-photo.jpg", size: 412_000, url: SAMPLE_DOC_URL, group: "From the driver", tags: ["Photo", "Defect"], addedAt: "2026-04-29T06:40:00Z" },
+        ],
         completions: [],
     },
 
@@ -776,6 +951,9 @@ const ACME_INITIAL_ORDERS: TaskOrder[] = [
     {
         id: "wo_a3_open",
         taskIds: ["task_a3_brake", "task_a3_annual", "task_a3_grease"],
+        // The shop took the brake and annual work and handed the greasing back: the
+        // fifth wheel was done at the last stop. It is outstanding again, on the board.
+        cancelledTaskIds: ["task_a3_grease"],
         vendorId: "ven_2",
         status: "open",
         createdAt: "2026-04-22T08:30:00Z",
@@ -786,6 +964,11 @@ const ACME_INITIAL_ORDERS: TaskOrder[] = [
             engineHoursRequired: true,
         },
         notes: "Truck staged at the shop. Annual + overdue brake + greasing. Driver: Harvey Specter.",
+        documents: [
+            { name: "work-order-TR-3055.pdf", size: 91_100, url: SAMPLE_DOC_URL, group: "Sent with the order", tags: ["Work order"], addedAt: "2026-04-22T08:35:00Z" },
+            { name: "annual-inspection-checklist.pdf", size: 128_000, url: SAMPLE_DOC_URL, group: "Sent with the order", tags: ["Checklist", "Annual inspection"], addedAt: "2026-04-22T08:35:00Z" },
+            { name: "estimate-northside-diesel.pdf", size: 61_800, url: SAMPLE_DOC_URL, group: "Quote", tags: ["Quote"], addedAt: "2026-04-23T14:10:00Z" },
+        ],
         completions: [],
     },
 
@@ -818,6 +1001,11 @@ const ACME_INITIAL_ORDERS: TaskOrder[] = [
             odometerUnit: 'miles',
             engineHoursRequired: true,
         },
+        documents: [
+            { name: "work-order-TR-1049-annual.pdf", size: 88_000, url: SAMPLE_DOC_URL, group: "Sent with the order", tags: ["Work order"], addedAt: "2025-08-25T08:10:00Z" },
+            { name: "annual-inspection-certificate-2025.pdf", size: 204_000, url: SAMPLE_DOC_URL, group: "Shop paperwork", tags: ["Certificate", "Annual inspection"], addedAt: "2025-09-12T14:20:00Z" },
+            { name: "invoice-INV-2025-0942.pdf", size: 73_500, url: SAMPLE_DOC_URL, group: "Shop paperwork", tags: ["Invoice"], addedAt: "2025-09-12T14:20:00Z" },
+        ],
         completions: [{
             id: "comp_a1_annual",
             completedAt: "2025-09-12T14:00:00Z",
@@ -848,6 +1036,11 @@ const ACME_INITIAL_ORDERS: TaskOrder[] = [
             odometerUnit: 'km',
             engineHoursRequired: false,
         },
+        documents: [
+            { name: "work-order-TR-2088.pdf", size: 82_000, url: SAMPLE_DOC_URL, group: "Sent with the order", tags: ["Work order"], addedAt: "2025-12-15T09:05:00Z" },
+            { name: "invoice-INV-2026-0118.pdf", size: 69_900, url: SAMPLE_DOC_URL, group: "Shop paperwork", tags: ["Invoice"], addedAt: "2026-01-18T11:40:00Z" },
+            { name: "brake-measurement-sheet.pdf", size: 44_300, url: SAMPLE_DOC_URL, group: "Shop paperwork", tags: ["Inspection sheet", "Brakes"], addedAt: "2026-01-18T11:40:00Z" },
+        ],
         completions: [{
             id: "comp_a2_brake",
             completedAt: "2026-01-18T11:30:00Z",

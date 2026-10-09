@@ -21,6 +21,7 @@ import {
     DQ_DRIVER_TYPES, driverTypeLabel, getDqChecklist,
     type DqDriverTypeId, type DqChecklist, type DqItem,
 } from "@/pages/settings/settings-dq-checklists.data";
+import { useBackAwareView } from "@/lib/use-back-aware-view";
 
 /**
  * DQ Files — carrier-scoped per-driver Driver Qualification Files.
@@ -112,6 +113,8 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
     const [search, setSearch] = useState("");
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+    // Back closes the DQ file rather than leaving the app.
+    useBackAwareView(!!selectedDriverId, () => setSelectedDriverId(null), "dq-file");
 
     const drivers = useMemo(() => getDriversForAccount(acct).filter(d => d.status !== "Terminated"), [acct]);
 

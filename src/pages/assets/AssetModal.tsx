@@ -4,23 +4,20 @@ import {
     Plus, Trash, Clock, KeyRound, Shield, Truck,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
     UploadCloud, FileText, Trash2, Gauge, Wrench, Zap, Check, CalendarClock, FileSignature,
-    Boxes, PackageCheck, Undo2, X
 } from 'lucide-react';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
+import { TagField } from '@/components/ui/TagField';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
-import { useInventoryAdditions } from '@/pages/inventory/inventory-store';
-import { unassignedItems, rollupByAsset, VIA_LABEL, VIA_TONE } from '@/pages/inventory/inventory-rollup';
-import { getInventoryForCarrier, INVENTORY_ITEMS, itemName } from '@/pages/inventory/inventory.data';
-import { emptyAssetInventoryDraft, type AssetInventoryDraft } from './asset-inventory-bridge';
 import { plateRecordFor, plateSlotLabels, plateHasCabCard } from './plate-record-bridge';
 import { assetRecordFor } from './asset-records-bridge';
-import { ItemPickList } from '@/pages/inventory/ItemPickList';
-import { removeActionFor } from '@/pages/inventory/inventory-rollup';
+import { pmFormDefaults, pmEnrolmentFor } from './asset-pm-enrolment';
+import { PM_TIER_IDS, SEED_INTERVAL_META, tierOf, intervalText } from './service-intervals';
+import { VENDORS as INVENTORY_VENDORS, isCompanyIssuedVendor } from '@/pages/inventory/inventory.data';
 import { GvwrTag } from './GvwrTag';
 import {
     MAX_RECORD_NAME, isDateMonitored,
@@ -170,13 +167,11 @@ const assetSchema = z.object({
      * The two inspections. Same three questions each: when it was last done, at what
      * reading, and when it falls due again — that last one being what the alert fires on.
      */
-    annualSafetyLastDate: z.string().optional(),
     annualSafetyOdometer: z.string().optional(),
     annualSafetyOdometerUnit: z.enum(['miles', 'km']).default('miles'),
     annualSafetyNextDue: z.string().optional(),
     annualSafetyDocument: z.any().optional(),
 
-    annualPmLastDate: z.string().optional(),
     annualPmOdometer: z.string().optional(),
     annualPmOdometerUnit: z.enum(['miles', 'km']).default('miles'),
     annualPmNextDue: z.string().optional(),
@@ -248,7 +243,17 @@ const FormInput = ({ label, error, hint, children, className, required }: { labe
     </div>
 );
 
-const DocumentUploadInput = ({ label, description, files = [], onFilesChange, error, required }: { label: string; description?: string; files?: any[]; onFilesChange: (files: any[]) => void; error?: string; required?: boolean }) => {
+/**
+ * An upload that knows what each file IS.
+ *
+ * `taggable` rather than always-on: a bill of sale is one document of one kind and a tag
+ * on it says nothing, where a PM record comes back as an invoice, a sheet and a photograph
+ * and "which of these is the certificate" is the only question anybody asks of it a year
+ * later. Same control and same catalog as the service record form and the compliance
+ * documents — a second vocabulary is how "Invoice", "invoice" and "Bill" become three
+ * different things.
+ */
+const DocumentUploadInput = ({ label, description, files = [], onFilesChange, error, required, taggable }: { label: string; description?: string; files?: any[]; onFilesChange: (files: any[]) => void; error?: string; required?: boolean; taggable?: boolean }) => {
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -311,23 +316,37 @@ const DocumentUploadInput = ({ label, description, files = [], onFilesChange, er
             ) : (
                 <div className="space-y-2">
                     {files.map((doc: any) => (
-                        <div key={doc.id} className="flex items-center justify-between p-2.5 border border-slate-200 rounded-lg bg-white group hover:border-blue-200 transition-colors">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-red-50 p-2 rounded-lg">
-                                    <FileText className="w-4 h-4 text-red-500" />
+                        <div key={doc.id} className={cn("border border-slate-200 rounded-lg bg-white group hover:border-blue-200 transition-colors", taggable ? "p-2.5" : "")}>
+                            <div className={cn("flex items-center justify-between", taggable ? "" : "p-2.5")}>
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-red-50 p-2 rounded-lg">
+                                        <FileText className="w-4 h-4 text-red-500" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-medium text-slate-700 truncate max-w-[180px]">{doc.fileName}</p>
+                                        <p className="text-[10px] text-slate-400">{doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : 'Unknown'} • {new Date(doc.uploadedAt || Date.now()).toLocaleDateString()}</p>
+                                    </div>
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="text-xs font-medium text-slate-700 truncate max-w-[180px]">{doc.fileName}</p>
-                                    <p className="text-[10px] text-slate-400">{doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : 'Unknown'} • {new Date(doc.uploadedAt || Date.now()).toLocaleDateString()}</p>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => removeFile(doc.id)}
+                                    className="text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => removeFile(doc.id)}
-                                className="text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
+                            {/* Each file's own tags. One box over the whole upload would say
+                                the record contains an invoice AND a certificate without ever
+                                saying which file is which. */}
+                            {taggable && (
+                                <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+                                    <TagField
+                                        value={doc.tags ?? []}
+                                        onChange={(tags) => onFilesChange(files.map((f: any) => (f.id === doc.id ? { ...f, tags } : f)))}
+                                        label="Document tags"
+                                    />
+                                </div>
+                            )}
                         </div>
                     ))}
                     <div
@@ -462,10 +481,9 @@ const STEPS: readonly WizardStep[] = [
     { id: 'yard', label: 'Yard / terminal', icon: Warehouse },
     { id: 'drivers', label: 'Driver assignment', icon: Users },
     // After the driver, because who carries what depends on who is driving.
-    { id: 'inventory', label: 'Inventory', icon: Boxes },
     // Before ownership: what the vehicle's condition is has to be asked while somebody is
     // still holding the certificates, not after the money questions have moved them on.
-    { id: 'service', label: 'Safety & maintenance', icon: Wrench },
+    { id: 'service', label: 'Annual safety', icon: Wrench },
     { id: 'ownership', label: 'Ownership & financial', icon: KeyRound },
     // Insurance before notes: the last required thing, then the free-text box. A form
     // that ends on a question is a form people stop filling in at the paragraph.
@@ -478,7 +496,7 @@ interface AssetModalProps {
     asset: any;
     onClose: () => void;
     /** Saved with the asset: the inventory picked for it, committed once it has an id. */
-    onSave: (data: any, inventory?: AssetInventoryDraft) => void;
+    onSave: (data: any) => void;
     isSaving: boolean;
     accountId?: string;
 }
@@ -492,54 +510,208 @@ interface AssetModalProps {
  * somebody keeps up to date — it is the date the record is monitored on, which is why it
  * sits beside the date it was last done rather than being worked out in somebody's head.
  */
-function ServiceBlock({
-    heading, note, lastLabel, docLabel, lastDate, odometer, unit, nextDue, files, onFiles,
+/**
+ * One PM tier, with the switch that puts this unit on it.
+ *
+ * Off, it asks nothing: a unit that does not run PM-C has no last PM-C to tell us about,
+ * and four blocks of empty fields is a form nobody finishes.
+ *
+ * On, it asks exactly what the Add service record form asks — the readings, who did it,
+ * what it cost, the paper, and anything worth saying about it. Not a smaller version of
+ * that form: the entry this writes IS one of those records, the first on that tier's
+ * ledger, and a first entry that carries less than every one after it is the gap every
+ * "who did this, and what did it cost" question falls into a year later.
+ */
+function PmTierBlock({
+    name, tier, every, on, onToggle, field, watchField, setField, vendors, drivers,
 }: {
-    heading: string;
-    note: string;
-    lastLabel: string;
-    docLabel: string;
-    lastDate: any;
-    odometer: any;
-    unit: any;
-    nextDue: any;
-    files: any[];
-    onFiles: (files: any[]) => void;
+    name: string;
+    tier?: { label: string; pill: string };
+    every: string;
+    on: boolean;
+    onToggle: (v: boolean) => void;
+    /** `register` for one of this tier's fields, by its short key. */
+    field: (key: string) => any;
+    watchField: (key: string) => any;
+    setField: (key: string, value: any) => void;
+    vendors: { id: string; name: string }[];
+    drivers: { id: string; name: string }[];
 }) {
+    const typing = !!watchField('Typing');
+    const performedBy = watchField('PerformedBy') || 'mechanic';
+    const num = (v: any) => Number(String(v ?? '').replace(/[^0-9.]/g, '')) || 0;
+    const total = num(watchField('Labour')) + num(watchField('Parts'));
+    const currency = watchField('Currency') || 'USD';
+
     return (
-        <div className="col-span-full border-t border-slate-100 pt-6 first:border-t-0 first:pt-0">
-            <div className="mb-4 flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Wrench size={15} /></span>
-                <div>
-                    <p className="text-[12.5px] font-bold text-slate-800">{heading}</p>
-                    <p className="text-[11px] text-slate-500">{note} — filed against this asset as a Compliance &amp; Documents record.</p>
-                </div>
+        <div className="col-span-full rounded-xl border border-slate-200 bg-white">
+            <div className={cn('flex flex-wrap items-center gap-2 px-4 py-3', on && 'border-b border-slate-100')}>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <Wrench size={15} />
+                </span>
+                <span className="text-[13px] font-bold text-slate-900">{name}</span>
+                {tier && (
+                    <span className={cn(
+                        'inline-flex shrink-0 items-center rounded-full border px-1.5 text-[9px] font-bold uppercase tracking-wider',
+                        tier.pill,
+                    )}>
+                        {tier.label}
+                    </span>
+                )}
+                <span className="truncate text-[11px] text-slate-400">{every}</span>
+                <div className="flex-1" />
+                <span className={cn('text-xs font-semibold', on ? 'text-slate-600' : 'text-slate-400')}>
+                    {on ? 'On' : 'Off'}
+                </span>
+                <Switch checked={on} onChange={onToggle} />
             </div>
-            <div className="grid grid-cols-1 @xl:grid-cols-2 @3xl:grid-cols-3 gap-x-6 gap-y-6 @xl:gap-x-8">
-                <FormInput label={lastLabel}><Input type="date" {...lastDate} /></FormInput>
-                <FormInput label="Odometer" hint="The reading it was done at.">
-                    <div className="flex gap-2">
-                        <div className="relative min-w-[5.5rem] flex-1">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
-                            <Input {...odometer} className="pl-9" placeholder="e.g. 412,500" />
-                        </div>
-                        <select {...unit} className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
-                            <option value="miles">miles</option>
-                            <option value="km">km</option>
-                        </select>
+
+            {on && (
+                <div className="space-y-5 px-4 py-4">
+                    {/* 1. The readings, in the order they are read off a dash. */}
+                    <div className="grid grid-cols-1 gap-x-6 gap-y-5 @xl:grid-cols-3 @xl:gap-x-8">
+                        <FormInput label="Performed on" hint="What every clock on this tier counts from.">
+                            <Input type="date" {...field('LastDate')} />
+                        </FormInput>
+                        <FormInput label="Odometer" hint="The reading it was done at.">
+                            <div className="flex gap-2">
+                                <div className="relative min-w-[5.5rem] flex-1">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
+                                    <Input {...field('Odometer')} className="pl-9" placeholder="e.g. 412,500" />
+                                </div>
+                                <select {...field('OdometerUnit')} className="w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700">
+                                    <option value="miles">miles</option>
+                                    <option value="km">km</option>
+                                </select>
+                            </div>
+                        </FormInput>
+                        <FormInput label="Operating hours" hint="If this unit's hour meter is read.">
+                            <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Clock size={14} /></div>
+                                <Input {...field('Hours')} className="pl-9" placeholder="e.g. 6,110" />
+                            </div>
+                        </FormInput>
                     </div>
-                </FormInput>
-                <FormInput label="Next due date" hint="What the alert counts down to.">
-                    <Input type="date" {...nextDue} />
-                </FormInput>
-                <div className="col-span-full">
-                    <DocumentUploadInput
-                        label={docLabel}
-                        description="Attach the signed copy (PDF, JPG, PNG)"
-                        files={files}
-                        onFilesChange={onFiles} />
+
+                    {/* 2. The shop, and the person — two facts, not one. A driver can have
+                           work done at a shop, a yard mechanic does it with no shop at all,
+                           and a shop can invoice for work nobody here watched. */}
+                    <div className="border-t border-slate-100 pt-5">
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-tight text-slate-700">Vendor</span>
+                            <button
+                                type="button"
+                                onClick={() => { setField('Typing', !typing); setField('VendorId', ''); }}
+                                className="text-[10px] font-bold uppercase tracking-wide text-slate-400 transition-colors hover:text-blue-600"
+                            >
+                                {typing ? 'Pick from list' : 'Enter manually'}
+                            </button>
+                        </div>
+                        {typing ? (
+                            <Input {...field('VendorName')} placeholder="Shop name" />
+                        ) : (
+                            <select {...field('VendorId')} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
+                                <option value="">No vendor — done in-house</option>
+                                {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
+                        )}
+
+                        <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-5 @xl:grid-cols-2 @xl:gap-x-8">
+                            <FormInput label="Performed by">
+                                <div className="flex h-10 flex-wrap items-center gap-5">
+                                    {(['mechanic', 'driver'] as const).map((o) => (
+                                        <label key={o} className="flex cursor-pointer items-center gap-2">
+                                            <input
+                                                type="radio"
+                                                checked={performedBy === o}
+                                                onChange={() => setField('PerformedBy', o)}
+                                                className="h-4 w-4 accent-blue-600"
+                                            />
+                                            <span className={cn('text-sm font-semibold',
+                                                performedBy === o ? 'text-slate-900' : 'text-slate-500')}>
+                                                {o === 'mechanic' ? 'Mechanic' : 'Driver'}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </FormInput>
+                            {performedBy === 'driver' ? (
+                                <FormInput label="Driver" hint="The driver who had it done.">
+                                    <select {...field('DriverId')} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
+                                        <option value="">Select the driver…</option>
+                                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </FormInput>
+                            ) : (
+                                <FormInput label="Mechanic name" hint="Who did the work — an auditor wants the name on the sheet.">
+                                    <Input {...field('Person')} placeholder="Dale Foster" />
+                                </FormInput>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 3. The bill, the way an invoice is written, and the paper for it. */}
+                    <div className="border-t border-slate-100 pt-5">
+                        <div className="grid grid-cols-1 gap-x-6 gap-y-5 @xl:grid-cols-3 @xl:gap-x-8">
+                            <FormInput label="Labour">
+                                <Input {...field('Labour')} placeholder="0.00" inputMode="decimal" />
+                            </FormInput>
+                            <FormInput label="Parts">
+                                <Input {...field('Parts')} placeholder="0.00" inputMode="decimal" />
+                            </FormInput>
+                            <FormInput label="Currency">
+                                <select {...field('Currency')} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
+                                    <option value="USD">USD</option>
+                                    <option value="CAD">CAD</option>
+                                </select>
+                            </FormInput>
+                        </div>
+                        {/* Read off the two lines above, never typed: a total that can be
+                            edited is a total that will one day not be their sum. */}
+                        <div className={cn('mt-3 flex items-center justify-between rounded-lg border px-3 py-2',
+                            total > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50')}>
+                            <span className={cn('text-[11px] font-bold uppercase tracking-wider',
+                                total > 0 ? 'text-amber-900' : 'text-slate-500')}>
+                                Total
+                            </span>
+                            <span className={cn('text-[13px] font-bold tabular-nums',
+                                total > 0 ? 'text-amber-900' : 'text-slate-400')}>
+                                {total > 0 ? `${currency} ${total.toFixed(2)}` : '—'}
+                            </span>
+                        </div>
+                        <div className="mt-4">
+                            <DocumentUploadInput
+                                label={`${name} record`}
+                                description="The bill, the sheet, the certificate, a photo of the old part (PDF, JPG, PNG)"
+                                files={watchField('Document') || []}
+                                onFilesChange={(f) => setField('Document', f)}
+                                taggable
+                            />
+                        </div>
+                    </div>
+
+                    {/* 4. What was said about it. A note is about THIS service; a remark is
+                           about the next one. */}
+                    <div className="grid grid-cols-1 gap-x-6 gap-y-5 border-t border-slate-100 pt-5 @xl:grid-cols-2 @xl:gap-x-8">
+                        <FormInput label="Notes on this service" hint="What happened on the day — anything that explains the bill.">
+                            <textarea
+                                rows={3}
+                                {...field('Notes')}
+                                placeholder="Anything the next person reading this record should know"
+                                className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+                            />
+                        </FormInput>
+                        <FormInput label="Remarks for next time" hint="What the shop said to watch. Read when the tier next comes round.">
+                            <textarea
+                                rows={3}
+                                {...field('Remarks')}
+                                placeholder="e.g. Linings at 30% — quote before the next PM"
+                                className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+                            />
+                        </FormInput>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
@@ -628,14 +800,23 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     const isEdit = !!asset;
     const { register, handleSubmit, watch, setValue, control, formState: { errors, isDirty } } = useForm({
         resolver: zodResolver(assetSchema),
-        defaultValues: asset || {
+        /*
+         * The PM tiers are stored beside the asset rather than on it (see
+         * `asset-pm-enrolment.ts`), so they are merged in here — an asset re-opened for
+         * editing shows the tiers it was saved with, and a new one starts with all four
+         * off rather than with four blocks of empty date fields.
+         */
+        defaultValues: {
+            ...pmFormDefaults(pmEnrolmentFor(accountId, asset?.id ?? '')),
+            ...(asset || {
             assetCategory: 'CMV', assetType: 'Truck', vehicleType: 'Power Unit', operationalStatus: 'Active', unitNumber: '', vin: '', year: new Date().getFullYear(),
             make: 'Freightliner', model: '', color: '', financialStructure: 'Owned',
             plateCountry: 'USA', plateJurisdiction: 'Alabama',
             plateMonitoringEnabled: true, plateMonitorBasedOn: 'expiry_date', plateRenewalRecurrence: 'annually', plateReminderSchedule: [90, 60, 30], plateNotificationChannels: ['email', 'in_app'],
             transponderMonitoringEnabled: true, transponderMonitorBasedOn: 'expiry_date', transponderRenewalRecurrence: 'annually', transponderReminderSchedule: [90, 60, 30], transponderNotificationChannels: ['email', 'in_app'],
             permits: [], driverAssignments: [], country: 'USA',
-        }
+            }),
+        } as any,
     });
 
     const { fields: driverFields, append: appendDriver, remove: removeDriver } = useFieldArray({ control, name: "driverAssignments" });
@@ -653,6 +834,13 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         return roster.length ? roster : MOCK_DRIVERS;
     }, [accountId]);
 
+    /** This carrier's own shops, so a PM record names one that exists. */
+    const pmVendors = useMemo(() => (accountId
+        ? INVENTORY_VENDORS.filter((v: any) => v.accountId === accountId)
+        : INVENTORY_VENDORS
+    ).filter((v: any) => !isCompanyIssuedVendor(v))
+        .map((v: any) => ({ id: v.id, name: v.companyName || v.name })), [accountId]);
+
     const assetType = watch('assetType');
     const financial = watch('financialStructure');
     const plateCountry = watch('plateCountry');
@@ -668,8 +856,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
     // The three remaining records the form files. Every label below comes off these, so a
     // record renamed in the catalog renames on this form too.
     const pinkSlipRecord = useMemo(() => assetRecordFor('pinkSlip'), []);
-    const safetyRecord = useMemo(() => assetRecordFor('annualSafety'), []);
-    const pmRecord = useMemo(() => assetRecordFor('annualPm'), []);
     const opStatus = watch('operationalStatus');
 
     // Whose address the ownership section is asking for. Named, because an address block
@@ -760,56 +946,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         setOwnershipFiles([]);
     }, [financial]);
 
-    // — Inventory for this vehicle ──────────────────────────────
-    // The items, the ones already spoken for, and the ones free to hand out — read
-    // exactly the way the Inventory tabs read them, so the two cannot disagree about what
-    // is free to give away.
-    const { additions, applyEdit: applyItemEdit } = useInventoryAdditions(accountId);
-    const inventoryItems = useMemo(() => {
-        const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS).map(applyItemEdit);
-        return additions.length ? [...additions, ...base] : base;
-    }, [accountId, additions, applyItemEdit]);
-    const freeItems = useMemo(() => unassignedItems(inventoryItems), [inventoryItems]);
-    // What it already holds — only ever on an edit, since a new asset holds nothing.
-    const heldRow = useMemo(() => (
-        asset?.id
-            ? rollupByAsset(inventoryItems, accountId).find(r => r.id === asset.id)
-            : undefined
-    ), [asset?.id, inventoryItems, accountId]);
-
-    const [inventoryDraft, setInventoryDraft] = useState<AssetInventoryDraft>(emptyAssetInventoryDraft);
-    /** One tick: this item is filed against this unit, or it is not. */
-    const toggleItem = (id: string) => setInventoryDraft(d => {
-        const on = d.itemIds.includes(id);
-        return {
-            ...d,
-            itemIds: on ? d.itemIds.filter(x => x !== id) : [...d.itemIds, id],
-        };
-    });
-
-
-    /*
-     * Who drives this vehicle is not this section's business any more.
-     *
-     * There used to be four things here that all rested on one assumption — that kit filed
-     * against a truck is in the hands of whoever drives it: the current driver, the outgoing
-     * one, the cab's contents to move between them, and the messages asking each to make a
-     * trip to the office. An item is on a unit, on a person, or on both, and a person's line
-     * is set on their own page. Changing a truck's driver moves nothing.
-     */
-    // What may come off this vehicle. The rule lives with the rollup, because the Inventory
-    // assign page shows the same pile and offers the same undo — a remove that the next
-    // render puts straight back is a lie.
-    const heldRows = useMemo(() => (heldRow?.items ?? []).map(h => ({
-        ...h,
-        action: removeActionFor(h, 'asset', asset?.id ?? ''),
-    })), [heldRow, asset?.id]);
-
-    const toggleRemove = (id: string) => setInventoryDraft(d => ({
-        ...d,
-        removeIds: d.removeIds.includes(id) ? d.removeIds.filter(x => x !== id) : [...d.removeIds, id],
-    }));
-
     const vehicleTypeOptions = useMemo(() => {
         if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
         if (assetType === 'Trailer') return ['Dry Van', 'Flatbed', 'Reefer'];
@@ -885,15 +1021,17 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                 // Only counted on an IRP plate: on a Local one it is a box that can never
                 // be filled, and a section that can never read complete is a nag.
                 plateHasCabCard(allValues.plateType) ? ((allValues.cabCardDocument?.length ?? 0) > 0 || undefined) : undefined);
+            // How many tiers this unit runs. A tier switched on but never dated is not
+            // counted: it is enrolled and not counting, which is the thing this badge
+            // exists to let somebody notice.
             case 'service': return filledCount(
-                allValues.annualSafetyLastDate, allValues.annualSafetyNextDue, allValues.annualSafetyOdometer,
-                allValues.annualPmLastDate, allValues.annualPmNextDue, allValues.annualPmOdometer,
-                (allValues.annualSafetyDocument?.length ?? 0) > 0 || undefined,
-                (allValues.annualPmDocument?.length ?? 0) > 0 || undefined,
+                ...PM_TIER_IDS.map((pid) => (
+                    allValues[`pmOn_${pid}` as keyof typeof allValues] && allValues[`pmLastDate_${pid}` as keyof typeof allValues]
+                        ? true : undefined
+                )),
             );
             case 'yard': return filledCount(allValues.yardId);
             case 'drivers': return (allValues.driverAssignments ?? []).filter((d: any) => d?.driverId).length;
-            case 'inventory': return inventoryDraft.itemIds.length + inventoryDraft.removeIds.length;
             // The document counts too — it is asked for in this section, so a section that has
             // one should not read the same as one that does not.
             case 'ownership': return filledCount(allValues.financialStructure, allValues.marketValue, allValues.ownerName, allValues.leasingName, allValues.rentalAgencyName, allValues.lienHolderBusiness, allValues.agreementStartDate, allValues.agreementEndDate, allValues.monthlyPayment, allValues.streetAddress, ownershipDoc.files.length > 0 || undefined, (showBill && billDoc.files.length > 0) || undefined);
@@ -928,7 +1066,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
                     {/* The ownership document rides along with the asset: the record can only be
                         filed once the asset has an id, which is assigned by whoever saves it. */}
-                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc, billDoc: showBill ? billDoc : undefined }, inventoryDraft))} className="@container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc, billDoc: showBill ? billDoc : undefined }))} className="@container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
 
                         {/* 1. Asset Class */}
                         <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
@@ -1150,89 +1288,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                             </div>
                         </WizardSection>
 
-                        {/* 6. Inventory */}
-                        <WizardSection id="inventory" icon={Boxes} title="Inventory"
-                            subtitle="What this vehicle carries, and who to tell."
-                            right={inventoryDraft.itemIds.length > 0 ? (
-                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
-                                    {inventoryDraft.itemIds.length} to assign
-                                </span>
-                            ) : undefined}
-                        >
-                            <div className="space-y-4">
-                                {/* Already on it — read-only here, because taking something back is
-                                    the assign page’s job and a second way to do it is a second answer. */}
-                                {heldRows.length > 0 && (
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                                        <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                            <PackageCheck size={12} /> Already on this vehicle
-                                            <span className="text-slate-400">{heldRows.length}</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {heldRows.map(h => {
-                                                const off = inventoryDraft.removeIds.includes(h.item.id);
-                                                return (
-                                                    <span key={h.item.id} className={cn(
-                                                        "inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-[11px]",
-                                                        off ? "border-rose-200 bg-rose-50/70 text-rose-700" : "border-slate-200 text-slate-700",
-                                                    )}>
-                                                        <span className={cn("h-3 w-1 rounded-full", VIA_TONE[h.via].bar)} />
-                                                        <span className={cn(off && "line-through")}>{itemName(h.item)}</span>
-                                                        <span className={cn("rounded border px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider", VIA_TONE[h.via].chip)}>
-                                                            {VIA_LABEL.asset[h.via]}
-                                                        </span>
-                                                        {/* Only what this vehicle's own record put here. Carried kit belongs
-                                                            to the vehicle, so the vehicle is exactly the place to let go
-                                                            of it; anything else is somebody else's record to undo. */}
-                                                        {h.action && (
-                                                            <button type="button" onClick={() => toggleRemove(h.item.id)}
-                                                                title={off ? "Keep it on this vehicle" : "Take it off this vehicle"}
-                                                                className={cn("ml-0.5 rounded p-0.5 transition-colors",
-                                                                    off ? "text-slate-500 hover:bg-slate-200/70" : "text-slate-400 hover:bg-rose-100 hover:text-rose-600")}>
-                                                                {off ? <Undo2 size={11} /> : <X size={11} />}
-                                                            </button>
-                                                        )}
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {inventoryDraft.removeIds.length === 0 ? (
-                                            <p className="mt-2 text-[11px] text-slate-500">
-                                                Take something off with the {"\u00D7"}. Anything without one is held through
-                                                another record — change that where it lives.
-                                            </p>
-                                        ) : (
-                                            <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
-                                                <p className="text-[11px] font-semibold text-rose-700">
-                                                    {inventoryDraft.removeIds.length} coming off this vehicle when you save.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Free to give out — the same list, and the same idea of what
-                                    "free" means, as the Inventory assign page. One tick: where it
-                                    lands is the item's own answer, not asked again per vehicle. */}
-                                <ItemPickList
-                                    items={freeItems}
-                                    assigned={new Set(inventoryDraft.itemIds)}
-                                    onAssign={toggleItem}
-                                    holderNoun="vehicle"
-                                    destinationFor={() => watch('unitNumber') || 'this vehicle'}
-                                    emptyAll={<>Every item in this carrier’s inventory is already on a vehicle.</>}
-                                />
-
-
-
-                                {/* No "tell them" block. A unit is not told anything, and asking a
-                                    person to come and collect something is the driver page’s job —
-                                    where the person is the subject rather than a guess about who
-                                    happens to be driving this truck. */}
-                            </div>
-                        </WizardSection>
-
                         {/* Ownership & Financial Profile */}
                         <AssetSection id="ownership" title="Ownership & Financial Profile" subtitle="Ownership structure, value and lien details." icon={KeyRound}>
                             <FormInput label="Ownership Structure">
@@ -1374,37 +1429,45 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                             </div>
                         </AssetSection>
 
-                        {/* 7b. Safety & maintenance — two records, one shape each */}
-                        <AssetSection id="service" title="Safety & Maintenance" subtitle="The annual inspection and the preventive-maintenance service." icon={Wrench}>
-                            {/* Both blocks ask the same three things, because both records
-                                are the same shape: when it was last done, at what reading,
-                                and when it falls due again. The LAST of those is what the
-                                alert fires on — "next due" is not a note somebody keeps up to
-                                date, it is the date the office is warned about. */}
-                            <ServiceBlock
-                                heading={safetyRecord?.recordName ?? 'Annual Safety'}
-                                note={safetyRecord?.description ?? ''}
-                                lastLabel={safetyRecord?.issueLabel ?? 'Last annual safety date'}
-                                docLabel={safetyRecord?.documentName ?? 'Certificate'}
-                                lastDate={register('annualSafetyLastDate')}
-                                odometer={register('annualSafetyOdometer')}
-                                unit={register('annualSafetyOdometerUnit')}
-                                nextDue={register('annualSafetyNextDue')}
-                                files={watch('annualSafetyDocument') || []}
-                                onFiles={(f) => setValue('annualSafetyDocument', f, { shouldDirty: true })}
-                            />
-                            <ServiceBlock
-                                heading={pmRecord?.recordName ?? 'Annual Preventive Maintenance'}
-                                note={pmRecord?.description ?? ''}
-                                lastLabel={pmRecord?.issueLabel ?? 'Last PM date'}
-                                docLabel={pmRecord?.documentName ?? 'Record'}
-                                lastDate={register('annualPmLastDate')}
-                                odometer={register('annualPmOdometer')}
-                                unit={register('annualPmOdometerUnit')}
-                                nextDue={register('annualPmNextDue')}
-                                files={watch('annualPmDocument') || []}
-                                onFiles={(f) => setValue('annualPmDocument', f, { shouldDirty: true })}
-                            />
+                        {/* 7b. The maintenance schedule this unit runs.
+
+                            It asked for two annual records before — the safety inspection
+                            and the annual PM — as free-standing dates with a certificate
+                            each. Both are services the PM tiers already cover (PM-D is the
+                            annual one), so the form was asking a second time, in its own
+                            words, for something the maintenance module counts properly.
+
+                            What it asks now is the question that starts the cycle: which
+                            tiers does this unit run, and when was each last done. */}
+                        <AssetSection
+                            id="service"
+                            title="Preventive Maintenance"
+                            subtitle="Which tiers this unit runs, and when each was last done."
+                            icon={Wrench}
+                        >
+                            <p className="col-span-full -mt-1 text-[12px] text-slate-500">
+                                Switch on the tiers this unit is on. Each one needs the date of its
+                                last service to count from — the reading it was done at, and the
+                                paper for it, make the first entry on its record.
+                            </p>
+                            {PM_TIER_IDS.map((pid) => {
+                                const meta = SEED_INTERVAL_META[pid];
+                                return (
+                                    <PmTierBlock
+                                        key={pid}
+                                        name={meta?.name ?? pid}
+                                        tier={tierOf(meta?.tier)}
+                                        every={(intervalText(meta?.intervals) || []).join(' \u00b7 ')}
+                                        on={!!watch(`pmOn_${pid}` as any)}
+                                        onToggle={(v) => setValue(`pmOn_${pid}` as any, v, { shouldDirty: true })}
+                                        field={(key) => register(`pm${key}_${pid}` as any)}
+                                        watchField={(key) => watch(`pm${key}_${pid}` as any)}
+                                        setField={(key, value) => setValue(`pm${key}_${pid}` as any, value, { shouldDirty: true })}
+                                        vendors={pmVendors}
+                                        drivers={drivers.map((d: any) => ({ id: d.id, name: d.name }))}
+                                    />
+                                );
+                            })}
                         </AssetSection>
 
                         {/* 8. Notes */}

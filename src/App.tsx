@@ -235,8 +235,49 @@ function App() {
         if (newPath !== path) setPreviousPath(path)
         recordNavigation(path, newPath)
         setPath(newPath)
+        // And give the BROWSER a step to go back to. Routing here is state rather than
+        // location, so without this the Back button left the app altogether from every
+        // screen — the one button everybody reaches for first.
+        //
+        // The URL is deliberately left alone: changing it would promise a deep link that a
+        // reload cannot honour, since nothing here reads the path back out of the address bar.
+        if (typeof window !== "undefined" && newPath !== path) {
+            window.history.pushState({ appPath: newPath }, "")
+        }
         console.log("Navigated to:", newPath)
     }
+
+    /**
+     * Back, and forward, as the browser means them.
+     *
+     * Each navigation leaves an entry carrying the path it went to; pressing Back hands
+     * that entry’s predecessor straight back to us. The trail is told as well, so the
+     * in-app "Back to —" labels unwind alongside rather than disagreeing with the button
+     * next to them.
+     */
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        // The first screen needs an entry of its own, or the first Back press has nothing
+        // to land on and leaves the app.
+        if (!(window.history.state as { appPath?: string } | null)?.appPath) {
+            window.history.replaceState({ appPath: path }, "")
+        }
+        const onPop = (e: PopStateEvent) => {
+            const next = (e.state as { appPath?: string } | null)?.appPath
+            // An entry belonging to an in-page view (see `useBackAwareView`) is that view’s
+            // to handle; this one only answers for whole pages.
+            if (typeof next !== "string") return
+            setPath((current) => {
+                if (current === next) return current
+                recordNavigation(current, next)
+                setPreviousPath(current)
+                return next
+            })
+        }
+        window.addEventListener("popstate", onPop)
+        return () => window.removeEventListener("popstate", onPop)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const handleSelectAccount = (account: AccountRecord) => {
         setSelectedAccount(account)
@@ -680,7 +721,22 @@ function App() {
         if (path === "/maintenance") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <AssetMaintenancePage account={account ?? undefined} />
+            return <AssetMaintenancePage account={account ?? undefined} onNavigate={handleNavigate} />
+        }
+        // One vendor's profile. It is built from maintenance's own records — the orders
+        // raised with the shop and the services filed against it — so it is rendered by
+        // that page, and the Inventory vendor list routes here instead of growing a
+        // second copy of the same screen.
+        if (path.startsWith("/maintenance/vendors/")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <AssetMaintenancePage
+                    account={account ?? undefined}
+                    openVendor={path.slice("/maintenance/vendors/".length)}
+                    onNavigate={handleNavigate}
+                />
+            )
         }
         if (path === "/paystubs") {
             const account = selectedAccount

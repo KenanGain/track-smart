@@ -718,6 +718,17 @@ export type ApplicationData = {
     email: string; phone: string; cellPhone: string;
     dob: string; ssn: string; legalRightUS: boolean; legalRightCA: boolean;
     position: string; operatesInUS: string;
+    /**
+     * The day the driver starts working here.
+     *
+     * Not the day the form was filled in, and not the day an applicant applied: it is the
+     * fact the DQ file, the annual review clock and every "how long have they been with
+     * us" question are measured from. Added here rather than only on the driver record
+     * because both doors in — Add Driver, and hiring somebody through the process — end
+     * up writing the same record, and a field only one of them asks for is a field that is
+     * blank for half the roster.
+     */
+    hireDate: string;
     address: { addr1: string; unit: string; addr2: string; country: string; city: string; state: string; zip: string };
     resided3yr: string; residenceRows: ResidenceRow[];
     preferredContact: string; bestTime: string;
@@ -800,6 +811,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [preferredContact, setPreferredContact] = useState(d0?.preferredContact || "Primary Phone");
     const [bestTime, setBestTime] = useState(d0?.bestTime || "Any");
     const [position, setPosition] = useState(d0?.position ?? "");
+    const [hireDate, setHireDate] = useState(d0?.hireDate ?? "");
 
     // Licenses (multiple) — one blank license is present by default; "Add Another License" adds more.
     const [licenses, setLicenses] = useState<License[]>(() => (d0?.licenses && d0.licenses.length ? d0.licenses : [newLicense()]));
@@ -1331,7 +1343,22 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                         asked for a fact the Travel Documents step establishes properly — whose
                         citizen the driver is, and what their status rests on — and a toggle can
                         contradict it. It is derived from those answers now (`hasRightToWork`). */}
-                    <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
+                    <Field label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
+                    {/* Beside the position, because they are the same question asked twice:
+                        what this person does here, and from when. On the hiring wizard it is
+                        left for the review step — an applicant has no hire date until
+                        somebody decides to hire them. */}
+                    <Field label="Hire Date"
+                        hint={mode === "page"
+                            ? "The day they start. The DQ file and the annual review are counted from it."
+                            : "Set when the file is approved — an applicant has no hire date yet."}>
+                        <input
+                            type="date"
+                            value={hireDate}
+                            onChange={(e) => setHireDate(e.target.value)}
+                            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                        />
+                    </Field>
                     {/* Asked in BOTH forms: it is part of the driver's record either way, and
                         defaulting it on Add Driver left the same field holding an answer nobody
                         gave. Only the consent-step consequence is wizard-specific. */}
@@ -1838,7 +1865,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const collectData = (): ApplicationData => ({
         type: config.id, typeName: config.name,
         firstName, middleName, lastName, suffix, email, phone: primaryPhone, cellPhone,
-        dob, ssn, position, operatesInUS,
+        dob, ssn, position, operatesInUS, hireDate,
         // Derived from the citizenship / status answers rather than asked twice.
         legalRightUS: hasRightToWork(travelProfile, "United States") || savedLegalRightUS,
         legalRightCA: hasRightToWork(travelProfile, "Canada") || savedLegalRightCA,

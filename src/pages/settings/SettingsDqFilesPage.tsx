@@ -12,6 +12,7 @@ import {
     DQ_DRIVER_TYPES,
     type DqChecklist, type DqDriverTypeId,
 } from "./settings-dq-checklists.data";
+import { useBackAwareView } from "@/lib/use-back-aware-view";
 
 /**
  * Settings ▸ DQ Files — the FMCSA Driver Qualification File templates.
@@ -28,6 +29,8 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 export function SettingsDqFilesPage({ accountId }: { accountId?: string }) {
     const [edit, setEdit] = useState<{ id: string; tab?: BuilderTab; type?: DqDriverTypeId } | null>(null);
+    // Back leaves the builder rather than the app.
+    useBackAwareView(!!edit, () => setEdit(null), "dq-checklist");
     const { checklists, save: saveChecklist, remove: removeChecklist } = useDqChecklists();
 
     if (edit !== null) {

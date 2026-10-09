@@ -41,6 +41,7 @@ export function emptyApplication(typeId = "us"): ApplicationData {
         email: "", phone: "", cellPhone: "",
         dob: "", ssn: "", legalRightUS: false, legalRightCA: false,
         position: "", operatesInUS: typeId === "canada" ? "No" : "Yes",
+        hireDate: "",
         address: { addr1: "", unit: "", addr2: "", country, city: "", state: "", zip: "" },
         resided3yr: "", residenceRows: [],
         preferredContact: "Primary Phone", bestTime: "Any",
@@ -141,6 +142,7 @@ export function applicationFromDriver(driver: any): ApplicationData {
         legalRightUS: country !== "Canada" ? !!d.authorizedToWork : false,
         legalRightCA: country === "Canada" ? !!d.authorizedToWork : false,
         position: d.driverType ?? "",
+        hireDate: d.hiredDate ?? "",
         address: {
             addr1: d.address ?? "", unit: d.unit ?? "", addr2: "",
             country, city: d.city ?? "", state: d.state ?? "", zip: d.zip ?? "",

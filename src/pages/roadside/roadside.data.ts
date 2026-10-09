@@ -29,6 +29,9 @@ import { useSyncExternalStore } from "react";
 import type { TicketViolation } from "@/pages/tickets/tickets.data";
 import { getAssetsForAccount } from "@/pages/accounts/carrier-assets.data";
 import { getDriversForAccount } from "@/pages/accounts/carrier-drivers.data";
+// The carrier's own shops. A seeded repair bill with no vendor on it is a bill nobody can
+// ever find from the other side, which is the side the money is argued from.
+import { VENDORS } from "@/pages/inventory/inventory.data";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
@@ -100,6 +103,14 @@ export interface RoadsideDoc {
     uploadedBy: string;
     source: DocSource;
     /**
+     * The rest of the same document.
+     *
+     * An invoice is rarely one page and a repair rarely one photograph: the shop sends the
+     * bill, the parts list and a picture of the old part, and all three are evidence of the
+     * SAME work. Filing them as separate records would say the truck was fixed three times.
+     */
+    attachments?: { id: string; name: string; size?: number; url?: string }[];
+    /**
      * The date ON the document.
      *
      * Not `uploadedAt`: an inspection report written at the roadside on Tuesday
@@ -127,12 +138,42 @@ export interface RoadsideDoc {
      * the other.
      */
     assetIds?: string[];
+    /**
+     * Repair bills only — what was spent on each unit, keyed by asset id.
+     *
+     * One invoice covering the tractor and the trailer is one bill and two costs. Filed as
+     * a single total, the trailer’s share is lost the moment anybody asks what that
+     * trailer has cost this year — and that is the question a lease return turns on.
+     */
+    assetAmounts?: Record<string, string>;
     /** Repair bills only — what the shop charged in total, as typed. */
     amount?: string;
+    /**
+     * The invoice's own number.
+     *
+     * The handle the bill is known by on the other side of the transaction: it is what the
+     * shop says on the phone and what the accounts payable line is matched against. A
+     * service record has carried one since it was written, and the roadside bill not
+     * having one meant the vendor's bill list could show an invoice number for half its
+     * rows and a dash for the rest — for no reason except which screen filed it.
+     */
+    invoiceNumber?: string;
+    /** Repair bills only — the driver, where the driver paid for it on the road. */
+    performedById?: string;
 
     // Repair bills only — who did the work, and what it came to. Kept on the
     // document rather than on the inspection: one inspection can send the tractor
     // to one shop and the trailer to another, and each bill is its own vendor.
+    /**
+     * The shop on the carrier's own list, where it is one.
+     *
+     * The name was being kept and the identity thrown away, so a bill could not be found
+     * again from the vendor's side: "what has this shop done for us and what have we paid
+     * them" had to be answered by matching strings, and "Wilmington Truck Service" is not
+     * "Wilmington Truck Service Inc." A typed shop still files with a name and no id —
+     * that is a real case, not a gap — and the vendor's page falls back to the name for it.
+     */
+    vendorId?: string;
     vendorName?: string;
     vendorCompany?: string;
     vendorEmail?: string;
@@ -487,6 +528,23 @@ export function blankInspection(accountId: string, createdBy: string): RoadsideI
     };
 }
 
+/**
+ * How many pages one record may carry.
+ *
+ * A repair is the bill, the parts list and a photograph of the old part — three pages of
+ * one document, not three documents. Past about ten it stops being a record and becomes a
+ * filing cabinet nobody reads.
+ */
+export const MAX_DOC_FILES = 10;
+
+/** One more page of the same document. */
+export const newAttachment = (file: File) => ({
+    id: `att-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
+    name: file.name,
+    size: file.size,
+    url: typeof URL !== "undefined" && URL.createObjectURL ? URL.createObjectURL(file) : undefined,
+});
+
 export const newDoc = (file: File, by: string, source: DocSource = "portal"): RoadsideDoc => ({
     id: `doc-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
     name: file.name,
@@ -592,6 +650,26 @@ export function seedInspections(accountId: string): void {
     };
 
     const t0 = unit(trucks, 0), t1 = unit(trucks, 1), t2 = unit(trucks, 2);
+    /*
+     * A real shop off this carrier's own list for the seeded bills.
+     *
+     * Not a typed name. The bill carries the vendor's ID so it can be found from the
+     * vendor's page — "what has this shop charged us" is the question a renewal turns on,
+     * and a bill that only carries a string cannot answer it without matching text.
+     */
+    const all = VENDORS.filter((v) => v.accountId === accountId);
+    /*
+     * A repair shop, not whichever vendor happens to be first.
+     *
+     * The carrier's list is mostly fuel cards, transponders and telematics, and the first
+     * of them was getting the brake bill — a toll account invoicing for a wheel seal
+     * reads as nonsense the moment anybody looks at it. Repair and Maintenance vendors
+     * first; anything else only if the carrier has no shop on its list at all.
+     */
+    const shops = all.filter((v) => v.categoryId === "cat-repair-maintenance");
+    const pool = shops.length ? shops : all;
+    const shop = pool[0];
+    const shop2 = pool[1] ?? shop;
     const tr0 = trailers.length ? unit(trailers, 0) : undefined;
     const tr1 = trailers.length ? unit(trailers, 1) : undefined;
     const d0 = unit(drivers, 0), d1 = unit(drivers, 1), d2 = unit(drivers, 2);
@@ -673,7 +751,20 @@ export function seedInspections(accountId: string): void {
                 id: "seed-bill-2", name: "shop-invoice-44812.pdf", size: 76_800,
                 url: "/demo-docs/business-registration.pdf",
                 uploadedAt: now, uploadedBy: "Safety Manager", source: "portal",
+                invoiceNumber: "INV-44812",
+                documentDate: dayBefore(10),
+                vendorId: shop?.id,
+                vendorCompany: shop?.companyName || shop?.name,
+                vendorName: shop?.contactName || shop?.name,
+                vendorEmail: shop?.email,
+                vendorPhone: shop?.phone,
+                performedBy: "mechanic",
+                performedByName: shop?.contactName || "Shop mechanic",
+                currency: "USD",
+                labour: "280.00",
+                parts: "132.60",
                 assetIds: [t1.id], amount: "412.60",
+                assetAmounts: { [t1.id]: "412.60" },
             }],
             createdAt: now,
             createdBy: "Safety Manager",
@@ -700,6 +791,73 @@ export function seedInspections(accountId: string): void {
             }],
             remediation: [],
             repairBills: [],
+            createdAt: now,
+            createdBy: "Safety Manager",
+        },
+        /*
+         * A fail that was fixed, paid for and closed — by a DIFFERENT shop.
+         *
+         * The three above cover the three stages; this one covers what the money side
+         * needs: roadside repair spend is not all with one garage. A vendor's page adds up
+         * what that shop has charged across planned work and roadside work both, and with
+         * a single billed inspection in the whole demo, four vendors out of five showed a
+         * roadside total of nothing and the column could not be read at all.
+         */
+        {
+            id: `RSI-SEED-${accountId}-4`,
+            accountId,
+            date: dayBefore(34),
+            startTime: "06:15",
+            endTime: "07:05",
+            level: INSPECTION_LEVELS[0],
+            location: "I-70 EB, Mile 68 — Hays, KS",
+            result: "Fail",
+            oos: false,
+            citationIssued: false,
+            truck: {
+                id: t2.id, label: t2.label, hasViolation: true,
+                violations: [seedViolation("Windshield wipers inoperative", "393.78", "Vehicle Maintenance", "Windshield", false)],
+            },
+            trailer: tr0
+                ? { id: tr0.id, label: tr0.label, hasViolation: true, violations: [seedViolation("Inoperative required lamp", "393.9", "Vehicle Maintenance", "Lighting", false)] }
+                : emptyParty(),
+            driver: { id: d1.id, label: d1.label, hasViolation: false, violations: [] },
+            notes: "Wipers and a trailer marker lamp. Fixed the same day at Hays; back on the road by noon.",
+            reports: [{
+                id: "seed-rep-4", name: "KS-inspection-report.pdf", size: 142_336,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
+            }],
+            remediation: [{
+                id: "seed-rem-4", name: "repair-confirmation.pdf", size: 58_112,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Safety Manager", source: "portal",
+                performedBy: "mechanic",
+                performedByName: shop2?.contactName || "Shop mechanic",
+                performedOn: dayBefore(34),
+            }],
+            repairBills: [{
+                id: "seed-bill-4", name: "shop-invoice-51203.pdf", size: 64_512,
+                url: "/demo-docs/business-registration.pdf",
+                uploadedAt: now, uploadedBy: "Safety Manager", source: "portal",
+                invoiceNumber: "INV-51203",
+                documentDate: dayBefore(34),
+                vendorId: shop2?.id,
+                vendorCompany: shop2?.companyName || shop2?.name,
+                vendorName: shop2?.contactName || shop2?.name,
+                vendorEmail: shop2?.email,
+                vendorPhone: shop2?.phone,
+                performedBy: "mechanic",
+                performedByName: shop2?.contactName || "Shop mechanic",
+                currency: "USD",
+                labour: "95.00",
+                parts: "64.80",
+                // One invoice, two units — which is why a bill carries a share per unit
+                // rather than a single total.
+                assetIds: tr0 ? [t2.id, tr0.id] : [t2.id],
+                amount: "159.80",
+                assetAmounts: tr0 ? { [t2.id]: "112.30", [tr0.id]: "47.50" } : { [t2.id]: "159.80" },
+            }],
             createdAt: now,
             createdBy: "Safety Manager",
         },

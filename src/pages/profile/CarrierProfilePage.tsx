@@ -108,6 +108,14 @@ const DriverFilterChip = ({ label, onClear }: { label: string; onClear: () => vo
 /** The roster's toggleable columns, in the order they appear. */
 const DRIVER_COLUMNS = [
     { id: 'id', label: 'ID / Details' },
+    /*
+     * Hired, as a column of its own.
+     *
+     * It was a second line under the driver's name, which made every row two lines tall
+     * for a date nobody could scan down or sort by. A date in a column is a date you can
+     * compare; a date under a name is decoration.
+     */
+    { id: 'hired', label: 'Hired' },
     { id: 'status', label: 'Status' },
     { id: 'compliance', label: 'Compliance' },
     { id: 'dq', label: 'DQ File' },
@@ -1714,7 +1722,19 @@ export function CarrierProfilePage({
                 )}
 
                 {activeTab === 'assets' && (
-                    <div className={isAssetFormActive ? "h-full" : "w-full"}>
+                    <div
+                        /*
+                         * Bounded for the detail view as well as the form.
+                         *
+                         * Unbounded, the asset record grew to its own content height inside
+                         * an `overflow-hidden` ancestor: its `h-full` resolved to auto, its
+                         * `overflow-y-auto` main never became a scrollport, and everything
+                         * past the first screen was clipped away — no scrollbar, no wheel,
+                         * no way to reach it. The list underneath still wants to grow with
+                         * the page, so only these two take a ceiling.
+                         */
+                        className={isAssetFormActive || isAssetDetailActive ? "h-full" : "w-full"}
+                    >
                         <AssetDirectoryPage
                             onNavigate={onNavigate}
                             isEmbedded={true}
@@ -1913,6 +1933,7 @@ export function CarrierProfilePage({
                                                 <tr>
                                                     <DriverSortTH id="name" label="Driver" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-5" />
                                                     {driverColShown('id') && <DriverSortTH id="id" label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
+                                                    {driverColShown('hired') && <DriverSortTH id="hired" label="Hired" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
                                                     {driverColShown('status') && <DriverSortTH id="status" label="Status" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
                                                     {driverColShown('compliance') && <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Compliance</th>}
                                                     {driverColShown('dq') && <th className="min-w-[220px] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">DQ File</th>}
@@ -1935,15 +1956,19 @@ export function CarrierProfilePage({
                                                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-600">
                                                                         {driver.avatarInitials}
                                                                     </div>
-                                                                    <div className="min-w-0">
-                                                                        <div className="truncate font-bold text-slate-900 transition-colors group-hover:text-blue-600">{driver.name}</div>
-                                                                        <div className="text-[11px] text-slate-500">Hired: {driver.hiredDate}</div>
+                                                                    <div className="min-w-0 truncate font-bold text-slate-900 transition-colors group-hover:text-blue-600">
+                                                                        {driver.name}
                                                                     </div>
                                                                 </div>
                                                             </td>
                                                             {driverColShown('id') && (
-                                                                <td className="px-4 py-3">
+                                                                <td className="whitespace-nowrap px-4 py-3">
                                                                     <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-medium text-slate-600">{driver.id}</span>
+                                                                </td>
+                                                            )}
+                                                            {driverColShown('hired') && (
+                                                                <td className="whitespace-nowrap px-4 py-3 text-[13px] tabular-nums text-slate-700">
+                                                                    {driver.hiredDate || <span className="text-slate-300">—</span>}
                                                                 </td>
                                                             )}
                                                             {driverColShown('status') && (
@@ -1961,7 +1986,11 @@ export function CarrierProfilePage({
                                                                             <Check className="h-3 w-3" /> Compliant
                                                                         </span>
                                                                     ) : (
-                                                                        <div className="flex flex-col items-start gap-1">
+                                                                        <div
+                                                                            /* Side by side, not stacked: a driver with all
+                                                                               three problems made every row three lines tall. */
+                                                                            className="flex flex-nowrap items-center gap-1 whitespace-nowrap"
+                                                                        >
                                                                             {stats.expired > 0 && (
                                                                                 <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-600">{stats.expired} Expired</span>
                                                                             )}
@@ -1977,24 +2006,24 @@ export function CarrierProfilePage({
                                                             )}
                                                             {driverColShown('dq') && (
                                                                 <td className="px-4 py-3">
-                                                                    <div className="flex flex-col gap-1.5">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <CompletionBar h={dqHealth} />
-                                                                            <span className="text-[12px] font-bold tabular-nums text-slate-700">{dqHealth.pct}%</span>
-                                                                        </div>
+                                                                    <div className="flex items-center gap-2 whitespace-nowrap">
+                                                                        <CompletionBar h={dqHealth} />
+                                                                        <span className="text-[12px] font-bold tabular-nums text-slate-700">{dqHealth.pct}%</span>
                                                                         <ComplianceChecklist h={dqHealth} hasChecklist={dqHealth.total > 0} />
                                                                     </div>
                                                                 </td>
                                                             )}
                                                             {driverColShown('license') && (
-                                                                <td className="px-4 py-3">
-                                                                    <div className="text-xs font-medium text-slate-900">{driver.licenseNumber || '—'}</div>
-                                                                    <div className="mt-0.5 text-[11px] text-slate-500">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
+                                                                <td className="whitespace-nowrap px-4 py-3">
+                                                                    <span className="text-xs font-medium text-slate-900">{driver.licenseNumber || '—'}</span>
+                                                                    <span className="ml-1.5 text-[11px] text-slate-500">
+                                                                        {driver.licenseState || '—'} · exp {driver.licenseExpiry || '—'}
+                                                                    </span>
                                                                 </td>
                                                             )}
                                                             {driverColShown('contact') && (
                                                                 <td className="px-4 py-3">
-                                                                    <div className="flex flex-col gap-0.5 text-slate-600">
+                                                                    <div className="flex items-center gap-3 whitespace-nowrap text-slate-600">
                                                                         <span className="flex items-center gap-1.5 text-[11px]"><Phone className="h-3 w-3 text-slate-400" /> {driver.phone}</span>
                                                                         <span className="flex items-center gap-1.5 text-[11px]"><Mail className="h-3 w-3 text-slate-400" /> {driver.email}</span>
                                                                     </div>

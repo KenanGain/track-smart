@@ -19,6 +19,7 @@ import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data"
 import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import type { Asset } from "@/pages/assets/assets.data";
 import { VENDORS } from "@/pages/inventory/inventory.data";
+import { SAMPLE_DOC_URL } from "./sample-doc";
 import type {
     MaintenanceTask,
     MaintenanceTaskStatus,
@@ -158,6 +159,43 @@ function buildForCarrier(account: AccountRecord): CarrierWorkOrdersOutput {
                 odometerUnit: account.country === "CA" ? "km" : "miles",
                 engineHoursRequired: tmpl_includesReefer(assetTasks),
             },
+            /*
+             * Every order turns up with paper on it, because every real one does.
+             *
+             * An open order has what was sent out and what the shop quoted; a closed one
+             * also has what came back. A demo whose Document tab is empty on all forty
+             * orders cannot show whether the tab works at all.
+             */
+            documents: [
+                {
+                    name: `work-order-${asset.unitNumber ?? asset.id}.pdf`,
+                    size: 72_000 + Math.floor(r() * 40_000),
+                    url: SAMPLE_DOC_URL,
+                    group: "Sent with the order",
+                    tags: ["Work order"],
+                    addedAt: isoOffset(-Math.floor(r() * 60) - 5),
+                },
+                {
+                    name: `estimate-${vendor.id}.pdf`,
+                    size: 38_000 + Math.floor(r() * 30_000),
+                    url: SAMPLE_DOC_URL,
+                    group: "Quote",
+                    tags: ["Quote"],
+                    addedAt: isoOffset(-Math.floor(r() * 50) - 4),
+                },
+                ...(orderStatus === "completed"
+                    ? [
+                          {
+                              name: `shop-report-${asset.unitNumber ?? asset.id}.pdf`,
+                              size: 110_000 + Math.floor(r() * 60_000),
+                              url: SAMPLE_DOC_URL,
+                              group: "Shop paperwork",
+                              tags: ["Shop report", "Inspection sheet"],
+                              addedAt: isoOffset(-Math.floor(r() * 25) - 1),
+                          },
+                      ]
+                    : []),
+            ],
             notes:
                 orderStatus === "open"
                     ? "Driver flagged the issue on pre-trip; please complete within the due window."

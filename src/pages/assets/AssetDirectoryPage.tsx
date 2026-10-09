@@ -13,12 +13,14 @@ import { AssetModal } from './AssetModal';
 import { commitOwnershipDoc } from './ownership-docs-bridge';
 import { commitPlateRecord } from './plate-record-bridge';
 import { commitAssetRecords, assetRecordsFromForm } from './asset-records-bridge';
-import { commitAssetInventory, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
+import { commitPmEnrolment, pmEnrolmentFromForm } from './asset-pm-enrolment';
+import { VENDORS, isCompanyIssuedVendor } from '@/pages/inventory/inventory.data';
+import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
-import { currentUserName } from '@/data/users.data';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
+import { useBackAwareView } from '@/lib/use-back-aware-view';
 
 // --- UI Utility ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -206,6 +208,8 @@ export function AssetDirectoryPage({
     const [isSaving, setIsSaving] = useState(false);
     const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
     const [selectedAsset, setSelectedAsset] = useState<DetailedAsset | null>(null);
+    // Back closes the asset rather than leaving the app.
+    useBackAwareView(!!selectedAsset, () => setSelectedAsset(null), "asset");
 
     // Notify the parent (CarrierProfilePage) when the embedded detail view opens/
     // closes (page-scroll) vs. the Add/Edit wizard opens/closes (bounded full-height
@@ -305,7 +309,7 @@ export function AssetDirectoryPage({
         return filteredAssets.slice(start, start + rowsPerPage);
     }, [filteredAssets, page, rowsPerPage]);
 
-    const handleSaveAsset = (data: any, inventory?: AssetInventoryDraft) => {
+    const handleSaveAsset = (data: any) => {
         setIsSaving(true);
         setTimeout(() => {
             // The id the ownership document is filed against — an existing asset's, or the one
@@ -324,20 +328,23 @@ export function AssetDirectoryPage({
             commitPlateRecord(accountId, id, data);
             // The pink slip and the two inspections, each its own record with its own alert.
             commitAssetRecords(accountId, id, assetRecordsFromForm(data));
+            /*
+             * And the PM tiers this unit runs, with the date each was last done.
+             *
+             * Filed here for the same reason the ownership document is: until this save
+             * runs there is no asset id to hang them on. Maintenance builds the enrolment
+             * and the first entry on each record from these — see `asset-pm-enrolment.ts`.
+             */
+            commitPmEnrolment(accountId, id, pmEnrolmentFromForm(data, {
+                vendors: VENDORS.filter((v: any) => v.accountId === accountId && !isCompanyIssuedVendor(v))
+                    .map((v: any) => ({ id: v.id, name: v.companyName || v.name })),
+                drivers: (accountId ? getDriversForAccount(accountId) : []).map((d: any) => ({ id: d.id, name: d.name })),
+            }));
             // The vehicle joins the shared fleet, so the inventory list, "the driver of this
-            // vehicle" and the fleet counts can all see it — and then whatever was picked
-            // in the Inventory section is filed against it.
+            // vehicle" and the fleet counts can all see it. What it CARRIES is handed out on
+            // the Inventory pages, which is where taking it back happens too — the form that
+            // creates a truck is not the place to start giving kit away.
             addCarrierAsset(accountId, { ...data, id } as any);
-            if (inventory) {
-                commitAssetInventory({
-                    accountId, assetId: id,
-                    assetLabel: data.unitNumber || id,
-                    assetKind: data.assetCategory === 'Non-CMV' ? 'non-cmv' : 'cmv',
-                    items: inventoryItemsForCarrier(accountId),
-                    draft: inventory,
-                    capturedBy: currentUserName(),
-                });
-            }
             setIsSaving(false);
             setIsModalOpen(false);
             setEditingAsset(null);

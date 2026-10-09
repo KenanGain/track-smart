@@ -36,6 +36,7 @@ import {
 import { buildRequirements, type Requirement } from "./hiring-requirements";
 import { RequirementList } from "./RequirementList";
 import { FileDown, Send, MessageSquarePlus, Copy, ExternalLink, Mail, Phone, Hourglass, FileCheck } from "lucide-react";
+import { useBackAwareView } from "@/lib/use-back-aware-view";
 
 /**
  * Application Tracking System (ATS).
@@ -50,6 +51,8 @@ import { FileDown, Send, MessageSquarePlus, Copy, ExternalLink, Mail, Phone, Hou
 
 export function AtsPage(_props: { onNavigate?: (path: string) => void } = {}) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    // Back closes the applicant rather than leaving the app.
+    useBackAwareView(!!selectedId, () => setSelectedId(null), "applicant");
     const selected = useMemo(
         () => selectedId ? MOCK_APPLICANTS.find(a => a.id === selectedId) ?? null : null,
         [selectedId],

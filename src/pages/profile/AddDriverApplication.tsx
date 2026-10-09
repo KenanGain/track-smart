@@ -87,6 +87,7 @@ function toDomain(d: ApplicationData) {
         name: `${first} ${last}`.trim(),
         avatarInitials: `${first.charAt(0)}${last.charAt(0)}`.toUpperCase(),
         dob: d.dob,
+        hiredDate: d.hireDate,
         gender: "Prefer not to say",
         ssn: d.ssn,
         citizenship: toCountry(d.address.country),

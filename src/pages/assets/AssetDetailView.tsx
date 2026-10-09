@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus, ChevronRight, Edit2, Copy, Truck,
   AlertCircle, FileText,
@@ -15,11 +15,36 @@ import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { Asset } from './assets.data';
 import { GvwrTag } from './GvwrTag';
 import { ProfileTabs } from '@/components/ui/ProfileTabs';
+// The app's own shrink-on-scroll header. Not a new behaviour for this page — the same
+// hook, the same transition and the same KPI hand-off the list pages use, so the asset
+// record folds exactly the way everything else does.
+import { useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
+
+/**
+ * How far a tab must be able to scroll before its header will fold, and what sits under it.
+ *
+ * `FOLD_FLOOR` is the reach the fold needs: the hook ignores the first 140px and then wants
+ * 40px of travel in one direction, so 190 is the first position from which a tab can ask for
+ * the fold at all. `FOLD_REST_PAD` is ordinary breathing room under the last card.
+ *
+ * Only the shortfall is ever lent. A tab that already scrolls further than the floor gets
+ * nothing, which is what keeps empty page from appearing under a list that did not need it.
+ */
+const FOLD_FLOOR = 190;
+const FOLD_REST_PAD = 48;
+import { KpiChipStrip } from '@/components/ui/KpiChipStrip';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { CreateScheduleForm } from './CreateScheduleForm';
-import { CreateOrderModal } from './CreateOrderModal';
+import { CreateOrderModal, type WorkRow } from './CreateOrderModal';
 import { AddExpenseModal } from './AddExpenseModal';
 import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintenance.data';
+// The rules this unit is on, and where each of them stands — derived the way the
+// maintenance module derives them, from the same two functions, so the two screens
+// cannot disagree about what PM-B is due at.
+import { buildSeedIntervalMeta, deriveServiceIntervals, type ServiceIntervalMeta } from './service-intervals';
+import { assetIntervalLine } from './asset-interval-lines';
+import { isAnnualSafetyInterval } from './asset-annual-records';
+import { AssetIntervalsCard } from '@/components/maintenance/AssetIntervalsCard';
 import type { MaintenanceTask, TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
@@ -43,6 +68,7 @@ import { useComplianceData } from '@/pages/compliance/compliance-data-store';
 import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
 import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data';
 import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
+import { AssetComplianceMaintenance } from './AssetComplianceMaintenance';
 import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 
@@ -827,15 +853,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
   }, [asset.id]);
 
   // ── Per-asset Maintenance UI state (filters, search, sort) ─────────────
-  type TaskStatusFilter = 'all' | 'upcoming' | 'due' | 'overdue' | 'in_progress' | 'completed';
   type OrderStatusFilter = 'all' | 'open' | 'completed' | 'cancelled';
-
-  const [taskStatusFilter, setTaskStatusFilter]   = useState<TaskStatusFilter>('all');
-  const [taskSearch, setTaskSearch]               = useState('');
-  const [taskSort, setTaskSort]                   = useState<'status' | 'due' | 'created'>('status');
-  const [taskSortDir, setTaskSortDir]             = useState<'asc' | 'desc'>('asc');
-  const [taskPage, setTaskPage]                   = useState(1);
-  const [taskRowsPerPage, setTaskRowsPerPage]     = useState(5);
 
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>('all');
   const [orderSearch, setOrderSearch]             = useState('');
@@ -846,7 +864,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
 
 
   // Reset to page 1 whenever filters change so the user always lands on visible rows.
-  useEffect(() => { setTaskPage(1); }, [taskStatusFilter, taskSearch, taskSort, taskSortDir, taskRowsPerPage]);
   useEffect(() => { setOrderPage(1); }, [orderStatusFilter, orderSearch, orderSort, orderSortDir, orderRowsPerPage]);
 
   // Real metrics derived from this asset's actual tasks/orders.
@@ -886,36 +903,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
     return { openOrders, overdueTasks, dueTasks, ytdSpend, upcomingTask, lastCompletion };
   }, [assetTasks, assetOrders, asset.id]);
 
-  // Filtered + sorted list of tasks shown in the panel.
-  const filteredTasks = useMemo(() => {
-    const q = taskSearch.trim().toLowerCase();
-    let list = assetTasks.filter(t => {
-      if (taskStatusFilter !== 'all' && t.status !== taskStatusFilter) return false;
-      if (q) {
-        const serviceName = INITIAL_SERVICE_TYPES.find(s => s.id === t.serviceTypeIds[0])?.name ?? '';
-        return [t.id, serviceName, t.scheduleId].some(v => v.toLowerCase().includes(q));
-      }
-      return true;
-    });
-
-    const STATUS_ORDER: Record<string, number> = { overdue: 0, due: 1, in_progress: 2, upcoming: 3, completed: 4, cancelled: 5 };
-    const dir = taskSortDir === 'asc' ? 1 : -1;
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-      if (taskSort === 'status') {
-        cmp = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
-      } else if (taskSort === 'due') {
-        const aa = a.dueRule?.dueAtOdometer ?? a.dueRule?.dueAtEngineHours ?? new Date(a.dueRule?.dueAtDate ?? 0).getTime();
-        const bb = b.dueRule?.dueAtOdometer ?? b.dueRule?.dueAtEngineHours ?? new Date(b.dueRule?.dueAtDate ?? 0).getTime();
-        cmp = aa - bb;
-      } else {
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      }
-      return cmp * dir;
-    });
-    return list;
-  }, [assetTasks, taskStatusFilter, taskSearch, taskSort, taskSortDir]);
-
   // Filtered + sorted work orders.
   const filteredOrders = useMemo(() => {
     const q = orderSearch.trim().toLowerCase();
@@ -939,26 +926,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
     });
     return list;
   }, [assetOrders, orderStatusFilter, orderSearch, orderSort, orderSortDir]);
-
-  const taskStatusCounts = useMemo(() => ({
-    all: assetTasks.length,
-    upcoming: assetTasks.filter(t => t.status === 'upcoming').length,
-    due: assetTasks.filter(t => t.status === 'due').length,
-    overdue: assetTasks.filter(t => t.status === 'overdue').length,
-    in_progress: assetTasks.filter(t => t.status === 'in_progress').length,
-    completed: assetTasks.filter(t => t.status === 'completed').length,
-  }), [assetTasks]);
-
-  // Clamp page when filtered list shrinks.
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(filteredTasks.length / taskRowsPerPage));
-    if (taskPage > maxPage) setTaskPage(maxPage);
-  }, [filteredTasks.length, taskRowsPerPage, taskPage]);
-
-  const pagedTasks = useMemo(() => {
-    const start = (taskPage - 1) * taskRowsPerPage;
-    return filteredTasks.slice(start, start + taskRowsPerPage);
-  }, [filteredTasks, taskPage, taskRowsPerPage]);
 
   const orderStatusCounts = useMemo(() => ({
     all: assetOrders.length,
@@ -1246,6 +1213,23 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
   }, [asset.id]);
 
   const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false);
+  /**
+   * The jobs the order opens with, ticked on the interval list.
+   *
+   * A shop visit is rarely one job, so the list raises one order for everything that was
+   * ticked rather than one per row — two orders for one visit is two invoices against a
+   * truck that went in once.
+   */
+  const [orderSeedTaskIds, setOrderSeedTaskIds] = useState<string[]>([]);
+  /**
+   * And the jobs among them that have no task yet.
+   *
+   * A rule this unit is on but has not been scheduled for is still work somebody can send
+   * to a shop — it simply has nothing raised against it yet. Ticking it and getting an
+   * empty order ("Nothing on this order yet") is the list offering work it then drops.
+   * The modal takes these as `workRows` and raises the task on save.
+   */
+  const [orderSeedRows, setOrderSeedRows] = useState<WorkRow[]>([]);
   const [vendors, setVendors] = useState(INITIAL_VENDORS);
 
   /** CreateOrderModal payload contract:
@@ -1369,6 +1353,168 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
       setIsCreatingSchedule(false);
   };
 
+  /*
+   * The header folds as the record scrolls.
+   *
+   * Everything above the tabs — the photograph, the title, four KPI cards and a
+   * twelve-field grid — was pinned at full height: about 560px of a 900px window, so a
+   * tab's content opened in the bottom third of the screen and stayed there. All of it
+   * matters when you arrive and almost none of it matters once you are reading a tab.
+   *
+   * The view owns the scrolling, so this is the hook that reads its container directly.
+   * It has to: the ancestor above this page is `overflow-hidden`, so if `<main>` does not
+   * scroll, nothing does and the content below the fold is simply clipped away.
+   *
+   * `activeTab` is the reset key. Switching tabs can swap a long panel for a short one,
+   * and a page that can no longer scroll has no gesture left to bring the header back —
+   * it would be stuck folded with no way to unfold it.
+   */
+  const { scrollRef, condensed, onScroll } = useCondensingHeader(activeTab);
+
+  /*
+   * A new tab opens at the top of itself.
+   *
+   * Switching tabs does not filter this page, it REPLACES it: the scroll position that
+   * belonged to the Overview means nothing on Compliances, and keeping it dropped you
+   * into the middle of a table with the header already folded, as though you had scrolled
+   * there. So the tab starts where it begins, and the header is whole again until you
+   * choose to scroll — which is also what makes the fold read as a response to you rather
+   * than something the page does on its own.
+   */
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [activeTab, scrollRef]);
+
+  /*
+   * The few pixels a very short tab is lent so that it can fold at all.
+   *
+   * The fold is asked for by scrolling, and a tab with almost nothing in it has no scroll to
+   * offer: Expenses on this unit reaches 136px, and the hook does not look below 140. So it
+   * sat under 575px of header with 161px left to read in, and no gesture could change that.
+   *
+   * Only the SHORTFALL is lent — what the tab is missing to reach the floor, and nothing on
+   * a tab that already clears it. This used to be a flat `pb-[24rem]` on every tab while the
+   * header was folded, which fixed the short ones and broke the long ones: 384px of empty
+   * page under a list you had already read to the end of, with nothing stopping you scrolling
+   * into it, which dragged the list's own pinned toolbar up under the page header until the
+   * rows it belongs to were off the screen. What that padding was really for — keeping the
+   * fold from undoing itself when the page it shortened fell under the floor — belongs to
+   * the hook's flip guard and now lives there, so none of it is needed on a long tab.
+   */
+  const [restReserve, setRestReserve] = useState(0);
+  useEffect(() => {
+    const box = scrollRef.current;
+    // Both answers are read from the OPEN page, because that is the one whose height is
+    // not about to change. Folded, the page is simply this one less what the fold costs.
+    if (!box || condensed) return;
+    // Settled: a tab arrived at from a folded one is still expanding for half a second.
+    const id = window.setTimeout(() => {
+      // What this tab can scroll on its own, with whatever is already being lent to it
+      // taken back out — so the answer never depends on the last answer.
+      const lent = parseFloat(getComputedStyle(box).paddingBottom) || 0;
+      const own = box.scrollHeight - box.clientHeight - lent;
+      setRestReserve(Math.max(0, Math.round(FOLD_FLOOR - own)));
+    }, 560);
+    return () => window.clearTimeout(id);
+  }, [condensed, activeTab, restReserve, scrollRef]);
+
+  /*
+   * Publish the header's live height, so things below it can pin UNDER it.
+   *
+   * A tab's own toolbar — the figures, the category tabs, the filters — wants to stay on
+   * top of its list, and it shares this scroll container with the page header. A fixed
+   * offset cannot work: the header is 575px open and 193px folded, so anything parked at
+   * one of those is either hidden behind it or floating in a gap below it. Measured rather
+   * than guessed, and republished as it animates.
+   */
+  const headRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const head = headRef.current;
+    const box = scrollRef.current;
+    if (!head || !box) return;
+    const publish = () => box.style.setProperty('--sticky-head', `${Math.round(head.getBoundingClientRect().height)}px`);
+    publish();
+    const obs = new ResizeObserver(publish);
+    obs.observe(head);
+    return () => obs.disconnect();
+  }, [scrollRef]);
+
+  /*
+   * The rules this unit is on, and where each stands.
+   *
+   * Built from this asset's own tasks with the module's two functions, so a rule that
+   * reads "PM-B · 900 mi to go" in Maintenance reads the same here. The alternative —
+   * a second derivation on this page — is two answers for one truck, and whichever
+   * screen somebody opens first wins the argument.
+   */
+  const intervalMeta = useMemo<Record<string, ServiceIntervalMeta>>(
+    () => buildSeedIntervalMeta(
+      [{
+        id: currentVehicle.id,
+        assetType: currentVehicle.assetType,
+        odometer: currentVehicle.odometer,
+        odometerUnit: currentVehicle.odometerUnit === 'km' ? 'km' : 'mi',
+      }],
+      assetTasks,
+    ),
+    [currentVehicle.id, currentVehicle.assetType, currentVehicle.odometer, currentVehicle.odometerUnit, assetTasks],
+  );
+
+  const intervalLines = useMemo(() => {
+    const meter = {
+      odometer: Math.max(
+        currentVehicle.odometer ?? 0,
+        ...assetTasks.map((t) => t.meterSnapshot?.odometer ?? 0), 0,
+      ),
+      engineHours: Math.max(...assetTasks.map((t) => t.meterSnapshot?.engineHours ?? 0), 0),
+    };
+    const kind = (currentVehicle.assetType ?? '').toLowerCase().includes('trailer') ? 'trailer' : 'truck';
+    const serviceName = (id: string) => INITIAL_SERVICE_TYPES.find((t) => t.id === id)?.name ?? id;
+    return deriveServiceIntervals(assetTasks, () => kind, serviceName, intervalMeta)
+      .filter((r) => r.assetIds.includes(currentVehicle.id) || r.applyToAll)
+      .map((r) => assetIntervalLine(r, currentVehicle.id, assetTasks, meter, serviceName))
+      /*
+       * The annual inspection is not a maintenance interval on this list, for the same
+       * reason it is not one on the module's: PM-D runs on 365 days and IS the annual
+       * service, so beside it the inspection gave one truck two annual answers that
+       * disagreed — they count from two different pieces of paper. The certificate is
+       * read on the Compliances tab, where it is filed.
+       */
+      .filter((l) => !isAnnualSafetyInterval(l.serviceTypeIds ?? []) && !l.fromAnnualRecord);
+  }, [assetTasks, intervalMeta, currentVehicle.id, currentVehicle.assetType, currentVehicle.odometer]);
+
+  /** The live order a job is already on — it cannot be put on a second one. */
+  const openOrderOf = (taskId: string) => assetOrders
+    .find((o) => o.status === 'open' && o.taskIds.includes(taskId))?.id;
+
+  /** The four figures as one line, for when the cards have folded away. */
+  const headerChips = [
+    {
+      id: 'odometer',
+      label: 'Odometer',
+      value: `${(currentVehicle.odometer ?? 0).toLocaleString()} ${currentVehicle.odometerUnit || 'mi'}`,
+    },
+    {
+      id: 'risk',
+      label: 'Risk',
+      value: currentVehicle.riskScore ?? 100,
+      tone: (currentVehicle.riskScore ?? 100) >= 85 ? 'text-emerald-600'
+        : (currentVehicle.riskScore ?? 100) >= 70 ? 'text-amber-600' : 'text-red-600',
+    },
+    { id: 'health', label: 'Health', value: currentVehicle.health || 'Good' },
+    { id: 'plate', label: 'Plate expiry', value: currentVehicle.registrationExpiryDate || '—' },
+  ];
+
+  /*
+   * The two full-page forms, BELOW every hook above.
+   *
+   * They used to sit further up, which cost the whole page: React counts hooks per
+   * render, so returning here before the condensing header, the fold reserve and the
+   * interval derivation had been called meant that render ran fewer hooks than the
+   * last. React answers that by tearing the tree down — a white screen, and nothing in
+   * the console, because it unmounts rather than throwing anywhere visible. An early
+   * return in a component with hooks belongs after all of them, or nowhere.
+   */
   // ── Full-page form: Schedule ────────────────────────────────────────────
   // Same pattern as AssetMaintenancePage — the form owns the entire content
   // area. A thin sticky banner above the form makes it clear which asset is
@@ -1396,10 +1542,11 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
         <SelectedAssetBanner asset={currentVehicle} action="Add Work Order" />
         <CreateOrderModal
           isOpen={true}
-          onClose={() => setIsCreateOrderModalOpen(false)}
+          onClose={() => { setIsCreateOrderModalOpen(false); setOrderSeedTaskIds([]); setOrderSeedRows([]); }}
           onCreate={handleCreateOrder}
-          preSelectedAssetId={asset.id}
-          selectedTasks={[]}
+          preSelectedAssetId={currentVehicle.id}
+          selectedTasks={assetTasks.filter((t) => orderSeedTaskIds.includes(t.id))}
+          workRows={orderSeedRows}
           availableTasks={assetTasks.filter(
             (t) =>
               t.status !== 'completed' &&
@@ -1415,11 +1562,26 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
 
   return (
     <div className="font-sans text-slate-900 flex flex-col h-full bg-slate-50">
-      <main className="flex-1 min-w-0 pb-12 overflow-y-auto">
+      {/* `overflow-anchor: none`, and it is what makes the fold hold.
+          The header lives INSIDE this scroller, so folding it changes the size of content
+          above the viewport — and the browser's scroll anchoring answers by adjusting
+          `scrollTop` to keep what you are looking at still. That adjustment arrives at the
+          condense hook as movement UP, indistinguishable from the user scrolling back, and
+          flipped the header open again a frame after it began to close. Switching anchoring
+          off makes the fold a pure layout change, which is what it is. */}
+      <main
+        ref={scrollRef}
+        onScroll={onScroll}
+        className={cn(
+          'flex-1 min-w-0 overflow-y-auto [overflow-anchor:none]',
+        )}
+        /* Only ever the shortfall — see `restReserve` above. */
+        style={{ paddingBottom: Math.max(FOLD_REST_PAD, restReserve) }}
+      >
         {/* Sticky top section — breadcrumb + header strip + tabs travel
             together so the user always has the back button, status, and
             tab switcher visible while scrolling tab content. */}
-        <div className="sticky top-0 z-30 bg-white">
+        <div ref={headRef} className="sticky top-0 z-30 bg-white">
         {/* Breadcrumb bar — Pattern B (matches DriverProfile + MyProfile shell):
             explicit Back-to-list button + vertical divider + breadcrumb chain.
             Thin h-11 strip on slate-50 with a single bottom border. */}
@@ -1455,12 +1617,20 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
 
         {/* Header strip — flat edge-to-edge on white with bottom border,
             matches the MyProfilePage pattern (no surrounding Card wrapper). */}
-        <div className="bg-white border-b border-slate-200 px-4 sm:px-8 pt-6 pb-6">
+        <div className={cn(
+            "bg-white border-b border-slate-200 px-4 sm:px-8", HEADER_TRANSITION,
+            condensed ? "pt-3 pb-2" : "pt-6 pb-6",
+        )}>
             <div>
-              <div className="flex items-start gap-5 flex-wrap">
-                {/* Image-as-avatar with status dot, mirrors the driver avatar. */}
+              <div className={cn("flex items-start flex-wrap", HEADER_TRANSITION,
+                  condensed ? "gap-3" : "gap-5")}>
+                {/* Image-as-avatar with status dot, mirrors the driver avatar. Folded, it
+                    keeps a small version rather than disappearing: it is how you know at a
+                    glance you are still on the unit you opened. */}
                 <div className="relative shrink-0">
-                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-100 overflow-hidden shadow-sm">
+                  <div className={cn(
+                      "rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-100 overflow-hidden shadow-sm",
+                      HEADER_TRANSITION, condensed ? "w-10 h-10" : "w-24 h-24")}>
                     <VehicleImageDisplay src={currentVehicle.image} alt={currentVehicle.unitNumber} />
                   </div>
                   <div
@@ -1479,7 +1649,8 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                 {/* Title block + contact row */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <h1 className="text-2xl font-bold text-slate-900 leading-tight">
+                    <h1 className={cn("font-bold text-slate-900 leading-tight", HEADER_TRANSITION,
+                        condensed ? "text-lg" : "text-2xl")}>
                       {currentVehicle.year} {currentVehicle.make} {currentVehicle.model}
                     </h1>
                     <Badge
@@ -1495,7 +1666,10 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4 flex-wrap text-xs text-slate-500">
+                  {/* Who has it and where it is: worth a line when you arrive, and the
+                      first thing to go, because it does not change while you read a tab. */}
+                  <div className={cn("flex items-center gap-4 flex-wrap text-xs text-slate-500 overflow-hidden",
+                      HEADER_TRANSITION, condensed ? "max-h-0 opacity-0" : "max-h-10 opacity-100")}>
                     <span className="inline-flex items-center gap-1.5">
                       <User size={13} className="text-slate-400" />
                       {currentVehicle.drivers?.length
@@ -1529,7 +1703,11 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
               {/* Quick stat cards — 4-up, persistent across all tabs.
                   Replaces the side risk/health panel so the header reads
                   horizontally like the MyProfilePage pattern. */}
-              <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+              {/* The same four figures, in one line, once the cards have folded. */}
+              <KpiChipStrip items={headerChips} condensed={condensed} className="mt-2" />
+
+              <div className={cn("grid grid-cols-2 md:grid-cols-4 overflow-hidden", HEADER_TRANSITION,
+                  condensed ? "mt-0 max-h-0 gap-0 opacity-0" : "mt-6 max-h-96 gap-3 opacity-100")}>
                 <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
                   <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
                     <Activity size={16} />
@@ -1605,8 +1783,14 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                 </div>
               </div>
 
-              {/* Metadata Row */}
-              <div className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-y-5 gap-x-6">
+              {/* Metadata Row — twelve fields you read once on arrival and never again
+                  while working a tab, so it gives its whole height back. */}
+              <div className={cn(
+                  "border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 overflow-hidden",
+                  HEADER_TRANSITION,
+                  condensed
+                      ? "mt-0 pt-0 max-h-0 gap-y-0 border-t-0 opacity-0"
+                      : "mt-6 pt-6 max-h-[32rem] gap-y-5 border-t opacity-100")}>
                 <MetadataItem label="Unit #" value={currentVehicle.unitNumber} copyable={true} />
                 <MetadataItem label="VIN #" value={currentVehicle.vin} copyable={true} />
                 <MetadataItem label="Plate #" value={currentVehicle.plateNumber || '—'} copyable={true} />
@@ -3143,222 +3327,41 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                   </Card>
                 </div>
 
-                {/* Split View — Tasks (left) + Work Orders (right) */}
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-                    {/* ─────────── Left: Maintenance Tasks ─────────── */}
-                    <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
-                            <div className="flex items-center gap-2">
-                                <Wrench size={16} className="text-slate-500" />
-                                <h3 className="font-bold text-slate-800 text-sm">Scheduled Maintenance Tasks</h3>
-                                <Badge variant="neutral" className="ml-2">{filteredTasks.length} of {assetTasks.length}</Badge>
-                            </div>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 text-xs gap-1.5 bg-white border-slate-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                onClick={() => setIsCreatingSchedule(true)}
-                            >
-                                <Plus size={13} /> Schedule
-                            </Button>
-                        </div>
+                {/*
+                    What this unit owes.
 
-                        {/* Search + Sort */}
-                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
-                            <div className="relative flex-1 min-w-0">
-                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                <input
-                                    type="text"
-                                    value={taskSearch}
-                                    onChange={(e) => setTaskSearch(e.target.value)}
-                                    placeholder="Search service, ID…"
-                                    className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                                />
-                                {taskSearch && (
-                                    <button onClick={() => setTaskSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100" aria-label="Clear">
-                                        <X size={12} />
-                                    </button>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (taskSort === 'status') setTaskSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                                    else { setTaskSort('status'); setTaskSortDir('asc'); }
-                                }}
-                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${taskSort === 'status' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                                title="Sort by status"
-                            >Status {taskSort === 'status' ? (taskSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
-                            <button
-                                onClick={() => {
-                                    if (taskSort === 'due') setTaskSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                                    else { setTaskSort('due'); setTaskSortDir('asc'); }
-                                }}
-                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${taskSort === 'due' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
-                                title="Sort by due"
-                            >Due {taskSort === 'due' ? (taskSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
-                        </div>
+                    The same list the maintenance module shows for it, down to the ticks and
+                    the order they raise — one component, so there is no second answer here
+                    about when PM-B is due. It replaced a "Scheduled Maintenance Tasks" panel
+                    that listed the open TASKS: a task is what a rule has already produced,
+                    so a rule nobody has scheduled yet was missing from the one screen whose
+                    job is to say what is outstanding.
+                */}
+                <AssetIntervalsCard
+                    assetId={currentVehicle.id}
+                    assetLabel={currentVehicle.unitNumber}
+                    lines={intervalLines}
+                    openOrderOf={openOrderOf}
+                    onCreateOrder={(taskIds, rows) => {
+                      setOrderSeedTaskIds(taskIds);
+                      setOrderSeedRows(rows ?? []);
+                      setIsCreateOrderModalOpen(true);
+                    }}
+                    /*
+                     * The rule itself, and the form that starts it counting, both live in the
+                     * maintenance module — switching a rule ON means saying when it was last
+                     * done, which is a form this page has no room for. So the three controls
+                     * that need it all go to the same place rather than two of them going
+                     * nowhere: a switch that moves and changes nothing is worse than one that
+                     * says where the answer is kept.
+                     */
+                    onOpenInterval={() => onNavigate?.('/maintenance')}
+                    onOpenPair={() => onNavigate?.('/maintenance')}
+                    onSetTracking={() => onNavigate?.('/maintenance')}
+                    onStartTracking={() => onNavigate?.('/maintenance')}
+                />
 
-                        {/* Status filter chips */}
-                        <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
-                            {([
-                                { id: 'all',         label: 'All' },
-                                { id: 'overdue',     label: 'Overdue' },
-                                { id: 'due',         label: 'Due' },
-                                { id: 'in_progress', label: 'In progress' },
-                                { id: 'upcoming',    label: 'Upcoming' },
-                                { id: 'completed',   label: 'Completed' },
-                            ] as Array<{ id: TaskStatusFilter; label: string }>).map(chip => {
-                                const active = taskStatusFilter === chip.id;
-                                const count = (taskStatusCounts as Record<string, number>)[chip.id] ?? 0;
-                                return (
-                                    <button
-                                        key={chip.id}
-                                        onClick={() => setTaskStatusFilter(chip.id)}
-                                        className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
-                                    >
-                                        {chip.label}
-                                        <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Task table — same column shape as the central
-                            AssetMaintenancePage (Task Name · Order # · Due At
-                            · Status), trimmed to remove the Asset / Asset
-                            Type columns since the whole page is already
-                            scoped to a single asset. */}
-                        <div className="bg-white overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-4 py-2.5 font-semibold">Task Name</th>
-                                        <th className="px-4 py-2.5 font-semibold">Order #</th>
-                                        <th className="px-4 py-2.5 font-semibold">Due At</th>
-                                        <th className="px-4 py-2.5 font-semibold">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {pagedTasks.length > 0 ? pagedTasks.map(task => {
-                                        const serviceNames = task.serviceTypeIds
-                                            .map(sid => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name)
-                                            .filter(Boolean)
-                                            .join(', ');
-                                        const associatedOrder = assetOrders.find(o => o.taskIds.includes(task.id));
-                                        const statusVariant =
-                                            task.status === 'overdue'     ? 'danger'  :
-                                            task.status === 'due'         ? 'warning' :
-                                            task.status === 'in_progress' ? 'Drafted' :
-                                            task.status === 'completed'   ? 'success' : 'neutral';
-
-                                        // Format the "due at" cell: meter / hours / date
-                                        // depending on the task's due rule.
-                                        let dueAtPrimary = '—';
-                                        let dueAtSecondary: string | null = null;
-                                        const dueRule = task.dueRule;
-                                        if (dueRule) {
-                                            if (dueRule.unit === 'miles' && dueRule.dueAtOdometer != null) {
-                                                dueAtPrimary = `${dueRule.dueAtOdometer.toLocaleString()} mi`;
-                                                const remaining = dueRule.dueAtOdometer - task.meterSnapshot.odometer;
-                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
-                                                    dueAtSecondary = remaining >= 0
-                                                        ? `${remaining.toLocaleString()} mi remaining`
-                                                        : `${Math.abs(remaining).toLocaleString()} mi past due`;
-                                                }
-                                            } else if (dueRule.unit === 'engine_hours' && dueRule.dueAtEngineHours != null) {
-                                                dueAtPrimary = `${dueRule.dueAtEngineHours.toLocaleString()} hrs`;
-                                                const remaining = dueRule.dueAtEngineHours - task.meterSnapshot.engineHours;
-                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
-                                                    dueAtSecondary = remaining >= 0
-                                                        ? `${remaining.toLocaleString()} hrs remaining`
-                                                        : `${Math.abs(remaining).toLocaleString()} hrs past due`;
-                                                }
-                                            } else if (dueRule.dueAtDate) {
-                                                dueAtPrimary = formatDate(dueRule.dueAtDate);
-                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
-                                                    const days = Math.round((new Date(dueRule.dueAtDate).getTime() - Date.now()) / 86_400_000);
-                                                    dueAtSecondary = days >= 0 ? `${days} days remaining` : `${Math.abs(days)} days past due`;
-                                                }
-                                            }
-                                        }
-
-                                        return (
-                                            <tr key={task.id} className="hover:bg-slate-50/70 transition-colors">
-                                                <td className="px-4 py-3">
-                                                    <div className="text-slate-900 font-medium truncate max-w-[320px]" title={serviceNames || 'Service'}>
-                                                        {serviceNames || 'Service'}
-                                                    </div>
-                                                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{task.id}</div>
-                                                </td>
-                                                <td className="px-4 py-3 font-mono text-xs">
-                                                    {associatedOrder
-                                                        ? <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded">#{associatedOrder.id.slice(-6).toUpperCase()}</span>
-                                                        : <span className="text-slate-400">—</span>}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {dueRule ? (
-                                                        <>
-                                                            <div className="font-medium text-slate-900">{dueAtPrimary}</div>
-                                                            {dueAtSecondary && (
-                                                                <div className={`text-[11px] mt-0.5 ${task.status === 'overdue' ? 'text-red-600' : task.status === 'due' ? 'text-amber-600' : 'text-slate-500'}`}>
-                                                                    {dueAtSecondary}
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-xs text-slate-400">No schedule</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <Badge variant={statusVariant}>{task.status.replace('_', ' ')}</Badge>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }) : (
-                                        <tr>
-                                            <td colSpan={4} className="px-4 py-12 text-center">
-                                                <div className="flex flex-col items-center justify-center text-slate-400">
-                                                    <ShieldCheck size={36} className="mb-2 opacity-25" />
-                                                    <span className="text-sm font-semibold text-slate-600">
-                                                        {assetTasks.length === 0 ? 'No tasks scheduled' : 'No tasks match the filter'}
-                                                    </span>
-                                                    <span className="text-xs text-slate-400 mt-1">
-                                                        {assetTasks.length === 0
-                                                            ? 'Schedule the first preventive task for this asset.'
-                                                            : 'Try clearing the search or selecting a different status.'}
-                                                    </span>
-                                                    {(taskStatusFilter !== 'all' || taskSearch) && (
-                                                        <button
-                                                            onClick={() => { setTaskSearch(''); setTaskStatusFilter('all'); }}
-                                                            className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
-                                                        >
-                                                            Clear filters
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
-                        {filteredTasks.length > 0 && (
-                            <PaginationBar
-                                totalItems={filteredTasks.length}
-                                currentPage={taskPage}
-                                rowsPerPage={taskRowsPerPage}
-                                onPageChange={setTaskPage}
-                                onRowsPerPageChange={(rows) => {
-                                    setTaskRowsPerPage(rows);
-                                    setTaskPage(1);
-                                }}
-                            />
-                        )}
-                    </Card>
-
-                    {/* ─────────── Right: Work Orders ─────────── */}
+                {/* ─────────── What has been sent to a shop about it ─────────── */}
                     <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
                         <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
                             <div className="flex items-center gap-2">
@@ -3557,7 +3560,6 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                             />
                         )}
                     </Card>
-                </div>
               </div>
             )}
 
@@ -3675,8 +3677,37 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
 
             {/* Documents Content */}
             {activeTab === 'Documents' && (
-              <div className="animate-in fade-in">
+              <div className="space-y-5 animate-in fade-in">
                 <SubjectDocuments
+                  /*
+                   * One record on this list opens onto something else.
+                   *
+                   * Maintenance paper is not a document with an expiry — it is a bill, a
+                   * sheet and a certificate per visit, filed against whichever interval
+                   * called for the work. A version list cannot say which interval a file
+                   * belongs to, which is the only thing that makes any of it findable. So
+                   * "Maintenance Document" opens onto the intervals; every other record on
+                   * the list opens the way it always has.
+                   */
+                  detailFor={(r, back) => (r.id !== 'maintenance-documents' ? null : (
+                    <AssetComplianceMaintenance
+                      asset={{
+                        id: currentVehicle.id,
+                        label: currentVehicle.unitNumber,
+                        kind: (currentVehicle.assetType ?? '').toLowerCase().includes('trailer') ? 'trailer' : 'truck',
+                        description: `${currentVehicle.year ?? ''} ${currentVehicle.make ?? ''} ${currentVehicle.model ?? ''}`.trim() || undefined,
+                        driver: (currentVehicle as any).assignedDriver?.name,
+                        odometer: currentVehicle.odometer,
+                        odometerUnit: currentVehicle.odometerUnit === 'km' ? 'km' : 'mi',
+                        assetType: currentVehicle.assetType,
+                      }}
+                      tasks={assetTasks}
+                      serviceName={(id) => INITIAL_SERVICE_TYPES.find((t) => t.id === id)?.name ?? id}
+                      vendors={vendors.map((v: any) => ({ id: v.id, name: v.companyName || v.name }))}
+                      record={{ name: r.recordName, description: r.description }}
+                      onBack={back}
+                    />
+                  ))}
                   accountId={accountId}
                   embedded
                   entity="Asset"

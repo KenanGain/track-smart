@@ -11,7 +11,8 @@
 // The look is the compliance table's, exactly — these were lifted from it rather than
 // redesigned, so nothing moves on the screens that already use it.
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PAGE_SIZES, TH_CLS, bandTone, type SortState } from '@/components/ui/list-chrome';
@@ -36,23 +37,47 @@ export function SortTh<C extends string>({ col, label, sortable, sort, onSort, c
 /** One column a picker can show or hide. A locked column is always on and says why. */
 export interface PickerColumn<C extends string> { id: C; label: string; locked?: boolean }
 
-/** Column-visibility dropdown. */
+/**
+ * Column-visibility dropdown.
+ *
+ * Drawn in a layer over the page rather than inside the toolbar. Every list it sits in is
+ * a card with `overflow-hidden` — which is what keeps the table’s corners rounded — and an
+ * absolutely-positioned panel inside one is cut off at the card’s edge. The same reason
+ * the row menu is drawn this way.
+ */
 export function ColumnPicker<C extends string>({ columns, visible, onToggle, align = 'right' }: {
     columns: PickerColumn<C>[]; visible: Set<C>; onToggle: (id: C) => void; align?: 'left' | 'right';
 }) {
     const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const btnRef = useRef<HTMLButtonElement>(null);
+    const WIDTH = 224;
+
+    const openMenu = () => {
+        const r = btnRef.current?.getBoundingClientRect();
+        if (!r) return;
+        const left = align === 'right'
+            ? Math.max(8, Math.min(r.right - WIDTH, window.innerWidth - WIDTH - 8))
+            : Math.max(8, Math.min(r.left, window.innerWidth - WIDTH - 8));
+        setPos({ top: r.bottom + 4, left });
+        setOpen(true);
+    };
+
     return (
-        <div className="relative">
-            <button type="button" onClick={() => setOpen(o => !o)}
+        <div className="inline-flex">
+            <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())}
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
                 <Columns size={14} /> Columns <ChevronDown size={13} className="text-slate-400" />
             </button>
-            {open && (
+            {open && pos && createPortal(
                 <>
                     {/* A click anywhere else closes it — a dropdown that needs the same button
                         clicked again to dismiss is a dropdown people leave open. */}
-                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                    <div className={cn('absolute z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-lg p-1.5', align === 'right' ? 'right-0' : 'left-0')}>
+                    <div className="fixed inset-0 z-[90]" onClick={() => setOpen(false)} />
+                    <div
+                        className="fixed z-[91] rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl"
+                        style={{ top: pos.top, left: pos.left, width: WIDTH }}
+                    >
                         <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Toggle columns</div>
                         {columns.map(c => (
                             <label key={c.id} className={cn('flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-slate-700', c.locked ? 'cursor-default opacity-80' : 'hover:bg-slate-50 cursor-pointer')}>
@@ -64,7 +89,8 @@ export function ColumnPicker<C extends string>({ columns, visible, onToggle, ali
                             </label>
                         ))}
                     </div>
-                </>
+                </>,
+                document.body,
             )}
         </div>
     );
@@ -242,5 +268,49 @@ export function TableGroupBand({ label, count, colSpan }: { label: string; count
                 </div>
             </td>
         </tr>
+    );
+}
+
+/**
+ * Two views of one set of records, switched between.
+ *
+ * Not a filter and not a tab. A filter narrows one list; a tab changes the subject. This
+ * changes what a single subject's rows ARE — the services a unit has had, or the paper
+ * those services produced. Both are the same record read with a different question in
+ * mind, and the counts are on the control so you can see what switching would get you
+ * before you switch.
+ */
+export function ViewSwitch<T extends string>({ value, onChange, options, className }: {
+    value: T;
+    onChange: (next: T) => void;
+    options: { id: T; label: string; icon?: React.ElementType; count?: number }[];
+    className?: string;
+}) {
+    return (
+        <div className={cn('inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1', className)}>
+            {options.map((o) => {
+                const on = o.id === value;
+                return (
+                    <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => onChange(o.id)}
+                        aria-pressed={on}
+                        className={cn(
+                            'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[12px] font-bold transition-colors',
+                            on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                        )}
+                    >
+                        {o.icon && <o.icon size={13} className={on ? 'text-blue-600' : 'text-slate-400'} />}
+                        {o.label}
+                        {o.count != null && (
+                            <span className={cn('tabular-nums', on ? 'text-slate-400' : 'text-slate-400')}>
+                                {o.count}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
     );
 }

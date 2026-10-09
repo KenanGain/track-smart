@@ -54,6 +54,7 @@ import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { findUserById } from '@/data/users.data';
+import { useBackAwareView } from '@/lib/use-back-aware-view';
 
 /**
  * Default Compliances & Documents — the per-carrier DATA page.
@@ -407,7 +408,7 @@ export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig
 
 /** Default name for a NEW version, made unique against what the record already holds:
  *  "Drug Test Result", then "Drug Test Result (2)", … The first one keeps the plain name. */
-function nextVersionLabel(record: SafetyRecord, entry: RecordDataEntry): string {
+export function nextVersionLabel(record: SafetyRecord, entry: RecordDataEntry): string {
     const base = defaultVersionLabel(record);
     const taken = new Set([
         ...(entry.versions ?? []),
@@ -1450,9 +1451,12 @@ function MiniStat({ value, label, dot }: { value: number | string; label: string
         </div>
     );
 }
-function SubjectStatBar({ stats }: { stats: { total: number; complete: number; requiredMissing: number; optionalPending: number; pct: number } }) {
+function SubjectStatBar({ stats, embedded }: { stats: { total: number; complete: number; requiredMissing: number; optionalPending: number; pct: number }; embedded?: boolean }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex items-center gap-x-5 gap-y-3 flex-wrap">
+        <div className={cn('flex items-center gap-x-5 gap-y-3 flex-wrap',
+            // Inside the list card it is already on a card; a second frame around it reads
+            // as a box in a box.
+            embedded ? '' : 'rounded-xl border border-slate-200 bg-white shadow-sm px-4 py-3')}>
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
                 <MiniStat value={stats.total} label="Records" dot="bg-slate-300" />
                 <MiniStat value={stats.complete} label="Complete" dot="bg-emerald-500" />
@@ -1472,7 +1476,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs, headerShowsSubject, onNavigate, accountId, onKpis, onActions, defaultCols }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, detailFor, hideCategoryTabs, headerShowsSubject, onNavigate, accountId, onKpis, onActions, defaultCols }: {
     entity: EntityId;
     subjectId: string;
     /** Scopes which records this subject tracks (see `record-enablement`). */
@@ -1501,6 +1505,18 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     // Per-record variant of detailExtra — receives the open record so a list (e.g. the DQ Forms tab)
     // can render the RIGHT form's fill card. Falls back to detailExtra when not provided.
     detailExtraFor?: (record: SafetyRecord) => DetailExtra;
+    /**
+     * A record whose detail is something else entirely.
+     *
+     * `detailExtra` adds a card to the standard version list; this REPLACES it. One record
+     * in the asset catalog is not a single document with one expiry — maintenance paper is
+     * a bill, a sheet and a certificate per visit, several visits a year, filed against
+     * whichever interval called for the work. A version list cannot say which interval a
+     * file belongs to, which is the only thing that makes any of it findable.
+     *
+     * Return null for every other record and they open the way they always have.
+     */
+    detailFor?: (record: SafetyRecord, onBack: () => void) => ReactNode | null;
     /**
      * Which columns this list starts with.
      *
@@ -1687,7 +1703,9 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
 
     return (
         <div className="space-y-5">
-            {detailRecord ? (
+            {detailRecord && detailFor?.(detailRecord, () => setDetailRecord(null)) ? (
+                detailFor(detailRecord, () => setDetailRecord(null))
+            ) : detailRecord ? (
                 <RecordDetailPage
                     record={detailRecord}
                     entry={getEntry(subjectId, detailRecord.id)}
@@ -1725,10 +1743,10 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
             </div>
             )}
 
-            {/* Subject stats — a compact refined bar when embedded, full KPI cards on the standalone page. */}
-            {embedded ? (
-                <SubjectStatBar stats={stats} />
-            ) : (
+            {/* Subject stats — full KPI cards on the standalone page. Embedded, the bar
+                moves INSIDE the list card below, so the figures, the category tabs and the
+                filter row are one block and can pin as one. */}
+            {embedded ? null : (
             <KpiRow>
                 <KpiTile label="Records" value={stats.total} Icon={Layers} accent="slate" />
                 <KpiTile label="Complete" value={stats.complete} Icon={Check} accent="emerald" />
@@ -1739,7 +1757,28 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
 
             {/* Enabled / Disabled — which of this subject's records the list is showing. */}
             {/* List card */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className={cn(embedded ? 'overflow-clip' : 'overflow-clip rounded-xl border border-slate-200 bg-white shadow-sm')}>
+                {/*
+                 * The figures, the tabs and the filters stay on top.
+                 *
+                 * They are what the list below MEANS — which records are counted, which
+                 * category is showing, what is being searched for — and scrolling a long
+                 * record list left all three behind, so you were reading rows with nothing
+                 * to say what they had been narrowed to.
+                 *
+                 * `--sticky-head` is published by whatever page is hosting this: the asset
+                 * record's own header is sticky too, and it CHANGES height as it folds, so
+                 * a fixed offset would either overlap it or leave a gap under it.
+                 */}
+                <div
+                    className={cn(embedded && 'sticky z-20 space-y-5 bg-slate-50 pt-5')}
+                    style={embedded ? { top: 'var(--sticky-head, 0px)' } : undefined}
+                >
+                {embedded && <SubjectStatBar stats={stats} />}
+                {/* The list card's top half. Rounded at the top only and open at the
+                    bottom, because the table below carries the other half — so the two
+                    read as one card while only this half is pinned. */}
+                <div className={cn(embedded && 'rounded-t-xl border border-b-0 border-slate-200 bg-white shadow-sm')}>
                 {/* Which records am I looking at — the category tabs and the Enabled / Disabled
                     switch answer the same question, so they share the card's top row: the
                     subsets on the left, which SIDE of the list on the right. The row survives
@@ -1830,7 +1869,10 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} onReset={() => setVisibleCols(new Set(DEFAULT_DATA_COLS))} />
                     </div>
                 </div>
+                </div>{/* end the card's top half */}
+                </div>{/* end sticky top region */}
 
+                <div className={cn(embedded && 'overflow-clip rounded-b-xl border border-t-0 border-slate-200 bg-white shadow-sm')}>
                 {pageRows.length === 0 ? (
                     <div className="px-5 py-12 text-center text-sm text-slate-500">
                         {entityRecords.length === 0 && enablementView === 'disabled'
@@ -1908,6 +1950,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 {/* Pagination footer */}
                 <TablePager page={safePage} pageSize={pageSize} total={total}
                     onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+                </div>{/* end the card's bottom half */}
             </div>
             </>
             )}
@@ -2067,6 +2110,8 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
     const [detail, setDetail] = useState<{ subject: RecSubject; record: SafetyRecord } | null>(null);
+    // Back closes the record rather than leaving the app.
+    useBackAwareView(!!detail, () => setDetail(null), "record");
     const [confirmClear, setConfirmClear] = useState(false);
     const subjectNoun = entity === 'Asset' ? 'assets' : 'drivers';
 
@@ -4521,7 +4566,15 @@ function DocTagPicker({ value, catalog, onChange, onCreate }: {
     );
 }
 
-function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, policyOptions, policyPrefills, initialPolicyName, onSave, onClose, onNavigate }: {
+/**
+ * The one form that files a compliance record.
+ *
+ * Exported because Maintenance asks the same question about the same two records (the
+ * annual safety inspection and the annual PM service) and must ask it the same way: the
+ * same fields, the same document, the same "set as the current record", the same
+ * monitoring. A second form would be a second set of answers to keep in step.
+ */
+export function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, policyOptions, policyPrefills, initialPolicyName, onSave, onClose, onNavigate }: {
     record: SafetyRecord; subjectLabel?: string;
     version: DocVersion; mode: 'add' | 'edit'; askPolicyName?: boolean; policyOptions?: string[];
     policyPrefills?: Record<string, DocVersion>; initialPolicyName?: string;
@@ -4567,7 +4620,7 @@ function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, 
                     </div>
                     <button type="button" onClick={onClose} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 shrink-0"><X size={18} /></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-4">
                     <div className="flex items-center justify-end">
                         <button type="button" onClick={() => { setV(cur => fillVersionDemo(record, cur)); ['Verified', 'Primary'].forEach(addToCatalog); }}
                             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100"><Sparkles size={13} /> Fill demo data</button>
@@ -4863,7 +4916,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-4">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                         <button type="button" onClick={fillDemo}
                             className="inline-flex shrink-0 items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100">

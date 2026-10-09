@@ -49,6 +49,7 @@ import {
     generateLiveFeedBatch,
     type ExternalViolationRecord,
 } from '@/pages/violations/external-violation-feeds.data';
+import { useBackAwareView } from '@/lib/use-back-aware-view';
 
 // Tiny class-name composer — same shape as the Violations page's `cn`.
 const cn = (...c: (string | boolean | undefined | null)[]) =>
@@ -152,6 +153,8 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
     const { scrollRef, condensed, onScroll } = useCondensingHeader(basicTab);
     const [subCatFilter, setSubCatFilter] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    // Back closes the ticket rather than leaving the app.
+    useBackAwareView(!!expandedId, () => setExpandedId(null), "ticket");
     // Ticket awaiting a Remove confirmation. Null when the dialog is closed.
     const [removeCandidate, setRemoveCandidate] = useState<TicketRecord | null>(null);
     // A ticket being shared to chat (record link), and deep-link open from a shared link.

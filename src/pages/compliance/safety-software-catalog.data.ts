@@ -1190,6 +1190,10 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       numberName: '', documentName: 'Annual Safety Inspection Certificate',
       recurring: 'Annual', monitorType: 'Next due date', jurisdiction: 'Inspecting jurisdiction',
       tracksIssueDate: true, issueLabel: 'Last annual safety date',
+      // The certificate is the record; which country and state it was issued in is not
+      // something the asset form asks, so the record does not ask it either — two forms
+      // capturing the same thing must capture the SAME thing.
+      hideCountry: true, hideState: true,
       nameFromRecord: true, monitorByDefault: true,
       textFields: [
           // The reading it was done at. Kept beside the date because an inspection is due on
@@ -1210,8 +1214,8 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       numberName: '', documentName: 'Preventive Maintenance Record',
       recurring: 'Annual', monitorType: 'Next due date', jurisdiction: 'Servicing location',
       tracksIssueDate: true, issueLabel: 'Last PM date',
-      // Done in a shop, not by a jurisdiction: there is no issuing state to ask for.
-      hideCountry: true,
+      // Done in a shop, not by a jurisdiction: there is no issuing country or state to ask for.
+      hideCountry: true, hideState: true,
       nameFromRecord: true, monitorByDefault: true,
       textFields: [
           // The reading it was done at. Kept beside the date because an inspection is due on
@@ -1227,6 +1231,29 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
             priorValue: 'miles' },
       ],
       monitor: 'The next service due date, armed by default. A missed PM is not a citation on its own — it is the breakdown, and the maintenance history a claim is argued from.' },
+    /*
+     * Maintenance Document — the one record on this list that is not a single piece of paper.
+     *
+     * Every other record here is one thing with one expiry: a pink slip, a plate, a decal.
+     * A unit's maintenance paper is not shaped like that. It is a bill, a sheet and a
+     * certificate per visit, several visits a year, against whichever service interval
+     * called for the work — and the thing that makes any of it findable is WHICH interval
+     * it belongs to. Flattening that into one record would give a list of forty files with
+     * nothing to sort them by.
+     *
+     * So it is a record in the catalog, because that is where somebody looks for it and
+     * because Settings has to be able to say it exists, and it opens onto the intervals
+     * rather than onto a version list. Its detail is supplied by whoever renders it; see
+     * `detailFor` on SubjectDocuments.
+     */
+    { id: 'maintenance-documents', category: 'Maintenance & Inspection', entity: 'Asset', type: 'D',
+      docRequirement: 'optional',
+      recordName: 'Maintenance Document',
+      description: 'Service records and the paper filed with them, by interval',
+      numberName: '', documentName: 'Service record, invoice, inspection sheet',
+      recurring: 'Every service', monitorType: 'Next service due',
+      jurisdiction: 'Carrier policy',
+      monitor: 'Monitored by the service interval itself, not by this record — each interval runs its own clocks and raises its own work. This is where what those services produced is read.' },
     { id: 'pink-slip', category: 'Insurance', entity: 'Asset', type: 'DC', docRequirement: 'required',
       recordName: 'Pink Slip', description: 'Vehicle Proof of Insurance', numberName: 'Liability Policy Number', documentName: 'Proof of Automobile Insurance Card (Pink Slip)',
       recurring: 'Yes', monitorType: 'Slip expiry', jurisdiction: 'Issuing insurance jurisdiction',

@@ -19,6 +19,7 @@ import {
 } from "@/data/accident-records.data";
 import { AccidentRecordPage } from "./AccidentRecordPage";
 import { AccidentDetailPage, RowActionsMenu } from "./AccidentDetailPage";
+import { useBackAwareView } from "@/lib/use-back-aware-view";
 
 /**
  * Default Accidents — the carrier's actual reported accident RECORDS. Drivers report
@@ -355,6 +356,8 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", o
     const [recPage, setRecPage] = useState(1);
     const [editing, setEditing] = useState<{ rec: AccidentRecord; isNew: boolean } | null>(null);
     const [viewingId, setViewingId] = useState<string | null>(null);
+    // Back closes the accident rather than leaving the app.
+    useBackAwareView(!!viewingId, () => setViewingId(null), "accident");
     const [deleting, setDeleting] = useState<AccidentRecord | null>(null);
     const viewing = viewingId ? records.find(r => r.id === viewingId) ?? null : null;
     const askDelete = (r: AccidentRecord) => setDeleting(r);

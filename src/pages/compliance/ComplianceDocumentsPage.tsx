@@ -43,9 +43,7 @@ import { AssetModal } from '@/pages/assets/AssetModal';
 import { commitOwnershipDoc } from '@/pages/assets/ownership-docs-bridge';
 import { commitPlateRecord } from '@/pages/assets/plate-record-bridge';
 import { commitAssetRecords, assetRecordsFromForm } from '@/pages/assets/asset-records-bridge';
-import { commitAssetInventory, inventoryItemsForCarrier, type AssetInventoryDraft } from '@/pages/assets/asset-inventory-bridge';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
-import { currentUserName } from '@/data/users.data';
 import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled, calculateDriverComplianceStats } from '@/utils/compliance-utils';
 
 // --- HELPER COMPONENTS (Copied from CarrierProfilePage for consistency) ---
@@ -402,7 +400,7 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
         return result;
     }, [assets, activeSubCategory, searchQuery, assetStatusFilter, assetSort]);
 
-    const handleSaveAsset = (data: any, inventory?: AssetInventoryDraft) => {
+    const handleSaveAsset = (data: any) => {
         setIsSavingAsset(true);
         // Simulate API call
         setTimeout(() => {
@@ -423,19 +421,10 @@ export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPagePr
             // The pink slip and the two inspections, each its own record with its own alert.
             commitAssetRecords(accountId, id, assetRecordsFromForm(data));
             // The vehicle joins the shared fleet, so the inventory list, "the driver of this
-            // vehicle" and the fleet counts can all see it — and then whatever was picked
-            // in the Inventory section is filed against it.
+            // vehicle" and the fleet counts can all see it. What it CARRIES is handed out on
+            // the Inventory pages, which is where taking it back happens too — the form that
+            // creates a truck is not the place to start giving kit away.
             addCarrierAsset(accountId, { ...data, id } as any);
-            if (inventory) {
-                commitAssetInventory({
-                    accountId, assetId: id,
-                    assetLabel: data.unitNumber || id,
-                    assetKind: data.assetCategory === 'Non-CMV' ? 'non-cmv' : 'cmv',
-                    items: inventoryItemsForCarrier(accountId),
-                    draft: inventory,
-                    capturedBy: currentUserName(),
-                });
-            }
             setIsSavingAsset(false);
             setIsAssetModalOpen(false);
             setEditingAsset(null);

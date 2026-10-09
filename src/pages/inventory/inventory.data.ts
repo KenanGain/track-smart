@@ -849,6 +849,21 @@ const COMPANY_ACCESSORIES: AccessorySeed[] = [
     { catId: "cat-cards-docs", name: "Fuel Card PIN Sleeve", toDriver: true },
 ];
 
+/** The company-issued accessories carry a vendor row; this is how one is known. */
+export const COMPANY_ISSUED_VENDOR = "Company Issued";
+
+/**
+ * Not a shop, and nowhere to send work.
+ *
+ * These rows exist so the inventory list has something in its Vendor column for a key
+ * fob or a pair of gloves — there is no supplier, no contact and no phone number,
+ * because nobody bought them from anyone. Anything that asks "which shop did this" has
+ * to leave them out, or it offers a dozen identical "Company Issued" options and files
+ * brake jobs against a driver tablet.
+ */
+export const isCompanyIssuedVendor = (v: { id?: string; companyName?: string }) =>
+    v.companyName === COMPANY_ISSUED_VENDOR || String(v.id ?? "").startsWith("v-acc-");
+
 for (const accountId of Object.keys(CARRIER_ASSETS)) {
     const assets = CARRIER_ASSETS[accountId] ?? [];
     const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");

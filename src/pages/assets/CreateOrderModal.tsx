@@ -1,8 +1,34 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText, Mail, Copy, ExternalLink, ListChecks } from "lucide-react";
+import { Plus, X, Check, Search, Truck, Store, Calendar, CalendarClock, FileText, Mail, Copy, ExternalLink } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { INITIAL_ASSETS } from "./assets.data";
-import { INITIAL_TASKS, INITIAL_ORDERS } from "./maintenance.data";
+import { INITIAL_ASSETS as DEMO_FLEET, type Asset as FleetAsset } from "./assets.data";
+import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
+// Messages is how this office reaches anybody — a driver in their own thread, a shop as
+// an outside contact. An order that names somebody and never reaches them is a note in a
+// drawer.
+import { shareToMessages, getOrCreateDriverConversation } from "@/pages/messages/messages-store";
+// How often a service comes round, asked the same way everywhere it is asked: a tick and
+// a figure per clock, so an unticked row writes nothing and a ticked one with no figure
+// is not stored as "every 0" — which reads as due forever, from the moment it is saved.
+import {
+    ServiceIntervalFields, EMPTY_INTERVALS, fromDraft, type IntervalDraft,
+} from "@/components/maintenance/ServiceIntervalFields";
+import type { ServiceIntervals } from "@/types/service-types";
+
+/**
+ * Every asset this form can raise an order against.
+ *
+ * It used to read the demo fleet alone (a1—a7), so opening the form from one of the
+ * carrier—s own units — which is every unit outside the demo — found nothing: the picker
+ * came up empty, Section 1 said "select an asset first", and the order it was opened with
+ * looked like an order about nothing. Ids are unique across carriers, so one lookup
+ * answers for all of them.
+ */
+const FLEET: FleetAsset[] = [
+    ...Object.values(CARRIER_ASSETS).flat(),
+    ...DEMO_FLEET,
+];
+const INITIAL_ASSETS = FLEET;
 import type { MaintenanceTask } from "./maintenance.data";
 import { VENDOR_CATEGORIES, US_STATES, CA_PROVINCES, ADDRESS_COUNTRIES } from "@/pages/inventory/inventory.data";
 // Live service-types store — picks up edits from Settings → Maintenance
@@ -65,18 +91,84 @@ interface CreateOrderModalProps {
     preSelectedAssetId?: string;
     /** Active carrier — surfaced in the header, vendor portal, and email. */
     account?: CarrierAccount;
+    /** The carrier’s drivers, for a bill the driver paid. */
+    drivers?: { id: string; name: string }[];
+    /**
+     * The work this order was opened with: one row per asset per interval.
+     *
+     * The form used to be handed TASKS, which is a narrower thing — an interval that has
+     * not raised one yet has no task to hand over, so ticking four rows on an asset’s page
+     * produced an order with one item in it. A row is a job: the asset, what is to be
+     * done, and the task behind it where one already exists.
+     */
+    workRows?: WorkRow[];
+    /** Every interval an asset is on, for adding another unit to the order. */
+    intervalsForAsset?: (assetId: string) => WorkRow[];
+    /**
+     * Start a rule for this unit, from here.
+     *
+     * The work you need doing is often work the unit is not on a rule for yet, and the
+     * answer to that was to close the order, go to Service Intervals, build the rule,
+     * enrol the unit, come back and raise the order again. It returns the job so it can
+     * be ticked onto the order that prompted it.
+     */
+    onAddInterval?: (spec: {
+        name: string;
+        serviceTypeIds: string[];
+        assetId: string;
+        intervals: ServiceIntervals;
+    }) => WorkRow | undefined;
 }
 
-export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, availableTasks, vendors, onAddVendor, preSelectedAssetId, account }: CreateOrderModalProps) => {
+/** One job on an order: this asset, this piece of work. */
+export interface WorkRow {
+    assetId: string;
+    /** The rule it comes from, where it comes from one. */
+    intervalId?: string;
+    name: string;
+    serviceTypeIds: string[];
+    /** The task already raised for it, if any — otherwise one is raised on save. */
+    taskId?: string;
+    status?: string;
+    /*
+     * What the rule says and where it stands.
+     *
+     * Carried so the list can be read rather than recognised: "PM-B" on its own is a code
+     * somebody has to already know, and deciding which jobs go to the shop on this visit
+     * means seeing which of them are overdue and which are 8,000 miles away.
+     */
+    tier?: string;
+    everyText?: string;
+    services?: string[];
+    due?: { at?: string; left?: string; over?: boolean };
+}
+
+export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, availableTasks, vendors, onAddVendor, preSelectedAssetId, account, drivers = [], workRows, intervalsForAsset, onAddInterval }: CreateOrderModalProps) => {
     // Live service-type catalog. Re-renders automatically when an admin
     // adds/edits a service in Settings → Maintenance.
     const SERVICE_TYPES = useServiceTypes();
+    /**
+     * Who the work is being handed to.
+     *
+     * A vendor is a shop that invoices; a driver is the person already standing next to
+     * the truck. Asked before anything else in that section, because every field under it
+     * belongs to one answer or the other %s a vendor's email on an order a driver is doing
+     * is a question nobody can answer.
+     */
+    const [assignedDriverId, setAssignedDriverId] = useState("");
     const [vendorId, setVendorId] = useState("");
     const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState("");
-    const [requireOdometer, setRequireOdometer] = useState(false);
-    const [odometerUnit, setOdometerUnit] = useState<"miles" | "km">("miles");
-    const [requireEngineHours, setRequireEngineHours] = useState(false);
+    /*
+     * What the vendor must record when CLOSING the order is not asked while raising one.
+     *
+     * The order still carries the field, because the complete-order form reads it and the
+     * seeded orders set it — this form simply stops asking a question about the end of a
+     * job on the form that starts it.
+     */
+    const requireOdometer = false;
+    const odometerUnit: "miles" | "km" = "miles";
+    const requireEngineHours = false;
     const [remarks, setRemarks] = useState("");
 
     // Add Vendor State — fields mirror AddVendorPage (inventory vendor shape)
@@ -116,44 +208,76 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         serviceTypeIds: string[];
         remarksByService?: Record<string, string>;
     };
-    const [assetClass, setAssetClass] = useState<"CMV" | "Non-CMV">("CMV");
-    const [focusAssetId, setFocusAssetId] = useState("");
+    // Kept for the vendor-portal payload, which names the unit the order is for.
+    const [, setAssetClass] = useState<"CMV" | "Non-CMV">("CMV");
+    const [, setFocusAssetId] = useState("");
     const [directTasks, setDirectTasks] = useState<DirectTaskDraft[]>([]);
     // Per-task draft state (for the "Add new task" sub-card)
-    const [draftServiceIds, setDraftServiceIds] = useState<string[]>([]);
+
     // Per-service remarks (keyed by service-type id). Same input pattern as the
     // existing scheduled tasks list — a remarks textarea appears inline below
     // each service row that's been checked.
-    const [draftServiceRemarks, setDraftServiceRemarks] = useState<Record<string, string>>({});
-    const [serviceQuery, setServiceQuery] = useState("");
-    const [serviceGroup, setServiceGroup] = useState<string>("All");
-
     // Reset state when modal opens
     useEffect(() => {
         if (isOpen) {
+            setAssignedDriverId("");
             setVendorId("");
             setCreateDate(new Date().toISOString().split('T')[0]);
             setIsAddingVendor(false);
             setNewVendor(emptyVendor);
             setDirectTasks([]);
-            setDraftServiceIds([]);
-            setDraftServiceRemarks({});
-            setScheduledTaskRemarks({});
-            setServiceQuery("");
-            setServiceGroup("All");
             setSentOrder(null);
             setCopyConfirm(false);
-            // If a preselected asset was passed in, lock the flow to that asset
-            // and infer its class. Otherwise start the user at the CMV toggle.
-            if (preSelectedAssetId) {
-                const pre = INITIAL_ASSETS.find(a => a.id === preSelectedAssetId);
-                if (pre) {
-                    setAssetClass(pre.assetCategory);
-                    setFocusAssetId(pre.id);
-                } else {
-                    setAssetClass("CMV");
-                    setFocusAssetId("");
-                }
+            // Opened WITH tasks — from an asset, an interval, or a row’s menu — so those
+            // are the ticked ones, and the form opens on the asset they belong to rather
+            // than on an empty picker that makes the order look like it has nothing in it.
+            const incoming = selectedTasks ?? [];
+            setLocalSelectedTaskIds(incoming.map(t => t.id));
+            setRowRemarks({});
+            setJobQuery("");
+            setRuleOpen(false);
+            setRuleName("");
+            setRuleServiceIds([]);
+            setRuleQuery("");
+            setRuleIv(EMPTY_INTERVALS);
+            setAbout("");
+            setOrderNameInput("");
+            // The work it was opened with. Where the caller said nothing, the tasks it was
+            // handed are the work — one row each.
+            const seeded: WorkRow[] = workRows?.length
+                ? workRows
+                : incoming.map(t => ({
+                    assetId: t.assetId,
+                    name: t.serviceTypeIds.map(id => SERVICE_TYPES.find(x => x.id === id)?.name).filter(Boolean).join(", ") || "Maintenance",
+                    serviceTypeIds: t.serviceTypeIds,
+                    taskId: t.id,
+                    status: t.status,
+                }));
+            /*
+             * Everything else the unit is on comes with it, unticked.
+             *
+             * Raising an order from a PM-B row used to put PM-B on the form and nothing
+             * else, so the truck went to the shop for one job while the oil change it was
+             * also overdue for waited for its own visit. The one you came from is ticked;
+             * the rest are there to tick.
+             */
+            const seededKeys = new Set(seeded.map(r => `${r.assetId}::${r.intervalId ?? r.name}`));
+            const soleAsset = [...new Set(seeded.map(r => r.assetId))];
+            const alsoOn = soleAsset.length === 1
+                ? (intervalsForAsset?.(soleAsset[0]) ?? [])
+                    .filter(r => !seededKeys.has(`${r.assetId}::${r.intervalId ?? r.name}`))
+                : [];
+            setRows([
+                ...seeded.map(r => ({ ...r, key: `${r.assetId}::${r.intervalId ?? r.name}`, on: true })),
+                ...alsoOn.map(r => ({ ...r, key: `${r.assetId}::${r.intervalId ?? r.name}`, on: false })),
+            ]);
+            const assetIds = [...new Set(seeded.map(r => r.assetId))];
+            const focus = preSelectedAssetId
+                ?? (assetIds.length === 1 ? assetIds[0] : undefined);
+            const pre = focus ? INITIAL_ASSETS.find(a => a.id === focus) : undefined;
+            if (pre) {
+                setAssetClass(pre.assetCategory);
+                setFocusAssetId(pre.id);
             } else {
                 setAssetClass("CMV");
                 setFocusAssetId("");
@@ -182,20 +306,165 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     >({ state: 'idle' });
 
     const [localSelectedTaskIds, setLocalSelectedTaskIds] = useState<string[]>([]);
+
+    /** One job on the order, with whether it is ticked and what was said about it. */
+    type Row = WorkRow & { key: string; on: boolean };
+    const [rows, setRows] = useState<Row[]>([]);
+    const [rowRemarks, setRowRemarks] = useState<Record<string, string>>({});
+    /*
+     * A rule being started from this form.
+     *
+     * Deliberately the three clocks and the services and nothing else: this is not the
+     * interval builder, it is the short way to put a rule on a unit that needs one now.
+     * Anything else about the rule is edited on its own page afterwards.
+     */
+    const [ruleOpen, setRuleOpen] = useState(false);
+    const [ruleName, setRuleName] = useState("");
+    const [ruleServiceIds, setRuleServiceIds] = useState<string[]>([]);
+    const [ruleQuery, setRuleQuery] = useState("");
+    const [ruleIv, setRuleIv] = useState<IntervalDraft>(EMPTY_INTERVALS);
+
+    /** What the order is for, in words — the only thing a shop can work from with no interval. */
+    const [about, setAbout] = useState("");
+    /**
+     * What to call it.
+     *
+     * Left empty the order is named after its own work and unit, which is how it gets
+     * talked about anyway. Typed, it is whatever the yard calls this run of work.
+     */
+    const [orderNameInput, setOrderNameInput] = useState("");
+    const rowKey = (r: WorkRow) => `${r.assetId}::${r.intervalId ?? r.name}`;
+    const setRowsOn = (keys: string[], on: boolean) =>
+        setRows(rs => rs.map(r => (keys.includes(r.key) ? { ...r, on } : r)));
+    /**
+     * One asset on an order, and as many of its intervals as you like.
+     *
+     * It used to accumulate: pick a second unit and its jobs joined the first unit's, on
+     * one form, which then raised one work order per asset behind your back. Three trucks
+     * went to the shop as three orders you never saw separately %s so a remark typed
+     * against the trailer, a vendor chosen for the tractor and a due date set for all of
+     * them belonged to three different pieces of paper.
+     *
+     * One asset is what a shop receives and what a bill comes back for. Picking another
+     * replaces the first rather than adding to it.
+     */
+    const pickAsset = (assetId: string) => {
+        const incoming = (intervalsForAsset?.(assetId) ?? []).map(r => ({ ...r, key: rowKey(r), on: true }));
+        // An asset with no interval at all still belongs on the order: the work is
+        // whatever Section 2 says it is.
+        setRows(incoming.length ? incoming : [{
+            assetId, name: "Work to be described", serviceTypeIds: [], key: `${assetId}::adhoc`, on: true,
+        } as Row]);
+    };
+
+    /** The one unit this order is for, where one has been picked. */
+    const orderAssetId = rows[0]?.assetId;
+
+    /**
+     * Start the rule, and put its first job on this order.
+     *
+     * Named after its services where nobody types a name, which is how every other rule
+     * in this app gets its name. A rule with no clock at all is allowed: it is work the
+     * yard wants done once, and the order is what says when.
+     */
+    const ruleServiceNames = () => ruleServiceIds
+        .map((id) => SERVICE_TYPES.find((x) => x.id === id)?.name)
+        .filter(Boolean) as string[];
+    const ruleReady = !!orderAssetId && ruleServiceIds.length > 0;
+    const addRule = () => {
+        if (!ruleReady || !onAddInterval) return;
+        const made = onAddInterval({
+            name: ruleName.trim() || ruleServiceNames().join(', ') || 'Maintenance',
+            serviceTypeIds: ruleServiceIds,
+            assetId: orderAssetId!,
+            // A ticked row with nothing in it is not an interval; `fromDraft` drops it.
+            intervals: fromDraft(ruleIv) ?? {},
+        });
+        if (!made) return;
+        // `new::` so the rail can count what this section actually produced.
+        setRows((rs) => [...rs, { ...made, key: `new::${made.intervalId ?? made.name}`, on: true }]);
+        setRuleOpen(false);
+        setRuleName("");
+        setRuleServiceIds([]);
+        setRuleQuery("");
+        setRuleIv(EMPTY_INTERVALS);
+    };
+
+    /**
+     * The units this order can be raised against, and the one it is on.
+     *
+     * Resolved from ONE list, because two lists disagreed: the picker was built from this
+     * carrier's fleet and the card under it from every fleet in the app, and ids are not
+     * as unique across those as they look — so the box said "AST-001-0001" over a card
+     * saying ACM-T0100, about the same order.
+     */
+    const pickableAssets = useMemo(() => {
+        const mine = account?.id ? (CARRIER_ASSETS[account.id] ?? []) : [];
+        const pool = mine.length ? mine : INITIAL_ASSETS.slice(0, 60);
+        if (!orderAssetId || pool.some((a) => a.id === orderAssetId)) return pool;
+        const elsewhere = INITIAL_ASSETS.find((a) => a.id === orderAssetId);
+        return elsewhere ? [elsewhere, ...pool] : pool;
+    }, [account?.id, orderAssetId]);
+
+    const orderAsset = orderAssetId
+        ? pickableAssets.find((a) => a.id === orderAssetId) ?? INITIAL_ASSETS.find((a) => a.id === orderAssetId)
+        : undefined;
+    const pickedRows = rows.filter(r => r.on);
+
+    /**
+     * The jobs this list is showing.
+     *
+     * A unit on a dozen rules is a list, and "is the annual on this order" is answered by
+     * typing it rather than by scrolling. Searched over the work and what it covers,
+     * because that is what somebody knows about the job they are looking for.
+     */
+    const [jobQuery, setJobQuery] = useState("");
+    const shownRows = (() => {
+        const q = jobQuery.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter((r) => [r.name, r.everyText, r.status, ...(r.services ?? [])]
+            .some((v) => String(v ?? "").toLowerCase().includes(q)));
+    })();
+    /**
+     * The jobs this list is showing.
+     *
+     * Searched over the unit and the work, because on an order covering a dozen units the
+     * question is always "is the trailer on this" and scrolling is not an answer. Paged for
+     * the same reason: the section is part of a form, and a form that is mostly one list
+     * has stopped being a form.
+     */
+    /** What this order would be called if nobody names it. */
+    const suggestedOrderName = (() => {
+        const services = [...new Set(pickedRows.map(r => r.name))];
+        const units = [...new Set(pickedRows.map(r =>
+            INITIAL_ASSETS.find(a => a.id === r.assetId)?.unitNumber ?? r.assetId))];
+        const work = services.length === 0 ? 'Maintenance'
+            : services.length > 2 ? `${services[0]} +${services.length - 1}`
+                : services.join(', ');
+        const where = units.length === 1 ? units[0] : units.length === 0 ? 'no unit' : `${units.length} units`;
+        return `${work} — ${where}`;
+    })();
+    const EM_DASH = "—";
     /** Remarks the user types when ticking an existing scheduled task. Same
      *  free-text shape as `draftRemarks` on a New Task — the two inputs
      *  share the "Remarks for this task" label and render side-by-side
      *  consistently. Cleared whenever the modal re-opens. */
-    const [scheduledTaskRemarks, setScheduledTaskRemarks] = useState<Record<string, string>>({});
-
     // Side-nav sections — same shape as AddAccountPage so the layout/feel
     // matches the rest of the app's "dedicated page with side nav" pattern.
+    /*
+     * Five sections, and all five are about work that has not happened yet.
+     *
+     * Repair Bill asked for an invoice, a mechanic and an odometer on a form whose whole
+     * purpose is to SEND work to a shop %s a bill exists when the job comes back, and it
+     * is filed when the order is completed or as a service record. Completion
+     * Requirements asked which readings the vendor must take, which is a setting about
+     * closing an order being asked while raising one.
+     */
     const SECTIONS = [
-        { id: 'asset',     label: 'Asset & Tasks',       icon: Truck      },
-        { id: 'newtask',   label: 'New Task',            icon: Plus       },
-        { id: 'vendor',    label: 'Vendor',              icon: Store      },
+        { id: 'asset',     label: 'Asset & Work',        icon: Truck        },
+        { id: 'newrule',   label: 'New Service Interval', icon: CalendarClock },
+        { id: 'vendor',    label: 'Who does the work',   icon: Store        },
         { id: 'schedule',  label: 'Schedule',            icon: Calendar   },
-        { id: 'reqs',      label: 'Completion Reqs',     icon: ListChecks },
         { id: 'comments',  label: 'Additional Comments', icon: FileText   },
     ] as const;
     type SectionId = typeof SECTIONS[number]['id'];
@@ -240,13 +509,25 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     }, [selectedTasks, isOpen]);
 
     // Use local tasks if props tasks are empty (selection mode), otherwise use props tasks
-    const effectiveSelectedTasks = (selectedTasks && selectedTasks.length > 0)
-        ? selectedTasks
-        : (availableTasks || []).filter(t => localSelectedTaskIds.includes(t.id));
+    /**
+     * Every task this form can put on an order: what the page offered, plus whatever it
+     * was opened with.
+     *
+     * The two used to be an either/or — tasks handed in won, and the tick boxes were read
+     * only from the other list. Opening the form from an asset or an interval therefore
+     * showed an order you could not change: the asset picker was empty, the task list was
+     * empty, and the only evidence anything had been selected was the summary at the
+     * bottom. One pool, one set of ticks.
+     */
+    const taskPool = useMemo(() => {
+        const byId = new Map<string, MaintenanceTask>();
+        for (const t of availableTasks ?? []) byId.set(t.id, t);
+        for (const t of selectedTasks ?? []) byId.set(t.id, t);
+        return [...byId.values()];
+    }, [availableTasks, selectedTasks]);
 
-    // For display in the summary section
-    const renderTasks = effectiveSelectedTasks;
-    const uniqueAssetIds = [...new Set(renderTasks.map((t: any) => t.assetId))];
+    const effectiveSelectedTasks = taskPool.filter(t => localSelectedTaskIds.includes(t.id));
+
 
     // Build the self-contained URL payload for the vendor-portal flow.
     // Encodes everything the vendor needs into the link itself — no backend
@@ -315,9 +596,35 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         };
     };
 
+    /**
+     * The order, as the page will build it.
+     *
+     * A row that already has a task joins by its id; one that does not becomes a new task
+     * on that asset — which is what makes "tick four intervals, raise one order" work on an
+     * asset where only one of them had raised a task so far.
+     */
+    const orderTaskIds = () => pickedRows.map(r => r.taskId).filter(Boolean) as string[];
+    const orderDirectTasks = () => {
+        const out: { assetId: string; serviceTypeIds: string[]; remarksByService?: Record<string, string> }[] = [];
+        /*
+         * The work on the order is the work ticked in Section 1, full stop.
+         *
+         * Section 3 used to carry a loose "Services" list of its own that was added to
+         * every asset on the order — a third way of putting work on one, beside the
+         * unit's own intervals and the rule Section 2 can start. Three ways to answer one
+         * question is three places for the answer to differ, and the loose one produced
+         * tasks against no rule, which nothing could ever close properly.
+         */
+        for (const r of pickedRows.filter(x => !x.taskId)) {
+            if (!r.serviceTypeIds.length) continue;
+            out.push({ assetId: r.assetId, serviceTypeIds: r.serviceTypeIds });
+        }
+        return out;
+    };
+
     const validateAndResolveVendor = (): { ok: boolean; vendorId: string } => {
-        if (effectiveSelectedTasks.length === 0 && directTasks.length === 0) {
-            alert("Please select at least one task or add an asset/service manually");
+        if (pickedRows.length === 0 && !about.trim()) {
+            alert("Tick the work this order covers, or say what it is about in Section 2");
             return { ok: false, vendorId: "" };
         }
         if (!vendorId && !isAddingVendor) {
@@ -337,20 +644,51 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         return { ok: true, vendorId: finalVendorId };
     };
 
+    /**
+     * Tell the driver, where one was assigned.
+     *
+     * An order with somebody's name on it that never reaches them is a note in a drawer.
+     * It goes into their own chat thread — the same place everything else this office
+     * sends a driver goes — with the jobs on it as the attachment list, so they can see
+     * what they are taking it in for.
+     */
+    const notifyDriver = () => {
+        const driver = drivers.find((d) => d.id === assignedDriverId);
+        if (!driver) return;
+        const unit = orderAsset?.unitNumber ?? orderAssetId ?? 'the unit';
+        const convId = getOrCreateDriverConversation(driver.name);
+        shareToMessages({
+            recipientName: driver.name,
+            recipientId: convId,
+            channel: 'in-app',
+            message: [
+                `Work order for ${unit}: ${orderNameInput.trim() || suggestedOrderName}.`,
+                dueDate ? `Due ${dueDate}.` : '',
+                about.trim(),
+            ].filter(Boolean).join(' '),
+            items: pickedRows.map((r) => ({ name: r.name, group: 'Work' })),
+            source: { type: 'manual', id: orderAssetId ?? 'order', label: `Work order · ${unit}` },
+        });
+    };
+
     const handleCreate = () => {
         const { ok, vendorId: finalVendorId } = validateAndResolveVendor();
         if (!ok) return;
+        notifyDriver();
 
         onCreate({
-            taskIds: effectiveSelectedTasks.map(t => t.id),
-            // Per-task remarks for the existing scheduled tasks the user
-            // ticked — keyed by task id so the parent can attach them to the
-            // matching task on the order.
+            taskIds: orderTaskIds(),
+            // Remarks, keyed by the task they belong to.
             taskRemarks: Object.fromEntries(
-                Object.entries(scheduledTaskRemarks).filter(([, v]) => v.trim().length > 0)
+                rows.filter(r => r.taskId && (rowRemarks[r.key] ?? "").trim())
+                    .map(r => [r.taskId as string, rowRemarks[r.key]])
             ),
-            directTasks: directTasks.map(({ assetId, serviceTypeIds, remarksByService }) => ({ assetId, serviceTypeIds, remarksByService })),
+            directTasks: orderDirectTasks(),
+            about: about.trim() || undefined,
+            name: orderNameInput.trim() || undefined,
             vendorId: finalVendorId,
+            assignedDriverId: assignedDriverId || undefined,
+            assignedDriverName: drivers.find((d) => d.id === assignedDriverId)?.name,
             createDate,
             dueDate,
             meta: {
@@ -358,7 +696,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 odometerUnit,
                 engineHoursRequired: requireEngineHours
             },
-            notes: remarks
+            notes: remarks,
         });
     };
 
@@ -367,6 +705,8 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     const handleCreateAndSend = () => {
         const { ok, vendorId: finalVendorId } = validateAndResolveVendor();
         if (!ok) return;
+        // The shop is being sent to, and the driver still needs telling.
+        notifyDriver();
 
         const orderId = `ord_${Math.random().toString(36).slice(2, 11)}`;
         const payload = buildPortalPayload(orderId, finalVendorId);
@@ -378,9 +718,13 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
 
         onCreate({
             id: orderId,
-            taskIds: effectiveSelectedTasks.map(t => t.id),
-            directTasks: directTasks.map(({ assetId, serviceTypeIds }) => ({ assetId, serviceTypeIds })),
+            taskIds: orderTaskIds(),
+            directTasks: orderDirectTasks(),
+            about: about.trim() || undefined,
+            name: orderNameInput.trim() || undefined,
             vendorId: finalVendorId,
+            assignedDriverId: assignedDriverId || undefined,
+            assignedDriverName: drivers.find((d) => d.id === assignedDriverId)?.name,
             createDate,
             dueDate,
             meta: {
@@ -489,59 +833,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         setNewVendor(emptyVendor);
     };
 
-    const addDirectTask = () => {
-        if (!focusAssetId || draftServiceIds.length === 0) return;
-        // Snapshot only the remarks of services that were actually selected,
-        // and only those with non-empty text.
-        const remarksByService: Record<string, string> = {};
-        for (const sid of draftServiceIds) {
-            const text = (draftServiceRemarks[sid] ?? "").trim();
-            if (text) remarksByService[sid] = text;
-        }
-        setDirectTasks(prev => [
-            ...prev,
-            {
-                id: `dt_${Math.random().toString(36).substr(2, 9)}`,
-                assetId: focusAssetId,
-                serviceTypeIds: draftServiceIds,
-                remarksByService: Object.keys(remarksByService).length > 0 ? remarksByService : undefined,
-            },
-        ]);
-        // Keep the focus asset; reset only the per-task fields so the user
-        // can quickly add another task to the same asset.
-        setDraftServiceIds([]);
-        setDraftServiceRemarks({});
-        setServiceQuery("");
-        setServiceGroup("All");
-    };
-
-    const removeDirectTask = (id: string) => {
-        setDirectTasks(prev => prev.filter(d => d.id !== id));
-    };
-
-    const toggleDraftService = (id: string) => {
-        setDraftServiceIds(prev => {
-            if (prev.includes(id)) {
-                // Unchecking a service drops its remarks so re-checking starts fresh.
-                setDraftServiceRemarks(r => {
-                    if (!(id in r)) return r;
-                    const next = { ...r };
-                    delete next[id];
-                    return next;
-                });
-                return prev.filter(s => s !== id);
-            }
-            return [...prev, id];
-        });
-    };
-
     // Assets filtered by the chosen class — drives the asset dropdown.
-    const assetsInClass = useMemo(
-        () => INITIAL_ASSETS.filter(a => a.assetCategory === assetClass),
-        [assetClass]
-    );
-    const focusAsset = INITIAL_ASSETS.find(a => a.id === focusAssetId);
-
     // Existing scheduled tasks for the focused asset.
     //
     // Visible = the task is OPEN (not completed/cancelled) AND it isn't
@@ -549,87 +841,31 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     // dropped is filtered out — the panel only ever shows live tasks
     // the user can act on. We compute it straight from the seed so the
     // panel populates the moment an asset is picked.
-    const closedOrderTaskIds = useMemo(() => {
-        const ids = new Set<string>();
-        for (const o of INITIAL_ORDERS) {
-            if (o.status === 'completed' || o.status === 'cancelled') {
-                o.taskIds.forEach(id => ids.add(id));
-            }
-        }
-        return ids;
-    }, []);
-
-    const scheduledTasksForFocusAsset = useMemo(() => {
-        if (!focusAssetId) return [] as MaintenanceTask[];
-        return INITIAL_TASKS.filter(
-            t => t.assetId === focusAssetId
-                && t.status !== 'completed'
-                && t.status !== 'cancelled'
-                && !closedOrderTaskIds.has(t.id)
-        );
-    }, [focusAssetId, closedOrderTaskIds]);
-
+    /**
+     * The focused asset’s tasks, under the rule that raised each one.
+     *
+     * Nobody picks tasks: they decide to do THE PM SERVICE and the brake inspection on this
+     * truck, and the tasks follow. So the rules are the headings, each with a tick that
+     * takes the whole rule at once, and anything raised by hand falls under "One-off work".
+     */
+    /** Tick a whole rule on or off — every task it has raised on this asset. */
     // 8 category pills for the New Task picker.
-    const SERVICE_GROUPS = [
-        'Engine',
-        'Brakes',
-        'Tires & Wheels',
-        'Suspension & Steering',
-        'Body & Coupling',
-        'Lamps & Electrical',
-        'Inspections',
-        'Other',
-    ] as const;
-
     // Count of services per category for the chosen asset class — used as a
     // badge on each pill so the user knows "Brakes (23)" before they click.
-    const servicesByClass = useMemo(() => {
-        const isCmv = assetClass === "CMV";
-        return SERVICE_TYPES.filter(s => {
-            if (isCmv && s.category === "non_cmv_only") return false;
-            if (!isCmv && s.category === "cmv_only") return false;
-            return true;
-        });
-    }, [assetClass]);
-    const serviceCountByGroup = useMemo(() => {
-        const counts: Record<string, number> = { All: servicesByClass.length };
-        for (const g of SERVICE_GROUPS) counts[g] = 0;
-        for (const s of servicesByClass) counts[s.group] = (counts[s.group] ?? 0) + 1;
-        return counts;
-    // SERVICE_GROUPS is module-stable — no need to add it as a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [servicesByClass]);
-
-    const filteredServices = useMemo(() => {
-        const q = serviceQuery.trim().toLowerCase();
-        return SERVICE_TYPES.filter(s => {
-            // Filter by the user's class choice (class is always set in the
-            // new flow so we don't fall back to "any").
-            const isCmv = assetClass === "CMV";
-            if (isCmv && s.category === "non_cmv_only") return false;
-            if (!isCmv && s.category === "cmv_only") return false;
-            if (serviceGroup !== "All" && s.group !== serviceGroup) return false;
-            if (q && !s.name.toLowerCase().includes(q)) return false;
-            return true;
-        });
-    }, [serviceQuery, serviceGroup, assetClass]);
-
     // For the sidebar nav: returns 0 (untouched), or a positive count
     // (filled / number of items) so we can show a check + count badge.
     const completionFor = (id: SectionId): number => {
         switch (id) {
             case 'asset':
-                // Filled when an asset is in focus, or when there are
-                // pre-selected scheduled tasks already in the order.
-                return (focusAssetId ? 1 : 0) + uniqueAssetIds.length + localSelectedTaskIds.length;
-            case 'newtask':
-                return directTasks.length;
+                // The jobs ticked, and the two things said about the order itself.
+                return pickedRows.length + (about.trim() ? 1 : 0) + (orderNameInput.trim() ? 1 : 0);
+            case 'newrule':
+                return rows.filter((r) => r.key.startsWith('new::')).length;
             case 'vendor':
-                return vendorId || (isAddingVendor && newVendor.name) ? 1 : 0;
+                return (vendorId || (isAddingVendor && newVendor.name) ? 1 : 0)
+                    + (assignedDriverId ? 1 : 0);
             case 'schedule':
                 return (createDate ? 1 : 0) + (dueDate ? 1 : 0);
-            case 'reqs':
-                return (requireOdometer ? 1 : 0) + (requireEngineHours ? 1 : 0);
             case 'comments':
                 return remarks.trim() ? 1 : 0;
             default:
@@ -843,412 +1079,368 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 </div>
             ) : (
             <div className="space-y-5">
-                {/* Section 1: Asset & Existing Tasks
-                    Step-by-step: pick CMV vs Non-CMV → pick the asset →
-                    toggle on any existing scheduled tasks for that asset.
-                    Adding fresh tasks lives in Section 2 below. */}
-                <div ref={(el) => { sectionRefs.current['asset'] = el; }}>
-                <Section number={1} title="Asset & Existing Tasks" subtitle="Pick the vehicle and tick any scheduled tasks to include." icon={Truck}>
+                {/* Section 1: one unit, and which of its jobs go to the shop.
 
-                    {/* A) Asset class — CMV vs Non-CMV pill toggle */}
-                    <div className="mb-5">
-                        <Label className="mb-2 block text-xs uppercase tracking-wider text-slate-500 font-semibold">Asset Class</Label>
-                        <div className="inline-flex bg-slate-100 rounded-md p-1 gap-1">
-                            {(["CMV", "Non-CMV"] as const).map(cls => (
-                                <button
-                                    key={cls}
-                                    type="button"
-                                    disabled={!!preSelectedAssetId}
-                                    onClick={() => {
-                                        if (preSelectedAssetId) return;
-                                        setAssetClass(cls);
-                                        // Clear the focus asset whenever class changes so the
-                                        // user picks one that matches the new class.
-                                        setFocusAssetId("");
-                                        setDraftServiceIds([]);
-                                        setRemarks("");
-                                    }}
-                                    className={`px-4 py-1.5 text-sm font-semibold rounded transition-all ${assetClass === cls ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${preSelectedAssetId ? 'cursor-not-allowed opacity-60' : ''}`}
-                                >
-                                    {cls === "CMV" ? "CMV (Commercial)" : "Non-CMV"}
-                                </button>
-                            ))}
-                        </div>
-                        <p className="mt-1.5 text-[11px] text-slate-500">
-                            {assetClass === "CMV"
-                                ? "Power units, trailers, and other commercial motor vehicles."
-                                : "Yard equipment, light-duty pickups, and other non-CMV assets."}
+                    It used to accumulate assets: pick a second unit and its jobs joined
+                    the first unit's on one form, which then raised one work order per
+                    asset behind you. Three trucks went to the shop as three orders you
+                    never saw separately, so a remark typed against the trailer, a vendor
+                    chosen for the tractor and a due date set for all of them belonged to
+                    three different pieces of paper. */}
+                <div ref={(el) => { sectionRefs.current['asset'] = el; }}>
+                <Section number={1} title="Asset & Work" subtitle="The unit going to the shop, and which of its jobs." icon={Truck}>
+                    {/* What it is called and what it is for, before the unit it is about.
+
+                        A line each rather than two columns: an order name is a sentence
+                        ("Fall PM run") and a description is several, and side by side they
+                        were two narrow boxes wrapping "What is this work order about" onto
+                        three lines to ask for one. */}
+                    <div className="mb-4">
+                        <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Order name <span className="font-normal normal-case text-slate-400">(optional)</span>
+                        </Label>
+                        <input
+                            value={orderNameInput}
+                            onChange={(e) => setOrderNameInput(e.target.value)}
+                            placeholder={suggestedOrderName}
+                            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="mt-1 truncate text-[11px] text-slate-400">
+                            Left empty it is named {'"'}{suggestedOrderName}{'"'}.
                         </p>
                     </div>
 
-                    {/* B) Asset selector (filtered by class) */}
                     <div className="mb-5">
-                        <Label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                            Select Asset <span className="text-red-500">*</span>
+                        <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Description
                         </Label>
-                        <Select
-                            value={focusAssetId}
-                            onValueChange={(val) => {
-                                if (preSelectedAssetId) return;
-                                setFocusAssetId(val);
-                                setDraftServiceIds([]);
-                                setRemarks("");
-                            }}
-                        >
-                            <SelectTrigger className={`bg-white h-9 ${preSelectedAssetId ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                                <SelectValue placeholder={`Select ${assetClass} asset…`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {assetsInClass.map(a => (
-                                    <SelectItem key={a.id} value={a.id}>
-                                        {a.unitNumber} — {a.year} {a.make} {a.model}
-                                    </SelectItem>
-                                ))}
-                                {assetsInClass.length === 0 && (
-                                    <div className="px-3 py-2 text-xs text-slate-500 italic">No {assetClass} assets in fleet.</div>
-                                )}
-                            </SelectContent>
-                        </Select>
-                        {focusAsset && (
-                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                                <Truck size={12} className="text-slate-400" />
-                                <span className="font-mono">{focusAsset.unitNumber}</span>
-                                <span>·</span>
-                                <span>{focusAsset.year} {focusAsset.make} {focusAsset.model}</span>
-                                <span>·</span>
-                                <span>VIN •••{focusAsset.vin.slice(-4)}</span>
-                                <span className="ml-auto inline-flex items-center text-[10px] uppercase tracking-wider font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
-                                    {focusAsset.assetCategory}
-                                </span>
-                            </div>
-                        )}
+                        <textarea
+                            value={about}
+                            onChange={(e) => setAbout(e.target.value)}
+                            rows={3}
+                            placeholder="e.g. air leak from the passenger-side service line, found on the walk-around"
+                            className="w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-[11px] text-slate-400">
+                            A work order with no interval behind it is whatever this says it is, so
+                            the shop has nothing else to go on.
+                        </p>
                     </div>
 
-                    {/* C) Existing scheduled tasks for the focused asset */}
-                    {focusAssetId && (
-                        <div className="mb-5">
-                            <Label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                Existing Scheduled Tasks
-                                <span className="ml-2 normal-case font-normal text-slate-400">
-                                    {scheduledTasksForFocusAsset.length === 0
-                                        ? "(none on schedule)"
-                                        : `(${scheduledTasksForFocusAsset.length} on schedule — tick to include)`}
-                                </span>
-                            </Label>
-                            {scheduledTasksForFocusAsset.length === 0 ? (
-                                <div className="bg-slate-50 border border-slate-200 rounded-md px-3 py-3 text-xs text-slate-500 italic">
-                                    This asset has no scheduled maintenance tasks. Add one in the next block.
-                                </div>
-                            ) : (
-                                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1 border border-slate-200 rounded-md bg-white p-2">
-                                    {scheduledTasksForFocusAsset.map(task => {
-                                        const serviceNames = task.serviceTypeIds.map((sid: string) => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
-                                        const isSelected = localSelectedTaskIds.includes(task.id);
-                                        const statusBadgeCls =
-                                            task.status === 'overdue'      ? 'bg-red-100 text-red-700 border-red-200' :
-                                            task.status === 'due'          ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                            task.status === 'in_progress'  ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                                                              'bg-slate-100 text-slate-600 border-slate-200';
-                                        return (
-                                            <div key={task.id}
-                                                className={`rounded-md border transition-colors ${
-                                                    isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:bg-slate-50'
-                                                }`}
-                                            >
-                                                <div className="flex items-center p-2 cursor-pointer"
-                                                    onClick={() => {
-                                                        setLocalSelectedTaskIds(prev =>
-                                                            prev.includes(task.id) ? prev.filter(id => id !== task.id) : [...prev, task.id]
-                                                        );
-                                                    }}
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center mr-3 shrink-0 ${
-                                                        isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'
-                                                    }`}>
-                                                        {isSelected && <Check size={12} className="text-white" />}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex justify-between gap-2 items-center">
-                                                            <span className="font-semibold text-sm text-slate-900 truncate">{serviceNames || "Maintenance"}</span>
-                                                            <span className="text-[10px] uppercase tracking-wider text-slate-400 shrink-0">
-                                                                {task.dueRule?.dueAtDate ? `Due ${new Date(task.dueRule.dueAtDate).toLocaleDateString()}` : `Created ${new Date(task.createdAt).toLocaleDateString()}`}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                                                            <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{focusAsset?.unitNumber}</span></span>
-                                                            <span className="text-slate-300">·</span>
-                                                            <span className={`text-[9px] uppercase tracking-wider font-bold border rounded px-1.5 py-px ${statusBadgeCls}`}>
-                                                                {task.status.replace(/_/g, ' ')}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
+                    <div className="mb-4 border-t border-slate-100 pt-4">
+                        <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Asset
+                        </Label>
+                        {/* This carrier's own units, and always the one already picked.
+                            The list was the first sixty of every fleet in the app, so a
+                            unit further down it had no row to match and the box showed the
+                            raw id — "AST-001-0002" over a card saying ACM-T0101. */}
+                        <Select value={orderAssetId ?? ""} onValueChange={pickAsset}>
+                            <SelectTrigger className="w-full">
+                                {/* Said in words rather than left to Radix to match a row:
+                                    the row it matched came from a different list. */}
+                                <SelectValue placeholder="Search the fleet...">
+                                    {orderAsset
+                                        ? `${orderAsset.unitNumber} ${EM_DASH} ${[orderAsset.year, orderAsset.make, orderAsset.model].filter(Boolean).join(' ')}`
+                                        : undefined}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {pickableAssets.map(a => (
+                                    <SelectItem key={a.id} value={a.id}>
+                                        {a.unitNumber} {EM_DASH} {[a.year, a.make, a.model].filter(Boolean).join(' ')}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="mt-1.5 text-[11px] text-slate-400">
+                            One unit an order. Picking another replaces this one — a shop receives
+                            a truck, and a bill comes back for a truck.
+                        </p>
+                    </div>
 
-                                                {/* Per-task remarks — same shape + label as the New Task
-                                                    Remarks input below. Only shown when the task is
-                                                    ticked so the panel stays compact. */}
-                                                {isSelected && (
-                                                    <div className="px-3 pb-2.5 pt-0.5">
-                                                        <Label className="mb-1 block text-[10px] text-slate-500 uppercase tracking-wider">
-                                                            Remarks for this task <span className="text-slate-400 font-normal normal-case">(optional)</span>
-                                                        </Label>
-                                                        <textarea
-                                                            rows={2}
-                                                            value={scheduledTaskRemarks[task.id] ?? ""}
-                                                            onChange={(e) => setScheduledTaskRemarks(prev => ({ ...prev, [task.id]: e.target.value }))}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            placeholder="e.g. driver reported squealing during morning brake check"
-                                                            className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                    {rows.length === 0 ? (
+                        <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-slate-600">
+                            Nothing on this order yet. Pick the unit above, or describe the work in
+                            Section 2 and send it without an interval.
+                        </div>
+                    ) : (<>
+                        {/* The unit, once, above its own jobs — it was repeated down a
+                            column that read the same thing on every row. */}
+                        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                            <Truck size={15} className="shrink-0 text-blue-600" />
+                            <span className="text-[13px] font-bold text-slate-900">
+                                {orderAsset?.unitNumber ?? orderAssetId}
+                            </span>
+                            <span className="truncate text-[11px] text-slate-400">
+                                {[orderAsset?.year, orderAsset?.make, orderAsset?.model].filter(Boolean).join(' ')}
+                            </span>
+                            <div className="flex-1" />
+                            <span className="whitespace-nowrap text-[12px] text-slate-500">
+                                <span className="font-bold tabular-nums text-slate-700">{pickedRows.length}</span>
+                                {' of '}
+                                <span className="tabular-nums">{rows.length}</span>
+                                {' job'}{rows.length === 1 ? '' : 's'}{' on this order'}
+                            </span>
+                            {/* A unit on a dozen rules is a list, and "is the annual on this
+                                order" is answered by typing it rather than by scrolling. */}
+                            {rows.length > 1 && (
+                                <div className="relative w-full sm:w-52">
+                                    <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        value={jobQuery}
+                                        onChange={(e) => setJobQuery(e.target.value)}
+                                        placeholder="Find a job..."
+                                        className="h-8 w-full rounded-md border border-slate-200 bg-white pl-7 pr-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
                                 </div>
                             )}
                         </div>
-                    )}
 
-                    {/* Empty hint for Section 1 when nothing yet */}
-                    {!focusAssetId && uniqueAssetIds.length === 0 && (
-                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 text-xs text-slate-600">
-                            Pick the asset class and a vehicle above to see existing tasks.
+                        <div className="overflow-hidden rounded-lg border border-slate-200">
+                        <div className="max-h-[22rem] overflow-auto">
+                            <table className="w-full min-w-[640px]">
+                                <thead>
+                                    <tr>
+                                        <th className="sticky top-0 z-10 w-10 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setRowsOn(rows.map(r => r.key), !rows.every(r => r.on))}
+                                                aria-label="Select every job"
+                                                className={cn("flex h-4 w-4 items-center justify-center rounded border transition-colors",
+                                                    rows.every(r => r.on) ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white")}
+                                            >
+                                                {rows.every(r => r.on) && <Check size={11} />}
+                                            </button>
+                                        </th>
+                                        {["Work", "Next due", "Status", "Remarks"].map((h, i) => (
+                                            <th key={h} className={cn(
+                                                "sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500",
+                                                i > 0 && "border-l",
+                                            )}>{h}</th>
+                                        ))}
+                                        <th className="sticky top-0 z-10 w-10 border-b border-l border-slate-200 bg-slate-50 px-3 py-2" />
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {shownRows.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="px-3 py-6 text-center text-[13px] text-slate-500">
+                                                No job on this unit matches {'"'}{jobQuery}{'"'}.
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {shownRows.map((r) => (
+                                        <tr key={r.key} className={cn("transition-colors", r.on ? "bg-white hover:bg-slate-50/60" : "bg-slate-50/60")}>
+                                            <td className="px-3 py-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRowsOn([r.key], !r.on)}
+                                                    aria-label={`Select ${r.name}`}
+                                                    className={cn("flex h-4 w-4 items-center justify-center rounded border transition-colors",
+                                                        r.on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white")}
+                                                >
+                                                    {r.on && <Check size={11} />}
+                                                </button>
+                                            </td>
+                                            <td className="border-l border-slate-100 px-3 py-2">
+                                                <div className="flex items-center gap-2 whitespace-nowrap">
+                                                    <span className={cn("text-[13px] font-semibold", r.on ? "text-slate-900" : "text-slate-400")}>
+                                                        {r.name}
+                                                    </span>
+                                                    <span className={cn("shrink-0 rounded border px-1.5 py-px text-[9px] font-bold uppercase tracking-wider",
+                                                        r.taskId ? "border-slate-200 bg-slate-100 text-slate-500" : "border-blue-200 bg-blue-50 text-blue-700")}>
+                                                        {r.taskId ? "Scheduled" : "New task"}
+                                                    </span>
+                                                </div>
+                                                {/* What the rule asks for, under its name: "PM-B" is a code
+                                                    somebody has to already know. */}
+                                                <div className="truncate text-[11px] text-slate-400">
+                                                    {r.everyText ?? (r.services?.join(', ') || 'By hand')}
+                                                </div>
+                                            </td>
+                                            {/* Where it stands, so the choice of what goes on this visit is
+                                                made on the figures rather than on memory. */}
+                                            <td className="whitespace-nowrap border-l border-slate-100 px-3 py-2">
+                                                {r.due?.at ? (<>
+                                                    <div className={cn("text-[13px] tabular-nums",
+                                                        r.due.over ? "font-semibold text-red-600" : "text-slate-700")}>
+                                                        {r.due.at}
+                                                    </div>
+                                                    {r.due.left && (
+                                                        <div className={cn("text-[11px]", r.due.over ? "text-red-500" : "text-slate-400")}>
+                                                            {r.due.left}
+                                                        </div>
+                                                    )}
+                                                </>) : <span className="text-[13px] text-slate-300">—</span>}
+                                            </td>
+                                            <td className="whitespace-nowrap border-l border-slate-100 px-3 py-2 text-[11px] uppercase tracking-wider text-slate-400">
+                                                {r.status?.replace(/_/g, " ") ?? "—"}
+                                            </td>
+                                            <td className="border-l border-slate-100 px-3 py-2">
+                                                <input
+                                                    value={rowRemarks[r.key] ?? ""}
+                                                    onChange={(e) => setRowRemarks(p => ({ ...p, [r.key]: e.target.value }))}
+                                                    disabled={!r.on}
+                                                    placeholder="Optional"
+                                                    className="h-8 w-full min-w-[9rem] rounded-md border border-slate-200 bg-white px-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-300"
+                                                />
+                                            </td>
+                                            <td className="border-l border-slate-100 px-2 py-2 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))}
+                                                    title="Take this job off the order"
+                                                    className="rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-rose-600"
+                                                >
+                                                    <X size={13} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
+                        </div>
+
+                    </>)}
                 </Section>
                 </div>
 
-                {/* Section 2: New Task — add a fresh maintenance task for the
-                    focused asset (maintenance type + per-task remarks).
-                    The staged list at the bottom shows everything in the order
-                    so the user can confirm before moving on. */}
-                <div ref={(el) => { sectionRefs.current['newtask'] = el; }}>
-                <Section number={2} title="New Task" subtitle="Add a fresh task for the selected asset. The list below combines existing + new tasks." icon={Plus}>
-                    {!focusAssetId ? (
-                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 text-xs text-slate-600">
-                            Select an asset in Section 1 first — new tasks are added against the focused asset.
-                        </div>
+                {/* Section 2: a rule this unit needs and is not on yet.
+
+                    The work somebody wants doing is often work the unit has no rule for,
+                    and the answer to that was to close the order, go to Service Intervals,
+                    build the rule, enrol the unit, come back and raise the order again. */}
+                <div ref={(el) => { sectionRefs.current['newrule'] = el; }}>
+                <Section
+                    number={2}
+                    title="New Service Interval"
+                    subtitle={orderAsset
+                        ? `Start a rule for ${orderAsset.unitNumber} and put it on this order.`
+                        : "Pick the unit above, then start a rule for it here."}
+                    icon={Plus}
+                >
+                    {!orderAssetId ? (
+                        <p className="text-[13px] text-slate-500">
+                            A rule belongs to a unit, so pick one in Section 1 first.
+                        </p>
+                    ) : !ruleOpen ? (
+                        <button
+                            type="button"
+                            onClick={() => setRuleOpen(true)}
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 text-[13px] font-semibold text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50/40 hover:text-blue-700"
+                        >
+                            <Plus size={15} /> Add a service interval for {orderAsset?.unitNumber}
+                        </button>
                     ) : (
-                        <div className="bg-blue-50/40 border border-blue-100 rounded-md p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Truck size={14} className="text-blue-600" />
-                                <span className="text-xs uppercase tracking-wider text-blue-700 font-semibold">
-                                    Adding to <span className="font-mono">{focusAsset?.unitNumber}</span> · {focusAsset?.assetCategory}
-                                </span>
+                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                            <div>
+                                <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                    Name <span className="font-normal normal-case text-slate-400">(optional)</span>
+                                </Label>
+                                <input
+                                    value={ruleName}
+                                    onChange={(e) => setRuleName(e.target.value)}
+                                    placeholder={ruleServiceNames().join(', ') || 'e.g. Reefer PM'}
+                                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="mt-1 text-[11px] text-slate-400">
+                                    Left empty it is named after the services it covers.
+                                </p>
                             </div>
 
-                            {/* Maintenance Type picker */}
+                            {/* The same tick-and-figure the interval builder and the service
+                                catalog use. Three bare boxes labelled "mi h days" asked the
+                                question in this form's own words, and a figure typed into one
+                                of them was indistinguishable from a clock somebody meant to
+                                switch on. */}
                             <div>
-                                <Label className="mb-1.5 block text-xs text-slate-600">Maintenance Type <span className="text-red-500">*</span></Label>
+                                <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                    Comes round every
+                                </Label>
+                                <ServiceIntervalFields value={ruleIv} onChange={setRuleIv} />
+                                <p className="mt-1.5 text-[11px] text-slate-400">
+                                    Whichever comes first. Tick none and it is work done by hand — the
+                                    order is what says when.
+                                </p>
+                            </div>
 
-                                <div className="relative mb-3">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <div>
+                                <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                    Services
+                                </Label>
+                                <div className="relative mb-2">
+                                    <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                                     <input
-                                        type="text"
-                                        value={serviceQuery}
-                                        onChange={(e) => setServiceQuery(e.target.value)}
-                                        placeholder="Search services…"
-                                        className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={ruleQuery}
+                                        onChange={(e) => setRuleQuery(e.target.value)}
+                                        placeholder="Search services..."
+                                        className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
-
-                                {/* Category pills — every group visible at once
-                                    (wraps to a 2nd row on narrow widths), with a
-                                    count badge on each so the user can see at a
-                                    glance how many services live in each. */}
-                                <div className="mb-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                                        Filter by category
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {(['All', ...SERVICE_GROUPS] as readonly string[]).map(g => {
-                                            const isActive = serviceGroup === g;
-                                            const count = serviceCountByGroup[g] ?? 0;
+                                <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
+                                    {SERVICE_TYPES
+                                        .filter(t => !ruleQuery || t.name.toLowerCase().includes(ruleQuery.toLowerCase()))
+                                        .slice(0, 40)
+                                        .map(t => {
+                                            const on = ruleServiceIds.includes(t.id);
                                             return (
                                                 <button
-                                                    key={g}
+                                                    key={t.id}
                                                     type="button"
-                                                    onClick={() => setServiceGroup(g)}
-                                                    disabled={count === 0 && g !== 'All'}
-                                                    className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap leading-none ${
-                                                        isActive
-                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                                            : count === 0 && g !== 'All'
-                                                                ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-                                                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                                                    }`}
+                                                    onClick={() => setRuleServiceIds(prev => on ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                                                    className={cn("flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                                                        on ? "bg-blue-50" : "hover:bg-slate-50")}
                                                 >
-                                                    <span>{g}</span>
-                                                    <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-4 text-[10px] font-bold rounded-full px-1 ${
-                                                        isActive ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                        {count}
+                                                    <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                                                        on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white")}>
+                                                        {on && <Check size={11} />}
                                                     </span>
+                                                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{t.name}</span>
+                                                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-400">{t.group}</span>
                                                 </button>
                                             );
                                         })}
-                                    </div>
-                                </div>
-
-                                <div className="border border-slate-200 bg-white rounded-md max-h-72 overflow-y-auto p-1.5 space-y-1">
-                                    {filteredServices.length > 0 ? filteredServices.map(s => {
-                                        const checked = draftServiceIds.includes(s.id);
-                                        return (
-                                            <div
-                                                key={s.id}
-                                                className={`rounded border ${checked ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-slate-50'}`}
-                                            >
-                                                <div
-                                                    onClick={() => toggleDraftService(s.id)}
-                                                    className={`flex items-center px-2.5 py-2 cursor-pointer text-sm ${checked ? 'text-blue-900' : 'text-slate-700'}`}
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2.5 shrink-0 ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
-                                                        {checked && <Check size={11} className="text-white" strokeWidth={3} />}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="font-medium truncate">{s.name}</div>
-                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider">{s.group}</div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Inline remarks for this service — same shape and label as
-                                                    the existing scheduled tasks list above so adding a new
-                                                    task feels identical to ticking an existing one. */}
-                                                {checked && (
-                                                    <div className="px-3 pb-2.5 pt-0.5">
-                                                        <Label className="mb-1 block text-[10px] text-slate-500 uppercase tracking-wider">
-                                                            Remarks for this task <span className="text-slate-400 font-normal normal-case">(optional)</span>
-                                                        </Label>
-                                                        <textarea
-                                                            rows={2}
-                                                            value={draftServiceRemarks[s.id] ?? ""}
-                                                            onChange={(e) => setDraftServiceRemarks(prev => ({ ...prev, [s.id]: e.target.value }))}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            placeholder="e.g. driver reported squealing during morning brake check"
-                                                            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    }) : (
-                                        <div className="py-6 text-center text-xs text-slate-400">
-                                            No services match {serviceQuery ? `"${serviceQuery}"` : 'this filter'}.
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
-                            <div className="mt-3 flex items-center justify-between">
-                                <div className="text-xs text-slate-500">
-                                    <span className="font-semibold">{draftServiceIds.length}</span> service{draftServiceIds.length === 1 ? '' : 's'} selected
-                                </div>
-                                <Button
-                                    size="sm"
-                                    onClick={addDirectTask}
-                                    disabled={!focusAssetId || draftServiceIds.length === 0}
-                                    className="gap-1.5"
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setRuleOpen(false)}
+                                    className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
                                 >
-                                    <Plus size={14} /> Add Task to Order
-                                </Button>
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!ruleReady}
+                                    onClick={addRule}
+                                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13px] font-semibold text-white shadow-sm transition-colors",
+                                        ruleReady ? "bg-blue-600 hover:bg-blue-700" : "cursor-not-allowed bg-slate-300")}
+                                >
+                                    <Check size={15} /> Create and add to this order
+                                </button>
                             </div>
+                            {!ruleReady && (
+                                <p className="text-right text-[11px] text-slate-400">
+                                    Pick at least one service — a rule with no work in it has nothing to do.
+                                </p>
+                            )}
                         </div>
                     )}
-
-                    {/* Staged tasks list — proper task name, asset name, maintenance type, remarks */}
-                    {(uniqueAssetIds.length > 0 || directTasks.length > 0) && (
-                        <div className="mt-5">
-                            <Label className="mb-2 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                Tasks in this Order
-                                <span className="ml-2 normal-case font-normal text-slate-400">
-                                    ({renderTasks.length + directTasks.length} task{renderTasks.length + directTasks.length === 1 ? '' : 's'})
-                                </span>
-                            </Label>
-                            <div className="space-y-2">
-                                {/* Scheduled tasks (from props selection) */}
-                                {renderTasks.map((t: any) => {
-                                    const asset = INITIAL_ASSETS.find(a => a.id === t.assetId);
-                                    const serviceNames = t.serviceTypeIds.map((sid: string) => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
-                                    const remarkText = scheduledTaskRemarks[t.id]?.trim();
-                                    return (
-                                        <div key={`s-${t.id}`} className="flex items-start gap-3 bg-white border border-slate-200 rounded-md p-3">
-                                            <div className="h-9 w-9 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                                                <Wrench size={14} />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-bold text-slate-900 text-sm truncate">{serviceNames || "Maintenance"}</span>
-                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">Scheduled</span>
-                                                </div>
-                                                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                                                    <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{asset?.unitNumber}</span></span>
-                                                    {asset && <><span className="text-slate-300">·</span><span>{asset.assetCategory}</span></>}
-                                                    <span className="text-slate-300">·</span>
-                                                    <span className="capitalize">{(t as any).status?.replace(/_/g, ' ') ?? "scheduled"}</span>
-                                                </div>
-                                                {remarkText && (
-                                                    <div className="mt-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
-                                                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">Remarks:</span>
-                                                        {remarkText}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {/* Direct (just-added) tasks — one card per service so each
-                                    remark stays beside its own service line. */}
-                                {directTasks.map(dt => {
-                                    const asset = INITIAL_ASSETS.find(a => a.id === dt.assetId);
-                                    const serviceNames = dt.serviceTypeIds.map(sid => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
-                                    const remarksByService = dt.remarksByService ?? {};
-                                    const remarkEntries = Object.entries(remarksByService).filter(([, v]) => v.trim());
-                                    return (
-                                        <div key={`d-${dt.id}`} className="flex items-start gap-3 bg-blue-50/40 border border-blue-100 rounded-md p-3">
-                                            <div className="h-9 w-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                                                <Plus size={14} />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-bold text-slate-900 text-sm truncate">{serviceNames || "Maintenance"}</span>
-                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-blue-600 bg-white border border-blue-100 rounded px-1.5 py-0.5">New</span>
-                                                </div>
-                                                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                                                    <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{asset?.unitNumber}</span></span>
-                                                    {asset && <><span className="text-slate-300">·</span><span>{asset.assetCategory}</span></>}
-                                                </div>
-                                                {remarkEntries.length > 0 && (
-                                                    <div className="mt-2 space-y-1.5">
-                                                        {remarkEntries.map(([sid, text]) => {
-                                                            const svcName = SERVICE_TYPES.find(s => s.id === sid)?.name ?? sid;
-                                                            return (
-                                                                <div key={sid} className="text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
-                                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">{svcName} —</span>
-                                                                    {text}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <button onClick={() => removeDirectTask(dt.id)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Remove">
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
                 </Section>
                 </div>
 
-                {/* Section 3: Vendor */}
+                {/* Section 3: who does it */}
                 <div ref={(el) => { sectionRefs.current['vendor'] = el; }}>
-                <Section number={3} title="Vendor" subtitle="Pick from your saved vendors or add a new one." icon={Store}>
+                <Section
+                    number={3}
+                    title="Who does the work"
+                    subtitle="The shop it goes to, and the driver who takes it there."
+                    icon={Store}
+                >
                     <div className="flex items-center justify-between mb-2">
                         <Label>Assign Vendor <span className="text-red-500">*</span></Label>
                         {!isAddingVendor && (
@@ -1412,6 +1604,42 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                             </SelectContent>
                         </Select>
                     )}
+
+                    {/* And who takes it there.
+
+                        A vendor is always on the order — somebody does the work and
+                        somebody invoices for it. A driver is how it GETS there: the person
+                        who drops the truck off, or who does the job themselves where the
+                        yard handles it. Assigned, the order is sent to them the moment it
+                        is created; left empty it is the office's to chase. */}
+                    <div className="mt-5 border-t border-slate-100 pt-5">
+                        <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Assign to a driver <span className="font-normal normal-case text-slate-400">(optional)</span>
+                        </Label>
+                        <Select
+                            value={assignedDriverId}
+                            onValueChange={(v) => setAssignedDriverId(v === '__none__' ? '' : v)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Nobody — the office handles it">
+                                    {drivers.find((d) => d.id === assignedDriverId)?.name}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {/* Pickable back off again: an order assigned by mistake has
+                                    to be un-assignable without reopening the form. */}
+                                <SelectItem value="__none__">Nobody — the office handles it</SelectItem>
+                                {drivers.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="mt-1.5 text-[11px] text-slate-400">
+                            {assignedDriverId
+                                ? 'Creating the order sends it to them in Messages.'
+                                : 'Pick somebody and the order is sent to them when it is created.'}
+                        </p>
+                    </div>
                 </Section>
                 </div>
 
@@ -1439,58 +1667,9 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 </Section>
                 </div>
 
-                {/* Section 5: Completion Requirements */}
-                <div ref={(el) => { sectionRefs.current['reqs'] = el; }}>
-                <Section number={5} title="Completion Requirements" subtitle="What the vendor must record when closing the order." icon={ListChecks}>
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-md px-3 py-2.5">
-                            <Label>Require Odometer Reading?</Label>
-                            <div className="flex items-center gap-2">
-                                <div className="flex bg-slate-100 rounded-md p-0.5">
-                                    <button
-                                        onClick={() => setOdometerUnit('miles')}
-                                        className={`px-2 py-0.5 text-xs rounded-sm transition-all ${odometerUnit === 'miles' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
-                                    >
-                                        Miles
-                                    </button>
-                                    <button
-                                        onClick={() => setOdometerUnit('km')}
-                                        className={`px-2 py-0.5 text-xs rounded-sm transition-all ${odometerUnit === 'km' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
-                                    >
-                                        KM
-                                    </button>
-                                </div>
-                                <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={requireOdometer}
-                                    onClick={() => setRequireOdometer(!requireOdometer)}
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${requireOdometer ? 'bg-blue-600' : 'bg-slate-200'}`}
-                                >
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${requireOdometer ? 'translate-x-6' : 'translate-x-1'}`} />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-md px-3 py-2.5">
-                            <Label>Require Engine Hours?</Label>
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={requireEngineHours}
-                                onClick={() => setRequireEngineHours(!requireEngineHours)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${requireEngineHours ? 'bg-blue-600' : 'bg-slate-200'}`}
-                            >
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${requireEngineHours ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                        </div>
-                    </div>
-                </Section>
-                </div>
-
-                {/* Section 6: Additional Comments — order-level notes for the vendor */}
+                {/* Section 5: Additional Comments — order-level notes for the vendor */}
                 <div ref={(el) => { sectionRefs.current['comments'] = el; }}>
-                <Section number={6} title="Additional Comments" subtitle="Order-level notes for the vendor (optional). Per-task remarks live on each task above." icon={FileText}>
+                <Section number={5} title="Additional Comments" subtitle="Order-level notes for the vendor (optional). Per-task remarks live on each task above." icon={FileText}>
                     <textarea
                         className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 h-24 resize-none"
                         placeholder="e.g. Please call the driver before pickup, gate code 1234, parts already shipped to the shop..."
@@ -1513,7 +1692,11 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                     ) : (
                         <>
                             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                            <Button variant="secondary" onClick={handleCreate}>Create Order</Button>
+                            <Button variant="secondary" onClick={handleCreate}>
+                                {assignedDriverId ? 'Create & Assign to Driver' : 'Create Order'}
+                            </Button>
+                            {/* Either way the shop is where the work is going, so sending it
+                                there is the blue one. A driver assigned is told on both. */}
                             <Button onClick={handleCreateAndSend} className="gap-1.5">
                                 <Mail size={14} /> Create &amp; Send to Vendor
                             </Button>

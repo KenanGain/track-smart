@@ -29,7 +29,7 @@ import { KebabMenu } from "@/components/ui/KebabMenu";
 import { PaginationBar } from "@/components/ui/DataListToolbar";
 import { UploadZone } from "@/components/ui/UploadZone";
 import {
-    REMEDIATION_BY_LABEL, isMaintenanceRelated, newDoc,
+    MAX_DOC_FILES, REMEDIATION_BY_LABEL, isMaintenanceRelated, newAttachment, newDoc,
     remediationRequired, todayIso, unitOptionsFor,
     type RoadsideDoc, type RoadsideInspection,
 } from "./roadside.data";
@@ -539,7 +539,15 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
     const meta = shelfMeta(shelf);
     const units = unitOptionsFor(inspection);
 
-    const [file, setFile] = useState<File | null>(null);
+    /**
+     * The pages of one document.
+     *
+     * An invoice is rarely one page: the bill, the parts list and a photograph of the old
+     * part are all evidence of the same work, and filing them separately would say the
+     * truck was fixed three times. The first is the record’s own file; the rest ride with it.
+     */
+    const [files, setFiles] = useState<File[]>([]);
+    const file = files[0] ?? null;
     // Started with what the inspection already knows: the date, the units, the
     // distance unit. A form that makes you retype what the record above it says is
     // a form that gets a different answer.
@@ -554,9 +562,20 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
 
     const problems = docProblems(shelf, draft, !!file, units.length);
 
+    const addFiles = (picked: FileList | null) => {
+        if (!picked?.length) return;
+        setFiles((cur) => {
+            const room = MAX_DOC_FILES - cur.length;
+            const next = Array.from(picked).slice(0, Math.max(0, room));
+            // Picking the same file twice is a slip, not a second page.
+            return [...cur, ...next.filter((f) => !cur.some((x) => x.name === f.name && x.size === f.size))];
+        });
+    };
+
     const save = () => {
         if (!file || problems.length) return;
         const base = newDoc(file, uploadedBy);
+        base.attachments = files.slice(1).map(newAttachment);
         const trimmed: DocDraft = shelf === "repairBills"
             ? { ...draft, amount: billTotal(draft) || undefined }
             : draft;
@@ -565,8 +584,10 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
-            <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-                <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+            {/* A form’s title and its Save button are the two things you need in view the
+                whole time, so only the middle scrolls. */}
+            <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                <div className="flex shrink-0 items-start gap-3 border-b border-slate-100 px-5 py-4">
                     <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", meta.tone)}>
                         <meta.icon size={16} />
                     </span>
@@ -580,7 +601,7 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                     </button>
                 </div>
 
-                <div className="space-y-4 px-5 py-4">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                     <DocFields inspection={inspection} shelf={shelf} doc={draft} onPatch={patch} />
 
                     <div>
@@ -588,29 +609,42 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Document</span>
                             <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>
                         </span>
-                        <div className="mt-1.5">
-                            {file ? (
-                                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
+                        <div className="mt-1.5 space-y-2">
+                            {files.map((f, i) => (
+                                <div key={`${f.name}-${f.size}`} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm">
                                         <FileText size={16} />
                                     </span>
                                     <div className="min-w-0 flex-1">
-                                        <p className="truncate text-[13px] font-semibold text-slate-800">{file.name}</p>
-                                        <p className="text-[11px] text-emerald-600">Ready to file</p>
+                                        <p className="truncate text-[13px] font-semibold text-slate-800">{f.name}</p>
+                                        <p className="text-[11px] text-emerald-600">
+                                            {i === 0 ? "Ready to file" : "Rides with the record"}
+                                        </p>
                                     </div>
-                                    <button type="button" onClick={() => setFile(null)} title="Choose a different file"
+                                    <button type="button" onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}
+                                        title="Remove this page"
                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-rose-600">
                                         <Trash2 size={15} />
                                     </button>
                                 </div>
-                            ) : (
+                            ))}
+                            {files.length < MAX_DOC_FILES && (
                                 <UploadZone
                                     variant="card"
+                                    multiple
                                     accept="image/*,application/pdf"
-                                    label="Click to upload or drag &amp; drop"
-                                    hint={meta.accepts}
-                                    onFiles={(files) => { if (files?.[0]) setFile(files[0]); }}
+                                    label={files.length ? "Add another page" : "Click to upload or drag & drop"}
+                                    hint={files.length
+                                        ? `${files.length} of ${MAX_DOC_FILES} — the bill, the parts list, a photograph of the old part`
+                                        : meta.accepts}
+                                    onFiles={addFiles}
                                 />
+                            )}
+                            {files.length >= MAX_DOC_FILES && (
+                                <p className="text-[11px] text-slate-400">
+                                    {MAX_DOC_FILES} pages is the limit for one record. Past that it is a filing
+                                    cabinet rather than a document.
+                                </p>
                             )}
                         </div>
                     </div>
@@ -622,7 +656,7 @@ function AddDocRecord({ inspection, shelf, uploadedBy, onClose, onSave }: {
                     )}
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+                <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-5 py-3">
                     <button type="button" onClick={onClose}
                         className="rounded-lg border border-slate-200 px-3 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
                         Cancel

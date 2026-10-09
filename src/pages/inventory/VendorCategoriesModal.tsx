@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-    Plus, Tag, Trash2, X, Edit2, Check, Layers, AlertCircle,
+    Plus, Tag, Trash2, X, Edit2, Check, Layers, AlertCircle, Lock,
 } from "lucide-react";
 import {
     itemCategoryId,
+    itemName,
     type InventoryItem,
     type VendorCategory,
 } from "./inventory.data";
@@ -29,21 +30,28 @@ export function VendorCategoriesModal({
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
 
-    // How many items are in each category — shown on the row, and what stops a category
-    // being deleted out from under them.
+    // Which items are in each category — the count on the row, and what stops a
+    // category being deleted out from under them. The items themselves rather than a
+    // tally, because the dialog that blocks the delete should be able to name a few:
+    // "12 items" sends you hunting, "12 items, starting with Fuel Card • ..." does not.
     const itemsByCategory = useMemo(() => {
-        const map: Record<string, number> = {};
+        const map: Record<string, InventoryItem[]> = {};
         for (const it of items) {
             const id = itemCategoryId(it);
-            if (id) map[id] = (map[id] ?? 0) + 1;
+            if (id) (map[id] ??= []).push(it);
         }
         return map;
     }, [items]);
+
+    // The category the trash icon was pressed on. Whether that ends in a delete or in a
+    // "you cannot" depends on whether anything is filed under it.
+    const [pendingDelete, setPendingDelete] = useState<VendorCategory | null>(null);
 
     useEffect(() => {
         if (!open) return;
         setEditingCategoryId(null);
         setShowAddForm(false);
+        setPendingDelete(null);
         resetForm();
         setError(null);
 
@@ -118,13 +126,13 @@ export function VendorCategoriesModal({
         setError(null);
     };
 
-    const handleDelete = (cat: VendorCategory) => {
-        if (itemsByCategory[cat.id]) {
-            setError(`Can't delete "${cat.name}" — ${itemsByCategory[cat.id]} item(s) are still in it.`);
-            return;
-        }
-        if (!confirm(`Delete the "${cat.name}" category?`)) return;
+    // Deleting is always a two-step now: the icon opens the dialog, and the dialog either
+    // confirms an empty category away or explains why a used one is staying. A category
+    // in use is never deleted — the items filed under it would point at nothing.
+    const confirmDelete = (cat: VendorCategory) => {
+        if ((itemsByCategory[cat.id] ?? []).length > 0) return;
         onCategoriesChange(categories.filter((c) => c.id !== cat.id));
+        setPendingDelete(null);
         setError(null);
     };
 
@@ -135,7 +143,7 @@ export function VendorCategoriesModal({
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-slate-200">
                     <div>
-                        <h2 className="text-lg font-bold text-slate-900">Vendor Categories</h2>
+                        <h2 className="text-lg font-bold text-slate-900">Item Category</h2>
                         <p className="text-xs text-slate-500 mt-0.5">
                             Single source of truth for what kind of things your inventory holds.
                         </p>
@@ -204,7 +212,7 @@ export function VendorCategoriesModal({
                         <div className="space-y-2">
                             {categories.map((c) => {
                                 const isEditing = editingCategoryId === c.id;
-                                const itemCount = itemsByCategory[c.id] ?? 0;
+                                const itemCount = (itemsByCategory[c.id] ?? []).length;
 
                                 if (isEditing) {
                                     return (
@@ -242,7 +250,14 @@ export function VendorCategoriesModal({
                                                 {itemCount} item{itemCount === 1 ? "" : "s"}
                                             </span>
                                             <IconBtn icon={Edit2} onClick={() => startEdit(c)} title="Edit category" />
-                                            <IconBtn icon={Trash2} variant="danger" onClick={() => handleDelete(c)} title="Delete category" />
+                                            <IconBtn
+                                                icon={itemCount > 0 ? Lock : Trash2}
+                                                variant={itemCount > 0 ? "ghost" : "danger"}
+                                                onClick={() => setPendingDelete(c)}
+                                                title={itemCount > 0
+                                                    ? `In use by ${itemCount} item${itemCount === 1 ? "" : "s"}`
+                                                    : "Delete category"}
+                                            />
                                         </div>
                                     </div>
                                 );
@@ -260,6 +275,105 @@ export function VendorCategoriesModal({
                     >
                         Done
                     </button>
+                </div>
+
+                {pendingDelete && (
+                    <DeleteCategoryDialog
+                        category={pendingDelete}
+                        inUse={itemsByCategory[pendingDelete.id] ?? []}
+                        onCancel={() => setPendingDelete(null)}
+                        onConfirm={() => confirmDelete(pendingDelete)}
+                    />
+                )}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * What happens when the trash icon is pressed.
+ *
+ * Two answers in one box, because from the row they look like the same action: an empty
+ * category asks once and goes, and a category with anything filed under it does not go at
+ * all — it says how many items are holding it and names the first few, so the way out is
+ * obvious (move those items first) instead of being a dead end.
+ */
+function DeleteCategoryDialog({ category, inUse, onCancel, onConfirm }: {
+    category: VendorCategory;
+    inUse: InventoryItem[];
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    const blocked = inUse.length > 0;
+    const names = inUse.slice(0, 4).map((it) => itemName(it));
+
+    return (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40" onClick={onCancel} />
+            <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-label={blocked ? `${category.name} is in use` : `Delete ${category.name}`}
+                className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl"
+            >
+                <div className="flex items-start gap-3 p-5">
+                    <div className={cn(
+                        "h-10 w-10 shrink-0 rounded-lg flex items-center justify-center",
+                        blocked ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600",
+                    )}>
+                        {blocked ? <Lock size={18} /> : <Trash2 size={18} />}
+                    </div>
+                    <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-900">
+                            {blocked ? `"${category.name}" can’t be deleted` : `Delete "${category.name}"?`}
+                        </h3>
+                        {blocked ? (
+                            <>
+                                <p className="mt-1 text-[13px] text-slate-600">
+                                    <span className="font-semibold text-slate-900">
+                                        {inUse.length} item{inUse.length === 1 ? " is" : "s are"}
+                                    </span>{" "}
+                                    filed under this category. Move them to another category first, and
+                                    this one can go.
+                                </p>
+                                <ul className="mt-3 space-y-1">
+                                    {names.map((n, i) => (
+                                        <li key={i} className="flex items-center gap-2 text-[12px] text-slate-600">
+                                            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+                                            <span className="truncate">{n}</span>
+                                        </li>
+                                    ))}
+                                    {inUse.length > names.length && (
+                                        <li className="pl-3 text-[12px] text-slate-400">
+                                            and {inUse.length - names.length} more
+                                        </li>
+                                    )}
+                                </ul>
+                            </>
+                        ) : (
+                            <p className="mt-1 text-[13px] text-slate-600">
+                                Nothing is filed under it, so nothing else changes. This can’t be undone.
+                            </p>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        {blocked ? "Close" : "Cancel"}
+                    </button>
+                    {!blocked && (
+                        <button
+                            type="button"
+                            onClick={onConfirm}
+                            className="h-9 px-3 rounded-md bg-red-600 text-xs font-semibold text-white shadow-sm hover:bg-red-700 inline-flex items-center gap-1.5"
+                        >
+                            <Trash2 size={12} /> Delete category
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

@@ -23,6 +23,15 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
  *
  * The body must scroll in its OWN container (`ref`), not the window, so the band never
  * scrolls away — it only shrinks.
+ *
+ * That container MUST carry `overflow-anchor: none`. The header sits inside it, so folding
+ * changes the size of content above the viewport, and the browser's scroll anchoring
+ * answers by adjusting `scrollTop` to hold the view still. The adjustment arrives here as
+ * movement UP, indistinguishable from the user scrolling back — so the header began to
+ * close, was told it was being scrolled away from, and sprang open a frame later. It took
+ * a second gesture to make it stick, which is what "the scrolling is not working properly"
+ * looks like from the outside. No amount of direction smoothing fixes it; the phantom
+ * movement has to stop being generated.
  */
 
 /**
@@ -31,7 +40,23 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
  * time it flips, which is most of the cost of the transition.
  */
 export const HEADER_TRANSITION =
-    'transition-[height,max-height,width,max-width,padding,margin,gap,opacity,font-size,border-width] duration-300 ease-out';
+    'transition-[height,max-height,width,max-width,padding,margin,gap,opacity,font-size,border-width]'
+    /*
+     * Seven tenths of a second, on a curve that is the same travelling either way.
+     *
+     * It began at a third of a second on a plain ease-out, which read as a snap — the header
+     * did not appear to MOVE so much as to be replaced, which is what makes a condensing
+     * header feel like a glitch rather than a response. Half a second on a quintic ease-out
+     * fixed the closing but not the opening: an ease-OUT leaves immediately and arrives
+     * slowly, so folding away was gentle and coming back was a jump, and the two gestures
+     * did not feel like the same thing done in opposite directions.
+     *
+     * So the curve is symmetric. It takes up the slack before it moves, carries the weight
+     * through the middle and sets down softly, which is what makes it read as the page being
+     * drawn down and drawn back up rather than switched between two states. Slow enough to
+     * follow with the eye, and well short of feeling like something to wait for.
+     */
+    + ' duration-700 ease-[cubic-bezier(0.65,0,0.35,1)]';
 
 /**
  * Whether the page header above is currently condensed.
@@ -48,10 +73,25 @@ export const useCondensedHeader = (): boolean => useContext(CondensedHeaderConte
 
 /** Nothing happens in the first this-many pixels — collapsing near the top is just flicker. */
 const CONDENSE_AT = 140;
-/** Travel in one direction that counts as intent, so a jitter or a trackpad twitch cannot flip it. */
-const INTENT = 28;
-/** How long layout keeps settling after a flip, in ms. Must cover the header's transition. */
-const FLIP_SETTLE_MS = 380;
+/**
+ * Travel in one direction that counts as intent.
+ *
+ * Raised with the slower curve: at 28px a trackpad's inertia could still reverse the band
+ * mid-animation, so the header started folding and changed its mind halfway. Forty is
+ * about one notch of a wheel — deliberate, and well clear of a twitch.
+ */
+const INTENT = 40;
+/**
+ * How long layout keeps settling after a flip, in ms.
+ *
+ * It MUST outlast the header's transition above, with room to spare. Everything the flip
+ * sets in motion — the clamp when the page shortens, the reflow as the cards give their
+ * height back — arrives as scroll movement, and until the travelling has stopped none of
+ * it means anything about where the reader wants to be. Shorter than the transition and
+ * the header changes its mind halfway through its own animation. Raised with the curve:
+ * 700ms of travel, and 140ms on the end for the last of the layout to come to rest.
+ */
+const FLIP_SETTLE_MS = 840;
 
 /**
  * The same shrink-on-scroll band, for a header that does NOT own the thing that scrolls.
@@ -180,6 +220,25 @@ export function useCondensingHeader<T>(resetKey?: T) {
             const delta = top - lastTop.current;
             lastTop.current = top;
 
+            /*
+             * The flip guard comes FIRST, and it covers the floor rule as well as direction.
+             *
+             * Folding hands ~380px back to the page, so the page gets SHORTER — and on
+             * anything but a long tab what is left no longer reaches the floor. The browser
+             * clamps `scrollTop` down to the new maximum, that arrives here as a position
+             * near the top, and the floor rule below reads it as "the user has scrolled home"
+             * and opens the header again. The fold undoes itself, every time, on exactly the
+             * tabs where it would have helped most.
+             *
+             * It was answered once by padding the page out so it stayed tall enough to keep
+             * its own fold — which left that padding under the content as empty page you
+             * could scroll into, dragging a list's pinned toolbar up under the header until
+             * the rows it belongs to were gone. The page should not have to be made taller to
+             * hold a state it is already in. It only has to stop being asked about it while
+             * the layout is still moving.
+             */
+            if (performance.now() - flippedAt.current < FLIP_SETTLE_MS) { travel.current = 0; return; }
+
             // Above the floor the header is always whole. This is also what makes scrolling
             // back to the top always restore it, whatever the direction bookkeeping says.
             if (top <= CONDENSE_AT) {
@@ -187,10 +246,6 @@ export function useCondensingHeader<T>(resetKey?: T) {
                 if (condensedRef.current) { condensedRef.current = false; setCondensed(false); flippedAt.current = performance.now(); }
                 return;
             }
-
-            // The clamp that follows a flip arrives as movement the other way. Ignore
-            // direction until the header has finished resizing, or it flips straight back.
-            if (performance.now() - flippedAt.current < FLIP_SETTLE_MS) { travel.current = 0; return; }
 
             // Accumulate in the current direction; a reversal starts the count again, so
             // "how far have I gone THIS way" is what decides, not where the page happens to be.
@@ -205,6 +260,40 @@ export function useCondensingHeader<T>(resetKey?: T) {
             travel.current = 0;
             flippedAt.current = performance.now();
         });
+    }, []);
+
+    /**
+     * The way back, for a tab that folded itself flat.
+     *
+     * Folding gives the page ~380px, and on a short tab that is enough to make everything
+     * fit — which leaves it with nothing to scroll. The header is then correct and stuck:
+     * `scrollTop` is pinned at 0, scrolling up moves nothing, no scroll event is raised, and
+     * the only way to see the title again is to leave the tab and come back.
+     *
+     * The gesture still happens even when the page cannot answer it, so it is read directly,
+     * and only in that corner — wherever there is real scrolling left, the scroll handler
+     * above is the one that decides, on travel, exactly as before.
+     *
+     * Bound natively and PASSIVE rather than as a React prop. A wheel handler the browser
+     * has to consult before it scrolls costs the compositor its fast path — and on this
+     * container it cost the wheel entirely: with the prop attached, the page stopped
+     * responding to the wheel at all while `scrollTop` could still be set from script.
+     * Passive says up front that this listener will never cancel the scroll, so the scroll
+     * happens as it always did and this only gets told about it.
+     */
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent) => {
+            if (!condensedRef.current || e.deltaY >= 0) return;
+            if (el.scrollHeight - el.clientHeight > CONDENSE_AT) return;
+            if (performance.now() - flippedAt.current < FLIP_SETTLE_MS) return;
+            condensedRef.current = false;
+            setCondensed(false);
+            flippedAt.current = performance.now();
+        };
+        el.addEventListener('wheel', onWheel, { passive: true });
+        return () => el.removeEventListener('wheel', onWheel);
     }, []);
 
     // `resetKey` changing (switching category, say) leaves the scroll position ALONE — the

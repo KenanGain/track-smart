@@ -15,11 +15,14 @@ const Badge = ({ children, className = "" }: { children: React.ReactNode, classN
         {children}
     </span>
 );
+import { useBackAwareView } from '@/lib/use-back-aware-view';
 
 export const ExpenseTypesPage = () => {
     // --- State ---
     const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>(INITIAL_EXPENSE_TYPES);
     const [isEditing, setIsEditing] = useState(false);
+    // Back leaves the editor rather than the app.
+    useBackAwareView(isEditing, () => setIsEditing(false), "expense-type");
     const [editingType, setEditingType] = useState<ExpenseType | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 

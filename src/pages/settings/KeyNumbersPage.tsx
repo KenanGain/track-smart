@@ -9,6 +9,7 @@ import { CATEGORIES } from "@/data/key-numbers-mock-data"
 import type { KeyNumberConfig, Category, AddNumberFormData } from "@/types/key-numbers.types"
 import { useAppData } from "@/context/AppDataContext"
 import { KeyNumberEditor } from "./KeyNumberEditor"
+import { useBackAwareView } from "@/lib/use-back-aware-view";
 
 export function KeyNumbersPage() {
     // State management
@@ -25,6 +26,8 @@ export function KeyNumbersPage() {
     
     // View State
     const [showEditor, setShowEditor] = useState(false)
+    // Back leaves the editor rather than the app.
+    useBackAwareView(showEditor, () => setShowEditor(false), "key-number")
 
     // Filter numbers by active category and search query
     const filteredNumbers = useMemo(() => {

@@ -1,27 +1,12 @@
-import { useState } from "react";
-import { Plus, Search, Edit, Trash2, Truck, Car, Layers, Building2, Phone, Mail, MapPin, User } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Search, Edit, Trash2, Building2, Phone, Mail, MapPin, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-
-import { Label } from "@/components/ui/label";
-import { useServiceTypes, serviceTypesStore } from "@/data/serviceTypesStore";
-import { type ServiceType, type ServiceCategory, type ServiceComplexity, CATEGORY_LABELS } from "@/types/service-types";
+// The catalog itself is a component now — this page and the Maintenance page's
+// Service Types tab show the same one over the same live store.
+import { ServiceTypesPanel, type ServiceTypesPanelHandle } from "./ServiceTypesPanel";
+// The one vendor form, shared with the vendor lists on Inventory and Maintenance.
+import { VendorFormDialog } from "@/pages/inventory/VendorFormDialog";
 
 import { type Vendor } from "@/pages/inventory/inventory.data";
 import { useVendorsForAccount, vendorsStore } from "@/data/vendorsStore";
@@ -45,36 +30,12 @@ export const CA_PROVINCES = [
     "Quebec", "Saskatchewan", "Yukon"
 ];
 
-const MAINTENANCE_CLASSES = ["Safety Inspection", "Intermediate Service", "Comprehensive Service", "Major Overhaul", "Other"];
-const COMPLEXITY_LEVELS: ServiceComplexity[] = ["Basic", "Moderate", "Extensive", "Intensive"];
-
 export function MaintenancePage({ account }: { account?: AccountRecord }) {
     // Active section tab
     const [activeSection, setActiveSection] = useState<"services" | "vendors">("services");
 
-    // Service Types — live store. Add/update/delete dispatch through
-    // serviceTypesStore so CreateOrderModal, CreateScheduleForm, and
-    // AssetMaintenancePage all see the change immediately.
-    const serviceTypes = useServiceTypes();
-    const [searchQuery, setSearchQuery] = useState("");
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingService, setEditingService] = useState<ServiceType | null>(null);
-    const [formData, setFormData] = useState<Partial<ServiceType>>({
-        name: "",
-        category: "both_cmv_and_non_cmv",
-        group: "Safety Inspection",
-        complexity: "Basic",
-        description: ""
-    });
-
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
-
-    // Filters State
-    const [filterClass, setFilterClass] = useState<string>("all");
-    const [filterApplicability, setFilterApplicability] = useState<ServiceCategory | "all">("all");
-    const [filterComplexity, setFilterComplexity] = useState<ServiceComplexity | "all">("all");
+    // The Add button lives in this page's header; the list is the panel's.
+    const servicePanel = useRef<ServiceTypesPanelHandle>(null);
 
     // Vendor State — live store, scoped to the active carrier so the
     // super-admin sees only this carrier's vendors and any add/edit done
@@ -83,51 +44,6 @@ export function MaintenancePage({ account }: { account?: AccountRecord }) {
     const [vendorSearchQuery, setVendorSearchQuery] = useState("");
     const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
-    const emptyVendorForm: Partial<Vendor> = {
-        name: "",
-        companyName: "",
-        categoryId: "cat-repair-maintenance",
-        address: {
-            country: "United States",
-            apt: "",
-            street: "",
-            city: "",
-            state: "",
-            zip: ""
-        },
-        email: "",
-        phone: "",
-        contactName: "",
-        status: "Active",
-    };
-    const [vendorFormData, setVendorFormData] = useState<Partial<Vendor>>(emptyVendorForm);
-
-    // Helper to reset pagination when filters change
-    const handleFilterChange = (setter: (value: any) => void, value: any) => {
-        setter(value);
-        setCurrentPage(1);
-    };
-
-    // Service Types Filtering & Pagination Logic
-    const filteredServices = serviceTypes.filter((service) => {
-        const matchesSearch = 
-            service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            service.group.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (service.description && service.description.toLowerCase().includes(searchQuery.toLowerCase()));
-
-        const matchesClass = filterClass === "all" || service.group === filterClass;
-        const matchesApplicability = filterApplicability === "all" || service.category === filterApplicability;
-        const matchesComplexity = filterComplexity === "all" || service.complexity === filterComplexity;
-
-        return matchesSearch && matchesClass && matchesApplicability && matchesComplexity;
-    });
-
-    const totalPages = Math.ceil(filteredServices.length / itemsPerPage);
-    const paginatedServices = filteredServices.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
-
     // Vendor Filtering — vendor.name is required, companyName/email optional.
     const filteredVendors = vendors.filter((vendor) => {
         const q = vendorSearchQuery.toLowerCase();
@@ -138,122 +54,11 @@ export function MaintenancePage({ account }: { account?: AccountRecord }) {
         );
     });
 
-    // Service Type Handlers
-    const handleOpenDialog = (service?: ServiceType) => {
-        if (service) {
-            setEditingService(service);
-            setFormData({ 
-                name: service.name, 
-                category: service.category, 
-                group: service.group,
-                complexity: service.complexity,
-                description: service.description
-            });
-        } else {
-            setEditingService(null);
-            setFormData({ 
-                name: "", 
-                category: "both_cmv_and_non_cmv", 
-                group: "Safety Inspection",
-                complexity: "Basic",
-                description: ""
-            });
-        }
-        setIsDialogOpen(true);
-    };
-
-    const handleSave = () => {
-        if (!formData.name || !formData.category || !formData.group || !formData.complexity) return;
-
-        if (editingService) {
-            serviceTypesStore.update({
-                ...editingService,
-                name: formData.name!,
-                category: formData.category as ServiceCategory,
-                group: formData.group!,
-                complexity: formData.complexity as ServiceComplexity,
-                description: formData.description || "",
-            });
-        } else {
-            const newService: ServiceType = {
-                id: crypto.randomUUID(),
-                name: formData.name!,
-                category: formData.category as ServiceCategory,
-                group: formData.group!,
-                complexity: formData.complexity as ServiceComplexity,
-                description: formData.description || ""
-            };
-            serviceTypesStore.add(newService);
-        }
-        setIsDialogOpen(false);
-    };
-
-    const handleDelete = (id: string) => {
-        if (confirm("Are you sure you want to delete this service type?")) {
-            serviceTypesStore.remove(id);
-        }
-    };
-
     // Vendor Handlers — dispatch through vendorsStore so adds/edits flow
     // back into CreateOrderModal and any other consumer in real time.
     const handleOpenVendorDialog = (vendor?: Vendor) => {
-        if (vendor) {
-            setEditingVendor(vendor);
-            setVendorFormData({
-                name: vendor.name,
-                companyName: vendor.companyName ?? "",
-                categoryId: vendor.categoryId,
-                address: { ...vendor.address },
-                email: vendor.email ?? "",
-                phone: vendor.phone ?? "",
-                contactName: vendor.contactName ?? "",
-                contactInfo: vendor.contactInfo ?? "",
-                status: vendor.status,
-            });
-        } else {
-            setEditingVendor(null);
-            setVendorFormData(emptyVendorForm);
-        }
+        setEditingVendor(vendor ?? null);
         setIsVendorDialogOpen(true);
-    };
-
-    const handleSaveVendor = () => {
-        // Vendor "display name" can come from either field; require at least one.
-        const displayName = vendorFormData.name || vendorFormData.companyName;
-        if (!displayName) return;
-
-        if (editingVendor) {
-            vendorsStore.update({
-                ...editingVendor,
-                name: vendorFormData.name || editingVendor.name,
-                companyName: vendorFormData.companyName || undefined,
-                categoryId: vendorFormData.categoryId || editingVendor.categoryId,
-                address: vendorFormData.address,
-                email: vendorFormData.email || undefined,
-                phone: vendorFormData.phone || undefined,
-                contactName: vendorFormData.contactName || undefined,
-                contactInfo: vendorFormData.contactInfo || undefined,
-                status: vendorFormData.status || "Active",
-            });
-        } else {
-            const newVendor: Vendor = {
-                id: `v_${crypto.randomUUID().slice(0, 8)}`,
-                name: vendorFormData.name || vendorFormData.companyName!,
-                companyName: vendorFormData.companyName || undefined,
-                categoryId: vendorFormData.categoryId || "cat-repair-maintenance",
-                // Tag with active carrier so this vendor lands in the right
-                // carrier's vendor list (super-admin scoping).
-                accountId: account?.id ?? "",
-                address: vendorFormData.address,
-                email: vendorFormData.email || undefined,
-                phone: vendorFormData.phone || undefined,
-                contactName: vendorFormData.contactName || undefined,
-                contactInfo: vendorFormData.contactInfo || undefined,
-                status: vendorFormData.status || "Active",
-            };
-            vendorsStore.add(newVendor);
-        }
-        setIsVendorDialogOpen(false);
     };
 
     const handleDeleteVendor = (id: string) => {
@@ -304,7 +109,7 @@ export function MaintenancePage({ account }: { account?: AccountRecord }) {
                         </div>
 
                         {activeSection === "services" ? (
-                            <Button onClick={() => handleOpenDialog()} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm gap-2 pl-4 pr-3">
+                            <Button onClick={() => servicePanel.current?.openAdd()} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm gap-2 pl-4 pr-3">
                                 <Plus className="h-4 w-4" />
                                 Add Service Type
                             </Button>
@@ -319,189 +124,7 @@ export function MaintenancePage({ account }: { account?: AccountRecord }) {
 
                 {/* Service Types Section */}
                 {activeSection === "services" && (
-                    <div className="flex flex-col space-y-4">
-                        <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:space-y-0 lg:gap-4">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                                <Input
-                                    placeholder="Search service types..."
-                                    className="pl-9 bg-white"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                            
-                            {/* Filters */}
-                            <div className="flex flex-wrap gap-2">
-                                <Select value={filterClass} onValueChange={(v) => handleFilterChange(setFilterClass, v)}>
-                                    <SelectTrigger className="w-[180px] bg-white">
-                                        <SelectValue placeholder="All Classes" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Classes</SelectItem>
-                                        {MAINTENANCE_CLASSES.map(cls => (
-                                            <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-
-                                <Select value={filterApplicability} onValueChange={(v) => handleFilterChange(setFilterApplicability, v)}>
-                                    <SelectTrigger className="w-[160px] bg-white">
-                                        <SelectValue placeholder="All Vehicles" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Vehicles</SelectItem>
-                                        {Object.entries(CATEGORY_LABELS).map(([val, label]) => (
-                                            <SelectItem key={val} value={val}>{label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-
-                                <Select value={filterComplexity} onValueChange={(v) => handleFilterChange(setFilterComplexity, v)}>
-                                    <SelectTrigger className="w-[150px] bg-white">
-                                        <SelectValue placeholder="All Complexity" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Complexity</SelectItem>
-                                        {COMPLEXITY_LEVELS.map(level => (
-                                            <SelectItem key={level} value={level}>{level}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="rounded-lg border border-slate-200">
-                            <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                <table className="w-full">
-                                    <thead className="bg-slate-50 border-b border-slate-200">
-                                        <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Maintenance Class
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Maintenance Type
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Applicability
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Complexity
-                                            </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Actions
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
-                                        {paginatedServices.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                                                    No service types found matching your filters.
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            paginatedServices.map((service) => (
-                                                <tr key={service.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-6 py-4 align-middle">
-                                                        <div className="text-sm font-semibold text-blue-900">
-                                                            {service.group}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 align-middle">
-                                                        <div className="text-sm font-medium text-slate-900">
-                                                            {service.name}
-                                                        </div>
-                                                        {service.description && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{service.description}</p>}
-                                                    </td>
-                                                    <td className="px-6 py-4 align-middle">
-                                                        <div className="flex items-center gap-2">
-                                                            {service.category === 'cmv_only' && <Truck className="h-4 w-4 text-slate-400" />}
-                                                            {service.category === 'non_cmv_only' && <Car className="h-4 w-4 text-slate-400" />}
-                                                            {service.category === 'both_cmv_and_non_cmv' && <Layers className="h-4 w-4 text-slate-400" />}
-                                                            <span className="text-sm text-slate-600">{CATEGORY_LABELS[service.category]}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 align-middle">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                                            ${service.complexity === 'Basic' ? 'bg-green-100 text-green-800' : 
-                                                              service.complexity === 'Moderate' ? 'bg-blue-100 text-blue-800' :
-                                                              service.complexity === 'Extensive' ? 'bg-orange-100 text-orange-800' :
-                                                              'bg-red-100 text-red-800'
-                                                            }`}>
-                                                            {service.complexity}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center align-middle">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <button
-                                                                onClick={() => handleOpenDialog(service)}
-                                                                className="text-slate-600 hover:text-slate-900 transition-colors inline-block"
-                                                            >
-                                                                <Edit className="h-4 w-4" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDelete(service.id)}
-                                                                className="text-slate-600 hover:text-red-600 transition-colors inline-block ml-2"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                            
-                            {/* Pagination Footer */}
-                            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <span>Rows per page:</span>
-                                    <Select
-                                        value={itemsPerPage.toString()}
-                                        onValueChange={(value) => {
-                                            setItemsPerPage(Number(value));
-                                            setCurrentPage(1);
-                                        }}
-                                    >
-                                        <SelectTrigger className="h-8 w-[70px]">
-                                            <SelectValue placeholder={itemsPerPage.toString()} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {[10, 25, 50].map((pageSize) => (
-                                                <SelectItem key={pageSize} value={pageSize.toString()}>
-                                                    {pageSize}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <span className="ml-2">
-                                        Showing <span className="font-medium">{filteredServices.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredServices.length)}</span> of <span className="font-medium">{filteredServices.length}</span> results
-                                    </span>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                        disabled={currentPage === 1}
-                                    >
-                                        Previous
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                        disabled={currentPage === totalPages || totalPages === 0}
-                                    >
-                                        Next
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <ServiceTypesPanel ref={servicePanel} />
                 )}
 
 
@@ -617,292 +240,13 @@ export function MaintenancePage({ account }: { account?: AccountRecord }) {
                 )}
             </div>
 
-            {/* Service Type Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{editingService ? "Edit Service Type" : "Add Service Type"}</DialogTitle>
-                        <DialogDescription>
-                            {editingService
-                                ? "Update the service type details below."
-                                : "Create a new service type for maintenance records."}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="group">Maintenance Class</Label>
-                            <Select
-                                value={formData.group}
-                                onValueChange={(value) =>
-                                    setFormData({ ...formData, group: value })
-                                }
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select class" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {MAINTENANCE_CLASSES.map((cls) => (
-                                        <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Maintenance Type (Name)</Label>
-                            <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="e.g. Brakes Inspection"
-                            />
-                        </div>
-                         
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="category">Applicability</Label>
-                                <Select
-                                    value={formData.category}
-                                    onValueChange={(value) =>
-                                        setFormData({ ...formData, category: value as ServiceCategory })
-                                    }
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select applicability" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                                            <SelectItem key={value} value={value}>
-                                                {label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="complexity">Complexity</Label>
-                                <Select
-                                    value={formData.complexity}
-                                    onValueChange={(value) =>
-                                        setFormData({ ...formData, complexity: value as ServiceComplexity })
-                                    }
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select complexity" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {COMPLEXITY_LEVELS.map((level) => (
-                                            <SelectItem key={level} value={level}>{level}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="description">Description</Label>
-                            <textarea
-                                id="description"
-                                className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                value={formData.description}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="Describe the service..."
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            {editingService ? "Save Changes" : "Create Service Type"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-
             {/* Vendor Dialog */}
-            <Dialog open={isVendorDialogOpen} onOpenChange={setIsVendorDialogOpen}>
-                <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>{editingVendor ? "Edit Vendor" : "Add Vendor"}</DialogTitle>
-                        <DialogDescription>
-                            {editingVendor
-                                ? "Update vendor information below."
-                                : "Add a new maintenance vendor to your list."}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-6 py-4">
-                        {/* Company Information */}
-                        <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-slate-900 border-b border-slate-200 pb-2">
-                                Company Information
-                            </h3>
-                            <div className="grid gap-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="companyName">Company Name <span className="text-red-500">*</span></Label>
-                                    <Input
-                                        id="companyName"
-                                        value={vendorFormData.companyName}
-                                        onChange={(e) => setVendorFormData({ ...vendorFormData, companyName: e.target.value })}
-                                        placeholder="e.g. Fleet Maintenance Pro"
-                                    />
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <Label htmlFor="contactName">Contact Name</Label>
-                                    <Input
-                                        id="contactName"
-                                        value={vendorFormData.contactName}
-                                        onChange={(e) => setVendorFormData({ ...vendorFormData, contactName: e.target.value })}
-                                        placeholder="e.g. John Doe"
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="email">Email</Label>
-                                        <Input
-                                            id="email"
-                                            type="email"
-                                            value={vendorFormData.email}
-                                            onChange={(e) => setVendorFormData({ ...vendorFormData, email: e.target.value })}
-                                            placeholder="contact@company.com"
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="phone">Phone</Label>
-                                        <Input
-                                            id="phone"
-                                            value={vendorFormData.phone}
-                                            onChange={(e) => setVendorFormData({ ...vendorFormData, phone: e.target.value })}
-                                            placeholder="(555) 555-0000"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Address */}
-                        <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-slate-900 border-b border-slate-200 pb-2">
-                                Address
-                            </h3>
-                            <div className="grid gap-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="country">Country</Label>
-                                        <Select
-                                            value={vendorFormData.address?.country}
-                                            onValueChange={(value) =>
-                                                setVendorFormData({
-                                                    ...vendorFormData,
-                                                    address: { ...vendorFormData.address!, country: value as "United States" | "Canada", state: "" }
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select country" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="USA">United States</SelectItem>
-                                                <SelectItem value="Canada">Canada</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="unit">Unit / Suite</Label>
-                                        <Input
-                                            id="unit"
-                                            value={vendorFormData.address?.apt ?? ""}
-                                            onChange={(e) => setVendorFormData({
-                                                ...vendorFormData,
-                                                address: { ...vendorFormData.address!, apt: e.target.value }
-                                            })}
-                                            placeholder="Suite 100"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <Label htmlFor="street">Street Address</Label>
-                                    <Input
-                                        id="street"
-                                        value={vendorFormData.address?.street}
-                                        onChange={(e) => setVendorFormData({
-                                            ...vendorFormData,
-                                            address: { ...vendorFormData.address!, street: e.target.value }
-                                        })}
-                                        placeholder="123 Main Street"
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="city">City</Label>
-                                        <Input
-                                            id="city"
-                                            value={vendorFormData.address?.city}
-                                            onChange={(e) => setVendorFormData({
-                                                ...vendorFormData,
-                                                address: { ...vendorFormData.address!, city: e.target.value }
-                                            })}
-                                            placeholder="City"
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="state">
-                                            {vendorFormData.address?.country === "Canada" ? "Province" : "State"}
-                                        </Label>
-                                        <Select
-                                            value={vendorFormData.address?.state ?? ""}
-                                            onValueChange={(value) =>
-                                                setVendorFormData({
-                                                    ...vendorFormData,
-                                                    address: { ...vendorFormData.address!, state: value }
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {(vendorFormData.address?.country === "Canada" ? CA_PROVINCES : US_STATES).map((state) => (
-                                                    <SelectItem key={state} value={state}>{state}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="zip">
-                                            {vendorFormData.address?.country === "Canada" ? "Postal Code" : "ZIP Code"}
-                                        </Label>
-                                        <Input
-                                            id="zip"
-                                            value={vendorFormData.address?.zip ?? ""}
-                                            onChange={(e) => setVendorFormData({
-                                                ...vendorFormData,
-                                                address: { ...vendorFormData.address!, zip: e.target.value }
-                                            })}
-                                            placeholder={vendorFormData.address?.country === "Canada" ? "A1A 1A1" : "12345"}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsVendorDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleSaveVendor} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            {editingVendor ? "Save Changes" : "Add Vendor"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <VendorFormDialog
+                open={isVendorDialogOpen}
+                vendor={editingVendor}
+                accountId={account?.id}
+                onClose={() => { setIsVendorDialogOpen(false); setEditingVendor(null); }}
+            />
         </div>
     );
 }
