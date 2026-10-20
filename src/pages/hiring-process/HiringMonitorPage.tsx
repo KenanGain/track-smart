@@ -2,7 +2,11 @@ import { useMemo, useState } from "react";
 import { Check, FileText, Search, MessageSquarePlus, ChevronDown, ClipboardList, FileSearch, BadgeCheck, Send, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { StepScroller } from "@/components/ui/StepScroller";
+import { TablePager } from "@/components/ui/ListChrome";
+import { PAGE_SIZES } from "@/components/ui/list-chrome";
+import { setMessagesFocus } from "@/pages/messages/messages-store";
+import { ListHeader } from "./ListHeader";
 import { useApplicants, ACTOR, type Applicant, type AppStatus, type AppRequest, type DocStatus, type RequestAction, type RequestRecipient } from "./applicants.data";
 import { useHiringTemplates, stepName, type HiringTemplate } from "./hiring-templates.data";
 import { AskDriverDialog, type AskGroup, type AskResult } from "./AskDriverDialog";
@@ -25,6 +29,9 @@ const PHASE: Record<AppStatus, { label: string; dot: string; text: string }> = {
     rejected: { label: "Rejected", dot: "bg-rose-500", text: "text-rose-600" },
 };
 
+// The status chips, in pipeline order.
+const STATUS_ORDER_HP: AppStatus[] = ["waiting", "in-progress", "submitted", "under-review", "approved", "rejected"];
+
 // Application form id → matching default driver template (for seeded records).
 const TEMPLATE_FOR_FORM: Record<string, string> = { us: "tpl-us", canada: "tpl-canada", "cross-border": "tpl-cross" };
 
@@ -35,6 +42,9 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
     const { applicants, updateOne } = useApplicants();
     const { templates } = useHiringTemplates(carrierId);
     const [query, setQuery] = useState("");
+    const [status, setStatus] = useState<AppStatus | "">("");
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
     const [dialog, setDialog] = useState<{ a: Applicant; tpl?: HiringTemplate; mode: "ask" | "review" | "remark" } | null>(null);
 
     // Each applicant follows their OWN template's custom steps.
@@ -43,18 +53,25 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
         ?? templates.find((t) => t.id === TEMPLATE_FOR_FORM[a.formId])
         ?? templates[0];
 
-    const rows = useMemo(() => {
+    // Searched first, then split by status — so each chip's count is what it would show.
+    const searched = useMemo(() => {
         const q = query.trim().toLowerCase();
         return applicants
             .filter((a) => !carrierId || a.carrierId === carrierId)
-            .filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email}`.toLowerCase().includes(q));
+            .filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email} ${a.position ?? ""}`.toLowerCase().includes(q));
     }, [applicants, carrierId, query]);
+    const rows = useMemo(() => searched.filter((a) => !status || a.status === status), [searched, status]);
+    const countOf = (s: AppStatus) => searched.filter((a) => a.status === s).length;
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const filtered = !!query.trim() || !!status;
 
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="border-b border-slate-200 bg-white">
                 <div className="px-4 py-5 sm:px-6 lg:px-8">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Hiring Process</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Application Tracking System</p>
                     <h1 className="mt-1 text-2xl font-bold text-slate-900">Hiring</h1>
                     <p className="mt-1 text-sm text-slate-500">Monitor each driver through the hiring workflow. Click a row to open the full hiring file.</p>
                 </div>
@@ -62,19 +79,24 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
 
             <div className="px-4 py-6 sm:px-6 lg:px-8">
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm font-semibold text-slate-700">Applicants <span className="ml-1 font-normal text-slate-400">{rows.length}</span></p>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search applicants…" className="h-9 pl-9" />
-                        </div>
-                    </div>
+                    {/* Sticky list header — title, search and status filter stay in reach while
+                        scrolling a long pipeline. z-20 clears the stepper bubbles (z-10). */}
+                    <ListHeader title="Applicants" count={rows.length} total={searched.length}
+                        query={query} onQuery={(v) => { setQuery(v); setPage(1); }} placeholder="Search by name, email or position…"
+                        chips={STATUS_ORDER_HP.map((s) => ({ id: s, label: PHASE[s].label, count: countOf(s), dot: PHASE[s].dot }))}
+                        chip={status} onChip={(s) => { setStatus(s as AppStatus | ""); setPage(1); }}
+                        allCount={searched.length}
+                        onReset={filtered ? () => { setQuery(""); setStatus(""); setPage(1); } : undefined} />
 
                     {rows.length === 0 ? (
-                        <div className="px-5 py-16 text-center text-sm text-slate-400">No applicants match your search.</div>
+                        <div className="px-5 py-16 text-center">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Search className="h-5 w-5" /></div>
+                            <p className="mt-3 text-sm font-semibold text-slate-700">No applicants match</p>
+                            <p className="mt-1 text-sm text-slate-400">Try a different name, or clear the filters.</p>
+                        </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
-                            {rows.map((a) => {
+                            {pageRows.map((a) => {
                                 const tpl = resolveTemplate(a);
                                 const steps = tpl?.steps ?? [];
                                 return (
@@ -93,6 +115,11 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
                                 );
                             })}
                         </div>
+                    )}
+                    {rows.length > 0 && (
+                        <TablePager page={safePage} pageSize={pageSize} total={rows.length}
+                            onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }}
+                            className="rounded-b-xl bg-slate-50/60" />
                     )}
                 </div>
             </div>
@@ -118,8 +145,13 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
                 return (
                     <AskDriverDialog driverName={name} driverEmail={driver.email} groups={groups}
                         subtitle={`Ask ${name} to complete forms, documents & signatures.`}
+                        // An applicant may not be on the app yet — default to a chat they can open from email.
+                        defaultDelivery="External chat"
+                        source={{ type: "manual", id: driver.id, label: `Hiring file — ${name}` }}
+                        record={{ type: "applicant", id: driver.id, label: `${name} — Hiring file`, sublabel: dialog.tpl?.name, path: `${HP_FILE}/${driver.id}` }}
+                        onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate("/messages"); }}
                         onClose={() => setDialog(null)}
-                        onSend={(r) => { sendHiringAsk(updateOne, driver, r, labelMap, "Request", "Driver"); setDialog(null); }} />
+                        onSend={(r) => sendHiringAsk(updateOne, driver, r, labelMap, "Request", "Driver")} />
                 );
             })()}
 
@@ -221,14 +253,13 @@ function ApplicantRow({ a, steps, templateName, current, onOpen, onAction }: {
                 </div>
 
                 {/* Custom stepper from this applicant's template */}
-                <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-                    <div className="flex min-w-max items-start">
+                <StepScroller focus={Math.min(current, steps.length - 1)} size="sm" className="flex-1">
                         {steps.map((s, i) => {
                             const done = isApproved || i < current;
                             const isCurrent = !isApproved && i === current;
                             const rejectedHere = isRejected && i === current;
                             return (
-                                <div key={s.id} className="relative flex min-w-[116px] flex-1 flex-col items-center px-1">
+                                <div key={s.id} data-step className="relative flex min-w-[116px] flex-1 flex-col items-center px-1">
                                     {i > 0 && <span className="absolute left-0 top-[14px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: i <= current || isApproved ? "#10b981" : "#e2e8f0" }} />}
                                     {i < steps.length - 1 && <span className="absolute right-0 top-[14px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: i < current || isApproved ? "#10b981" : "#e2e8f0" }} />}
                                     <Bubble done={done} current={isCurrent} rejected={rejectedHere} attention={isCurrent && (a.status === "waiting" || a.status === "in-progress" || a.status === "submitted")} />
@@ -237,8 +268,7 @@ function ApplicantRow({ a, steps, templateName, current, onOpen, onAction }: {
                             );
                         })}
                         {steps.length === 0 && <span className="text-xs text-slate-400">No steps in this workflow.</span>}
-                    </div>
-                </div>
+                </StepScroller>
             </div>
 
             {/* Footer: meta + actions */}

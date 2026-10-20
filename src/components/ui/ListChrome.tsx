@@ -11,7 +11,7 @@
 // The look is the compliance table's, exactly — these were lifted from it rather than
 // redesigned, so nothing moves on the screens that already use it.
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -313,4 +313,54 @@ export function ViewSwitch<T extends string>({ value, onChange, options, classNa
             })}
         </div>
     );
+}
+
+/**
+ * Sortable columns, for a list that has none.
+ *
+ * `SortTh` above draws the control; this is the other half — the state it reflects and the
+ * comparison it stands for. Written once because the comparison is where hand-rolled sorts
+ * go wrong in the same three ways every time: numbers compared as text so 10 sorts before 9,
+ * blanks drifting to wherever the locale puts an empty string, and a second click that
+ * reverses nothing because only one direction was implemented.
+ *
+ * Pass a reader per column rather than a comparator. What a column sorts BY is the only
+ * thing that differs between lists; how two of those values compare is not, so lists do not
+ * get to answer it differently.
+ *
+ * Clicking cycles ascending, descending, off. Off matters: a list usually arrives in an
+ * order somebody chose — worst first, newest first — and without a way back the reader
+ * cannot return to it except by reloading the page.
+ */
+export function useTableSort<C extends string, T>(
+    rows: T[],
+    /** What each sortable column sorts by. A column absent from here cannot be sorted. */
+    readers: Partial<Record<C, (row: T) => string | number | null | undefined>>,
+    initial: SortState<C> | null = null,
+) {
+    const [sort, setSort] = useState<SortState<C> | null>(initial);
+
+    const onSort = (col: C) => setSort((s) =>
+        s?.col !== col ? { col, dir: 'asc' }
+            : s.dir === 'asc' ? { col, dir: 'desc' }
+                : null);
+
+    const sorted = useMemo(() => {
+        const read = sort && readers[sort.col];
+        if (!sort || !read) return rows;
+        const dir = sort.dir === 'asc' ? 1 : -1;
+        return [...rows].sort((a, b) => {
+            const x = read(a), y = read(b);
+            // Blanks last whichever way the column is pointing: "nothing recorded" is not a
+            // value that belongs at either end of a ranking, and a reader scanning for the
+            // worst offender should not have to scroll past nine of them first.
+            const ex = x === null || x === undefined || x === '';
+            const ey = y === null || y === undefined || y === '';
+            if (ex || ey) return ex && ey ? 0 : ex ? 1 : -1;
+            if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+            return String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+        });
+    }, [rows, sort, readers]);
+
+    return { sort, onSort, sorted };
 }

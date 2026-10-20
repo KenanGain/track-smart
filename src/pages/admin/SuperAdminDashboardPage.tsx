@@ -1987,7 +1987,7 @@ function AvatarStack({
     const ordered = [...users].sort((a, b) => {
         if (a.id === currentId) return -1;
         if (b.id === currentId) return 1;
-        const roleOrder: Record<string, number> = { "super-admin": 0, admin: 1, user: 2 };
+        const roleOrder: Record<string, number> = { "super-admin": 0, admin: 1, "fleet-admin": 2, "safety-manager": 3, user: 4, driver: 5 };
         if (a.role !== b.role) return roleOrder[a.role] - roleOrder[b.role];
         return a.name.localeCompare(b.name);
     });

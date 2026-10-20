@@ -19,7 +19,8 @@ import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
-import { KpiStatCard } from '@/components/ui/KpiStatCard';
+import { KpiStatRow } from '@/components/ui/KpiStatCard';
+import { useScrolledPast } from '@/components/ui/use-condensing-header';
 import { useBackAwareView } from '@/lib/use-back-aware-view';
 import { RowActions } from '@/components/ui/RowActions';
 import { ShareToChat } from '@/components/share/ShareToChat';
@@ -210,6 +211,8 @@ export function AssetDirectoryPage({
     accountId?: string;
 }) {
     const [assets, setAssets] = useState<Asset[]>(assetsProp ?? INITIAL_ASSETS);
+    /** The figures fold away on the way down the list. */
+    const { ref: kpiMark, past: kpiPast } = useScrolledPast();
     const [activeTab, setActiveTab] = useState('all');
     const [search, setSearch] = useState("");
     const [activeStatusFilter, setActiveStatusFilter] = useState('all');
@@ -414,139 +417,27 @@ export function AssetDirectoryPage({
                                 </div>
                             )}
                             
-                            {/* KPI CARDS — Default Compliance catalog KpiTile look
-                                (label + number left, icon square right); still click-to-filter. */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                                {[
+                            {/* Where the page's top is, for the fold below. */}
+                            <div ref={kpiMark} aria-hidden className="h-px" />
+                            {/* KPI CARDS — laid out from the width of this column, not of the
+                                window. Six of them beside a 340px sidebar is 156px each, which
+                                is where the labels used to collide with their own icons.
+                                They give their height back once you are reading rows rather
+                                than counting units. */}
+                            <KpiStatRow
+                                condensed={kpiPast}
+                                stats={[
                                     { id: 'all',          label: 'Total Assets',  value: stats.total,        Icon: LayoutGrid, accent: 'blue'    },
                                     { id: 'Active',       label: 'Active',        value: stats.active,       Icon: Check,      accent: 'emerald' },
                                     { id: 'Maintenance',  label: 'Maintenance',   value: stats.maintenance,  Icon: RotateCcw,  accent: 'rose'    },
                                     { id: 'OutOfService', label: 'Out of Service',value: stats.outOfService, Icon: AlertCircle,accent: 'amber'   },
                                     { id: 'Drafted',      label: 'Draft',         value: stats.draft,        Icon: FileText,   accent: 'sky'     },
                                     { id: 'Deactivated',  label: 'Deactivated',   value: stats.deactivated,  Icon: XCircle,    accent: 'slate'   },
-                                ].map((card) => (
-                                    <KpiStatCard
-                                        key={card.id}
-                                        label={card.label}
-                                        value={card.value}
-                                        Icon={card.Icon}
-                                        accent={card.accent}
-                                        active={activeStatusFilter === card.id}
-                                        onClick={() => setActiveStatusFilter(card.id)}
-                                    />
-                                ))}
-                            </div>
+                                ]}
+                                activeId={activeStatusFilter}
+                                onPick={setActiveStatusFilter}
+                            />
 
-                            {/* TOOLBAR — search row + filter row, wraps cleanly on small screens */}
-                            <div className="flex flex-col gap-3 mt-1">
-                                {/* Top row: search (left, flexible) · primary actions (right) */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-                                    <div className="relative flex-1 min-w-0">
-                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                        <Input
-                                            placeholder="Search by Unit #, VIN, make, model, plate, year…"
-                                            className="pl-10 pr-10 h-10 text-[13px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all w-full rounded-lg"
-                                            value={search}
-                                            onChange={(e) => setSearch(e.target.value)}
-                                        />
-                                        {search && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setSearch('')}
-                                                aria-label="Clear search"
-                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                                            >
-                                                <XIcon size={14} />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
-                                        <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
-                                            <Columns size={14} className="text-slate-500" /><span className="hidden sm:inline">Columns</span> <ChevronDown size={13} className="text-slate-400" />
-                                        </Button>
-                                        <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
-                                            <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
-                                        </Button>
-                                        <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="h-10 gap-1.5 px-4 shadow-sm bg-[#2563eb] hover:bg-blue-700 text-white font-semibold rounded-lg">
-                                            <Plus size={15} /> <span className="hidden sm:inline">Add Asset</span><span className="sm:hidden">Add</span>
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Bottom row: All/Trucks/Trailers segmented switcher (scrolls horizontally on mobile) */}
-                                <div className="flex items-center gap-3 -mx-1 px-1 overflow-x-auto scrollbar-hide">
-                                    <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg shrink-0">
-                                        {TABS.map((tab) => {
-                                            const active = activeTab === tab.id;
-                                            const count = tab.id === 'all'
-                                                ? assets.length
-                                                : tab.id === 'trucks'
-                                                    ? assets.filter((a) => a.assetCategory === 'CMV').length
-                                                    : assets.filter((a) => a.assetType === 'Trailer').length;
-                                            return (
-                                                <button
-                                                    key={tab.id}
-                                                    onClick={() => setActiveTab(tab.id)}
-                                                    className={cn(
-                                                        'inline-flex items-center gap-2 h-8 px-3.5 rounded-md text-[13px] font-semibold transition-all whitespace-nowrap',
-                                                        active
-                                                            ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                                                            : 'text-slate-600 hover:text-slate-900'
-                                                    )}
-                                                >
-                                                    <tab.icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                                                    <span className="hidden xs:inline sm:inline">{tab.label}</span>
-                                                    <span className="sm:hidden">{tab.id === 'all' ? 'All' : tab.id === 'trucks' ? 'Trucks' : 'Trailers'}</span>
-                                                    <span
-                                                        className={cn(
-                                                            'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[10px] font-bold',
-                                                            active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                                                        )}
-                                                    >
-                                                        {count}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Active filter chips */}
-                                {hasActiveFilters && (
-                                    <div className="flex items-center gap-2 flex-wrap text-xs">
-                                        <Filter size={13} className="text-slate-400 shrink-0" />
-                                        <span className="text-slate-500 font-medium shrink-0">Active filters:</span>
-                                        {activeTab !== 'all' && (
-                                            <FilterChip
-                                                label={`Category: ${activeTab === 'trucks' ? 'Trucks (CMV)' : 'Trailers (Non-CMV)'}`}
-                                                onClear={() => setActiveTab('all')}
-                                            />
-                                        )}
-                                        {activeStatusFilter !== 'all' && (
-                                            <FilterChip
-                                                label={`Status: ${activeStatusFilter}`}
-                                                onClear={() => setActiveStatusFilter('all')}
-                                            />
-                                        )}
-                                        {search && (
-                                            <FilterChip
-                                                label={`Search: "${search}"`}
-                                                onClear={() => setSearch('')}
-                                            />
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={clearAllFilters}
-                                            className="ml-1 text-blue-600 hover:text-blue-800 font-semibold"
-                                        >
-                                            Clear all
-                                        </button>
-                                        <span className="text-slate-400 ml-auto">
-                                            {filteredAssets.length} match{filteredAssets.length === 1 ? '' : 'es'}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
                         </div>
                     </div>
 
@@ -555,7 +446,132 @@ export function AssetDirectoryPage({
                     <div className={isEmbedded ? "flex flex-col w-full" : "flex-1 flex flex-col overflow-hidden"}>
                         <div className={isEmbedded ? "w-full flex flex-col pt-0" : "flex-1 p-6 pt-0 overflow-hidden flex flex-col"}>
                             <div className={isEmbedded ? "bg-white rounded-2xl border border-slate-200/60 flex flex-col shadow-sm" : "bg-white rounded-2xl border border-slate-200/60 flex-1 flex flex-col overflow-hidden shadow-sm"}>
-                                <div className={isEmbedded ? "overflow-visible" : "flex-1 overflow-auto"}>
+                                {/* The toolbar and the switch live IN the card, over the rows they
+                                    filter — the same shell the driver roster uses. They used to be
+                                    separate blocks floating above a table that scrolled sideways
+                                    underneath them, so what you had typed and what it filtered sat
+                                    in two different cards. */}
+                                <div className="border-b border-slate-100 px-4 py-3.5 sm:px-5">
+                                    {/* TOOLBAR — search row + filter row, wraps cleanly on small screens */}
+                                    <div className="flex flex-col gap-3 mt-1">
+                                        {/* Top row: search (left, flexible) · primary actions (right) */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                                            <div className="relative flex-1 min-w-0">
+                                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                                <Input
+                                                    placeholder="Search by Unit #, VIN, make, model, plate, year…"
+                                                    className="pl-10 pr-10 h-10 text-[13px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all w-full rounded-lg"
+                                                    value={search}
+                                                    onChange={(e) => setSearch(e.target.value)}
+                                                />
+                                                {search && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSearch('')}
+                                                        aria-label="Clear search"
+                                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                                    >
+                                                        <XIcon size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                                                <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
+                                                    <Columns size={14} className="text-slate-500" /><span className="hidden sm:inline">Columns</span> <ChevronDown size={13} className="text-slate-400" />
+                                                </Button>
+                                                <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
+                                                    <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
+                                                </Button>
+                                                <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="h-10 gap-1.5 px-4 shadow-sm bg-[#2563eb] hover:bg-blue-700 text-white font-semibold rounded-lg">
+                                                    <Plus size={15} /> <span className="hidden sm:inline">Add Asset</span><span className="sm:hidden">Add</span>
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Bottom row: All/Trucks/Trailers segmented switcher (scrolls horizontally on mobile) */}
+                                        <div className="flex items-center gap-3 -mx-1 px-1 overflow-x-auto scrollbar-hide">
+                                            <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg shrink-0">
+                                                {TABS.map((tab) => {
+                                                    const active = activeTab === tab.id;
+                                                    const count = tab.id === 'all'
+                                                        ? assets.length
+                                                        : tab.id === 'trucks'
+                                                            ? assets.filter((a) => a.assetCategory === 'CMV').length
+                                                            : assets.filter((a) => a.assetType === 'Trailer').length;
+                                                    return (
+                                                        <button
+                                                            key={tab.id}
+                                                            onClick={() => setActiveTab(tab.id)}
+                                                            className={cn(
+                                                                'inline-flex items-center gap-2 h-8 px-3.5 rounded-md text-[13px] font-semibold transition-all whitespace-nowrap',
+                                                                active
+                                                                    ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                                                                    : 'text-slate-600 hover:text-slate-900'
+                                                            )}
+                                                        >
+                                                            <tab.icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                                                            <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                                                            <span className="sm:hidden">{tab.id === 'all' ? 'All' : tab.id === 'trucks' ? 'Trucks' : 'Trailers'}</span>
+                                                            <span
+                                                                className={cn(
+                                                                    'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[10px] font-bold',
+                                                                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                                                                )}
+                                                            >
+                                                                {count}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Active filter chips */}
+                                        {hasActiveFilters && (
+                                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                                <Filter size={13} className="text-slate-400 shrink-0" />
+                                                <span className="text-slate-500 font-medium shrink-0">Active filters:</span>
+                                                {activeTab !== 'all' && (
+                                                    <FilterChip
+                                                        label={`Category: ${activeTab === 'trucks' ? 'Trucks (CMV)' : 'Trailers (Non-CMV)'}`}
+                                                        onClear={() => setActiveTab('all')}
+                                                    />
+                                                )}
+                                                {activeStatusFilter !== 'all' && (
+                                                    <FilterChip
+                                                        label={`Status: ${activeStatusFilter}`}
+                                                        onClear={() => setActiveStatusFilter('all')}
+                                                    />
+                                                )}
+                                                {search && (
+                                                    <FilterChip
+                                                        label={`Search: "${search}"`}
+                                                        onClear={() => setSearch('')}
+                                                    />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={clearAllFilters}
+                                                    className="ml-1 text-blue-600 hover:text-blue-800 font-semibold"
+                                                >
+                                                    Clear all
+                                                </button>
+                                                <span className="text-slate-400 ml-auto">
+                                                    {filteredAssets.length} match{filteredAssets.length === 1 ? '' : 'es'}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                {/*
+                                 * The table scrolls inside its own card, as the driver roster's does.
+                                 *
+                                 * Embedded, this was `overflow-visible` against a table with a
+                                 * 1300px floor — and the column it sits in is about 948px once the
+                                 * sidebar has taken its 340. The last four columns simply ran off
+                                 * the right of the page with no scrollbar and no way to reach them.
+                                 */}
+                                <div className={isEmbedded ? "overflow-x-auto" : "flex-1 overflow-auto"}>
                                     <table className="pin-first w-full text-left border-collapse min-w-[1300px]">
                                         <thead className="bg-slate-50/80 border-b border-slate-200 sticky-head">
                                             <tr>
@@ -569,7 +585,12 @@ export function AssetDirectoryPage({
                                                 <SortTH id="ownership"   label="Ownership"            current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
                                                 <TH className="w-32 text-center" align="center">Compliance</TH>
                                                 <SortTH id="status"      label="Status"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
-                                                <TH align="right" className="w-24 pr-6">Actions</TH>
+                                                {/* Pinned to the right edge, as the driver roster's is.
+                                                    This table has a 1300px floor in a ~950px column, so an
+                                                    Actions column that scrolls with the rest is an Actions
+                                                    column nobody finds — it sat 350px past the right edge
+                                                    behind a horizontal scrollbar. */}
+                                                <TH align="right" className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5">Actions</TH>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-slate-600">
@@ -604,9 +625,12 @@ export function AssetDirectoryPage({
                                                             </div>
                                                         </TD>
                                                         <TD>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[13px] font-bold text-slate-900 leading-tight">{asset.make} {asset.model}</span>
-                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{asset.year} • {asset.color || 'White'}</span>
+                                                            {/* On one line. Stacked, the year and colour made every row
+                                                                in the table two lines tall for six words nobody scans
+                                                                down a column — and the roster beside it is one line. */}
+                                                            <div className="flex items-baseline gap-2 whitespace-nowrap">
+                                                                <span className="text-[13px] font-bold text-slate-900">{asset.make} {asset.model}</span>
+                                                                <span className="text-[10px] font-bold uppercase tracking-tight text-slate-400">{asset.year} • {asset.color || 'White'}</span>
                                                             </div>
                                                         </TD>
                                                         <TD>
@@ -622,7 +646,9 @@ export function AssetDirectoryPage({
                                                                     return <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100"><Check size={14} strokeWidth={3} /></div>;
                                                                 }
                                                                 return (
-                                                                    <div className="flex flex-col gap-1 items-center">
+                                                                    /* Side by side, not stacked: an asset with all three
+                                                                       problems made its row three lines tall. */
+                                                                    <div className="flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
                                                                         {stats.expired > 0 && (
                                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
                                                                                 {stats.expired} EXPIRED
@@ -643,7 +669,9 @@ export function AssetDirectoryPage({
                                                             })()}
                                                         </TD>
                                                         <TD><Badge variant={asset.operationalStatus}>{asset.operationalStatus}</Badge></TD>
-                                                        <TD align="right" className="pr-6">
+                                                        {/* Opaque, and opaque again on hover — a see-through sticky
+                                                            cell shows the scrolled columns through itself. */}
+                                                        <TD align="right" className="sticky right-0 z-10 border-l border-slate-200 bg-white pl-4 pr-5 group-hover:bg-blue-50/40">
                                                             {/* Always visible. It used to fade in on hover, which hides
                                                                 the only way to act on a row from anyone reading with a
                                                                 keyboard or on a touch screen, where there is no hover. */}

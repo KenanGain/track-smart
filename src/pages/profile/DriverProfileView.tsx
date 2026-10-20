@@ -96,7 +96,7 @@ function DriverDefaultAccidents({ accountId, driverId, driverName }: { accountId
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 mb-3"><ShieldCheck size={22} /></div>
             <p className="text-sm font-semibold text-slate-700">No accidents on record</p>
-            <p className="text-[13px] text-slate-400 mt-1">This driver has no reported accidents in Default Accidents.</p>
+            <p className="text-[13px] text-slate-400 mt-1">This driver has no reported accidents yet.</p>
           </div>
         </div>
       ) : (

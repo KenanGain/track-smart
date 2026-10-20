@@ -29,7 +29,7 @@ export function UserEditModal({ user, currentUser, onClose, onSave }: Props) {
     const [applyToAllCarriers, setApplyToAllCarriers] = useState(false);
     const [serviceProfileIds, setServiceProfileIds] = useState<string[]>([]);
     const [applyToAllServiceProfiles, setApplyToAllServiceProfiles] = useState(false);
-    const [status, setStatus] = useState<"Active" | "Inactive">("Active");
+    const [status, setStatus] = useState<AppUser["status"]>("Active");
     const [error, setError] = useState<string | null>(null);
 
     const isSuperAdmin = currentUser.role === "super-admin";

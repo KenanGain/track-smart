@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, GraduationCap, Workflow as WorkflowIcon, Lock, Eye, Plus, FlaskConical, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, GraduationCap, Workflow as WorkflowIcon, Eye, Plus, FlaskConical, Search, X, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SubTabs } from "@/components/ui/SubTabs";
+import type { KebabItem } from "@/components/ui/KebabMenu";
+import { TableGroupBand, TablePager } from "@/components/ui/ListChrome";
+import { RowTable, NameCell, ActionsCell, Paged, ROW_CLS, CELL } from "./SetupTable";
 import { cn } from "@/lib/utils";
 import { policyDocuments, THEME_HEX } from "./policy-forms.data";
 import { ONBOARDING_FORMS, TRAINING_TYPES, TRAINING_CATEGORIES, useOnbWorkflows, type OnbWorkflow } from "./onboarding.data";
@@ -112,39 +115,32 @@ function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows
                     <Button className="mt-5" onClick={onNew}><Plus className="h-4 w-4" /> New Workflow</Button>
                 </div>
             ) : (
-                <div className="divide-y divide-slate-100">
-                    {workflows.map((w) => {
+                <Paged items={workflows}>{(rows) => (
+                <RowTable minW={640} cols={[{ label: "Workflow" }, { label: "Steps", w: "w-36" }, { label: "Checklist", w: "w-32" }]}>
+                    {rows.map((w) => {
                         const steps: [string, number][] = [["Policy forms", w.policyForms?.length ?? 0], ["Onboarding forms", w.forms.length], ["Documents", w.documents.length], ["Quizzes", w.quizzes.length], ["Training", w.trainings?.length ?? 0], ["Checklist", w.checklistId ? 1 : 0]];
                         const totalItems = steps.reduce((n, [, c]) => n + c, 0);
+                        const name = w.name || "Untitled workflow";
                         return (
-                            <div key={w.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                <div className="flex min-w-0 flex-1 items-start gap-4">
-                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><WorkflowIcon className="h-5 w-5" /></div>
-                                    <div className="min-w-0">
-                                        <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                            {w.name || "Untitled workflow"}
-                                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">7 steps · {totalItems} items</span>
-                                            {w.checklistId && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"><ListChecks className="h-2.5 w-2.5" /> Checklist</span>}
-                                        </p>
-                                        {w.description && <p className="truncate text-sm text-slate-500">{w.description}</p>}
-                                        <div className="mt-1.5 flex flex-wrap gap-1">
-                                            {steps.map(([label, n], i) => (
-                                                <span key={label} className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
-                                                    <span className="font-semibold text-slate-400">{i + 1}</span> {label} <span className="text-slate-300">·</span> <span className="text-slate-400">{n}</span>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => onTest(w.id)}><FlaskConical className="h-4 w-4" /> Test</Button>
-                                    <Button variant="outline" size="sm" onClick={() => onEdit(w.id)}>Edit</Button>
-                                    <Button variant="outline" size="sm" className="text-rose-500 hover:text-rose-600" onClick={() => { if (window.confirm(`Delete workflow “${w.name || "Untitled"}”?`)) onRemove(w.id); }}>Delete</Button>
-                                </div>
-                            </div>
+                            <tr key={w.id} className={ROW_CLS} onClick={() => onEdit(w.id)}>
+                                <NameCell icon={WorkflowIcon} accent="bg-violet-50 text-violet-600" name={name} sub={w.description} />
+                                {/* What each step holds is in the tooltip — the totals are what the list compares. */}
+                                <td className={CELL} title={steps.map(([label, n], i) => `${i + 1}. ${label} · ${n}`).join("\n")}>
+                                    <span className="whitespace-nowrap">7 steps <span className="text-slate-400">· {totalItems} items</span></span>
+                                </td>
+                                <td className={CELL}>
+                                    {w.checklistId ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><ListChecks className="h-3 w-3" /> Checklist</span> : <span className="text-slate-300">&mdash;</span>}
+                                </td>
+                                <ActionsCell name={name} items={[
+                                    { label: "Edit", icon: Pencil, onClick: () => onEdit(w.id) },
+                                    { label: "Test", icon: FlaskConical, onClick: () => onTest(w.id) },
+                                    { label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete workflow “${w.name || "Untitled"}”?`)) onRemove(w.id); } },
+                                ]} />
+                            </tr>
                         );
                     })}
-                </div>
+                </RowTable>
+                )}</Paged>
             )}
         </ListCard>
     );
@@ -213,35 +209,29 @@ function NewQuizModal({ onClose, onCreate }: { onClose: () => void; onCreate: (q
 }
 
 // ── Policy forms ─────────────────────────────────────────────────────────────
-function DocActions({ id, openDoc }: { id: string; openDoc: (id: string, pdf?: boolean) => void }) {
-    return (
-        <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => openDoc(id)}><FlaskConical className="h-4 w-4" /> Test</Button>
-            <Button variant="outline" size="sm" onClick={() => openDoc(id, true)}><Eye className="h-4 w-4" /> PDF view</Button>
-            <Button variant="outline" size="sm" onClick={() => openDoc(id)}>Open form <ArrowRight className="h-4 w-4" /></Button>
-        </div>
-    );
-}
+// A form's menu: open it, test it, or see it as a PDF.
+const docActions = (id: string, openDoc: (id: string, pdf?: boolean) => void): KebabItem[] => [
+    { label: "Open form", icon: ArrowRight, onClick: () => openDoc(id) },
+    { label: "Test", icon: FlaskConical, onClick: () => openDoc(id) },
+    { label: "PDF view", icon: Eye, onClick: () => openDoc(id, true) },
+];
 
 function PolicyTab({ docs, openDoc }: { docs: ReturnType<typeof policyDocuments>; openDoc: (id: string, pdf?: boolean) => void }) {
     return (
         <ListCard title="Policy forms" count={docs.length} searchPlaceholder="Search policy forms…">
-            <div className="divide-y divide-slate-100">
-                {docs.map((d) => (
-                    <div key={d.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${THEME_HEX[d.theme]}1a`, color: THEME_HEX[d.theme] }}>
-                                <FileSignature className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0">
-                                <p className="font-semibold text-slate-900">{d.title} <span style={{ color: THEME_HEX[d.theme] }}>{d.accentTitle}</span></p>
-                                <p className="truncate text-sm text-slate-500">{d.blurb}</p>
-                            </div>
-                        </div>
-                        <DocActions id={d.id} openDoc={openDoc} />
-                    </div>
-                ))}
-            </div>
+            <Paged items={docs}>{(rows) => (
+            <RowTable cols={[{ label: "Policy form" }]}>
+                {rows.map((d) => {
+                    const name = `${d.title} ${d.accentTitle}`.trim();
+                    return (
+                        <tr key={d.id} className={ROW_CLS} onClick={() => openDoc(d.id)}>
+                            <NameCell icon={FileSignature} iconStyle={{ backgroundColor: `${THEME_HEX[d.theme]}1a`, color: THEME_HEX[d.theme] }} name={name} sub={d.blurb} />
+                            <ActionsCell name={name} items={docActions(d.id, openDoc)} />
+                        </tr>
+                    );
+                })}
+            </RowTable>
+            )}</Paged>
         </ListCard>
     );
 }
@@ -249,20 +239,16 @@ function PolicyTab({ docs, openDoc }: { docs: ReturnType<typeof policyDocuments>
 function OnboardingFormsTab({ openDoc }: { openDoc: (id: string, pdf?: boolean) => void }) {
     return (
         <ListCard title="Onboarding forms" count={ONBOARDING_FORMS.length} searchPlaceholder="Search onboarding forms…">
-            <div className="divide-y divide-slate-100">
-                {ONBOARDING_FORMS.map((f) => (
-                    <div key={f.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-500"><FileText className="h-5 w-5" /></div>
-                            <div className="min-w-0">
-                                <p className="font-semibold text-slate-900">{f.label}</p>
-                                <p className="truncate text-sm text-slate-500">{f.desc}</p>
-                            </div>
-                        </div>
-                        <DocActions id={f.id} openDoc={openDoc} />
-                    </div>
+            <Paged items={ONBOARDING_FORMS}>{(rows) => (
+            <RowTable cols={[{ label: "Onboarding form" }]}>
+                {rows.map((f) => (
+                    <tr key={f.id} className={ROW_CLS} onClick={() => openDoc(f.id)}>
+                        <NameCell icon={FileText} accent="bg-teal-50 text-teal-500" name={f.label} sub={f.desc} />
+                        <ActionsCell name={f.label} items={docActions(f.id, openDoc)} />
+                    </tr>
                 ))}
-            </div>
+            </RowTable>
+            )}</Paged>
         </ListCard>
     );
 }
@@ -327,44 +313,26 @@ function DocumentsTab({ templates, onNew, onEdit, onPreview, onRemove }: { templ
                 </div>
             ) : (
                 <>
-                    <div className="divide-y divide-slate-100 px-5">
+                    <RowTable minW={720} cols={[{ label: "Template" }, { label: "Type", w: "w-28" }, { label: "Documents", w: "w-28" }, { label: "Pages", w: "w-24" }, { label: "Fields", w: "w-24" }]}>
                         {paged.map((t) => (
-                            <div key={t.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
-                                <div className="flex min-w-0 flex-1 items-center gap-4">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500"><FileSignature className="h-5 w-5" /></div>
-                                    <div className="min-w-0">
-                                        <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                            {t.name}
-                                            {t.documents.length > 1 && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">{t.documents.length} docs</span>}
-                                        </p>
-                                        <p className="truncate text-sm text-slate-500">{t.documents.length} document{t.documents.length !== 1 ? "s" : ""} · {totalPages(t)} page{totalPages(t) !== 1 ? "s" : ""} · {t.fields.length} field{t.fields.length !== 1 ? "s" : ""}</p>
-                                    </div>
-                                </div>
-                                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => onPreview(t.id)}><Eye className="h-4 w-4" /> Preview</Button>
-                                    <Button variant="outline" size="sm" onClick={() => onEdit(t.id)}>Edit</Button>
-                                    <Button variant="outline" size="sm" className="text-rose-500 hover:text-rose-600" onClick={() => { if (window.confirm(`Delete template “${t.name}”?`)) onRemove(t.id); }}>Delete</Button>
-                                </div>
-                            </div>
+                            <tr key={t.id} className={ROW_CLS} onClick={() => onEdit(t.id)}>
+                                <NameCell icon={FileSignature} accent="bg-blue-50 text-blue-500" name={t.name} sub={t.documents.map((d) => d.fileName).join(", ")} />
+                                <td className={CELL}>
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", t.documents.length > 1 ? "bg-violet-50 text-violet-600" : "bg-slate-100 text-slate-500")}>{t.documents.length > 1 ? "Combined" : "Single"}</span>
+                                </td>
+                                <td className={CELL}>{t.documents.length}</td>
+                                <td className={CELL}>{totalPages(t)}</td>
+                                <td className={CELL}>{t.fields.length}</td>
+                                <ActionsCell name={t.name} items={[
+                                    { label: "Edit", icon: Pencil, onClick: () => onEdit(t.id) },
+                                    { label: "Preview", icon: Eye, onClick: () => onPreview(t.id) },
+                                    { label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete template “${t.name}”?`)) onRemove(t.id); } },
+                                ]} />
+                            </tr>
                         ))}
-                    </div>
-                    {/* Pagination footer */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm">
-                        <div className="flex items-center gap-2 text-slate-500">
-                            <span>Rows</span>
-                            <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700">
-                                {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                            <span className="text-slate-400">{startIdx + 1}–{Math.min(startIdx + pageSize, shown.length)} of {shown.length}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <button type="button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Prev</button>
-                            <span className="px-2 text-xs font-medium text-slate-500">Page {safePage} of {pageCount}</span>
-                            <button type="button" disabled={safePage >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                                className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next <ChevronRight className="h-4 w-4" /></button>
-                        </div>
-                    </div>
+                    </RowTable>
+                    <TablePager page={safePage} pageSize={pageSize} total={shown.length}
+                        onPage={setPage} onPageSize={setPageSize} className="rounded-b-xl bg-slate-50/60" />
                 </>
             )}
         </div>
@@ -373,87 +341,79 @@ function DocumentsTab({ templates, onNew, onEdit, onPreview, onRemove }: { templ
 
 // ── Quizzes (onboarding-specific catalog) ────────────────────────────────────
 function QuizzesTab({ quizzes, onPreview, onRemove, onNew }: { quizzes: ReturnType<typeof useOnboardingQuizzes>["quizzes"]; onPreview: (id: string) => void; onRemove: (id: string) => void; onNew: () => void }) {
+    // Quizzes in category order, flat — paged first, then grouped, so the pager counts quizzes.
     const order = [...ONB_QUIZ_CATEGORIES] as string[];
-    const cats = Array.from(new Set(quizzes.map((x) => x.category)))
-        .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+    const rank = (c: string) => order.indexOf(c) + 1 || 99;
+    const sorted = [...quizzes].sort((a, b) => rank(a.category) - rank(b.category));
     return (
         <ListCard title="Quizzes" count={quizzes.length} searchPlaceholder="Search quizzes…"
             action={<Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> New Quiz</Button>}>
-            <div>
-                {cats.map((cat) => {
-                    const list = quizzes.filter((x) => x.category === cat);
-                    return (
-                        <div key={cat}>
-                            <div className="flex items-center gap-2 border-y border-slate-100 bg-slate-50/80 px-5 py-2 first:border-t-0">
-                                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</span>
-                                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">{list.length}</span>
-                            </div>
-                            <div className="divide-y divide-slate-100 px-5">
-                                {list.map((qz) => (
-                                    <div key={qz.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"><ClipboardList className="h-5 w-5" /></div>
-                                            <div className="min-w-0">
-                                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                                    {qz.title}
-                                                    {qz.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{qz.questions.length} questions · pass {qz.passPct}%</span>
-                                                </p>
-                                                {qz.description && <p className="truncate text-sm text-slate-500">{qz.description}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 justify-end gap-2">
-                                            <Button variant="outline" size="sm" onClick={() => onPreview(qz.id)}><Eye className="h-4 w-4" /> Preview</Button>
-                                            {!qz.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete quiz “${qz.title}”?`)) onRemove(qz.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+            <Paged items={sorted}>{(rows) => (
+            <RowTable cols={[{ label: "Quiz" }, { label: "Questions", w: "w-28" }, { label: "Pass mark", w: "w-28" }]}>
+                {rows.flatMap((qz, i) => [
+                        // A band wherever a category starts on this page; it counts the whole category.
+                        ...(i === 0 || rows[i - 1].category !== qz.category
+                            ? [<TableGroupBand key={`band-${qz.category}`} label={qz.category} count={quizzes.filter((x) => x.category === qz.category).length} colSpan={QUIZ_COLS} />]
+                            : []),
+                        (
+                            <tr key={qz.id} className={ROW_CLS} onClick={() => onPreview(qz.id)}>
+                                <NameCell icon={ClipboardList} accent="bg-sky-50 text-sky-600" name={qz.title} sub={qz.description} locked={qz.locked} />
+                                <td className={CELL}>{qz.questions.length}</td>
+                                <td className={CELL}>{qz.passPct}%</td>
+                                <ActionsCell name={qz.title} items={[
+                                    { label: "Preview", icon: Eye, onClick: () => onPreview(qz.id) },
+                                    ...(!qz.locked ? [{ label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete quiz “${qz.title}”?`)) onRemove(qz.id); } }] : []),
+                                ]} />
+                            </tr>
+                        ),
+                ])}
+            </RowTable>
+            )}</Paged>
         </ListCard>
     );
 }
 
 // ── Training (catalog, grouped by category) ──────────────────────────────────
 function TrainingTab() {
-    const cats = TRAINING_CATEGORIES.filter((c) => ACTIVE_TRAININGS.some((t) => t.category === c));
+    // Category order, flat — paged first, then grouped (same as the quiz list).
+    const sorted = sortByCategory(ACTIVE_TRAININGS, TRAINING_CATEGORIES);
     return (
         <ListCard title="Training" count={ACTIVE_TRAININGS.length} searchPlaceholder="Search training…">
-            <div>
-                {cats.map((cat) => {
-                    const list = ACTIVE_TRAININGS.filter((t) => t.category === cat);
-                    return (
-                        <div key={cat}>
-                            <div className="flex items-center gap-2 border-y border-slate-100 bg-slate-50/80 px-5 py-2 first:border-t-0">
-                                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</span>
-                                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">{list.length}</span>
-                            </div>
-                            <div className="divide-y divide-slate-100 px-5">
-                                {list.map((t) => (
-                                    <div key={t.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><GraduationCap className="h-5 w-5" /></div>
-                                            <div className="min-w-0">
-                                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                                    {t.name}
-                                                    {t.defaultMandatory && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">Mandatory</span>}
-                                                    {t.defaultAssessment?.enabled && <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-600">Assessment {t.defaultAssessment.passingScore}%</span>}
-                                                </p>
-                                                <p className="truncate text-sm text-slate-500">Due in {t.defaultDueDays} days · {t.defaultDeliveryModes.map((m) => m.replace(/_/g, " ")).join(", ")}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+            <Paged items={sorted}>{(rows) => (
+            <RowTable noActions minW={720} cols={[{ label: "Training" }, { label: "Due", w: "w-28" }, { label: "Delivery", w: "w-48" }, { label: "Assessment", w: "w-32" }]}>
+                {rows.map((t, i) => (
+                    <TrainingRow key={t.id} t={t} band={i === 0 || rows[i - 1].category !== t.category} />
+                ))}
+            </RowTable>
+            )}</Paged>
         </ListCard>
     );
+}
+
+// One training course, with its category band above it when it opens a category on the page.
+function TrainingRow({ t, band }: { t: (typeof ACTIVE_TRAININGS)[number]; band: boolean }) {
+    const assessment = t.defaultAssessment;
+    return (
+        <>
+            {band && <TableGroupBand label={t.category} count={ACTIVE_TRAININGS.filter((x) => x.category === t.category).length} colSpan={TRAINING_COLS} />}
+            <tr className="transition-colors hover:bg-slate-50/70">
+                <NameCell icon={GraduationCap} accent="bg-indigo-50 text-indigo-600" name={t.name} sub={t.defaultMandatory ? "Mandatory" : "Optional"} />
+                <td className={CELL}>{t.defaultDueDays} days</td>
+                <td className={CELL}><span className="block truncate capitalize" title={deliveryText(t.defaultDeliveryModes)}>{deliveryText(t.defaultDeliveryModes)}</span></td>
+                <td className={CELL}>
+                    {assessment?.enabled
+                        ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-600">{assessment.passingScore}% to pass</span>
+                        : <span className="text-slate-300">&mdash;</span>}
+                </td>
+            </tr>
+        </>
+    );
+}
+
+// A list in the order its categories are declared (unknown categories last), flat.
+function sortByCategory<T extends { category: string }>(list: readonly T[], order: readonly string[]): T[] {
+    const rank = (c: string) => order.indexOf(c) + 1 || 99;
+    return [...list].sort((a, b) => rank(a.category) - rank(b.category));
 }
 
 // ── Checklist ────────────────────────────────────────────────────────────────
@@ -461,27 +421,30 @@ function ChecklistsTab({ checklists, onEdit, onRemove }: { checklists: ReturnTyp
     return (
         <ListCard title="Checklist" count={checklists.length} searchPlaceholder="Search checklists…"
             action={<Button size="sm" onClick={() => onEdit("new")}><Plus className="h-4 w-4" /> New Checklist</Button>}>
-            <div className="divide-y divide-slate-100">
-                {checklists.map((c) => (
-                    <div key={c.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><ListChecks className="h-5 w-5" /></div>
-                            <div className="min-w-0">
-                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                    {c.name}
-                                    {c.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{c.stages.length} stages · {totalChecklistItems(c)} items</span>
-                                </p>
-                                {c.description && <p className="truncate text-sm text-slate-500">{c.description}</p>}
-                            </div>
-                        </div>
-                        <div className="flex shrink-0 justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => onEdit(c.id)}>Edit</Button>
-                            {!c.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete checklist “${c.name}”?`)) onRemove(c.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
-                        </div>
-                    </div>
+            <Paged items={checklists}>{(rows) => (
+            <RowTable cols={[{ label: "Checklist" }, { label: "Stages", w: "w-28" }, { label: "Items", w: "w-28" }]}>
+                {rows.map((c) => (
+                    <tr key={c.id} className={ROW_CLS} onClick={() => onEdit(c.id)}>
+                        <NameCell icon={ListChecks} accent="bg-emerald-50 text-emerald-600" name={c.name} sub={c.description} locked={c.locked} />
+                        <td className={CELL}>{c.stages.length}</td>
+                        <td className={CELL}>{totalChecklistItems(c)}</td>
+                        <ActionsCell name={c.name} items={[
+                            { label: "Edit", icon: Pencil, onClick: () => onEdit(c.id) },
+                            ...(!c.locked ? [{ label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete checklist “${c.name}”?`)) onRemove(c.id); } }] : []),
+                        ]} />
+                    </tr>
                 ))}
-            </div>
+            </RowTable>
+            )}</Paged>
         </ListCard>
     );
 }
+
+// Quiz table columns: name · questions · pass mark · actions (the group band spans them all).
+const QUIZ_COLS = 4;
+
+// Training table columns: name · due · delivery · assessment (no actions column).
+const TRAINING_COLS = 4;
+// "in_person" → "in person", joined. split/join rather than a regex literal: a regex inside
+// a JSX attribute here tripped Vite's import scanner on the minified bundle.
+const deliveryText = (modes: string[]) => modes.map((m) => m.split("_").join(" ")).join(", ");

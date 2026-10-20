@@ -25,10 +25,30 @@ import {
 import { cn } from "@/lib/utils";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
-import { KpiStatCard } from "@/components/ui/KpiStatCard";
+import { KpiStatRow } from "@/components/ui/KpiStatCard";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { PaginationBar } from "@/components/ui/DataListToolbar";
-import { TableGroupBand } from "@/components/ui/ListChrome";
+import {
+    ColumnPicker, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
+
+/** The sortable columns on this list. */
+type InspCol = "stage" | "date" | "level" | "location" | "units" | "driver" | "result"
+    | "violations" | "citation" | "documents" | "actions";
+/** The columns a reader can turn off. The stage identifies the row; the menu acts on it. */
+const INSP_COLUMNS: PickerColumn<InspCol>[] = [
+    { id: "stage", label: "Stage", locked: true },
+    { id: "date", label: "Date" },
+    { id: "level", label: "Level" },
+    { id: "location", label: "Location" },
+    { id: "units", label: "Units" },
+    { id: "driver", label: "Driver" },
+    { id: "result", label: "Result" },
+    { id: "violations", label: "Violations" },
+    { id: "citation", label: "Citation" },
+    { id: "documents", label: "Documents" },
+    { id: "actions", label: "Actions", locked: true },
+];
 import { ShareToChat, type ShareItem } from "@/components/share/ShareToChat";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
 import { currentUserName } from "@/data/users.data";
@@ -177,13 +197,44 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
      * In that order on purpose: paging first would scatter one driver's rows
      * across three pages under three copies of the same band.
      */
+    /*
+     * What each column sorts by.
+     *
+     * Stage sorts by how much is still owed on the inspection rather than by its name:
+     * awaiting remediation first, then awaiting a bill, then closed and clean. Sorting
+     * these alphabetically would put "Awaiting repair bill" above "Awaiting remediation"
+     * and bury "Clean" in the middle, which is no order at all.
+     */
+    const [visibleCols, setVisibleCols] = useState<Set<InspCol>>(() => new Set(INSP_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: InspCol) => setVisibleCols((prev) => {
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+    });
+    const showCol = (id: InspCol) => visibleCols.has(id);
+    const colCount = INSP_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+
+    const byCol = useTableSort<InspCol, typeof filtered[number]>(filtered, {
+        stage: (i) => ({ "awaiting-report": 0, "awaiting-repair": 1, closed: 2, clean: 3 } as Record<string, number>)[inspectionStage(i)] ?? 9,
+        date: (i) => i.date,
+        level: (i) => i.level,
+        location: (i) => i.location ?? "",
+        // The power unit first, then the trailer: the unit a reader looks a row up by.
+        units: (i) => i.truck.label ?? i.trailer.label ?? "",
+        driver: (i) => i.driver.label ?? "",
+        // Fail before pass, so what went wrong comes to the top.
+        result: (i) => (i.result === "Pass" ? 1 : 0),
+        violations: (i) => i.truck.violations.length + i.trailer.violations.length + i.driver.violations.length,
+        citation: (i) => i.citationNumber ?? "",
+    });
+    const { sort, onSort } = byCol;
+
     const sorted = useMemo(() => {
-        if (groupBy === "none") return filtered;
-        return [...filtered].sort((a, b) => {
+        if (groupBy === "none") return byCol.sorted;
+        return [...byCol.sorted].sort((a, b) => {
             const ga = groupOf(a, groupBy), gb = groupOf(b, groupBy);
             return ga === gb ? (a.date < b.date ? 1 : -1) : ga.localeCompare(gb);
         });
-    }, [filtered, groupBy]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [byCol.sorted, groupBy]);
 
     const groupCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -266,20 +317,16 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
             <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
                 <div className={cn("space-y-4 py-4 sm:space-y-5 sm:py-6", PAGE_PAD)}>
 
-                    {/* Stages, not totals — and each one is the filter for itself. */}
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        {kpis.map((k) => (
-                            <KpiStatCard
-                                key={k.id}
-                                label={k.label}
-                                value={k.value}
-                                Icon={k.Icon}
-                                accent={k.accent}
-                                active={stage === k.id}
-                                onClick={() => setStage((s) => (s === k.id ? "all" : k.id))}
-                            />
-                        ))}
-                    </div>
+                    {/* Stages, not totals — and each one is the filter for itself.
+                        Through the shared row, so the cards sit in containers and can size
+                        themselves: laid out by hand they had none, the width query never
+                        matched, and every tile here was stuck in its narrow form however
+                        much room the page had. */}
+                    <KpiStatRow
+                        stats={kpis.map((k) => ({ id: k.id, label: k.label, value: k.value, Icon: k.Icon, accent: k.accent }))}
+                        activeId={stage}
+                        onPick={(id) => setStage((s) => (s === id ? "all" : (id as StageFilter)))}
+                    />
 
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         {/* Filters. They wrap rather than scroll: on a phone this becomes three
@@ -321,6 +368,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                     oosOnly ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}>
                                 <ShieldAlert size={14} /> <span className="hidden sm:inline">Out of service</span><span className="sm:hidden">OOS</span>
                             </button>
+                            <ColumnPicker columns={INSP_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                             {anyFilter && (
                                 <button type="button" onClick={clear}
                                     className="inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-slate-500 hover:text-slate-700">
@@ -335,17 +383,17 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                             <table className="w-full min-w-[1080px]">
                                 <thead className="border-b border-slate-200 bg-slate-50">
                                     <tr>
-                                        <th className={TH}>Stage</th>
-                                        <th className={TH}>Date</th>
-                                        <th className={TH}>Level</th>
-                                        <th className={TH}>Location</th>
-                                        <th className={TH}>Units</th>
-                                        <th className={TH}>Driver</th>
-                                        <th className={TH}>Result</th>
-                                        <th className={TH}>Violations</th>
-                                        <th className={TH}>Citation</th>
-                                        <th className={TH}>Documents</th>
-                                        <th className={cn(TH, "pr-2 text-right")}>Actions</th>
+                                        <SortTh col="stage" label="Stage" sortable sort={sort} onSort={onSort} className={TH} />
+                                        {showCol("date") && <SortTh col="date" label="Date" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("level") && <SortTh col="level" label="Level" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("location") && <SortTh col="location" label="Location" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("units") && <SortTh col="units" label="Units" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("driver") && <SortTh col="driver" label="Driver" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("result") && <SortTh col="result" label="Result" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("violations") && <SortTh col="violations" label="Violations" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("citation") && <SortTh col="citation" label="Citation" sortable sort={sort} onSort={onSort} className={TH} />}
+                                        {showCol("documents") && <th className={TH}>Documents</th>}
+                                        <th className={cn(TH, "sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right")}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -356,7 +404,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                         const prev = idx === 0 || groupBy === "none" ? null : groupOf(paged[idx - 1], groupBy);
                                         const rows = [];
                                         if (band && band !== prev) {
-                                            rows.push(<TableGroupBand key={`band-${band}`} label={band} count={groupCounts.get(band) ?? 0} colSpan={11} />);
+                                            rows.push(<TableGroupBand key={`band-${band}`} label={band} count={groupCounts.get(band) ?? 0} colSpan={colCount} />);
                                         }
                                         rows.push(
                                             <tr key={i.id} onClick={() => open(i.id)}
@@ -368,15 +416,28 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                                 </td>
                                                 {/* Date and duration on ONE line: a second line here is what made
                                                     every row in the table two rows tall. */}
+                                                {showCol("date") && (
                                                 <td className={cn(TD, "font-semibold text-slate-800")}>
                                                     {i.date}
                                                     <span className="ml-2 font-normal tabular-nums text-slate-400">{durationLabel(i)}</span>
                                                 </td>
+                                                )}
+                                                {showCol("level") && (
                                                 <td className={cn(TD, "text-slate-600")}>{shortLevel(i.level)}</td>
+                                                )}
+                                                {showCol("location") && (
                                                 <td className={cn(TD, "max-w-[220px] truncate text-slate-600")} title={i.location}>{i.location || "—"}</td>
+                                                )}
+                                                {showCol("units") && (
                                                 <td className={cn(TD, "text-slate-700")}>{unitsLabel(i)}</td>
+                                                )}
+                                                {showCol("driver") && (
                                                 <td className={cn(TD, "text-slate-700")}>{i.driver.label ?? "—"}</td>
+                                                )}
+                                                {showCol("result") && (
                                                 <td className={TD}><ResultBadge i={i} /></td>
+                                                )}
+                                                {showCol("violations") && (
                                                 <td className={cn(TD, "max-w-[220px] truncate text-slate-600")}
                                                     title={vios.map((v) => `${v.code ? `[${v.code}] ` : ""}${v.label}`).join(", ")}>
                                                     {vios.length === 0
@@ -388,12 +449,17 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                                             </span>
                                                         </>}
                                                 </td>
+                                                )}
+                                                {showCol("citation") && (
                                                 <td className={cn(TD, "tabular-nums text-slate-600")}>
                                                     {i.citationIssued ? (i.citationNumber || "Issued") : <span className="text-slate-300">&mdash;</span>}
                                                 </td>
+                                                )}
+                                                {showCol("documents") && (
                                                 <td className={TD}><DocMarks i={i} /></td>
+                                                )}
                                                 {/* The row opens on click; the menu must not. */}
-                                                <td className={cn(TD, "pr-2")} onClick={(e) => e.stopPropagation()}>
+                                                <td className={cn(TD, "sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5")} onClick={(e) => e.stopPropagation()}>
                                                     <div className="flex justify-end">
                                                         <KebabMenu items={rowActions(i)} title="Inspection actions" />
                                                     </div>
@@ -404,7 +470,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                     })}
                                     {paged.length === 0 && (
                                         <tr>
-                                            <td colSpan={11} className="px-4 py-14 text-center">
+                                            <td colSpan={colCount} className="px-4 py-14 text-center">
                                                 <EmptyState all={all.length} onAdd={() => onNavigate("/roadside-inspections/new")} />
                                             </td>
                                         </tr>

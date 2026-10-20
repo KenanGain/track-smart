@@ -35,7 +35,24 @@ import { INVENTORY_TABS } from "./InventoryTabs";
 import { ListPageHeader, PAGE_PAD } from "@/components/ui/ListPageHeader";
 import { useCondensingHeader } from "@/components/ui/use-condensing-header";
 import { TablePager } from "./TablePager";
-import { FilterChip, ResetFilters, TableGroupBand } from "@/components/ui/ListChrome";
+import {
+    ColumnPicker, FilterChip, ResetFilters, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
+
+/** The columns a reader can turn off. The item and its menu stay. */
+const ITEM_COLUMNS: PickerColumn<ItemCol>[] = [
+    { id: "item", label: "Item", locked: true },
+    { id: "number", label: "Number / PIN" },
+    { id: "issued", label: "Issued" },
+    { id: "expires", label: "Expires" },
+    { id: "asset", label: "Asset" },
+    { id: "driver", label: "Driver" },
+    { id: "status", label: "Status" },
+    { id: "actions", label: "Actions", locked: true },
+];
+
+/** The sortable columns on this list. */
+type ItemCol = "item" | "number" | "issued" | "expires" | "asset" | "driver" | "status" | "actions";
 import { VendorCategoriesModal } from "./VendorCategoriesModal";
 import { TabScroller } from "@/components/ui/TabScroller";
 import { visualFor } from "./inventory-visuals";
@@ -317,15 +334,40 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             : { rank: 1, label: "Available" };
     };
 
+    /*
+     * What each column sorts by.
+     *
+     * The dates sort as the ISO strings they are stored as, which sorts chronologically
+     * without parsing. Status sorts by urgency — expired, expiring, active — rather than
+     * alphabetically, because the reason to sort this column is to bring the lapsed to the
+     * top, and "Active" would otherwise come first.
+     */
+    const [visibleCols, setVisibleCols] = useState<Set<ItemCol>>(() => new Set(ITEM_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: ItemCol) => setVisibleCols((prev) => {
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+    });
+    const showCol = (id: ItemCol) => visibleCols.has(id);
+    const colCount = ITEM_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+
+    const { sort, onSort, sorted } = useTableSort<ItemCol, InventoryItem>(rows, {
+        item: (it) => itemName(it),
+        number: (it) => it.serial || it.pin,
+        issued: (it) => it.issueDate,
+        expires: (it) => it.expiryDate,
+        asset: (it) => (it.assignedTo && it.assignedTo.kind !== "driver" ? it.assignedTo.targetId : ""),
+        driver: (it) => it.assignedDriverId ?? "",
+        status: (it) => STATUS_RANK[it.status] ?? 9,
+    });
+
     // Grouped before the page is cut, so a band is never split across two pages.
     const groupedRows = useMemo(() => {
-        if (groupBy === "none") return rows;
-        return [...rows].sort((a, b) => {
+        if (groupBy === "none") return sorted;
+        return [...sorted].sort((a, b) => {
             const ga = groupOfItem(a), gb = groupOfItem(b);
             return ga.rank - gb.rank || ga.label.localeCompare(gb.label);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows, groupBy]);
+    }, [sorted, groupBy]);
 
     const groupCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -444,6 +486,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     >
                         {INV_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                    <ColumnPicker columns={ITEM_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                     {/* Four controls can be left set at once — the assignment chips, the
                         category tab, the grouping and the search box. This puts all four
                         back, and is only here while one of them is set. */}
@@ -484,18 +527,18 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                         <table className="w-full">
                             <thead>
                                 <tr>
-                                    <TH>Item</TH>
-                                    <TH className="border-l border-slate-200">Number / PIN</TH>
+                                    <SortTh col="item" label="Item" sortable sort={sort} onSort={onSort} />
+                                    {showCol("number") && <SortTh col="number" label="Number / PIN" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
                                     {/* Two dates, two columns: when it started, and when it runs out.
                                         The alert is a bell beside the expiry it counts back from — a whole
                                         column for it pushed Asset, Driver and Status off the right edge,
                                         and the detail page's Monitoring tab has the full schedule. */}
-                                    <TH className="border-l border-slate-200">Issued</TH>
-                                    <TH className="border-l border-slate-200">Expires</TH>
-                                    <TH className="border-l border-slate-200">Asset</TH>
-                                    <TH className="border-l border-slate-200">Driver</TH>
-                                    <TH className="border-l border-slate-200">Status</TH>
-                                    <TH className="w-px text-right border-l border-slate-200">Actions</TH>
+                                    {showCol("issued") && <SortTh col="issued" label="Issued" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
+                                    {showCol("expires") && <SortTh col="expires" label="Expires" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
+                                    {showCol("asset") && <SortTh col="asset" label="Asset" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
+                                    {showCol("driver") && <SortTh col="driver" label="Driver" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
+                                    {showCol("status") && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className="border-l border-slate-200" />}
+                                    <TH className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right">Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -509,7 +552,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                     return (
                                         <Fragment key={item.id}>
                                         {g && (!prev || prev.label !== g.label) && (
-                                            <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={8} />
+                                            <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={colCount} />
                                         )}
                                         <tr
                                             // The row opens the item. Reading one used to mean opening the EDITOR,
@@ -546,16 +589,21 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     </div>
                                                 </div>
                                             </TD>
+                                            {showCol("number") && (
                                             <TD className="border-l border-slate-100">
                                                 <div className="font-mono text-xs leading-tight text-slate-700">{item.serial}</div>
                                                 {item.pin && <div className="font-mono text-[11px] leading-tight text-slate-400">PIN {item.pin}</div>}
                                             </TD>
+                                            )}
+                                            {showCol("issued") && (
                                             <TD className="border-l border-slate-100">
                                                 <div className="text-xs leading-tight text-slate-600">{fmtDate(item.issueDate)}</div>
                                             </TD>
+                                            )}
                                             {/* An item with no expiry is not missing one — a yard key never runs out.
                                                 Where there IS one, the bell says whether anybody gets told: a date with
                                                 a muted bell is the row that will quietly lapse. */}
+                                            {showCol("expires") && (
                                             <TD className="border-l border-slate-100">
                                                 <div className="flex items-center gap-1 text-xs leading-tight text-slate-600">
                                                     {item.expiryDate ? (
@@ -583,7 +631,9 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     )}
                                                 </div>
                                             </TD>
+                                            )}
                                             {/* The vehicle — blank when the item is on a person, or on nobody. */}
+                                            {showCol("asset") && (
                                             <TD className="border-l border-slate-100">
                                                 {onAsset ? (
                                                     <div className="flex items-center gap-2 min-w-0">
@@ -602,8 +652,10 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     <span className="text-xs text-slate-300">—</span>
                                                 )}
                                             </TD>
+                                            )}
                                             {/* The person this is filed against. One route, because there
                                                 is only one: somebody put it on them. */}
+                                            {showCol("driver") && (
                                             <TD className="border-l border-slate-100">
                                                 {withDriver ? (
                                                     <div className="flex items-center gap-2 min-w-0">
@@ -627,6 +679,8 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     <span className="text-xs text-slate-300">—</span>
                                                 )}
                                             </TD>
+                                            )}
+                                            {showCol("status") && (
                                             <TD className="border-l border-slate-100">
                                                 <span className={cn(
                                                     "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
@@ -636,9 +690,10 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                                     {item.status}
                                                 </span>
                                             </TD>
+                                            )}
                                             {/* The row opens the item, so every control in here stops the click
                                                 reaching it — otherwise Edit would open the item and then the editor. */}
-                                            <TD className="w-px border-l border-slate-100 text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
+                                            <TD className="sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-end gap-0.5">
                                                     <button
                                                         type="button"

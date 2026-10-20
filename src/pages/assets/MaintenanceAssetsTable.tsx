@@ -21,7 +21,24 @@ import { KebabMenu } from '@/components/ui/KebabMenu';
 import { ShareToChat } from '@/components/share/ShareToChat';
 import { KpiTile } from '@/pages/inventory/InventoryKpi';
 import { TablePager } from '@/pages/inventory/TablePager';
-import { FilterChip, ResetFilters, TableGroupBand } from '@/components/ui/ListChrome';
+import {
+    ColumnPicker, FilterChip, ResetFilters, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from '@/components/ui/ListChrome';
+
+/** The sortable columns on this list. */
+type FleetCol = 'asset' | 'driver' | 'odometer' | 'hours' | 'intervals' | 'due' | 'dueIn' | 'status' | 'actions';
+/** The columns a reader can turn off. The unit and its menu stay. */
+const FLEET_COLUMNS: PickerColumn<FleetCol>[] = [
+    { id: 'asset', label: 'Asset', locked: true },
+    { id: 'driver', label: 'Driver' },
+    { id: 'odometer', label: 'Odometer' },
+    { id: 'hours', label: 'Engine Hours' },
+    { id: 'intervals', label: 'Intervals' },
+    { id: 'due', label: 'Next Due' },
+    { id: 'dueIn', label: 'Due In' },
+    { id: 'status', label: 'Status' },
+    { id: 'actions', label: 'Actions', locked: true },
+];
 import type { AssetEnrollment, AssetState, ClockDue, PmTierId } from './service-intervals';
 import { cn } from '@/lib/utils';
 
@@ -172,14 +189,40 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
         return r.kind === 'truck' ? { rank: 0, label: 'Trucks' } : { rank: 1, label: 'Trailers' };
     };
 
+    /*
+     * What each column sorts by.
+     *
+     * Status sorts by how bad it is — overdue, due, upcoming, not tracking — not by the
+     * word, because the only reason to sort this column is to bring the worst to the top.
+     * "Due in" sorts on the soonest clock's share of its interval, which is the one figure
+     * that compares a rule measured in miles against one measured in days.
+     */
+    const [visibleCols, setVisibleCols] = useState<Set<FleetCol>>(() => new Set(FLEET_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: FleetCol) => setVisibleCols((prev) => {
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+    });
+    const showCol = (id: FleetCol) => visibleCols.has(id);
+    const colCount = FLEET_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+
+    const { sort, onSort, sorted } = useTableSort<FleetCol, MaintenanceAssetRow>(filtered, {
+        asset: (r) => r.label,
+        driver: (r) => r.driver ?? '',
+        odometer: (r) => r.meter.odometer,
+        hours: (r) => r.meter.engineHours,
+        intervals: (r) => r.lines.length,
+        due: (r) => r.next?.due?.at ?? '',
+        dueIn: (r) => r.next?.clocks?.[0]?.share ?? null,
+        status: (r) => ({ overdue: 0, due: 1, upcoming: 2, untracked: 3, none: 4 }[r.state]),
+    });
+
     const banded = useMemo(() => {
-        if (groupBy === 'none') return filtered;
-        return [...filtered].sort((a, b) => {
+        if (groupBy === 'none') return sorted;
+        return [...sorted].sort((a, b) => {
             const ba = bandOf(a), bb = bandOf(b);
             return ba.rank - bb.rank || ba.label.localeCompare(bb.label);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtered, groupBy]);
+    }, [sorted, groupBy]);
 
     const bandCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -251,6 +294,7 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                     >
                         {GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                    <ColumnPicker columns={FLEET_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                     <ResetFilters
                         on={filter !== 'all' || groupBy !== 'none' || search.trim() !== ''}
                         onReset={() => { setFilter('all'); setGroupBy('none'); setSearch(''); }}
@@ -262,21 +306,21 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                         <table className="w-full min-w-[1080px]">
                             <thead>
                                 <tr>
-                                    <TH>Asset</TH>
-                                    <TH className={COL_RULE}>Driver</TH>
-                                    <TH className={COL_RULE}>Odometer</TH>
-                                    <TH className={COL_RULE}>Engine Hours</TH>
-                                    <TH className={COL_RULE}>Intervals</TH>
-                                    <TH className={COL_RULE}>Next Due</TH>
-                                    <TH className={COL_RULE}>Due In</TH>
-                                    <TH className={COL_RULE}>Status</TH>
-                                    <TH className={cn(COL_RULE, 'text-right')}>Actions</TH>
+                                    <SortTh col="asset" label="Asset" sortable sort={sort} onSort={onSort} />
+                                    {showCol('driver') && <SortTh col="driver" label="Driver" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('odometer') && <SortTh col="odometer" label="Odometer" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('hours') && <SortTh col="hours" label="Engine Hours" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('intervals') && <SortTh col="intervals" label="Intervals" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('due') && <SortTh col="due" label="Next Due" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('dueIn') && <SortTh col="dueIn" label="Due In" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    <TH className={cn('sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right')}>Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {paged.length === 0 && (
                                     <EmptyRow
-                                        colSpan={9}
+                                        colSpan={colCount}
                                         Icon={Truck}
                                         title={rows.length === 0 ? 'No assets on this carrier yet' : 'No asset matches this view'}
                                         onClear={rows.length === 0 ? undefined : () => {
@@ -290,7 +334,7 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                                     return (
                                         <Fragment key={r.id}>
                                         {band && (!prevBand || prevBand.label !== band.label) && (
-                                            <TableGroupBand label={band.label} count={bandCounts.get(band.label) ?? 0} colSpan={9} />
+                                            <TableGroupBand label={band.label} count={bandCounts.get(band.label) ?? 0} colSpan={colCount} />
                                         )}
                                         <tr
                                             className="cursor-pointer transition-colors hover:bg-slate-50/60"
@@ -318,17 +362,24 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                                                     </div>
                                                 </div>
                                             </TD>
+                                            {showCol('driver') && (
                                             <TD className={COL_RULE}>
                                                 {r.driver
                                                     ? <span className="whitespace-nowrap text-sm text-slate-700">{r.driver}</span>
                                                     : <span className="text-sm text-slate-300">—</span>}
                                             </TD>
+                                            )}
+                                            {showCol('odometer') && (
                                             <TD className={cn(COL_RULE, 'whitespace-nowrap tabular-nums text-slate-700')}>
                                                 {r.meter.odometer ? `${r.meter.odometer.toLocaleString()} mi` : <span className="text-slate-300">—</span>}
                                             </TD>
+                                            )}
+                                            {showCol('hours') && (
                                             <TD className={cn(COL_RULE, 'whitespace-nowrap tabular-nums text-slate-700')}>
                                                 {r.meter.engineHours ? `${r.meter.engineHours.toLocaleString()} h` : <span className="text-slate-300">—</span>}
                                             </TD>
+                                            )}
+                                            {showCol('intervals') && (
                                             <TD className={COL_RULE}>
                                                 {r.lines.length === 0
                                                     ? <span className="text-sm text-slate-300">None</span>
@@ -341,6 +392,8 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                                                         </div>
                                                     )}
                                             </TD>
+                                            )}
+                                            {showCol('due') && (
                                             <TD className={COL_RULE}>
                                                 {r.next?.due ? (<>
                                                     <div className="whitespace-nowrap font-medium leading-tight tabular-nums text-slate-900">{r.next.due.at}</div>
@@ -349,6 +402,8 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                                                     </p>
                                                 </>) : <span className="text-sm text-slate-300">—</span>}
                                             </TD>
+                                            )}
+                                            {showCol('dueIn') && (
                                             <TD className={COL_RULE}>
                                                 {r.next?.due?.left ? (
                                                     <span className={cn(
@@ -357,8 +412,11 @@ export function MaintenanceAssetsTable({ rows, onOpenAsset, onCreateOrder, class
                                                     )}>{r.next.due.left}</span>
                                                 ) : <span className="text-sm text-slate-300">—</span>}
                                             </TD>
+                                            )}
+                                            {showCol('status') && (
                                             <TD className={COL_RULE}><StatePill state={r.state} /></TD>
-                                            <TD className={cn(COL_RULE, 'text-right')} onClick={(e) => e.stopPropagation()}>
+                                            )}
+                                            <TD className={cn('sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60')} onClick={(e) => e.stopPropagation()}>
                                                 <KebabMenu
                                                     className="justify-end"
                                                     title={`Actions for ${r.label}`}

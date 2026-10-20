@@ -23,6 +23,8 @@ import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, Select
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { SubTabs } from "@/components/ui/SubTabs";
+import { KebabMenu } from "@/components/ui/KebabMenu";
+import { TH_ROW_CLS } from "@/components/ui/list-chrome";
 import { ConsentPhase } from "./ApplicationConsents";
 import { consentsForType, consentRegion, consentForms } from "./policy-forms.data";
 import { ViolationPicker } from "@/pages/tickets/ViolationPicker";
@@ -1344,21 +1346,29 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                         citizen the driver is, and what their status rests on — and a toggle can
                         contradict it. It is derived from those answers now (`hasRightToWork`). */}
                     <Field label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
-                    {/* Beside the position, because they are the same question asked twice:
-                        what this person does here, and from when. On the hiring wizard it is
-                        left for the review step — an applicant has no hire date until
-                        somebody decides to hire them. */}
-                    <Field label="Hire Date"
-                        hint={mode === "page"
-                            ? "The day they start. The DQ file and the annual review are counted from it."
-                            : "Set when the file is approved — an applicant has no hire date yet."}>
-                        <input
-                            type="date"
-                            value={hireDate}
-                            onChange={(e) => setHireDate(e.target.value)}
-                            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                    </Field>
+                    {/*
+                      * Adding a driver asks when they start. APPLYING does not.
+                      *
+                      * The hiring wizard used to carry this field too, explaining in its hint
+                      * that it would be "set when the file is approved" — which is a field
+                      * asking to be left blank, on step 1 of 14, for a decision nobody has
+                      * taken yet. Worse, anything typed there was a hire date recorded before
+                      * the hire: the DQ file and the annual review both count from it.
+                      *
+                      * It is asked once, at the end, on Review & Completion — the step where
+                      * somebody actually decides to hire them. See `checklists.data.ts`.
+                      */}
+                    {mode === "page" && (
+                        <Field label="Hire Date"
+                            hint="The day they start. The DQ file and the annual review are counted from it.">
+                            <input
+                                type="date"
+                                value={hireDate}
+                                onChange={(e) => setHireDate(e.target.value)}
+                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                        </Field>
+                    )}
                     {/* Asked in BOTH forms: it is part of the driver's record either way, and
                         defaulting it on Add Driver left the same field holding an answer nobody
                         gave. Only the consent-step consequence is wizard-specific. */}
@@ -2194,48 +2204,49 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                             <h2 className="text-sm font-semibold text-slate-700">{APPLICATION_FORMS.length} application forms</h2>
                             <span className="text-xs text-slate-400">13 sections + driver-type consent forms</span>
                         </div>
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:flex">
-                                <span className="flex-1">Application Form</span>
-                                <span className="w-36 text-center">Includes</span>
-                                <span className="text-right">Actions</span>
-                            </div>
-                            <div className="divide-y divide-slate-100">
-                                {APPLICATION_FORMS.map((f) => (
-                                    <div key={f.id} className="group flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", f.accent)}>
-                                                <f.Icon className="h-5 w-5" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="font-semibold text-slate-900">{f.name}</span>
-                                                    <Badge variant="secondary" className="bg-slate-100 text-slate-500">{f.region}</Badge>
+                        {/* One line per form, every action behind the three dots — four buttons
+                            per row squeezed the name into a three-line column. */}
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <table className="w-full min-w-[560px] table-fixed text-sm">
+                                <thead>
+                                    <tr className={TH_ROW_CLS}>
+                                        <th className="px-5 py-2.5">Application form</th>
+                                        <th className="w-36 px-3 py-2.5">Region</th>
+                                        <th className="w-52 px-3 py-2.5">Includes</th>
+                                        <th className="w-20 py-2.5 pl-1 pr-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {APPLICATION_FORMS.map((f) => (
+                                        <tr key={f.id} className="cursor-pointer transition-colors hover:bg-slate-50/70" onClick={() => preview(f)}>
+                                            <td className="px-5 py-3">
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", f.accent)}><f.Icon className="h-4 w-4" /></div>
+                                                    <div className="min-w-0">
+                                                        <p className="truncate font-semibold text-slate-900" title={f.name}>{f.name}</p>
+                                                        <p className="truncate text-[12px] text-slate-500" title={f.blurb}>{f.blurb}</p>
+                                                    </div>
                                                 </div>
-                                                <p className="mt-0.5 truncate text-sm text-slate-500">{f.blurb}</p>
-                                            </div>
-                                        </div>
-                                        <div className="hidden w-36 flex-col items-center gap-1 sm:flex">
-                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">13 sections</span>
-                                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{consentsForType(f.id).length} consent forms</span>
-                                        </div>
-                                        <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => open(f)}>
-                                                <FlaskConical className="h-4 w-4" /> Test
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => preview(f)}>
-                                                <FileText className="h-4 w-4" /> Application form
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => consents(f)}>
-                                                <FileSignature className="h-4 w-4" /> Consent forms
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => preview(f)}>
-                                                <Eye className="h-4 w-4" /> PDF view
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                            </td>
+                                            <td className="px-3 py-3"><span className="inline-block max-w-full truncate rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600" title={f.region}>{f.region}</span></td>
+                                            <td className="px-3 py-3">
+                                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">13 sections</span>
+                                                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600">{consentsForType(f.id).length} consents</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 pl-1 pr-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                                <KebabMenu title={`Actions for ${f.name}`} items={[
+                                                    { label: "Test", icon: FlaskConical, onClick: () => open(f) },
+                                                    { label: "Application form", icon: FileText, onClick: () => preview(f) },
+                                                    { label: "Consent forms", icon: FileSignature, onClick: () => consents(f) },
+                                                    { label: "PDF view", icon: Eye, onClick: () => preview(f) },
+                                                ]} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </>
                 )}
@@ -2246,37 +2257,45 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                             <h2 className="text-sm font-semibold text-slate-700">{consentForms().length} consent forms</h2>
                             <span className="text-xs text-slate-400">Signed by the driver as part of the application</span>
                         </div>
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <div className="divide-y divide-slate-100">
-                                {consentForms().map((c) => {
-                                    const region = consentRegion(c.id);
-                                    const regionStyle = region === "US" ? "bg-blue-50 text-blue-600" : region === "Canada" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500";
-                                    const regionLabel = region === "All" ? "Universal" : region;
-                                    return (
-                                        <div key={c.id} className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50/70">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500">
-                                                <FileText className="h-5 w-5" />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate font-semibold text-slate-900">{c.title} {c.accentTitle}</p>
-                                                <p className="truncate text-sm text-slate-500">{c.blurb}</p>
-                                            </div>
-                                            <span className={cn("hidden shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-block", regionStyle)}>{regionLabel}</span>
-                                            <div className="flex shrink-0 items-center gap-2">
-                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => openConsent(c.id)}>
-                                                    <FlaskConical className="h-4 w-4" /> Test
-                                                </Button>
-                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => previewConsent(c.id)}>
-                                                    <Eye className="h-4 w-4" /> PDF view
-                                                </Button>
-                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => openConsent(c.id)}>
-                                                    Open form <ArrowRight className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <table className="w-full min-w-[520px] table-fixed text-sm">
+                                <thead>
+                                    <tr className={TH_ROW_CLS}>
+                                        <th className="px-5 py-2.5">Consent form</th>
+                                        <th className="w-32 px-3 py-2.5">Region</th>
+                                        <th className="w-20 py-2.5 pl-1 pr-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {consentForms().map((c) => {
+                                        const region = consentRegion(c.id);
+                                        const regionStyle = region === "US" ? "bg-blue-50 text-blue-600" : region === "Canada" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500";
+                                        const regionLabel = region === "All" ? "Universal" : region;
+                                        const name = `${c.title} ${c.accentTitle}`.trim();
+                                        return (
+                                            <tr key={c.id} className="cursor-pointer transition-colors hover:bg-slate-50/70" onClick={() => openConsent(c.id)}>
+                                                <td className="px-5 py-3">
+                                                    <div className="flex min-w-0 items-center gap-3">
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-500"><FileText className="h-4 w-4" /></div>
+                                                        <div className="min-w-0">
+                                                            <p className="truncate font-semibold text-slate-900" title={name}>{name}</p>
+                                                            <p className="truncate text-[12px] text-slate-500" title={c.blurb}>{c.blurb}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-3"><span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", regionStyle)}>{regionLabel}</span></td>
+                                                <td className="py-3 pl-1 pr-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                                    <KebabMenu title={`Actions for ${name}`} items={[
+                                                        { label: "Open form", icon: ArrowRight, onClick: () => openConsent(c.id) },
+                                                        { label: "Test", icon: FlaskConical, onClick: () => openConsent(c.id) },
+                                                        { label: "PDF view", icon: Eye, onClick: () => previewConsent(c.id) },
+                                                    ]} />
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </>
                 )}

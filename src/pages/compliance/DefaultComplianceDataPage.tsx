@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Children, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { KpiStatCard } from '@/components/ui/KpiStatCard';
 import { scrollAncestorsToTop } from '@/lib/scroll-to-top';
 import { useCondensingAnchor, useCondensingHeader, HEADER_TRANSITION } from '@/components/ui/use-condensing-header';
 import { ListPageHeader } from '@/components/ui/ListPageHeader';
@@ -958,7 +959,7 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
             {!detailOpen && (
                 <ListPageHeader
                     Icon={Layers}
-                    title="Default Compliances &amp; Documents"
+                    title="Compliances &amp; Documents"
                     description={<>Compliance &amp; document records for <span className="font-semibold text-slate-700">{carrierName}</span> — captured per carrier, asset and driver.</>}
                     chips={kpiChips}
                     condensed={condensed}
@@ -1123,8 +1124,25 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
  * to fold them against — and hand their figures to the header's chip strip on the way out
  * (`onKpis`), which is why every view here reports the same numbers it draws.
  */
+/**
+ * The four figures over a compliance list.
+ *
+ * Laid out from the width of the COLUMN, not the window: `md:grid-cols-4` fired on window
+ * width while this page sits beside a 340px sidebar, so four tiles shared about 870px and
+ * "REQUIRED MISSING" and "AVG COMPLETION" each broke over two lines beside their own icon
+ * squares. Each cell is its own container so the tile can shrink itself — see `KpiStatCard`,
+ * which is the tile.
+ */
 function KpiRow({ children }: { children: ReactNode }) {
-    return <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>;
+    return (
+        <div className="@container">
+            <div className="grid grid-cols-2 gap-2.5 @xl:grid-cols-4">
+                {Children.map(children, (child, i) => (
+                    <div key={i} className="@container flex">{child}</div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 /**
@@ -3888,25 +3906,16 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
 }
 
 // ── KPI tile ──────────────────────────────────────────────────────────
-const ACCENT: Record<string, string> = {
-    slate: 'text-slate-500 bg-slate-100',
-    emerald: 'text-emerald-600 bg-emerald-50',
-    rose: 'text-rose-600 bg-rose-50',
-    blue: 'text-blue-600 bg-blue-50',
-};
+/**
+ * It IS the shared card.
+ *
+ * This was a second copy of `KpiStatCard` — same look, same accents, minus the click — and
+ * the copy is why these tiles kept their window breakpoints while every other KPI row in the
+ * product moved to container queries. One card, so there is one answer to how a figure
+ * behaves when its column is narrow.
+ */
 function KpiTile({ label, value, Icon, accent }: { label: string; value: string | number; Icon: typeof Layers; accent: string }) {
-    return (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:gap-3 sm:px-4 sm:py-3.5">
-            <div className="min-w-0">
-                {/* Wraps rather than truncates — see `KpiStatCard`. */}
-                <div className="text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-400 sm:text-[11px] sm:tracking-wider">{label}</div>
-                <div className="mt-0.5 text-xl font-bold text-slate-900 tabular-nums sm:text-2xl">{value}</div>
-            </div>
-            <div className={cn('hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex sm:h-9 sm:w-9', ACCENT[accent] ?? ACCENT.slate)}>
-                <Icon size={18} />
-            </div>
-        </div>
-    );
+    return <KpiStatCard className="w-full" label={label} value={value} Icon={Icon} accent={accent} />;
 }
 
 /** Deterministic demo fill for a SINGLE version (mirrors Load-sample / ManageModal's fillV). */

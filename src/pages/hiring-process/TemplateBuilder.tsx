@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectBox } from "./FormKit";
-import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode, type QuizPick } from "./hiring-templates.data";
+import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode, type QuizPick } from "./hiring-templates.data";
 import { useChecklists, checklistForDriverType } from "./checklists.data";
+import { DriverTypePicker } from "./DriverTypePicker";
+import { normalizeDriverType } from "./driver-types";
 import { useQuizzes, TEST_LENGTHS, testLength, QUIZ_CATEGORIES, type Quiz } from "./quizzes.data";
 
 const GROUP_TONE: Record<string, string> = { Core: "bg-blue-50 text-blue-600", Forms: "bg-emerald-50 text-emerald-600", Policy: "bg-violet-50 text-violet-600" };
@@ -133,7 +135,8 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
 
     const [name, setName] = useState(existing?.name ?? "");
     const [description, setDescription] = useState(existing?.description ?? "");
-    const [driverType, setDriverType] = useState<DriverType>(existing?.driverType ?? "us");
+    // Older workflows may still say "local" — opened here they read as US, one of the three.
+    const [driverType, setDriverType] = useState<DriverType>(normalizeDriverType(existing?.driverType) ?? "us");
     const [checklistId, setChecklistId] = useState<string>(existing?.checklistId ?? checklistForDriverType[existing?.driverType ?? "us"] ?? (checklists[0]?.id ?? ""));
     const [steps, setSteps] = useState<TemplateStep[]>(() => existing ? normalize(existing.steps) : seedSteps());
     const [error, setError] = useState("");
@@ -190,15 +193,7 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
                 <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Driver type</p>
                     <p className="mb-3 mt-0.5 text-xs text-slate-400">Determines the application form drivers complete in step 1, and is carried into the later forms.</p>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {DRIVER_TYPES.map((d) => (
-                            <button key={d.id} type="button" onClick={() => { setDriverType(d.id); setChecklistId(checklistForDriverType[d.id] ?? checklistId); }}
-                                className={cn("rounded-xl border p-3 text-left transition", driverType === d.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-slate-200 hover:border-slate-300")}>
-                                <span className={cn("block text-sm font-semibold", driverType === d.id ? "text-blue-700" : "text-slate-800")}>{d.name}</span>
-                                <span className="text-[11px] text-slate-400">{d.region}</span>
-                            </button>
-                        ))}
-                    </div>
+                    <DriverTypePicker value={driverType} onChange={(id) => { setDriverType(id); setChecklistId(checklistForDriverType[id] ?? checklistId); }} />
                 </div>
 
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

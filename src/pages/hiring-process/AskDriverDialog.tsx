@@ -1,27 +1,36 @@
 import { useState } from "react";
-import { X, Send, Mail, MessageSquarePlus, Check } from "lucide-react";
+import { X, Send, Check, CheckCircle2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeliveryPicker, deliverRequest, needsEmail, type Delivery } from "@/components/share/RequestDelivery";
+import type { ConvSource, RecordRef } from "@/pages/messages/messages-store";
 
 // A requestable item — a form, document/signature or quiz the driver still owes.
 export type AskItem = { id: string; label: string; hint?: string; done?: boolean };
 export type AskGroup = { title: string; items: AskItem[] };
-export type AskChannel = "Email" | "In-app";
+export type AskChannel = Delivery;
 export type AskResult = { itemIds: string[]; to: string; channel: AskChannel; subject: string; message: string };
 
 // "Ask driver for more data" popup — pick the forms / documents / signatures /
-// quizzes to request from the driver, then send. Shared by the hiring &
-// onboarding monitor lists (and file dashboards).
-export function AskDriverDialog({ driverName, driverEmail, groups, title = "Ask driver for more data", subtitle, defaultSubject, defaultMessage, sendLabel = "Send request", onClose, onSend }: {
+// quizzes to request from the driver, choose how it reaches them (in-app chat,
+// external chat, or email), then send. The request is delivered through Messages
+// and handed back to the caller to log against the file. Shared by the hiring &
+// onboarding monitor lists.
+export function AskDriverDialog({ driverName, driverEmail, groups, title = "Ask driver for more data", subtitle, defaultSubject, defaultMessage, sendLabel = "Send request", defaultDelivery = "In-app", source, record, onOpenInMessages, onClose, onSend }: {
     driverName: string; driverEmail: string; groups: AskGroup[];
     title?: string; subtitle?: string; defaultSubject?: string; defaultMessage?: string; sendLabel?: string;
+    defaultDelivery?: Delivery;
+    /** What the Messages thread says it came from, and the link back to the file. */
+    source: ConvSource; record?: RecordRef;
+    onOpenInMessages?: (convId: string) => void;
     onClose: () => void; onSend: (r: AskResult) => void;
 }) {
     const outstanding = groups.flatMap((g) => g.items.filter((i) => !i.done).map((i) => i.id));
     const [checked, setChecked] = useState<Set<string>>(() => new Set(outstanding));
     const [to, setTo] = useState(driverEmail);
-    const [channel, setChannel] = useState<AskChannel>("Email");
+    const [channel, setChannel] = useState<AskChannel>(defaultDelivery);
+    const [sent, setSent] = useState<string | null>(null);
     const first = driverName.split(" ")[0] || "there";
     const [subject, setSubject] = useState(defaultSubject ?? "Action needed — please complete your outstanding items");
     const [message, setMessage] = useState(defaultMessage ?? `Hi ${first}, please complete and sign the items below so we can finish your file.`);
@@ -32,10 +41,44 @@ export function AskDriverDialog({ driverName, driverEmail, groups, title = "Ask 
     const allIds = groups.flatMap((g) => g.items.map((i) => i.id));
     const allSelected = allIds.length > 0 && allIds.every((id) => checked.has(id));
     const toggleAll = () => setChecked(allSelected ? new Set() : new Set(allIds));
+    const labelOf = (id: string) => groups.flatMap((g) => g.items).find((i) => i.id === id)?.label ?? id;
+    const emailOk = !needsEmail(channel) || /\S+@\S+\.\S+/.test(to);
+    const canSend = !!subject.trim() && emailOk;
+
+    const send = () => {
+        if (!canSend) return;
+        const r: AskResult = { itemIds: [...checked], to: needsEmail(channel) ? to.trim() : driverName, channel, subject: subject.trim(), message: message.trim() };
+        const convId = deliverRequest({
+            delivery: channel, name: driverName, email: to.trim(), subject: r.subject, message: r.message,
+            asked: r.itemIds.map(labelOf), source, record, roleTag: "Driver",
+        });
+        onSend(r);
+        setSent(convId);
+    };
+
+    if (sent) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+                <div className="w-full max-w-md rounded-2xl bg-white px-6 py-8 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+                    <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><CheckCircle2 className="h-7 w-7" /></span>
+                    <h3 className="text-lg font-bold text-slate-900">Request sent</h3>
+                    <p className="mt-1 text-[13px] text-slate-500">
+                        {channel === "Email" ? `Emailed to ${to} — one-way, logged in Messages.`
+                            : channel === "External chat" ? `Secure chat link emailed to ${to}. Their reply lands in Messages.`
+                                : `Sent to ${driverName}'s chat in the app.`}
+                    </p>
+                    <div className="mt-6 flex items-center justify-center gap-2">
+                        <Button variant="outline" size="sm" onClick={onClose}>Done</Button>
+                        {onOpenInMessages && <Button size="sm" onClick={() => { onOpenInMessages(sent); onClose(); }}><MessageSquare className="h-4 w-4" /> Open in Messages</Button>}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-            <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
                     <div className="flex items-center gap-3">
                         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span>
@@ -48,19 +91,24 @@ export function AskDriverDialog({ driverName, driverEmail, groups, title = "Ask 
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send to</label>
-                            <Input className="mt-1.5" value={to} onChange={(e) => setTo(e.target.value)} placeholder={driverEmail || "name@company.com"} />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send via</label>
-                            <div className="mt-1.5 flex rounded-lg border border-slate-200 p-1">
-                                {(["Email", "In-app"] as AskChannel[]).map((c) => (
-                                    <button key={c} type="button" onClick={() => setChannel(c)} className={cn("flex-1 rounded-md py-1.5 text-sm font-semibold transition", channel === c ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50")}>{c === "Email" ? <Mail className="mr-1 inline h-3.5 w-3.5" /> : <MessageSquarePlus className="mr-1 inline h-3.5 w-3.5" />}{c}</button>
-                                ))}
+                    <div>
+                        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send via</label>
+                        <DeliveryPicker className="mt-1.5" value={channel} onChange={setChannel} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send to</label>
+                        {needsEmail(channel) ? (
+                            <>
+                                <Input className="mt-1.5" value={to} onChange={(e) => setTo(e.target.value)} placeholder={driverEmail || "name@company.com"} />
+                                {!emailOk && to.trim() && <p className="mt-1 text-[11px] font-semibold text-rose-600">Enter a valid email address.</p>}
+                            </>
+                        ) : (
+                            <div className="mt-1.5 flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">{driverName.split(" ").map((p) => p[0]).join("").slice(0, 2)}</span>
+                                <span className="font-semibold text-slate-800">{driverName}</span>
+                                <span className="text-slate-400">· driver chat</span>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     <div>
@@ -110,10 +158,10 @@ export function AskDriverDialog({ driverName, driverEmail, groups, title = "Ask 
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-                    <span className="text-sm text-slate-500">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"}` : "No items"} · {channel}</span>
+                    <span className="text-sm text-slate-500">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"}` : "No items"} · {channel === "In-app" ? "In-app chat" : channel}</span>
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-                        <Button size="sm" disabled={!subject.trim()} onClick={() => onSend({ itemIds: [...checked], to, channel, subject: subject.trim(), message: message.trim() })}><Send className="h-4 w-4" /> {sendLabel}</Button>
+                        <Button size="sm" disabled={!canSend} onClick={send}><Send className="h-4 w-4" /> {sendLabel}</Button>
                     </div>
                 </div>
             </div>

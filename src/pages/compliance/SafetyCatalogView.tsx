@@ -484,7 +484,7 @@ function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                     {view === 'form' ? (
                         <div className="space-y-3">
-                            <p className="text-[12px] text-slate-500">Live preview of the data-entry <strong>form</strong> users fill on Default Compliances &amp; Documents — the exact fields and requirements you defined.</p>
+                            <p className="text-[12px] text-slate-500">Live preview of the data-entry <strong>form</strong> users fill on Compliances &amp; Documents — the exact fields and requirements you defined.</p>
                             {pv && (
                                 <fieldset disabled className="m-0 min-w-0 border-0 p-0">
                                     <VersionFields record={previewRecord} version={pv} onChange={setPv} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel />
@@ -1052,8 +1052,8 @@ function DefaultFormPreview({ r, editable }: { r: SafetyRecord; editable: boolea
             <div className="flex items-start justify-between gap-3">
                 <p className="text-[12px] text-slate-500">
                     {editable
-                        ? 'Edit the data-entry form for this record — the same form used on Default Compliances & Documents. Changes are a preview and are not persisted.'
-                        : 'Preview of the data-entry form for this record — the same form used on Default Compliances & Documents (read-only).'}
+                        ? 'Edit the data-entry form for this record — the same form used on Compliances & Documents. Changes are a preview and are not persisted.'
+                        : 'Preview of the data-entry form for this record — the same form used on Compliances & Documents (read-only).'}
                 </p>
                 {editable && (
                     <button type="button" onClick={() => setV(cur => fillVersionDemo(r, cur))}

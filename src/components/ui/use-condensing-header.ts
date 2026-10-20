@@ -321,3 +321,91 @@ export function useCondensingHeader<T>(resetKey?: T) {
 
     return { scrollRef, condensed, onScroll };
 }
+
+/**
+ * How far has the page travelled since this point was at rest?
+ *
+ * The two hooks above both need a pinned bar to measure against, because both exist to fold
+ * a HEADER that stays on screen. A block that simply gives its height back on the way down
+ * needs no such thing: a KPI row over a list is worth its space at the top of the page and
+ * worth none of it once you are reading row forty.
+ *
+ * It measures TRAVEL, not position. Asking "has this marker reached the top of the window"
+ * sounds equivalent and is not: the marker sits below a page header, so on a short list it
+ * never gets there — measured on the driver roster, the whole page had 200px of scroll in it
+ * and the marker needed 260 to arrive. The roster folded nothing, the asset list folded fine,
+ * and the two screens behaved differently for no reason a reader could see.
+ *
+ * The marker must sit ABOVE everything that folds. Then folding cannot move it, the travel it
+ * reports is unaffected by the thing it decides, and there is no oscillator. `restTop` is the
+ * furthest down it has been seen while unfolded, which re-establishes itself if the chrome
+ * above it ever changes height.
+ *
+ * Scroll events do not bubble but do propagate down the capture phase, so one document-level
+ * listener hears whichever ancestor is really scrolling — the page, a panel, or a dialog —
+ * without the caller having to know which.
+ *
+ * Two thresholds, not one, so a slow scroll parked near the line does not flutter.
+ */
+export function useScrolledPast(on = 120, off = 48) {
+    const node = useRef<HTMLDivElement | null>(null);
+    const [past, setPast] = useState(false);
+    const pastRef = useRef(false);
+    const restTop = useRef<number | null>(null);
+    const raf = useRef<number | undefined>(undefined);
+    /** The current reader, so the ref callback below can take a first measurement. */
+    const readRef = useRef<() => void>(() => {});
+
+    useEffect(() => {
+        const read = () => {
+            if (raf.current !== undefined) return;
+            raf.current = requestAnimationFrame(() => {
+                raf.current = undefined;
+                const el = node.current;
+                if (!el) return;
+                const top = el.getBoundingClientRect().top;
+                // Where it sits when nothing has been scrolled. Taken as the lowest it is
+                // ever seen while unfolded, so a header that grows above it is picked up.
+                if (!pastRef.current && (restTop.current === null || top > restTop.current)) {
+                    restTop.current = top;
+                }
+                const travel = (restTop.current ?? top) - top;
+                const next = pastRef.current ? travel > off : travel > on;
+                if (next === pastRef.current) return;
+                pastRef.current = next;
+                setPast(next);
+            });
+        };
+        readRef.current = read;
+        const first = requestAnimationFrame(read);
+        document.addEventListener('scroll', read, { capture: true, passive: true });
+        window.addEventListener('resize', read);
+        return () => {
+            cancelAnimationFrame(first);
+            if (raf.current !== undefined) cancelAnimationFrame(raf.current);
+            document.removeEventListener('scroll', read, { capture: true });
+            window.removeEventListener('resize', read);
+        };
+    }, [on, off]);
+
+    /*
+     * A callback ref, because the marker often arrives LATER than this hook.
+     *
+     * A tab's content mounts when the tab is chosen, while the hook belongs to the page and
+     * was set up when the page was. Taking the rest position once, on the hook's own first
+     * frame, measured a marker that did not exist yet — and the first reading then came
+     * mid-scroll, so "at rest" was recorded as wherever the reader already happened to be
+     * and almost nothing registered as travel afterwards. Measured on the driver roster: it
+     * travelled 237px and folded nothing, while the asset list, whose component mounts with
+     * its own hook, folded correctly at 197. Same page, two behaviours, no visible reason.
+     *
+     * Attaching through a callback re-establishes rest the moment the marker appears.
+     */
+    const ref = useCallback((el: HTMLDivElement | null) => {
+        node.current = el;
+        restTop.current = null;
+        if (el) readRef.current();
+    }, []);
+
+    return { ref, past };
+}

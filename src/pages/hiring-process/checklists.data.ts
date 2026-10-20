@@ -20,10 +20,19 @@ export type Checklist = {
 export type ChecklistState = { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> };
 
 const NOTE = "All drivers must be approved by a supervisor before hitting the road on any {{company}} equipment. A supervisor must complete this hiring review and sign the approval below before the driver proceeds to onboarding.";
+/*
+ * The facts the approver records, including the one the application never asks for.
+ *
+ * Hire date belongs here and nowhere earlier. It used to sit on step 1 of the application,
+ * where it was a date for a hire that had not been agreed — and the DQ file and the annual
+ * review are both counted from it, so a guess entered there dates a driver's whole file.
+ * This is the step where somebody decides, so this is where the date is set.
+ */
 const header = (p: string): ChecklistField[] => [
     { id: `${p}-name`, label: "Driver Name", type: "text" },
     { id: `${p}-phone`, label: "Driver Phone #", type: "phone" },
     { id: `${p}-ref`, label: "Reference By", type: "text" },
+    { id: `${p}-hire`, label: "Hire Date", type: "date" },
 ];
 const footer = (p: string): ChecklistField[] => [{ id: `${p}-cc`, label: "Driver CC#", type: "text" }];
 const stage = (p: string, n: number, title: string, items: string[]): ChecklistStage => ({ id: `${p}-s${n}`, title, signature: true, items: items.map((t, i) => ({ id: `${p}-s${n}-i${i}`, text: t })) });

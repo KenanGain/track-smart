@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, FileCheck2, Loader2, ShieldCheck, ThumbsUp, X } from "lucide-react";
-import { APPLICATION_FORMS } from "./ApplicationSettingsPage";
+import { APPLICATION_FORMS, MVR_QUESTIONS } from "./ApplicationSettingsPage";
 import { getOnbWorkflow, makeAssignedTraining, type OnboardingState, type AssignedTraining } from "./onboarding.data";
 
 // Hiring Process applicants — localStorage-backed so the list board and the
@@ -42,7 +42,11 @@ export function relativeTime(ms: number): string {
 }
 
 export type Remark = { id: string; text: string; at: string; author: string; stepId?: string; stepTitle?: string; formId?: string; formLabel?: string };
-export type AppEvent = { id: string; type: string; text: string; at: number; author: string };
+export type AppEvent = {
+    id: string; type: string; text: string; at: number; author: string;
+    /** Why — the reason given when the status was changed. Shown under the entry. */
+    detail?: string;
+};
 
 export const ACTOR = "Kenan Gain";
 const EVENT_TEXT: Record<AppStatus, string> = {
@@ -53,6 +57,38 @@ const EVENT_TEXT: Record<AppStatus, string> = {
     approved: "Application approved",
     rejected: "Application rejected",
 };
+/*
+ * Approving and rejecting are the two decisions on this board that somebody else has to be
+ * able to read back, so neither is allowed through without a reason.
+ *
+ * An approval with no reason is the one nobody questions until an auditor asks what was
+ * checked; a rejection with no reason is the one the driver calls about and nobody in the
+ * office can answer. Everything else on the pipeline is a step, not a decision, and is
+ * logged without being interrogated.
+ *
+ * The presets are there so the common case is one click rather than a paragraph — they fill
+ * the box, and anything can be typed over them.
+ */
+export const REASON_REQUIRED: AppStatus[] = ["approved", "rejected"];
+export const needsReason = (s: AppStatus) => REASON_REQUIRED.includes(s);
+
+export const STATUS_REASONS: Partial<Record<AppStatus, string[]>> = {
+    approved: [
+        "All checks cleared",
+        "Driving record meets policy",
+        "Experience and references verified",
+        "Road test passed",
+    ],
+    rejected: [
+        "Insufficient verifiable experience",
+        "Driving record does not meet policy",
+        "Failed drug & alcohol screening",
+        "Incomplete application or documents",
+        "Did not pass the road test",
+        "Position filled",
+    ],
+};
+
 export type SubField = { label: string; value: string };
 export type SubGroup = { label?: string; fields: SubField[] };   // one entry within a section
 export type SubSection = { title: string; groups: SubGroup[] };  // a section may hold several entries
@@ -97,7 +133,7 @@ export const DOC_STATUS_META: Record<DocStatus, { label: string; badge: string; 
 // A request the hiring manager raises — to the driver, an employer, HR, etc.
 export type RequestAction = "Request" | "Order" | "Review" | "Alert";
 export type RequestRecipient = "Driver" | "Hiring Manager" | "Previous Employer" | "Provider / Agency" | "Other";
-export type RequestChannel = "Email" | "In-app";
+export type RequestChannel = "Email" | "In-app" | "External chat";
 export const REQUEST_ACTIONS: { id: RequestAction; label: string; hint: string }[] = [
     { id: "Request", label: "Request document", hint: "Ask someone to complete or upload a document" },
     { id: "Order", label: "Order report", hint: "Order a report from a provider / agency" },
@@ -149,15 +185,38 @@ export type Applicant = {
 export const formName = (id: string) => APPLICATION_FORMS.find((f) => f.id === id)?.name ?? id;
 export const formRegion = (id: string) => APPLICATION_FORMS.find((f) => f.id === id)?.region ?? "";
 
+/*
+ * The application form, as the driver type it stands for.
+ *
+ * Three types are offered and exactly one is picked per applicant, so that is what the list
+ * column, the breadcrumb and the header chip all say. It lives here rather than on a page
+ * because two screens naming the same fact differently is how "US Only Driver / United
+ * States" ended up on one and "local" on the other.
+ *
+ * `local` and `us-owner-operator` are older ids from before the catalog settled on three;
+ * both are US-domestic forms, so they read as US rather than leaking an id into the UI.
+ */
+const FORM_SHORT: Record<string, string> = {
+    us: "US",
+    "us-owner-operator": "US",
+    local: "US",
+    canada: "Canada",
+    "cross-border": "Cross-border",
+};
+export const DRIVER_TYPES = ["US", "Canada", "Cross-border"];
+export const formShort = (id: string) => FORM_SHORT[id] ?? formName(id);
+
 // ---- submission profile (supports multiple licenses / addresses / jobs / etc.) ----
-type Addr = { street: string; unit?: string; city: string; state: string; zip: string; dates?: string };
-type Lic = { number: string; cls: string; authority: string; exp: string; cdl: string; endorsements: string; frontImage?: string; backImage?: string };
+type Addr = { street: string; unit?: string; street2?: string; city: string; state: string; zip: string; country?: string; dates?: string };
+type Lic = { number: string; cls: string; authority: string; exp: string; cdl: string; endorsements: string; frontImage?: string; backImage?: string; country?: string; current?: string; medCardExp?: string };
 type Emp = {
     employer: string; position: string; dates: string; reason: string; verifications?: string;
     telephone?: string; addr1?: string; addr2?: string; city?: string; state?: string; zip?: string; country?: string;
     terminated?: string; current?: string; operatedCMV?: string;
+    /** The two DOT attestations the form asks of every previous employer. */
+    fmcsr?: string; safetySensitive?: string;
 };
-type Edu = { school: string; study: string; dates: string };
+type Edu = { school: string; study: string; dates: string; city?: string; state?: string; country?: string; telephone?: string; graduation?: string };
 type Rec = { label: string; detail: string };
 type DrivExp = { equipment: string; freight: string; regions: string; dates: string; miles: string; ownerOperator: string };
 type Profile = {
@@ -168,131 +227,329 @@ type Profile = {
     employment: Emp[];
     unemployment?: { dates: string; comments: string }[];
     education: Edu[];
-    record: Rec[];          // accidents + violations
+    /** Older seeds keep both in one list; `accidents` / `violations` override it. */
+    record: Rec[];
+    accidents?: Rec[];
+    violations?: Rec[];
+    /** The form's US-operation question, which replaced the old right-to-work one. */
+    operatesInUS?: string;
     signedAt: string;
     // Optional sections — surfaced in Submitted Data even when the seed omits
     // them (they render a sensible "None reported" / "Not provided" fallback).
     contact?: { cell?: string; preferred?: string; bestTime?: string };
     disqualification?: Rec[];
-    military?: { branch?: string; country?: string; from?: string; to?: string; rank?: string };
-    travelDocs?: { passport?: string; passportCountry?: string; passportExp?: string; visaType?: string; visaNumber?: string; visaExp?: string; workPermitType?: string; workPermitNumber?: string; workPermitExp?: string };
+    military?: { branch?: string; country?: string; from?: string; to?: string; rank?: string; dd214File?: string };
+    /** Re-asked on the declaration step, where the driver attests to their own identity. */
+    middleName?: string;
+    suffix?: string;
+    travelDocs?: { citizenship?: string; passport?: string; passportCountry?: string; passportExp?: string; passportFile?: string; visaType?: string; visaNumber?: string; visaExp?: string; visaFile?: string; workPermitType?: string; workPermitNumber?: string; workPermitExp?: string; workPermitFile?: string };
 };
 
-export type UploadedFile = { id: string; label: string; file: string; category: string };
+export type UploadedFile = {
+    id: string; label: string; file: string; category: string;
+    /** Asked for by the form, not supplied. Listed so the gap is visible to a reviewer. */
+    missing?: boolean;
+};
 
+/*
+ * The review, as the form was actually filled in.
+ *
+ * The order and the headings were reconciled with the form's fourteen steps earlier; the
+ * FIELDS inside them had not been, and that is where a review stops being a record. Going
+ * through them one at a time against `dataSteps` in ApplicationSettingsPage:
+ *
+ *   - the wording was this file's own, not the form's. "Commercial (CDL)" for "Is this a
+ *     commercial driver license?", "Approx. Miles" for "Approximate miles", "Terminated /
+ *     discharged / laid off" for "Were you terminated / discharged / laid off?" — a
+ *     reviewer comparing the two screens had to work out which question each line answered.
+ *   - every gate question was missing. The form asks "Were there any gaps in your
+ *     employment during the last 3 years?" and the review printed the gaps; asked "Were you
+ *     involved in any accidents…" and printed the accidents. The answer "No" is a thing the
+ *     driver said, and it was nowhere.
+ *   - questions were missing outright: the licence's issuing country, whether it is their
+ *     current one, the DOT medical card expiry; the employer's FMCSR and safety-sensitive
+ *     attestations; the school's address and graduation date; the confirmed email; all six
+ *     licence-disqualification questions, which were collapsed into one line reading "None
+ *     reported".
+ *   - ranges were printed as one value where the form asks for two ends ("Dates" for Start
+ *     Date / End Date).
+ *
+ * Where the form asks something the file does not hold, the question is listed and marked
+ * Not provided rather than dropped. That is the same rule the Uploaded Documents tab
+ * follows, and for the same reason: a question that was asked and not answered is the most
+ * useful thing a reviewer can be told.
+ */
 function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" | "position">, p: Profile): SubSection[] {
     const cfg = APPLICATION_FORMS.find((f) => f.id === a.formId);
     const idLabel = cfg?.idLabel ?? "SSN / SIN";
     const country = cfg?.defaultCountry ?? "United States";
-    const naGroup = (label: string): SubGroup => ({ fields: [{ label, value: "Not provided" }] });
+
+    const NP = "Not provided";
+    /** A value, or the mark that says the form asked and the file does not hold it. */
+    const v = (x?: string) => (x && x.trim() ? x.trim() : NP);
+    const yn = (b: boolean) => (b ? "Yes" : "No");
+    /*
+     * The form asks for two ends; the file keeps one string. Split it at the join.
+     *
+     * Only at a separator with a space on either side: these are written "01-2015 -
+     * 02-2018", and a rule that split on any hyphen turned the start date into "01".
+     */
+    const ends = (s?: string): [string, string] => {
+        const parts = (s ?? "").split(/\s+(?:–|—|-|to)\s+/i).filter(Boolean);
+        return parts.length >= 2 ? [parts[0].trim(), parts.slice(1).join(" ").trim()] : [v(s), NP];
+    };
+    /** The form relabels these by the country of the row it is on. */
+    const regionLabel = (c: string) => (c === "Canada" ? "Province" : "State");
+    const postalLabel = (c: string) => (c === "Canada" ? "Postal Code" : "Zip Code");
+
+    const accidents = p.accidents ?? p.record.filter((r) => /^accident/i.test(r.label));
+    const violations = p.violations ?? p.record.filter((r) => !/^accident/i.test(r.label));
 
     return [
+        // ── 1 ──────────────────────────────────────────────────────────────────
         { title: "Applicant Information", groups: [{ fields: [
             { label: "First Name", value: a.firstName },
             { label: "Last Name", value: a.lastName },
             { label: "Email", value: a.email },
-            { label: "Phone", value: p.phone },
-            { label: "Date of Birth", value: p.dob },
-            { label: idLabel, value: p.idNumber },
-            { label: `Legal right to work in ${country === "Canada" ? "Canada" : "the U.S."}`, value: "Yes" },
+            { label: "Phone Number", value: v(p.phone) },
+            { label: "Date of Birth", value: v(p.dob) },
+            { label: idLabel, value: v(p.idNumber) },
             { label: "Position Type", value: a.position ?? "Driver" },
+            { label: "Will this driver operate in or cross into the United States?", value: p.operatesInUS ?? "Yes" },
         ] }] },
-        { title: "Contact", groups: [{ fields: [
-            { label: "Cell Phone", value: p.contact?.cell ?? p.phone },
-            { label: "Preferred Contact Method", value: p.contact?.preferred ?? "Primary Phone" },
-            { label: "Best Time to Reach", value: p.contact?.bestTime ?? "Any" },
+
+        // ── 2 ──────────────────────────────────────────────────────────────────
+        // The current address is asked with the three-year question on it; every earlier
+        // one is asked with the dates they lived there. Two shapes, as on the form.
+        { title: "Address Details", groups: p.addresses.length ? p.addresses.map((ad, i) => {
+            const c = ad.country ?? country;
+            const [from, to] = ends(ad.dates);
+            return {
+                label: i === 0 ? "Current Address" : `Previous Address ${i}`,
+                fields: i === 0 ? [
+                    { label: "Street Address (line 1)", value: v(ad.street) },
+                    { label: "Unit / Suite / Apt #", value: v(ad.unit) },
+                    { label: "Street Address (line 2)", value: v(ad.street2) },
+                    { label: "Country", value: c },
+                    { label: "City", value: v(ad.city) },
+                    { label: regionLabel(c), value: v(ad.state) },
+                    { label: postalLabel(c), value: v(ad.zip) },
+                    // Asked on the form; answered by whether an earlier address was needed.
+                    { label: "Have you lived at this address for 3 or more years?", value: yn(p.addresses.length === 1) },
+                ] : [
+                    { label: "Street Address", value: v(ad.street) },
+                    { label: "Unit / Suite / Apt #", value: v(ad.unit) },
+                    { label: "Country", value: c },
+                    { label: "City", value: v(ad.city) },
+                    { label: regionLabel(c), value: v(ad.state) },
+                    { label: postalLabel(c), value: v(ad.zip) },
+                    { label: "Lived here from", value: from },
+                    { label: "Lived here to", value: to },
+                ],
+            };
+        }) : [{ fields: [{ label: "Street Address (line 1)", value: NP }] }] },
+
+        // ── 3 ──────────────────────────────────────────────────────────────────
+        { title: "Contact Details", groups: [{ fields: [
+            { label: "Cell Phone", value: v(p.contact?.cell ?? p.phone) },
+            { label: "Confirm Email Address", value: a.email },
+            { label: "Preferred method of contact", value: p.contact?.preferred ?? "Primary Phone" },
+            { label: "Best time to contact you", value: p.contact?.bestTime ?? "Any" },
         ] }] },
-        { title: "Address History", groups: p.addresses.length ? p.addresses.map((ad, i) => ({
-            label: i === 0 ? "Current Address" : `Previous Address ${i}`,
-            fields: [
-                { label: "Street Address", value: ad.street },
-                ...(ad.unit ? [{ label: "Unit / Suite / Apt #", value: ad.unit }] : []),
-                { label: "City", value: ad.city },
-                { label: "State / Province", value: ad.state },
-                { label: "Zip / Postal Code", value: ad.zip },
-                { label: "Country", value: country },
-                ...(ad.dates ? [{ label: "Dates", value: ad.dates }] : []),
-            ],
-        })) : [naGroup("Address")] },
-        { title: "License Details", groups: p.licenses.length ? p.licenses.map((l, i) => ({
-            label: p.licenses.length > 1 ? `License ${i + 1}` : undefined,
-            fields: [
-                { label: "License Number", value: l.number },
-                { label: "Class", value: l.cls },
-                { label: "Issuing State / Province", value: l.authority },
-                { label: "Expiration", value: l.exp },
-                { label: "Commercial (CDL)", value: l.cdl },
-                { label: "Endorsements", value: l.endorsements },
-                { label: "License Images", value: l.frontImage || l.backImage ? "Front & back uploaded" : "Not uploaded" },
-            ],
-        })) : [naGroup("License")] },
-        { title: "License Disqualification", groups: [{ fields: p.disqualification?.length
-            ? p.disqualification.map((r) => ({ label: r.label, value: r.detail }))
-            : [{ label: "Disqualifying convictions", value: "None reported" }] }] },
-        { title: "Driving Experience", groups: p.drivingExperience?.length ? p.drivingExperience.map((d, i) => ({
-            label: p.drivingExperience!.length > 1 ? `Experience ${i + 1}` : undefined,
-            fields: [
-                { label: "Equipment Class", value: d.equipment },
-                { label: "Freight Types", value: d.freight },
-                { label: "Driving Regions", value: d.regions },
-                { label: "Dates", value: d.dates },
-                { label: "Approx. Miles", value: d.miles },
-                { label: "Owner-operator", value: d.ownerOperator },
-            ],
-        })) : [naGroup("Driving Experience")] },
-        { title: "Employment History", groups: p.employment.length ? p.employment.map((e, i) => ({
-            label: p.employment.length > 1 ? `Employer ${i + 1}` : undefined,
-            fields: [
-                { label: "Employer", value: e.employer },
-                { label: "Position", value: e.position },
-                { label: "Dates", value: e.dates },
-                { label: "Telephone", value: e.telephone ?? "" },
-                { label: "Employer Address", value: [e.addr1, e.addr2, e.city, [e.state, e.zip].filter(Boolean).join(" "), e.country].filter(Boolean).join(", ") },
-                { label: "Reason for leaving", value: e.reason },
-                { label: "Terminated / discharged / laid off", value: e.terminated ?? "" },
-                { label: "Current employer", value: e.current ?? "" },
-                { label: "Operated commercial motor vehicle", value: e.operatedCMV ?? "" },
-                ...(e.verifications ? [{ label: "Verification (ask at hiring)", value: e.verifications }] : []),
-            ],
-        })) : [naGroup("Employment")] },
-        { title: "Employment Gaps", groups: p.unemployment?.length ? p.unemployment.map((u, i) => ({
-            label: p.unemployment!.length > 1 ? `Gap ${i + 1}` : undefined,
-            fields: [
-                { label: "Dates", value: u.dates },
-                { label: "Comments", value: u.comments },
-            ],
-        })) : [{ fields: [{ label: "Employment gaps", value: "None reported" }] }] },
-        { title: "Education", groups: p.education.length ? p.education.map((s, i) => ({
-            label: p.education.length > 1 ? `School ${i + 1}` : undefined,
-            fields: [
-                { label: "School", value: s.school },
-                { label: "Studied", value: s.study },
-                { label: "Dates", value: s.dates },
-            ],
-        })) : [{ fields: [{ label: "Education", value: "None reported" }] }] },
-        { title: "Driving Record", groups: [{ fields: p.record.length ? p.record.map((r) => ({ label: r.label, value: r.detail })) : [{ label: "Record", value: "None reported" }] }] },
-        { title: "Military Service", groups: [{ fields: p.military
-            ? [
-                { label: "Branch", value: p.military.branch ?? "" },
-                { label: "Country", value: p.military.country ?? "" },
-                { label: "Service Dates", value: [p.military.from, p.military.to].filter(Boolean).join(" – ") },
-                { label: "Rank at Discharge", value: p.military.rank ?? "" },
-            ]
-            : [{ label: "Military service", value: "None reported" }] }] },
+
+        // ── 4 ──────────────────────────────────────────────────────────────────
+        { title: "License Details", groups: p.licenses.length ? p.licenses.map((l, i) => {
+            const c = l.country ?? country;
+            return {
+                label: p.licenses.length > 1 ? `License ${i + 1}` : undefined,
+                fields: [
+                    { label: "License Number", value: v(l.number) },
+                    { label: "Country", value: c },
+                    { label: `Issuing ${regionLabel(c)}`, value: v(l.authority) },
+                    { label: "License Expiration Date", value: v(l.exp) },
+                    // The first licence listed is the one they drive on today.
+                    { label: "Is this your current driver license?", value: l.current ?? yn(i === 0) },
+                    { label: "Is this a commercial driver license?", value: v(l.cdl) },
+                    { label: "License Class", value: v(l.cls) },
+                    { label: "DOT Medical Card Expiration Date", value: v(l.medCardExp) },
+                    { label: "Endorsements", value: v(l.endorsements) },
+                    // Kept under this name because the review card swaps it for the real
+                    // front/back tiles by matching on it.
+                    { label: "License Images", value: l.frontImage || l.backImage ? "Front & back uploaded" : "Not uploaded" },
+                ],
+            };
+        }) : [{ fields: [{ label: "License Number", value: NP }] }] },
+
+        // ── 5 ──────────────────────────────────────────────────────────────────
+        // Citizenship first, because on the form it settles the rest: a US or Canadian
+        // citizen needs no work authorization and no visa, and is asked for neither.
         { title: "Travel Documents", groups: [{ fields: [
-            { label: "Passport Number", value: p.travelDocs?.passport || "Not provided" },
-            { label: "Passport Issuing Country", value: p.travelDocs?.passportCountry || "—" },
-            { label: "Passport Expiration", value: p.travelDocs?.passportExp || "—" },
-            { label: "Visa Type", value: p.travelDocs?.visaType || "None" },
-            { label: "Visa Number", value: p.travelDocs?.visaNumber || "—" },
-            { label: "Visa Expiration", value: p.travelDocs?.visaExp || "—" },
-            { label: "Work Permit Type", value: p.travelDocs?.workPermitType || "None" },
-            { label: "Work Permit Number", value: p.travelDocs?.workPermitNumber || "—" },
-            { label: "Work Permit Expiration", value: p.travelDocs?.workPermitExp || "—" },
+            { label: "Which country are they a citizen of?", value: v(p.travelDocs?.citizenship ?? p.travelDocs?.passportCountry) },
+            { label: "Passport Number", value: v(p.travelDocs?.passport) },
+            { label: "Passport Issuing Country", value: v(p.travelDocs?.passportCountry) },
+            { label: "Passport Expiration", value: v(p.travelDocs?.passportExp) },
+            { label: `Work authorization in ${country}`, value: p.travelDocs?.workPermitType
+                || ((p.travelDocs?.citizenship ?? p.travelDocs?.passportCountry) === country ? `Not required — citizen of ${country}` : NP) },
+            ...(p.travelDocs?.workPermitType ? [
+                { label: "Work permit number", value: v(p.travelDocs?.workPermitNumber) },
+                { label: "Work permit expiry", value: v(p.travelDocs?.workPermitExp) },
+            ] : []),
+            { label: "Holds an entry visa", value: yn(!!p.travelDocs?.visaType) },
+            ...(p.travelDocs?.visaType ? [
+                { label: "Visa type", value: v(p.travelDocs?.visaType) },
+                { label: "Visa number", value: v(p.travelDocs?.visaNumber) },
+                { label: "Visa expiry", value: v(p.travelDocs?.visaExp) },
+            ] : []),
         ] }] },
-        { title: "Signature", groups: [{ fields: [
+
+        // ── 6 ──────────────────────────────────────────────────────────────────
+        // All six questions, each with its answer. One line reading "None reported" stood
+        // for six separate attestations a driver signed — and a reviewer cannot tell from
+        // it whether the alcohol-offence question was answered at all.
+        { title: "License Disqualification", groups: [{ fields: MVR_QUESTIONS
+            .filter((q) => !q.showWhen)
+            .map((q) => {
+                const hit = p.disqualification?.find((r) => r.label === q.id || r.label === q.label);
+                return { label: q.label, value: hit ? `Yes — ${hit.detail}` : "No" };
+            }) }] },
+
+        // ── 7 ──────────────────────────────────────────────────────────────────
+        { title: "Driving Experience", groups: p.drivingExperience?.length ? p.drivingExperience.map((d, i) => {
+            const [from, to] = ends(d.dates);
+            return {
+                label: p.drivingExperience!.length > 1 ? `Experience ${i + 1}` : undefined,
+                fields: [
+                    { label: "Equipment Class", value: v(d.equipment) },
+                    { label: "Freight Types", value: v(d.freight) },
+                    { label: "Driving Regions", value: v(d.regions) },
+                    { label: "From date", value: from },
+                    { label: "To date", value: to },
+                    { label: "Approximate miles", value: v(d.miles) },
+                    { label: "Owner-operator on this experience?", value: v(d.ownerOperator) },
+                ],
+            };
+        }) : [{ fields: [{ label: "Equipment Class", value: NP }] }] },
+
+        // ── 8 ──────────────────────────────────────────────────────────────────
+        { title: "Employment Details", groups: [
+            { fields: [{ label: "Have you been employed, contracted, or attended a company orientation in the last 3 years?", value: yn(p.employment.length > 0) }] },
+            ...p.employment.map((e, i) => {
+                const [start, end] = ends(e.dates);
+                const c = e.country ?? country;
+                return {
+                    label: p.employment.length > 1 ? `Employer ${i + 1}` : "Employer",
+                    fields: [
+                        { label: "Company Name", value: v(e.employer) },
+                        { label: "Start Date", value: start },
+                        { label: "End Date", value: end },
+                        { label: "Position Held", value: v(e.position) },
+                        { label: "Telephone", value: v(e.telephone) },
+                        { label: "Street Address", value: v(e.addr1) },
+                        { label: "Street Address (line 2)", value: v(e.addr2) },
+                        { label: "Country", value: c },
+                        { label: "City", value: v(e.city) },
+                        { label: regionLabel(c), value: v(e.state) },
+                        { label: postalLabel(c), value: v(e.zip) },
+                        { label: "Reason for leaving?", value: v(e.reason) },
+                        { label: "Were you terminated / discharged / laid off?", value: v(e.terminated) },
+                        { label: "Is this your current employer?", value: v(e.current) },
+                        { label: "Did you operate a commercial motor vehicle?", value: v(e.operatedCMV) },
+                        { label: "Were you subject to FMCSRs while employed?", value: v(e.fmcsr) },
+                        { label: "Was your job designated as a Safety-Sensitive function in any DOT-regulated mode subject to the drug and alcohol testing requirements of 49 CFR Part 40?", value: v(e.safetySensitive) },
+                        ...(e.verifications ? [{ label: "Verification (ask at hiring)", value: e.verifications }] : []),
+                    ],
+                };
+            }),
+        ] },
+
+        // ── 9 ──────────────────────────────────────────────────────────────────
+        { title: "Employment Gaps", groups: [
+            { fields: [{ label: "Were there any gaps in your employment during the last 3 years?", value: yn(!!p.unemployment?.length) }] },
+            ...(p.unemployment ?? []).map((u, i) => {
+                const [start, end] = ends(u.dates);
+                return {
+                    label: (p.unemployment ?? []).length > 1 ? `Gap ${i + 1}` : "Gap",
+                    fields: [
+                        { label: "Start Date", value: start },
+                        { label: "End Date", value: end },
+                        { label: "Comments", value: v(u.comments) },
+                    ],
+                };
+            }),
+        ] },
+
+        // ── 10 ─────────────────────────────────────────────────────────────────
+        { title: "Education Details", groups: [
+            { fields: [{ label: "Have you attended a school (not related to truck driving) in the last 3 years?", value: yn(p.education.length > 0) }] },
+            ...p.education.map((s, i) => {
+                const [start, end] = ends(s.dates);
+                return {
+                    label: p.education.length > 1 ? `School ${i + 1}` : "School",
+                    fields: [
+                        { label: "School name", value: v(s.school) },
+                        { label: "Start Date", value: start },
+                        { label: "End Date", value: end },
+                        { label: "City", value: v(s.city) },
+                        { label: "State / Province", value: v(s.state) },
+                        { label: "Country", value: v(s.country) },
+                        { label: "Telephone", value: v(s.telephone) },
+                        { label: "What did you study? (accounting, mechanic, etc.)", value: v(s.study) },
+                        { label: "Graduation Date (leave blank if no graduation)", value: v(s.graduation) },
+                    ],
+                };
+            }),
+        ] },
+
+        // ── 11 ─────────────────────────────────────────────────────────────────
+        { title: "Accident Details", groups: [
+            { fields: [{ label: "Were you involved in any accidents/incidents with any vehicle in the last 5 years (even if not at fault)?", value: yn(accidents.length > 0) }] },
+            ...accidents.map((r, i) => ({
+                label: accidents.length > 1 ? `Accident ${i + 1}` : "Accident",
+                fields: [
+                    { label: "Type of Accident / Incident", value: r.label },
+                    { label: "Please enter detailed information about this accident", value: r.detail },
+                ],
+            })),
+        ] },
+
+        // ── 12 ─────────────────────────────────────────────────────────────────
+        { title: "Traffic Violation Details", groups: [
+            { fields: [{ label: "Have you had any moving violations or traffic convictions in the past 3 Years?", value: yn(violations.length > 0) }] },
+            ...violations.map((r, i) => ({
+                label: violations.length > 1 ? `Violation ${i + 1}` : "Violation",
+                fields: [
+                    { label: "Charge / Description", value: r.label },
+                    { label: "Comments", value: r.detail },
+                ],
+            })),
+        ] },
+
+        // ── 13 ─────────────────────────────────────────────────────────────────
+        { title: "Military Service", groups: [{ fields: p.military ? [
+            { label: "Were you ever in the military?", value: "Yes" },
+            { label: "Country", value: v(p.military.country) },
+            { label: "Branch of Service", value: v(p.military.branch) },
+            { label: "Start Date", value: v(p.military.from) },
+            { label: "End Date", value: v(p.military.to) },
+            { label: "Rank at discharge", value: v(p.military.rank) },
+            { label: "Can you obtain your DD214?", value: p.military.dd214File ? "Yes" : NP },
+        ] : [
+            { label: "Were you ever in the military?", value: "No" },
+        ] }] },
+
+        // ── 14 ─────────────────────────────────────────────────────────────────
+        // The declaration re-asks who is signing, which is the point of it: the driver
+        // attests that the identity on the form is theirs.
+        { title: "Signature & Declarations", groups: [{ fields: [
+            { label: "First Name", value: a.firstName },
+            { label: "Last Name", value: a.lastName },
+            { label: "Middle Name", value: v(p.middleName) },
+            { label: "Suffix", value: v(p.suffix) },
+            { label: idLabel, value: v(p.idNumber) },
+            { label: "Date of Birth", value: v(p.dob) },
+            { label: "Email Address", value: a.email },
             { label: "Signed By", value: `${a.firstName} ${a.lastName}` },
-            { label: "Date Signed", value: p.signedAt },
+            { label: "Date Signed", value: v(p.signedAt) },
         ] }] },
     ];
 }
@@ -313,13 +570,41 @@ function genEvents(a: Omit<Applicant, "submission" | "remarks" | "events">): App
 }
 
 // Collect the files an applicant uploaded as part of their submission.
+/*
+ * Every document the application asked this applicant for — including the ones they did
+ * not supply.
+ *
+ * This used to return license images and nothing else, so an application that asks for a
+ * passport, a visa, a work permit and a discharge certificate showed a reviewer four files
+ * and no sign that anything else had been requested. A document that was asked for and
+ * never arrived is the single most useful thing on this tab, and it was the one thing the
+ * tab could not say.
+ *
+ * What gets listed is driven by what the applicant was ASKED, which the profile records by
+ * holding the number: a passport number means a passport was asked for, so the passport
+ * belongs on this list whether or not its scan came with it.
+ */
 function buildUploads(p: Profile): UploadedFile[] {
     const ups: UploadedFile[] = [];
+    const add = (id: string, label: string, category: string, file?: string) =>
+        ups.push(file
+            ? { id, label, file, category }
+            : { id, label, file: "—", category, missing: true });
+
     p.licenses.forEach((l, i) => {
         const tag = p.licenses.length > 1 ? ` (License ${i + 1})` : "";
-        if (l.frontImage) ups.push({ id: `lic-${i}-front`, label: `License front${tag}`, file: l.frontImage, category: "License" });
-        if (l.backImage) ups.push({ id: `lic-${i}-back`, label: `License back${tag}`, file: l.backImage, category: "License" });
+        add(`lic-${i}-front`, `License front${tag}`, "License", l.frontImage);
+        add(`lic-${i}-back`, `License back${tag}`, "License", l.backImage);
     });
+
+    const t = p.travelDocs;
+    if (t?.passport) add("travel-passport", "Passport", "Travel Documents", t.passportFile);
+    if (t?.visaNumber || (t?.visaType && t.visaType !== "None")) add("travel-visa", "Visa", "Travel Documents", t.visaFile);
+    if (t?.workPermitNumber || (t?.workPermitType && t.workPermitType !== "None")) {
+        add("travel-permit", "Work Permit", "Travel Documents", t.workPermitFile);
+    }
+    if (p.military) add("military-dd214", "Discharge Certificate (DD214)", "Military Service", p.military.dd214File);
+
     return ups;
 }
 
@@ -334,7 +619,8 @@ const seedApplicant = (a: Omit<Applicant, "submission" | "remarks" | "events">, 
 const MIN = 60_000, H = 3_600_000, D = 86_400_000;
 const NOW = Date.now();
 
-const SEED: Applicant[] = [
+/** The seeded applicants, exported so the submission shape can be checked outside React. */
+export const SEED: Applicant[] = [
     seedApplicant(
         { id: "a1", firstName: "Jane", lastName: "Doe", email: "jane.doe@example.com", formId: "us", carrier: "Acme Logistics", carrierId: "acct-001", template: "Complete Driver Hiring (Default)", status: "under-review", stepsDone: 12, stepsTotal: 12, invitedAt: "Jun 2, 2026", updatedAt: NOW - 6 * H, position: "OTR Driver", phone: "(312) 555-0148", employerDocModes: { performance: "upload", experience: "upload", insurance: "ask" } },
         {
@@ -432,6 +718,19 @@ const SEED: Applicant[] = [
             ],
             education: [{ school: "Bellingham Technical College", study: "Commercial Driving", dates: "2016 - 2017" }],
             record: [],
+            /*
+             * A cross-border driver IS asked for travel documents — that is what the step is
+             * for — and this one has completed all twelve. Her file carried none, so the
+             * section read "Not provided" nine times on an approved application. The permit
+             * scan is deliberately absent: a reviewer should be able to see the difference
+             * between a document that was not asked for and one that never arrived.
+             */
+            travelDocs: {
+                passport: "C04129886", passportCountry: "Canada", passportExp: "11/04/2031",
+                passportFile: "nguyen-passport.pdf",
+                visaType: "None", visaNumber: "", visaExp: "",
+                workPermitType: "FAST / TN", workPermitNumber: "TN-88143-WA", workPermitExp: "06/30/2028",
+            },
             signedAt: "05/29/2026",
         },
     ),
@@ -502,7 +801,19 @@ function onboardingSeed(): Applicant[] {
     ];
 }
 
-const KEY = "hp_applicants_v18";
+/*
+ * v19: the submission now mirrors the application form — its fourteen steps, in their
+ * order, including the two the review never showed. The retitling below carries headings
+ * across, but it cannot invent sections an older stored submission was never built with,
+ * so the seed is rebuilt once here rather than leaving demo applicants half-migrated.
+ */
+/*
+ * v20: the fields inside every section were reconciled with the form's own questions, so a
+ * stored application carries answers under labels the form no longer uses. The retitle
+ * migration below can move a heading; it cannot rebuild a section's fields, so this one
+ * reseeds.
+ */
+const KEY = "hp_applicants_v20";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;
@@ -510,11 +821,31 @@ function read(): Applicant[] {
         const raw = window.localStorage.getItem(KEY);
         if (!raw) return SEED;
         const list = JSON.parse(raw) as Applicant[];
-        // "Unemployment History" was renamed to "Employment Gaps". Applications submitted
-        // before the rename carry the old heading in their stored submission, so it is
-        // retitled on read — retitling rather than reseeding keeps every applicant.
+        /*
+         * Headings drift; stored applications do not.
+         *
+         * Every one of these was a section whose title changed to match the step the form
+         * actually asks, and an application submitted before the change carries the old
+         * heading in its stored submission. They are retitled on read rather than reseeded,
+         * which keeps every applicant and their answers.
+         *
+         * Sections the form gained are NOT back-filled here — an old application genuinely
+         * was not asked those questions, and inventing an empty "Accident Details" on it
+         * would claim it was.
+         */
+        const RETITLED: Record<string, string> = {
+            "Unemployment History": "Employment Gaps",
+            "Contact": "Contact Details",
+            "Address History": "Address Details",
+            "Employment History": "Employment Details",
+            "Education": "Education Details",
+            "Signature": "Signature & Declarations",
+        };
         for (const a of list) {
-            for (const s of a.submission ?? []) if (s.title === "Unemployment History") s.title = "Employment Gaps";
+            for (const s of a.submission ?? []) {
+                const next = RETITLED[s.title];
+                if (next) s.title = next;
+            }
         }
         return list;
     } catch {
@@ -529,6 +860,31 @@ function write(list: Applicant[]) {
         window.dispatchEvent(new CustomEvent("hp-applicants-updated"));
     } catch { /* ignore */ }
 }
+
+/**
+ * The patch a status change makes, wherever it is made from.
+ *
+ * The list rows, the phone cards and the applicant header all change status, and each of
+ * them used to hand `{ status }` to `updateOne` and let it invent an entry reading "Status
+ * changed to Approved" — which says less than the seeded trail beside it ("Application
+ * approved"), and could not carry a reason at all. One function now, so the entry a reader
+ * sees does not depend on which control was used.
+ */
+export function statusPatch(prev: Applicant, status: AppStatus, reason?: string): Partial<Applicant> {
+    const now = Date.now();
+    const detail = reason?.trim() || undefined;
+    return {
+        status,
+        updatedAt: now,
+        events: [
+            { id: `e-${now}`, type: status, text: EVENT_TEXT[status], detail, at: now, author: ACTOR },
+            ...prev.events,
+        ],
+    };
+}
+
+/** Every applicant, outside a component — for linking a driver back to their hiring file. */
+export function readApplicants(): Applicant[] { return read(); }
 
 export function useApplicants() {
     const [applicants, setApplicants] = useState<Applicant[]>(() => read());

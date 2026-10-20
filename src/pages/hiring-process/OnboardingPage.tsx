@@ -2,7 +2,11 @@ import { useMemo, useState } from "react";
 import { Check, Search, ArrowRight, UserCheck, CalendarDays, ClipboardList, MessageSquarePlus, ChevronDown, Send, FileSearch, BadgeCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { StepScroller } from "@/components/ui/StepScroller";
+import { TablePager } from "@/components/ui/ListChrome";
+import { PAGE_SIZES } from "@/components/ui/list-chrome";
+import { setMessagesFocus } from "@/pages/messages/messages-store";
+import { ListHeader } from "./ListHeader";
 import { useApplicants, ACTOR, type Applicant } from "./applicants.data";
 import { useOnbWorkflows, onbSteps, onbProgress, resolveOnbWorkflow, ONBOARDING_FORMS, type OnbWorkflow, type OnbRequest, type OnbRequestAction, type OnbRequestRecipient } from "./onboarding.data";
 import { policyDocuments } from "./policy-forms.data";
@@ -16,28 +20,50 @@ const ONB_FILE = "/hiring-process/onboarding";
 const parseMs = (s: string) => { const t = Date.parse(s); return Number.isNaN(t) ? Date.now() : t; };
 const daysAgo = (ms: number) => Math.max(0, Math.floor((Date.now() - ms) / 86_400_000));
 
+// Where a driver stands in onboarding — the same three states the row's phase line shows.
+type OnbPhase = "not-started" | "in-progress" | "complete";
+const ONB_PHASES: { id: OnbPhase; label: string; dot: string }[] = [
+    { id: "not-started", label: "Not started", dot: "bg-slate-400" },
+    { id: "in-progress", label: "In progress", dot: "bg-amber-500" },
+    { id: "complete", label: "Complete", dot: "bg-emerald-500" },
+];
+function onbPhase(a: Applicant, wf?: OnbWorkflow): OnbPhase {
+    const { done, complete } = onbProgress(a.onboarding, wf);
+    return complete ? "complete" : done > 0 ? "in-progress" : "not-started";
+}
+
 export function OnboardingPage({ onNavigate, carrierId }: { onNavigate: (path: string) => void; carrierId?: string }) {
     const { applicants, updateOne } = useApplicants();
     const { workflows } = useOnbWorkflows();
     const { templates } = useDocTemplates();
     const { quizzes } = useOnboardingQuizzes();
     const [query, setQuery] = useState("");
+    const [phaseFilter, setPhaseFilter] = useState<OnbPhase | "">("");
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
     const [dialog, setDialog] = useState<{ a: Applicant; mode: "ask" | "review" | "remark" } | null>(null);
 
     // The onboarding pool = drivers who have been hired (application approved).
-    const rows = useMemo(() => {
+    const searched = useMemo(() => {
         const q = query.trim().toLowerCase();
         return applicants
             .filter((a) => a.status === "approved")
             .filter((a) => !carrierId || a.carrierId === carrierId)
-            .filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email}`.toLowerCase().includes(q));
+            .filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email} ${a.position ?? ""}`.toLowerCase().includes(q));
     }, [applicants, carrierId, query]);
+    const phaseOfRow = (a: Applicant) => onbPhase(a, resolveOnbWorkflow(a.onboarding, a.formId, workflows));
+    const rows = useMemo(() => searched.filter((a) => !phaseFilter || phaseOfRow(a) === phaseFilter), [searched, phaseFilter, workflows]);
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const filtered = !!query.trim() || !!phaseFilter;
+    const noneHired = searched.length === 0 && !query.trim();
 
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="border-b border-slate-200 bg-white">
                 <div className="px-4 py-5 sm:px-6 lg:px-8">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Hiring Process</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Application Tracking System</p>
                     <h1 className="mt-1 text-2xl font-bold text-slate-900">Onboarding</h1>
                     <p className="mt-1 text-sm text-slate-500">Bring every newly-hired driver through onboarding. Click a row to open the onboarding file.</p>
                 </div>
@@ -45,23 +71,30 @@ export function OnboardingPage({ onNavigate, carrierId }: { onNavigate: (path: s
 
             <div className="px-4 py-6 sm:px-6 lg:px-8">
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm font-semibold text-slate-700">Drivers onboarding <span className="ml-1 font-normal text-slate-400">{rows.length}</span></p>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search drivers…" className="h-9 pl-9" />
-                        </div>
-                    </div>
+                    <ListHeader title="Drivers onboarding" count={rows.length} total={searched.length}
+                        query={query} onQuery={(v) => { setQuery(v); setPage(1); }} placeholder="Search by name, email or position…"
+                        chips={ONB_PHASES.map((p) => ({ id: p.id, label: p.label, dot: p.dot, count: searched.filter((a) => phaseOfRow(a) === p.id).length }))}
+                        chip={phaseFilter} onChip={(p) => { setPhaseFilter(p as OnbPhase | ""); setPage(1); }}
+                        allCount={searched.length}
+                        onReset={filtered ? () => { setQuery(""); setPhaseFilter(""); setPage(1); } : undefined} />
 
                     {rows.length === 0 ? (
-                        <div className="px-5 py-16 text-center">
-                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><UserCheck className="h-6 w-6" /></div>
-                            <p className="mt-3 text-sm font-semibold text-slate-700">No drivers in onboarding yet</p>
-                            <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">Once a driver's application is approved in Hiring, they appear here to start onboarding.</p>
-                        </div>
+                        noneHired ? (
+                            <div className="px-5 py-16 text-center">
+                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><UserCheck className="h-6 w-6" /></div>
+                                <p className="mt-3 text-sm font-semibold text-slate-700">No drivers in onboarding yet</p>
+                                <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">Once a driver's application is approved in Hiring, they appear here to start onboarding.</p>
+                            </div>
+                        ) : (
+                            <div className="px-5 py-16 text-center">
+                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Search className="h-5 w-5" /></div>
+                                <p className="mt-3 text-sm font-semibold text-slate-700">No drivers match</p>
+                                <p className="mt-1 text-sm text-slate-400">Try a different name, or clear the filters.</p>
+                            </div>
+                        )
                     ) : (
                         <div className="divide-y divide-slate-100">
-                            {rows.map((a) => (
+                            {pageRows.map((a) => (
                                 <OnboardingRow key={a.id} a={a} wf={resolveOnbWorkflow(a.onboarding, a.formId, workflows)} onOpen={() => onNavigate(`${ONB_FILE}/${a.id}`)}
                                     onAction={(kind, label) => {
                                         if (kind === "ask") { setDialog({ a, mode: "ask" }); return; }
@@ -74,6 +107,11 @@ export function OnboardingPage({ onNavigate, carrierId }: { onNavigate: (path: s
                                     }} />
                             ))}
                         </div>
+                    )}
+                    {rows.length > 0 && (
+                        <TablePager page={safePage} pageSize={pageSize} total={rows.length}
+                            onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }}
+                            className="rounded-b-xl bg-slate-50/60" />
                     )}
                 </div>
             </div>
@@ -103,8 +141,13 @@ export function OnboardingPage({ onNavigate, carrierId }: { onNavigate: (path: s
                 return (
                     <AskDriverDialog driverName={name} driverEmail={driver.email} groups={groups}
                         subtitle={`Ask ${name} to complete forms, documents & signatures.`}
+                        // A hired driver is on the app — their chat is the first place to ask.
+                        defaultDelivery="In-app"
+                        source={{ type: "manual", id: driver.id, label: `Onboarding — ${name}` }}
+                        record={{ type: "onboarding", id: driver.id, label: `${name} — Onboarding file`, sublabel: wf?.name, path: `${ONB_FILE}/${driver.id}` }}
+                        onOpenInMessages={(id) => { setMessagesFocus(id); onNavigate("/messages"); }}
                         onClose={() => setDialog(null)}
-                        onSend={(r) => { sendOnbAsk(updateOne, driver, r, labelMap, "Request", "Driver"); setDialog(null); }} />
+                        onSend={(r) => sendOnbAsk(updateOne, driver, r, labelMap, "Request", "Driver")} />
                 );
             })()}
 
@@ -187,13 +230,12 @@ function OnboardingRow({ a, wf, onOpen, onAction }: { a: Applicant; wf?: OnbWork
                 </div>
 
                 {/* Workflow stepper (from the assigned onboarding workflow) */}
-                <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-                    <div className="flex min-w-max items-start">
+                <StepScroller focus={currentIdx >= 0 ? currentIdx : undefined} size="sm" className="flex-1">
                         {steps.map((s, i) => {
                             const isDone = s.status === "complete";
                             const isCurrent = !complete && i === currentIdx;
                             return (
-                                <div key={s.kind} className="relative flex min-w-[116px] flex-1 flex-col items-center px-1">
+                                <div key={s.kind} data-step className="relative flex min-w-[116px] flex-1 flex-col items-center px-1">
                                     {i > 0 && <span className="absolute left-0 top-[14px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: i <= currentIdx || complete ? "#10b981" : "#e2e8f0" }} />}
                                     {i < steps.length - 1 && <span className="absolute right-0 top-[14px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: i < currentIdx || complete ? "#10b981" : "#e2e8f0" }} />}
                                     <Bubble done={isDone} current={isCurrent} inProgress={s.status === "in-progress"} />
@@ -202,8 +244,7 @@ function OnboardingRow({ a, wf, onOpen, onAction }: { a: Applicant; wf?: OnbWork
                             );
                         })}
                         {steps.length === 0 && <span className="text-xs text-slate-400">No steps in this workflow.</span>}
-                    </div>
-                </div>
+                </StepScroller>
             </div>
 
             {/* Footer: meta + actions */}

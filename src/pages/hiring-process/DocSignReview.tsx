@@ -6,6 +6,9 @@ import { ChevronLeft, Check, PenLine, CheckCircle2, FileText, BadgeCheck } from 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { fieldMeta, type DocField, type DocFile, type DocTemplate } from "./document-templates.data";
+import { FormRecordCard } from "./FormRecordCard";
+import { FiledBanner } from "./PolicyForm";
+import type { FormCopy } from "./form-copies";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -102,7 +105,13 @@ function DocPagesReview({ file, fields, checked, onToggle }: { file: DocFile; fi
  * the right, ticking each field they've verified. Company signatures already
  * applied to the template render as the signature image.
  */
-export function DocSignReview({ template, driverName, onBack }: { template: DocTemplate; driverName?: string; onBack: () => void }) {
+export function DocSignReview({ template, driverName, onBack, copies = [], requested, onUpload, onVerify, onOpenCopy, onShare, onAsk, onMarkReceived }: {
+    template: DocTemplate; driverName?: string; onBack: () => void;
+    /** The signed copies of this document on the driver's file — the same card every form has. */
+    copies?: FormCopy[]; requested?: boolean;
+    onUpload?: (file: File) => void; onVerify?: (copy: FormCopy) => void; onOpenCopy?: (copy: FormCopy) => void;
+    onShare?: () => void; onAsk?: () => void; onMarkReceived?: () => void;
+}) {
     // Fields the driver fills vs company signatures already applied to the template.
     const driverFields = useMemo(() => template.fields.filter((f) => !f.stampDataUrl), [template]);
     const companyStamps = useMemo(() => template.fields.filter((f) => f.stampDataUrl), [template]);
@@ -136,6 +145,14 @@ export function DocSignReview({ template, driverName, onBack }: { template: DocT
             <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
                 {/* PDF pages */}
                 <div className="flex-1">
+                    {/* What is on file for this document, above the template it was signed from. */}
+                    {(onUpload || copies.length > 0) && (
+                        <div className="mb-6 space-y-3">
+                            <FormRecordCard compact title="Copies on file" copies={copies} requested={requested} canFill={false}
+                                onOpen={onOpenCopy} onUpload={onUpload} onVerify={onVerify} onShare={onShare} onAsk={onAsk} onMarkReceived={onMarkReceived} />
+                            {copies[0] && <FiledBanner copy={copies[0]} onVerify={onVerify ? () => onVerify(copies[0]) : undefined} className="max-w-none" />}
+                        </div>
+                    )}
                     <div className="flex flex-col items-center gap-8">
                         {template.documents.length === 0 && <p className="py-16 text-sm text-slate-400">This template has no PDF.</p>}
                         {template.documents.map((d) => (

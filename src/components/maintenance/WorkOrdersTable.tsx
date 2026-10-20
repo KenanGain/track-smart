@@ -13,7 +13,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Briefcase, Search, SlidersHorizontal } from 'lucide-react';
 import { TH, TD, COL_RULE, EmptyRow } from '@/components/ui/CatalogTable';
-import { ColumnPicker, FilterChip, ResetFilters, TableGroupBand, type PickerColumn } from '@/components/ui/ListChrome';
+import { ColumnPicker, FilterChip, ResetFilters, SortTh, TableGroupBand, useTableSort, type PickerColumn } from '@/components/ui/ListChrome';
 import { TablePager } from '@/pages/inventory/TablePager';
 import { cn } from '@/lib/utils';
 
@@ -168,6 +168,27 @@ export function WorkOrdersTable({
         });
     }, [orders, filter, search]);
 
+    /*
+     * What each column sorts by.
+     *
+     * Progress sorts on the FRACTION done, not the count: four of four is finished and one
+     * of nine is barely started, and a column that ranked 4 under 1 would be answering a
+     * question nobody asks of it. Cost sorts numerically whatever currency it is in — this
+     * list is one carrier's orders, so they are the same currency.
+     */
+    const { sort, onSort, sorted } = useTableSort<OrderCol | 'name' | 'progress', WorkOrderRow>(visible, {
+        name: (o) => o.name,
+        vendor: (o) => o.vendor,
+        driver: (o) => o.driver ?? '',
+        assets: (o) => o.assets[0] ?? '',
+        work: (o) => o.services[0] ?? '',
+        raised: (o) => o.createdAt,
+        due: (o) => o.dueDate ?? '',
+        cost: (o) => o.total ?? null,
+        progress: (o) => (o.taskCount ? o.doneCount / o.taskCount : 0),
+        status: (o) => ({ open: 0, completed: 1, cancelled: 2 }[o.state]),
+    });
+
     const bandOf = (o: WorkOrderRow): { rank: number; label: string } => {
         if (groupBy === 'status') return STATE_BAND[o.state];
         if (groupBy === 'vendor') return { rank: 0, label: o.vendor || 'No vendor' };
@@ -178,15 +199,15 @@ export function WorkOrdersTable({
     };
 
     const banded = useMemo(() => {
-        if (groupBy === 'none') return visible;
-        return [...visible].sort((a, b) => {
+        if (groupBy === 'none') return sorted;
+        return [...sorted].sort((a, b) => {
             const ba = bandOf(a), bb = bandOf(b);
             // Newest month first; everything else reads alphabetically.
             if (groupBy === 'month') return String(b.createdAt).localeCompare(String(a.createdAt));
             return ba.rank - bb.rank || ba.label.localeCompare(bb.label);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, groupBy]);
+    }, [sorted, groupBy]);
 
     const bandCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -280,16 +301,16 @@ export function WorkOrdersTable({
                     <table className={cn('w-full', showAssets ? 'min-w-[900px]' : 'min-w-[720px]')}>
                         <thead>
                             <tr>
-                                <TH>Order name</TH>
-                                {showCol('vendor') && <TH className={COL_RULE}>Vendor</TH>}
-                                {showCol('driver') && <TH className={COL_RULE}>Driver</TH>}
-                                {showAssets && showCol('assets') && <TH className={COL_RULE}>Assets</TH>}
-                                {showCol('work') && <TH className={COL_RULE}>Service interval</TH>}
-                                {showCol('raised') && <TH className={COL_RULE}>Date</TH>}
-                                {showCol('due') && <TH className={COL_RULE}>Due</TH>}
-                                {showCol('cost') && <TH className={COL_RULE}>Cost</TH>}
-                                {showCol('status') && <TH className={COL_RULE}>Status</TH>}
-                                {rowActions && <TH className={cn(COL_RULE, 'text-right')}>Actions</TH>}
+                                <SortTh col="name" label="Order name" sortable sort={sort} onSort={onSort} />
+                                {showCol('vendor') && <SortTh col="vendor" label="Vendor" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('driver') && <SortTh col="driver" label="Driver" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showAssets && showCol('assets') && <SortTh col="assets" label="Assets" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('work') && <SortTh col="work" label="Service interval" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('raised') && <SortTh col="raised" label="Date" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('due') && <SortTh col="due" label="Due" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('cost') && <SortTh col="cost" label="Cost" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                {rowActions && <TH className={cn('sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right')}>Actions</TH>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -392,7 +413,7 @@ export function WorkOrdersTable({
                                                 </TD>
                                             )}
                                             {rowActions && (
-                                                <TD className={cn(COL_RULE, 'text-right')}>
+                                                <TD className={cn('sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60')}>
                                                     <div onClick={(e) => e.stopPropagation()}>{rowActions(o)}</div>
                                                 </TD>
                                             )}

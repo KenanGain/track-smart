@@ -2,8 +2,40 @@
 // by the app for role-based sidebar filtering and navbar identity.
 
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
+import { INDEPENDENT_DRIVERS } from "@/data/independent-drivers.data";
 
-export type UserRole = "super-admin" | "admin" | "user";
+/**
+ * Six roles on three levels.
+ *
+ *   Platform         super-admin       — TrackSmart itself: every service profile, every carrier.
+ *   Service profile  admin             — runs one service profile: creates its carrier profiles,
+ *                                        adds users to it or to its carriers, hands out the
+ *                                        carrier roles below.
+ *   Carrier profile  fleet-admin · safety-manager · driver · user
+ *
+ * A driver login is always a driver on a carrier's roster (see `isDriverUser`), so `driver` is
+ * never given to an office account and an office role is never given to a driver.
+ */
+export type UserRole = "super-admin" | "admin" | "fleet-admin" | "safety-manager" | "driver" | "user";
+
+export type RoleLevel = "platform" | "service" | "carrier";
+
+export const ROLE_LEVEL: Record<UserRole, RoleLevel> = {
+    "super-admin": "platform",
+    "admin": "service",
+    "fleet-admin": "carrier",
+    "safety-manager": "carrier",
+    "driver": "carrier",
+    "user": "carrier",
+};
+
+/** The roles a service-profile admin hands out on a carrier — office seats first, the driver seat last. */
+export const CARRIER_ROLES: UserRole[] = ["fleet-admin", "safety-manager", "user", "driver"];
+
+/** Every role, highest first — the order lists sort by. */
+export const ROLE_ORDER: UserRole[] = ["super-admin", "admin", "fleet-admin", "safety-manager", "user", "driver"];
+
+export const roleRank = (r: UserRole): number => ROLE_ORDER.indexOf(r);
 
 export type AppUser = {
     id: string;
@@ -30,7 +62,9 @@ export type AppUser = {
      * none. Useful when a user works across multiple service organizations.
      */
     serviceProfileIds?: string[];
-    status: "Active" | "Inactive";
+    /** Invited = added and sent an invitation, not signed in yet. */
+    status: "Active" | "Inactive" | "Invited";
+    phone?: string;
     title: string;
     initials: string;
     avatarGradient: string; // tailwind gradient classes
@@ -104,7 +138,7 @@ export const APP_USERS: AppUser[] = [
         id: "u-006",
         name: "Marcus Reed",
         email: "marcus.r@acmetrucking.com",
-        role: "user",
+        role: "safety-manager",
         accountId: "acct-001",
         accountName: "Acme Trucking Inc.",
         serviceProfileId: "svc-001",
@@ -159,7 +193,7 @@ export const APP_USERS: AppUser[] = [
         id: "u-010",
         name: "Owen Brooks",
         email: "owen.b@cascadefreight.com",
-        role: "user",
+        role: "safety-manager",
         accountId: "acct-002",
         accountName: "Cascade Freight Systems LLC",
         serviceProfileId: "svc-003",
@@ -334,7 +368,7 @@ export const APP_USERS: AppUser[] = [
         id: "u-022",
         name: "Brielle Foster",
         email: "brielle.f@summitpeak.com",
-        role: "user",
+        role: "safety-manager",
         accountId: "acct-014",
         accountName: "Summit Peak Transport Corp.",
         serviceProfileId: "svc-002",
@@ -362,7 +396,7 @@ export const APP_USERS: AppUser[] = [
         id: "u-024",
         name: "Jordan Banks",
         email: "jordan.b@libertybell.com",
-        role: "user",
+        role: "safety-manager",
         accountId: "acct-019",
         accountName: "Liberty Bell Carriers Corp.",
         serviceProfileId: "svc-005",
@@ -418,7 +452,7 @@ export const APP_USERS: AppUser[] = [
         id: "u-028",
         name: "Rosa Martinez",
         email: "rosa.m@desertwind.com",
-        role: "user",
+        role: "safety-manager",
         accountId: "acct-017",
         accountName: "Desert Wind Transport LLC",
         serviceProfileId: "svc-007",
@@ -470,6 +504,49 @@ export const APP_USERS: AppUser[] = [
         initials: "WT",
         avatarGradient: "from-yellow-500 to-yellow-700",
     },
+
+    // ── Fleet Admins — the carrier-level lead, given the role by their service-profile admin.
+    // Lone Star (acct-008) is left without one on purpose: a carrier with nobody in charge
+    // is what Settings ▸ Users & Roles flags.
+    {
+        id: "u-032",
+        name: "Grace Holloway",
+        email: "grace.h@acmetrucking.com",
+        role: "fleet-admin",
+        accountId: "acct-001",
+        accountName: "Acme Trucking Inc.",
+        serviceProfileId: "svc-001",
+        status: "Active",
+        title: "Fleet Manager",
+        initials: "GH",
+        avatarGradient: "from-sky-500 to-sky-700",
+    },
+    {
+        id: "u-033",
+        name: "Imani Carter",
+        email: "imani.c@greatlakescarrier.com",
+        role: "fleet-admin",
+        accountId: "acct-005",
+        accountName: "Great Lakes Carrier Group",
+        serviceProfileId: "svc-001",
+        status: "Active",
+        title: "Fleet Operations Manager",
+        initials: "IC",
+        avatarGradient: "from-emerald-500 to-emerald-700",
+    },
+    {
+        id: "u-034",
+        name: "Nathan Cole",
+        email: "nathan.c@cascadefreight.com",
+        role: "fleet-admin",
+        accountId: "acct-002",
+        accountName: "Cascade Freight Systems LLC",
+        serviceProfileId: "svc-003",
+        status: "Active",
+        title: "Fleet Manager",
+        initials: "NC",
+        avatarGradient: "from-indigo-500 to-indigo-700",
+    },
 ];
 
 // ── Drivers, as accounts ────────────────────────────────────────────────────
@@ -505,7 +582,7 @@ const driverUsers = (): AppUser[] => {
                 id: `u-drv-${d.id}`,
                 name: d.name,
                 email: d.email ?? `${d.name.toLowerCase().replace(/\s+/g, ".")}@acmelogistics.com`,
-                role: "user" as const,
+                role: "driver" as const,
                 accountId: DRIVER_LOGIN_CARRIER,
                 accountName: "Acme Trucking Inc.",
                 serviceProfileId: "svc-001",
@@ -521,6 +598,120 @@ const driverUsers = (): AppUser[] => {
 export const DRIVER_USERS: AppUser[] = driverUsers();
 APP_USERS.push(...DRIVER_USERS);
 
+/*
+ * Drivers who belong to no carrier.
+ *
+ * Built the same way as the roster logins so the driver seat treats them identically — same
+ * `u-drv-` namespace, so `isDriverUser` and `driverIdOfUser` need no special case — but with
+ * no `accountId`, no `accountName` and no `serviceProfileId`, because there is no carrier and
+ * no service organisation behind them. `getDefaultCarrierForUser` returns null for an account
+ * like this, which is correct: there is no carrier to default to.
+ */
+export const INDEPENDENT_DRIVER_USERS: AppUser[] = INDEPENDENT_DRIVERS.map((d, i) => {
+    const parts = d.name.trim().split(/\s+/).filter(Boolean);
+    return {
+        id: `u-drv-${d.id}`,
+        name: d.name,
+        email: d.email ?? `${d.name.toLowerCase().replace(/\s+/g, ".")}@driver.example.com`,
+        role: "driver" as const,
+        status: "Active" as const,
+        title: d.driverType || "Driver",
+        initials: ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "DR",
+        avatarGradient: ["from-teal-500 to-teal-700", "from-amber-500 to-amber-700"][i % 2],
+    };
+});
+APP_USERS.push(...INDEPENDENT_DRIVER_USERS);
+
+// ── What Settings ▸ Users & Roles has changed ─────────────────────────────────
+//
+// The roster above is the seed; people added, re-roled, moved between carriers or removed
+// are kept on top of it in localStorage and replayed into APP_USERS here, at load — before
+// the login page or App.tsx ever look somebody up, so an invited user can sign in after a
+// reload and a removed one cannot. APP_USERS is mutated in place because everything reads
+// it directly; the event tells the screens that hold a copy.
+
+const USER_STORE_KEY = "app-users-store-v1";
+export const USERS_CHANGED_EVENT = "app-users-changed";
+
+type UserStore = { added: AppUser[]; patches: Record<string, Partial<AppUser>>; removed: string[] };
+
+function readUserStore(): UserStore {
+    try {
+        const raw = typeof localStorage !== "undefined" ? localStorage.getItem(USER_STORE_KEY) : null;
+        const s = raw ? JSON.parse(raw) as Partial<UserStore> : {};
+        return { added: s.added ?? [], patches: s.patches ?? {}, removed: s.removed ?? [] };
+    } catch { return { added: [], patches: {}, removed: [] }; }
+}
+
+let usersVersion = 0;
+function writeUserStore(s: UserStore) {
+    try { localStorage.setItem(USER_STORE_KEY, JSON.stringify(s)); } catch { /* private window */ }
+    usersVersion++;
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(USERS_CHANGED_EVENT));
+}
+
+(function replayUserStore() {
+    const s = readUserStore();
+    for (const u of s.added) if (!APP_USERS.some((x) => x.id === u.id)) APP_USERS.push(u);
+    for (const [id, p] of Object.entries(s.patches)) {
+        const u = APP_USERS.find((x) => x.id === id);
+        if (u) Object.assign(u, p);
+    }
+    for (const id of s.removed) {
+        const i = APP_USERS.findIndex((x) => x.id === id);
+        if (i >= 0) APP_USERS.splice(i, 1);
+    }
+})();
+
+/** Add a user (or a driver login). Ids must be new — use `newUserId`. */
+export function addAppUser(u: AppUser): void {
+    const s = readUserStore();
+    s.added = [...s.added.filter((x) => x.id !== u.id), u];
+    s.removed = s.removed.filter((id) => id !== u.id);
+    if (!APP_USERS.some((x) => x.id === u.id)) APP_USERS.push(u);
+    writeUserStore(s);
+}
+
+/** Change a user — role, carriers, details, status. */
+export function updateAppUser(id: string, patch: Partial<AppUser>): void {
+    const s = readUserStore();
+    const added = s.added.find((x) => x.id === id);
+    if (added) Object.assign(added, patch);
+    else s.patches[id] = { ...(s.patches[id] ?? {}), ...patch };
+    const live = APP_USERS.find((x) => x.id === id);
+    if (live) Object.assign(live, patch);
+    writeUserStore(s);
+}
+
+/** Take a user off the platform. A driver's roster record is untouched — only the login goes. */
+export function removeAppUser(id: string): void {
+    const s = readUserStore();
+    if (s.added.some((x) => x.id === id)) s.added = s.added.filter((x) => x.id !== id);
+    else if (!s.removed.includes(id)) s.removed.push(id);
+    delete s.patches[id];
+    const i = APP_USERS.findIndex((x) => x.id === id);
+    if (i >= 0) APP_USERS.splice(i, 1);
+    writeUserStore(s);
+}
+
+export const newUserId = (): string => `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export function subscribeUsers(cb: () => void): () => void {
+    window.addEventListener(USERS_CHANGED_EVENT, cb);
+    return () => window.removeEventListener(USERS_CHANGED_EVENT, cb);
+}
+export const usersSnapshot = (): number => usersVersion;
+
+/** A user's initials from their name, for an avatar. */
+export const initialsOf = (name: string): string => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+};
+
+/** A driver login with no carrier behind it. */
+export const isIndependentDriverUser = (u: AppUser | undefined): boolean =>
+    isDriverUser(u) && !u!.accountId;
+
 /** Is this account one of the roster drivers, rather than an office user? */
 export const isDriverUser = (u: AppUser | undefined): boolean => !!u && u.id.startsWith("u-drv-");
 
@@ -531,12 +722,18 @@ export const driverIdOfUser = (u: AppUser | undefined): string | undefined =>
 export const ROLE_LABELS: Record<UserRole, string> = {
     "super-admin": "Super Admin",
     "admin": "Admin",
+    "fleet-admin": "Fleet Admin",
+    "safety-manager": "Safety Manager",
+    "driver": "Driver",
     "user": "User",
 };
 
 export const ROLE_BADGE: Record<UserRole, string> = {
     "super-admin": "bg-violet-50 text-violet-700 border-violet-200",
     "admin": "bg-blue-50 text-blue-700 border-blue-200",
+    "fleet-admin": "bg-sky-50 text-sky-700 border-sky-200",
+    "safety-manager": "bg-amber-50 text-amber-700 border-amber-200",
+    "driver": "bg-emerald-50 text-emerald-700 border-emerald-200",
     "user": "bg-slate-50 text-slate-700 border-slate-200",
 };
 

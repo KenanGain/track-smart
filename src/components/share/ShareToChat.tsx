@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Send, X, Eye, Mail, Smartphone, FileText, Image as ImageIcon, Video, Paperclip,
+  Send, X, Eye, FileText, Image as ImageIcon, Video, Paperclip,
   Search, Check, Link2, Copy, MessageSquare, CheckCircle2, ArrowLeft, Tag as TagIcon, UserPlus,
   Upload, FolderOpen, Building2, Truck, User, ChevronRight, ChevronLeft,
   type LucideIcon,
@@ -12,6 +12,7 @@ import {
 } from '@/pages/messages/messages-store';
 import { useChatContacts, useChatTags, tagById, upsertChatContact } from '@/pages/settings/chat-tags.data';
 import { listAppDocuments, type AppDocument } from '@/pages/compliance/compliance-data-store';
+import { DeliveryPicker, type Delivery } from './RequestDelivery';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ShareToChat — the one dialog behind every "Share / Send" action in the product.
@@ -368,25 +369,17 @@ export function ShareToChat(props: ShareToChatProps) {
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
               {/* Left — recipient + note */}
               <div className="flex flex-col gap-5 px-6 py-5 lg:w-[54%] lg:overflow-y-auto lg:border-r lg:border-slate-100">
-                {/* Send via */}
+                {/* Send via — the same three choices as every Ask / Order dialog: an in-app
+                    chat, an external chat on a secure link, or a one-way email. */}
                 <div>
                   <FieldLabel>Send via</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    <ChannelTile active={!external} onClick={() => setChannel('in-app')} icon={Smartphone} label="In-app user" sub="Someone in TrackSmart" />
-                    <ChannelTile active={external} onClick={() => setChannel('email')} icon={Mail} label="External" sub="Outsider · email" />
-                  </div>
+                  <DeliveryPicker
+                    value={!external ? 'In-app' : emailOnly ? 'Email' : 'External chat'}
+                    onChange={(d: Delivery) => {
+                      setChannel(d === 'In-app' ? 'in-app' : 'email');
+                      if (d !== 'In-app') setExtDelivery(d === 'Email' ? 'email' : 'chat');
+                    }} />
                 </div>
-
-                {/* Outsider delivery — chat link vs one-way document email */}
-                {external && (
-                  <div>
-                    <FieldLabel>Delivery</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2">
-                      <ChannelTile active={extDelivery === 'chat'} onClick={() => setExtDelivery('chat')} icon={MessageSquare} label="Create chat" sub="Secure link · they reply" />
-                      <ChannelTile active={extDelivery === 'email'} onClick={() => setExtDelivery('email')} icon={Paperclip} label="Email documents" sub="Send files · one-way" />
-                    </div>
-                  </div>
-                )}
 
                 {/* Recipient */}
                 {external ? (
@@ -785,20 +778,6 @@ export function ShareToChat(props: ShareToChatProps) {
 // ── small building blocks ────────────────────────────────────────────────────
 function FieldLabel({ children, className, small }: { children: ReactNode; className?: string; small?: boolean }) {
   return <label className={cn('mb-1.5 block font-semibold text-slate-500', small ? 'text-[10px] uppercase tracking-wide' : 'text-[11px]', className)}>{children}</label>;
-}
-
-function ChannelTile({ active, onClick, icon: Icon, label, sub }: { active: boolean; onClick: () => void; icon: LucideIcon; label: string; sub: string }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={cn('flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
-        active ? 'border-blue-500 bg-blue-50/70 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50')}>
-      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}><Icon size={15} /></span>
-      <span className="min-w-0">
-        <span className={cn('block text-[13px] font-semibold', active ? 'text-blue-900' : 'text-slate-700')}>{label}</span>
-        <span className="block truncate text-[11px] text-slate-400">{sub}</span>
-      </span>
-    </button>
-  );
 }
 
 function TypeChip({ icon: Icon, tone, label }: { icon: LucideIcon; tone: string; label: string }) {

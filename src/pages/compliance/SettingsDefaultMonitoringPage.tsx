@@ -10,7 +10,7 @@ import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { APP_USERS, findUserById, getManagedAccountIds, type AppUser } from '@/data/users.data';
 import {
-    useMonitoringRouting,
+    useMonitoringRouting, consumeOpenNotificationRole,
     type RoutingRecipient, type NotificationRole,
     ROLE_PRESETS, roleRecipient, OWNER_RECIPIENT,
 } from '@/pages/compliance/monitoring-routing.data';
@@ -117,6 +117,16 @@ export function SettingsDefaultMonitoringPage({ accountId, onNavigate }: { accou
 
     const [editingRole, setEditingRole] = useState<NotificationRole | 'new' | null>(null);
     const [coverTab, setCoverTab] = useState<CoverTab>('all');
+
+    // Sent here from a carrier's Users & Roles page to edit one role (or start a new one).
+    useEffect(() => {
+        const want = consumeOpenNotificationRole();
+        if (!want) return;
+        if (want === 'new') { setEditingRole('new'); return; }
+        const r = roles.find(x => x.id === want);
+        if (r) setEditingRole(r);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const saveRole = (role: NotificationRole) => {
         if (editingRole === 'new') { const { id, ...rest } = role; void id; addRole(rest); }

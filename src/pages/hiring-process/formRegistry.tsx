@@ -38,7 +38,7 @@ function StepPlaceholder({ title, desc, onBack }: { title: string; desc: string;
 
 /** Renders the right form component for any catalog id. Always returns an element.
  *  `embedded` strips the admin chrome so the form renders inline as the applicant sees it. */
-export function HiringFormView({ formId, onBack, embedded, startPreview, onSignOff, onSaveValues, roadTestValues, roadTestNote }: { formId: string; onBack: () => void; embedded?: boolean; startPreview?: boolean; onSignOff?: (info?: { method?: string; docs?: { label: string; fileName?: string; kind: string }[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; roadTestValues?: Record<string, unknown>; roadTestNote?: { examiner: string; driver: string } }) {
+export function HiringFormView({ formId, onBack, embedded, startPreview, onSignOff, onSaveValues, roadTestValues, roadTestNote, backLabel }: { formId: string; onBack: () => void; embedded?: boolean; startPreview?: boolean; onSignOff?: (info?: { method?: string; docs?: { label: string; fileName?: string; kind: string }[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; roadTestValues?: Record<string, unknown>; roadTestNote?: { examiner: string; driver: string }; /** Where the back link goes, for the policy forms (the other forms say "Forms"). */ backLabel?: string }) {
     if (formId === "driver-license") return <DriverLicenseForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "mvr") return <DriverAbstractForm variant="mvr" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "driver-abstract") return <DriverAbstractForm variant="abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
@@ -69,7 +69,7 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
     if (formId === "clearinghouse-query") return <ClearinghouseQueryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
 
     const policyDef = POLICY_FORMS.find((p) => p.id === formId);
-    if (policyDef) return <PolicyForm def={policyDef} onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (policyDef) return <PolicyForm def={policyDef} mode={embedded ? undefined : "template"} backLabel={backLabel} onBack={onBack} embedded={embedded} startPreview={startPreview} />;
 
     if (formId === "road-test") {
         const appForm = loadApplicationForms().find((f) => f.id === "form-ats-road-test");

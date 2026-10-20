@@ -225,7 +225,8 @@ export function ServiceProfilePage({ serviceProfileId, currentUser, onSelectServ
                     <UsersTab
                         users={linkedUsers}
                         canAdd={canEdit}
-                        onAddUser={() => onNavigate?.("/admin/users/new")}
+                        onAddUser={() => onNavigate?.("/service-profile/users-roles")}
+                        onManage={onNavigate ? () => onNavigate("/service-profile/users-roles") : undefined}
                         onViewUser={(u) => setViewingUser(u)}
                     />
                 )}
@@ -542,11 +543,13 @@ function OfficesTab({
 // ── Tab: Users ─────────────────────────────────────────────────────────────
 
 function UsersTab({
-    users, canAdd, onAddUser, onViewUser,
+    users, canAdd, onAddUser, onManage, onViewUser,
 }: {
     users: AppUser[];
     canAdd: boolean;
     onAddUser: () => void;
+    /** Roles, carriers and invitations are managed on the Users & Roles page. */
+    onManage?: () => void;
     onViewUser: (u: AppUser) => void;
 }) {
     if (users.length === 0) {
@@ -567,7 +570,8 @@ function UsersTab({
         );
     }
     const admins = users.filter((u) => u.role === "admin");
-    const regular = users.filter((u) => u.role === "user");
+    // Everyone on a carrier's team — Fleet Admins, Safety Managers, Users and Drivers.
+    const regular = users.filter((u) => u.role !== "admin");
 
     return (
         <div className="space-y-5">
@@ -576,16 +580,23 @@ function UsersTab({
                 <div className="text-sm text-slate-600">
                     <span className="font-semibold text-slate-900">{users.length}</span> user{users.length === 1 ? "" : "s"} ·{" "}
                     <span className="font-semibold text-slate-900">{admins.length}</span> admin{admins.length === 1 ? "" : "s"} ·{" "}
-                    <span className="font-semibold text-slate-900">{regular.length}</span> operational
+                    <span className="font-semibold text-slate-900">{regular.length}</span> on carrier teams
                 </div>
-                {canAdd && (
-                    <button
-                        onClick={onAddUser}
-                        className="h-9 px-3.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm"
-                    >
-                        <Plus size={14} /> Add User
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {onManage && (
+                        <button type="button" onClick={onManage} className="text-xs font-medium text-blue-600 hover:underline inline-flex items-center gap-1">
+                            Manage roles & access <ListChecks size={12} />
+                        </button>
+                    )}
+                    {canAdd && (
+                        <button
+                            onClick={onAddUser}
+                            className="h-9 px-3.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm"
+                        >
+                            <Plus size={14} /> Add User
+                        </button>
+                    )}
+                </div>
             </div>
 
             {admins.length > 0 && <UserGroup label="Admins" users={admins} onViewUser={onViewUser} />}

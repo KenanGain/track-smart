@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DRIVER_TYPE_OPTIONS, driverTypeLabel, normalizeDriverType, type DriverTypeId } from "./driver-types";
 
 // ── Hiring templates ────────────────────────────────────────────────────────
 // A template is an ordered list of STEPS. Each step has a title and one OR MORE
@@ -25,17 +26,14 @@ export const fulfillModeFor = (fid: string): FulfillMode => FORM_FULFILLMENT[fid
 export type QuizPick = { quizId: string; count: number };
 export type TemplateStep = { id: string; title: string; formIds: string[]; formModes?: Record<string, FulfillMode>; quizzes?: QuizPick[]; locked?: boolean; kind?: "app" | "review" };
 export const stepFormMode = (s: TemplateStep, fid: string): FulfillMode => s.formModes?.[fid] ?? fulfillModeFor(fid);
-export type DriverType = "local" | "us" | "canada" | "cross-border";
+export type DriverType = DriverTypeId;
 export type HiringTemplate = { id: string; name: string; description: string; locked?: boolean; driverType?: DriverType; checklistId?: string; carrierId?: string; steps: TemplateStep[] };
 
-// The four driver types — each maps to the application form drivers complete in step 1.
-export const DRIVER_TYPES: { id: DriverType; name: string; region: string }[] = [
-    { id: "local", name: "Local / Domestic", region: "Domestic" },
-    { id: "us", name: "US Driver", region: "United States" },
-    { id: "canada", name: "Canada Driver", region: "Canada" },
-    { id: "cross-border", name: "Cross-Border (US–Canada)", region: "US · Canada" },
-];
-export const driverTypeName = (id?: DriverType) => DRIVER_TYPES.find((d) => d.id === id)?.name ?? "—";
+// The three driver types — one per application form, the form drivers complete in step 1.
+// Shared with onboarding and the invite dialog (driver-types.ts), so a workflow's type is
+// always one an applicant can actually have.
+export const DRIVER_TYPES: { id: DriverType; name: string; region: string }[] = DRIVER_TYPE_OPTIONS.map(({ id, name, region }) => ({ id, name, region }));
+export const driverTypeName = (id?: string) => driverTypeLabel(id) ?? "—";
 
 // Step 1 of every template: the Application + consent forms the driver completes first.
 export const APP_STEP_TITLE = "Application & Consents";
@@ -146,7 +144,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         ],
     },
     {
-        id: "tpl-local", name: "Local / Domestic Driver", description: "Domestic CDL hire — abstract, background check and road test.", locked: true, driverType: "local", checklistId: "cl-local",
+        id: "tpl-local", name: "Local / Domestic Driver", description: "Domestic CDL hire — abstract, background check and road test.", locked: true, driverType: "us", checklistId: "cl-local",
         steps: [
             makeAppStep("tpl-local", ["mvr-release"]),
             rep("tpl-local", 2, "mvr"),
@@ -195,7 +193,9 @@ function load(): HiringTemplate[] {
         if (raw) {
             const saved = JSON.parse(raw) as HiringTemplate[];
             // Always keep the locked defaults present (and current) alongside custom ones.
-            const customs = saved.filter((t) => !DEFAULT_TEMPLATES.some((d) => d.id === t.id));
+            // Customs saved before the three-type catalog may still say "local" — read it as US.
+            const customs = saved.filter((t) => !DEFAULT_TEMPLATES.some((d) => d.id === t.id))
+                .map((t) => ({ ...t, driverType: normalizeDriverType(t.driverType) }));
             return [...DEFAULT_TEMPLATES, ...customs];
         }
     } catch { /* ignore */ }

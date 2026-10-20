@@ -645,10 +645,32 @@ export const getAccountById = (id: string): AccountRecord | undefined =>
 export const getAccountsByServiceProfileId = (serviceProfileId: string): AccountRecord[] =>
     ACCOUNTS_DB.filter((a) => a.serviceProfileId === serviceProfileId);
 
+// Carriers created in the app — Add Carrier, or a service-profile admin in Settings ▸ Users &
+// Roles — kept in localStorage and put back at load, so a carrier made before a reload is
+// still there after it (it used to vanish, taking the users given access to it with it).
+const ADDED_ACCOUNTS_KEY = 'app-added-accounts-v1';
+export const ACCOUNTS_CHANGED_EVENT = 'app-accounts-changed';
+
+const readAddedAccounts = (): AccountRecord[] => {
+    try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(ADDED_ACCOUNTS_KEY) : null;
+        return raw ? (JSON.parse(raw) as AccountRecord[]) : [];
+    } catch { return []; }
+};
+
+// Stored newest first, so unshifting oldest-first leaves the newest on top.
+for (const a of [...readAddedAccounts()].reverse()) {
+    if (!ACCOUNTS_DB.some(x => x.id === a.id)) ACCOUNTS_DB.unshift(a);
+}
+
 // Insert a new carrier at the top of the list. Mutates the module-level
 // ACCOUNTS_DB so subsequent reads reflect the addition.
 export const addAccountRecord = (record: AccountRecord): void => {
     ACCOUNTS_DB.unshift(record);
+    try {
+        localStorage.setItem(ADDED_ACCOUNTS_KEY, JSON.stringify([record, ...readAddedAccounts().filter(a => a.id !== record.id)]));
+    } catch { /* private window */ }
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(ACCOUNTS_CHANGED_EVENT));
 };
 
 export const uniqueValues = <K extends keyof AccountRecord>(key: K): Array<AccountRecord[K]> => {

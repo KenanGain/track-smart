@@ -26,7 +26,7 @@ import {
     VIA_LABEL, VIA_TONE, type HeldVia, type HolderKind, type HolderRow,
 } from "./inventory-rollup";
 import {
-    ColumnPicker, FilterChip, ResetFilters, TableGroupBand, type PickerColumn,
+    ColumnPicker, FilterChip, ResetFilters, SortTh, TableGroupBand, useTableSort, type PickerColumn,
 } from "@/components/ui/ListChrome";
 import { useDriverDqFiles } from "@/pages/dq-files/dq-driver-files.data";
 import { DQ_DRIVER_TYPES, type DqDriverTypeId } from "@/pages/settings/settings-dq-checklists.data";
@@ -261,6 +261,25 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows, groupBy, dqTypeOf, isDriver]);
 
+    /*
+     * What each column sorts by.
+     *
+     * The counts sort numerically, which is the whole reason this list wants sorting: a
+     * yard looking for who is holding the most, or which unit has the most lapsed paper on
+     * it, cannot find either by reading twenty-two rows of right-aligned digits.
+     */
+    const { sort, onSort, sorted } = useTableSort<ColId, HolderRow>(groupedRows, {
+        holder: (r) => r.label,
+        context: (r) => r.status,
+        dq: (r) => dqTypeOf(r.id) ?? '',
+        items: (r) => r.items.length,
+        returnable: (r) => r.via.returnable,
+        removable: (r) => r.via.removable,
+        expiring: (r) => r.expiring,
+        expired: (r) => r.expired,
+        unwatched: (r) => r.unwatched,
+    });
+
     const groupCounts = useMemo(() => {
         const m = new Map<string, number>();
         if (groupBy === "none") return m;
@@ -286,7 +305,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
 
     const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
-    const pagedRows = groupedRows.slice(safePage * perPage, safePage * perPage + perPage);
+    const pagedRows = sorted.slice(safePage * perPage, safePage * perPage + perPage);
 
     const { scrollRef, condensed, onScroll } = useCondensingHeader(loadFilter);
     const kpiChips = useMemo(() => [
@@ -446,22 +465,22 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                     <table className="w-full">
                                         <thead>
                                             <tr>
-                                                <TH>{isDriver ? "Driver" : "Asset"}</TH>
-                                                {show("context") && <TH>Status</TH>}
-                                                {show("dq") && <TH>Driver type</TH>}
+                                                <SortTh col="holder" label={isDriver ? "Driver" : "Asset"} sortable sort={sort} onSort={onSort} />
+                                                {show("context") && <SortTh col="context" label="Status" sortable sort={sort} onSort={onSort} />}
+                                                {show("dq") && <SortTh col="dq" label="Driver type" sortable sort={sort} onSort={onSort} />}
                                                 {/* On the Drivers tab this is the whole pile AND the returnable
                                                     count, which are the same number there — so it is named for
                                                     what it holds rather than printed twice. */}
-                                                {show("items") && <TH className="text-right">{isDriver ? "Returnable" : "Items"}</TH>}
+                                                {show("items") && <SortTh col="items" label={isDriver ? "Returnable" : "Items"} sortable sort={sort} onSort={onSort} className="text-right" />}
                                                 {/* A column each, not two chips in one cell: you cannot scan one
                                                     carrier against another down a stacked cell. */}
                                                 {(["returnable", "removable"] as HeldVia[]).filter(show).map((v) => (
-                                                    <TH key={v} className="text-right">{VIA_LABEL[kind][v]}</TH>
+                                                    <SortTh key={v} col={v} label={VIA_LABEL[kind][v]} sortable sort={sort} onSort={onSort} className="text-right" />
                                                 ))}
-                                                {show("expiring") && <TH className="text-right">Expiring</TH>}
-                                                {show("expired") && <TH className="text-right">Expired</TH>}
-                                                {show("unwatched") && <TH className="text-right">No alert</TH>}
-                                                <TH className="w-px text-right">Actions</TH>
+                                                {show("expiring") && <SortTh col="expiring" label="Expiring" sortable sort={sort} onSort={onSort} className="text-right" />}
+                                                {show("expired") && <SortTh col="expired" label="Expired" sortable sort={sort} onSort={onSort} className="text-right" />}
+                                                {show("unwatched") && <SortTh col="unwatched" label="No alert" sortable sort={sort} onSort={onSort} className="text-right" />}
+                                                <TH className="sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right">Actions</TH>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -580,7 +599,7 @@ export function InventoryHoldersPage({ onNavigate, kind, accountId, accountName 
                                                             a driver holding something is a deliberate act — and the
                                                             place to do it is the row of the person doing the
                                                             holding. */}
-                                                        <TD className="w-px text-right" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
+                                                        <TD className="sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60" onClick={(e: React.MouseEvent<HTMLTableCellElement>) => e.stopPropagation()}>
                                                             <KebabMenu items={[
                                                                 { label: isDriver ? "Open driver" : "Open asset", icon: ExternalLink, onClick: () => onNavigate(`${back}/${r.id}`) },
                                                                 {

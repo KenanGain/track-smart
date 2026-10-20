@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ClipboardList, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks, Eye } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, FileSearch, FileSignature, ClipboardCheck, ClipboardList, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks, Eye, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SubTabs } from "@/components/ui/SubTabs";
+import type { KebabItem } from "@/components/ui/KebabMenu";
+import { TableGroupBand } from "@/components/ui/ListChrome";
+import { RowTable, NameCell, ActionsCell, Paged, ROW_CLS, CELL } from "./SetupTable";
 import { policyDocuments, THEME_HEX } from "./policy-forms.data";
 import { HiringFormView } from "./formRegistry";
 import { TemplateBuilder } from "./TemplateBuilder";
@@ -51,6 +53,12 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
     const [flash, setFlash] = useState<string | null>(null);
     const [openForm, setOpenForm] = useState<string | null>(null);
     const [openPreview, setOpenPreview] = useState(false);
+    // A form's menu, the same for built forms and policy forms: open it, test it, see it as a PDF.
+    const formActions = (id: string): KebabItem[] => [
+        { label: "Open", icon: ArrowRight, onClick: () => { setOpenPreview(false); setOpenForm(id); } },
+        { label: "Test", icon: FlaskConical, onClick: () => { setOpenPreview(false); setOpenForm(id); } },
+        { label: "PDF view", icon: Eye, onClick: () => { setOpenPreview(true); setOpenForm(id); } },
+    ];
     const [editTemplate, setEditTemplate] = useState<string | null>(null);
     const [testTemplate, setTestTemplate] = useState<HiringTemplate | null>(null);
     const [editChecklist, setEditChecklist] = useState<string | null>(null);
@@ -68,7 +76,7 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
         const qz = quizzes.find((q) => q.id === previewQuiz);
         if (qz) return <QuizRunner quiz={qz} mode="preview" onClose={() => setPreviewQuiz(null)} />;
     }
-    if (openForm !== null) return <HiringFormView formId={openForm} startPreview={openPreview} onBack={() => { setOpenForm(null); setOpenPreview(false); }} />;
+    if (openForm !== null) return <HiringFormView formId={openForm} startPreview={openPreview} backLabel={tab === "policy" ? "Policy forms" : "Workflow builder"} onBack={() => { setOpenForm(null); setOpenPreview(false); }} />;
 
     const TABS: { key: Tab; label: string; Icon: React.ElementType; count: number }[] = [
         { key: "templates", label: "Workflows", Icon: LayoutTemplate, count: templates.length },
@@ -145,147 +153,98 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                         </div>
 
                         {/* Body */}
+                        {/* Every tab is the same list: one line per row, the facts in columns,
+                            and every action behind the three dots. A click on the row does the
+                            first thing in its menu. */}
                         {tab === "checklists" ? (
-                            <div className="divide-y divide-slate-100">
-                                {checklists.map((c) => (
-                                    <div key={c.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><ListChecks className="h-5 w-5" /></div>
-                                            <div className="min-w-0">
-                                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                                    {c.name}
-                                                    {c.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{c.stages.length} stages · {totalChecklistItems(c)} items</span>
-                                                </p>
-                                                {c.description && <p className="truncate text-sm text-slate-500">{c.description}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 justify-end gap-2">
-                                            <Button variant="outline" size="sm" onClick={() => setEditChecklist(c.id)}>Edit</Button>
-                                            {!c.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete checklist “${c.name}”?`)) removeChecklist(c.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
-                                        </div>
-                                    </div>
+                            <Paged key={tab} items={checklists}>{(rows) => (
+                            <RowTable cols={[{ label: "Checklist" }, { label: "Stages", w: "w-28" }, { label: "Items", w: "w-28" }]}>
+                                {rows.map((c) => (
+                                    <tr key={c.id} className={ROW_CLS} onClick={() => setEditChecklist(c.id)}>
+                                        <NameCell icon={ListChecks} accent="bg-emerald-50 text-emerald-600" name={c.name} sub={c.description} locked={c.locked} />
+                                        <td className={CELL}>{c.stages.length}</td>
+                                        <td className={CELL}>{totalChecklistItems(c)}</td>
+                                        <ActionsCell name={c.name} items={[
+                                            { label: "Edit", icon: Pencil, onClick: () => setEditChecklist(c.id) },
+                                            ...(!c.locked ? [{ label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete checklist “${c.name}”?`)) removeChecklist(c.id); } }] : []),
+                                        ]} />
+                                    </tr>
                                 ))}
-                            </div>
+                            </RowTable>
+                            )}</Paged>
                         ) : tab === "quizzes" ? (
-                            <div>
-                                {(() => {
-                                    // Group quizzes by category, ordered by QUIZ_CATEGORIES (extras appended).
-                                    const order = [...QUIZ_CATEGORIES] as string[];
-                                    const cats = Array.from(new Set(quizzes.map((x) => x.category)))
-                                        .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
-                                    return cats.map((cat) => {
-                                        const list = quizzes.filter((x) => x.category === cat);
-                                        return (
-                                            <div key={cat}>
-                                                <div className="flex items-center gap-2 border-y border-slate-100 bg-slate-50/80 px-5 py-2 first:border-t-0">
-                                                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</span>
-                                                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">{list.length}</span>
-                                                </div>
-                                                <div className="divide-y divide-slate-100">
-                                                    {list.map((qz) => (
-                                                        <div key={qz.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                                            <div className="flex min-w-0 flex-1 items-center gap-4">
-                                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"><ClipboardList className="h-5 w-5" /></div>
-                                                                <div className="min-w-0">
-                                                                    <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                                                        {qz.title}
-                                                                        {qz.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                                                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{qz.questions.length} questions · pass {qz.passPct}%</span>
-                                                                    </p>
-                                                                    {qz.description && <p className="truncate text-sm text-slate-500">{qz.description}</p>}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex shrink-0 justify-end gap-2">
-                                                                <Button variant="outline" size="sm" onClick={() => setPreviewQuiz(qz.id)}><Eye className="h-4 w-4" /> Preview</Button>
-                                                                {!qz.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete quiz “${qz.title}”?`)) removeQuiz(qz.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
+                            <Paged key={tab} items={quizzesByCategory(quizzes)}>{(rows) => (
+                            <RowTable cols={[{ label: "Quiz" }, { label: "Questions", w: "w-28" }, { label: "Pass mark", w: "w-28" }]}>
+                                {/* Paged first, then grouped: a page opens a category band wherever
+                                    its category starts, and the band counts the whole category. */}
+                                {rows.flatMap((qz, i) => [
+                                            ...(i === 0 || rows[i - 1].category !== qz.category
+                                                ? [<TableGroupBand key={`band-${qz.category}`} label={qz.category} count={quizzes.filter((x) => x.category === qz.category).length} colSpan={QUIZ_COLS} />]
+                                                : []),
+                                            (
+                                                <tr key={qz.id} className={ROW_CLS} onClick={() => setPreviewQuiz(qz.id)}>
+                                                    <NameCell icon={ClipboardList} accent="bg-sky-50 text-sky-600" name={qz.title} sub={qz.description} locked={qz.locked} />
+                                                    <td className={CELL}>{qz.questions.length}</td>
+                                                    <td className={CELL}>{qz.passPct}%</td>
+                                                    <ActionsCell name={qz.title} items={[
+                                                        { label: "Preview", icon: Eye, onClick: () => setPreviewQuiz(qz.id) },
+                                                        ...(!qz.locked ? [{ label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete quiz “${qz.title}”?`)) removeQuiz(qz.id); } }] : []),
+                                                    ]} />
+                                                </tr>
+                                            ),
+                                ])}
+                            </RowTable>
+                            )}</Paged>
                         ) : tab === "forms" ? (
-                            <div className="divide-y divide-slate-100">
-                                {FORMS.map((f) => (
-                                    <div key={f.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", f.accent)}>
-                                                <f.Icon className="h-5 w-5" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="font-semibold text-slate-900">{f.name}</p>
-                                                <p className="truncate text-sm text-slate-500">{f.desc}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 flex-nowrap justify-end gap-2">
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(f.id); }}><FlaskConical className="h-4 w-4" /> Test</Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(true); setOpenForm(f.id); }}><Eye className="h-4 w-4" /> PDF view</Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(f.id); }}>Open <ArrowRight className="h-4 w-4" /></Button>
-                                        </div>
-                                    </div>
+                            <Paged key={tab} items={FORMS}>{(rows) => (
+                            <RowTable cols={[{ label: "Form" }]}>
+                                {rows.map((f) => (
+                                    <tr key={f.id} className={ROW_CLS} onClick={() => { setOpenPreview(false); setOpenForm(f.id); }}>
+                                        <NameCell icon={f.Icon} accent={f.accent} name={f.name} sub={f.desc} />
+                                        <ActionsCell name={f.name} items={formActions(f.id)} />
+                                    </tr>
                                 ))}
-                            </div>
+                            </RowTable>
+                            )}</Paged>
                         ) : tab === "policy" ? (
-                            <div className="divide-y divide-slate-100">
-                                {policyForms.map((p) => (
-                                    <div key={p.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${THEME_HEX[p.theme]}1a`, color: THEME_HEX[p.theme] }}>
-                                                <FileSignature className="h-5 w-5" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="font-semibold text-slate-900">{p.title} <span style={{ color: THEME_HEX[p.theme] }}>{p.accentTitle}</span></p>
-                                                <p className="truncate text-sm text-slate-500">{p.blurb}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 flex-nowrap justify-end gap-2">
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(p.id); }}><FlaskConical className="h-4 w-4" /> Test</Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(true); setOpenForm(p.id); }}><Eye className="h-4 w-4" /> PDF view</Button>
-                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(p.id); }}>Open <ArrowRight className="h-4 w-4" /></Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <Paged key={tab} items={policyForms}>{(rows) => (
+                            <RowTable cols={[{ label: "Policy form" }]}>
+                                {rows.map((p) => {
+                                    const name = `${p.title} ${p.accentTitle}`.trim();
+                                    return (
+                                        <tr key={p.id} className={ROW_CLS} onClick={() => { setOpenPreview(false); setOpenForm(p.id); }}>
+                                            <NameCell icon={FileSignature} iconStyle={{ backgroundColor: `${THEME_HEX[p.theme]}1a`, color: THEME_HEX[p.theme] }} name={name} sub={p.blurb} />
+                                            <ActionsCell name={name} items={formActions(p.id)} />
+                                        </tr>
+                                    );
+                                })}
+                            </RowTable>
+                            )}</Paged>
                         ) : templates.length ? (
-                            <div className="divide-y divide-slate-100">
-                                {templates.map((t) => (
-                                    <div key={t.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                        <div className="flex min-w-0 flex-1 items-start gap-4">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                                                <LayoutTemplate className="h-5 w-5" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                                    {t.name}
-                                                    {t.driverType && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">{driverTypeName(t.driverType)}</span>}
-                                                    {t.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{t.steps.length} steps · {totalForms(t)} forms</span>
-                                                    {t.checklistId && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"><ListChecks className="h-2.5 w-2.5" /> {checklistName(t.checklistId)}</span>}
-                                                </p>
-                                                {t.description && <p className="truncate text-sm text-slate-500">{t.description}</p>}
-                                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                                    {t.steps.slice(0, 6).map((s, i) => (
-                                                        <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
-                                                            <span className="font-semibold text-slate-400">{i + 1}</span> {s.title}
-                                                            <span className="text-slate-300">·</span><span className="text-slate-400">{s.formIds.length}</span>
-                                                        </span>
-                                                    ))}
-                                                    {t.steps.length > 6 && <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-400">+{t.steps.length - 6} more</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                                            <Button variant="outline" size="sm" onClick={() => setTestTemplate(t)}><FlaskConical className="h-4 w-4" /> Test</Button>
-                                            <Button variant="outline" size="sm" onClick={() => setEditTemplate(t.id)}>Edit</Button>
-                                            {!t.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete workflow “${t.name}”?`)) removeTemplate(t.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
-                                        </div>
-                                    </div>
+                            <Paged key={tab} items={templates}>{(rows) => (
+                            <RowTable minW={880} cols={[{ label: "Workflow" }, { label: "Driver type", w: "w-40" }, { label: "Steps", w: "w-36" }, { label: "Checklist", w: "w-48" }]}>
+                                {rows.map((t) => (
+                                    <tr key={t.id} className={ROW_CLS} onClick={() => setEditTemplate(t.id)}>
+                                        <NameCell icon={LayoutTemplate} accent="bg-violet-50 text-violet-600" name={t.name} sub={t.description} locked={t.locked} />
+                                        <td className={CELL}>
+                                            {t.driverType ? <span className="inline-block max-w-full truncate rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600" title={driverTypeName(t.driverType)}>{driverTypeName(t.driverType)}</span> : <span className="text-slate-300">&mdash;</span>}
+                                        </td>
+                                        {/* The step names are in the tooltip — the count is what the list compares. */}
+                                        <td className={CELL} title={t.steps.map((s, i) => `${i + 1}. ${s.title} · ${s.formIds.length}`).join("\n")}>
+                                            <span className="whitespace-nowrap">{t.steps.length} steps <span className="text-slate-400">· {totalForms(t)} forms</span></span>
+                                        </td>
+                                        <td className={CELL}>
+                                            {t.checklistId ? <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700" title={checklistName(t.checklistId)}><ListChecks className="h-3 w-3 shrink-0" /> <span className="truncate">{checklistName(t.checklistId)}</span></span> : <span className="text-slate-300">&mdash;</span>}
+                                        </td>
+                                        <ActionsCell name={t.name} items={[
+                                            { label: "Edit", icon: Pencil, onClick: () => setEditTemplate(t.id) },
+                                            { label: "Test", icon: FlaskConical, onClick: () => setTestTemplate(t) },
+                                            ...(!t.locked ? [{ label: "Delete", icon: Trash2, danger: true, onClick: () => { if (window.confirm(`Delete workflow “${t.name}”?`)) removeTemplate(t.id); } }] : []),
+                                        ]} />
+                                    </tr>
                                 ))}
-                            </div>
+                            </RowTable>
+                            )}</Paged>
                         ) : (
                             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
                                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-500">
@@ -309,4 +268,15 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
             </div>
         </div>
     );
+}
+
+// Quiz table columns: name · questions · pass mark · actions (the group band spans them all).
+const QUIZ_COLS = 4;
+
+// Quizzes in category order (QUIZ_CATEGORIES first, any others after), flat — so the pager
+// counts quizzes, not categories.
+function quizzesByCategory<T extends { category: string }>(list: T[]): T[] {
+    const order = [...QUIZ_CATEGORIES] as string[];
+    const rank = (c: string) => order.indexOf(c) + 1 || 99;
+    return [...list].sort((a, b) => rank(a.category) - rank(b.category));
 }

@@ -78,13 +78,13 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     },
     {
         key: "default-compliance-documents",
-        label: "Default Compliances & Documents",
+        label: "Compliances & Documents",
         icon: Layers,
         path: "/default-compliance-documents",
     },
     {
         key: "default-compliance-monitoring",
-        label: "Default Compliance Monitoring",
+        label: "Compliance Monitoring",
         icon: BellRing,
         path: "/default-compliance-monitoring",
     },
@@ -95,8 +95,17 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/maintenance",
     },
     {
+        // The driver's own way in. Sits above the app itself because a driver with no
+        // carrier has nothing to look at in there until they have applied to one.
+        key: "apply-carrier",
+        label: "Apply for Carrier",
+        icon: Briefcase,
+        path: "/apply-carrier",
+        badge: "New",
+    },
+    {
         key: "hiring-process",
-        label: "Hiring Process",
+        label: "Application Tracking System",
         icon: Workflow,
         children: [
             { key: "hiring-process-applications", label: "Applications", icon: Briefcase, path: "/hiring-process/applications", badge: "New" },
@@ -138,7 +147,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     },
     {
         key: "default-accidents",
-        label: "Default Accidents",
+        label: "Accidents",
         icon: ShieldAlert,
         path: "/default-accidents",
     },
@@ -175,16 +184,17 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Settings,
         children: [
             { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
+            { key: "settings-users-roles", label: "Users & Roles", icon: UserCog, path: "/settings/users-roles", badge: "New" },
             { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
             { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
             { key: "settings-new-compliance-documents", label: "New Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
-            { key: "settings-default-compliance-monitoring", label: "Default Compliance & Monitoring", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
+            { key: "settings-default-compliance-monitoring", label: "Compliance & Monitoring", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
             { key: "settings-tags", label: "Tags", icon: Tags, path: "/settings/tags", badge: "New" },
             { key: "settings-chat-tags", label: "Chat Tags", icon: MessageSquare, path: "/settings/chat-tags", badge: "New" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             {
                 key: "settings-hiring-process",
-                label: "Hiring Setup",
+                label: "Application Tracking System Setup",
                 icon: Workflow,
                 badge: "New",
                 children: [
@@ -214,6 +224,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Briefcase,
         children: [
             { key: "service-profile-profile", label: "Profile", icon: Briefcase, path: "/service-profile" },
+            { key: "service-profile-users-roles", label: "Users & Roles", icon: UserCog, path: "/service-profile/users-roles", badge: "New" },
             { key: "service-profile-compliance", label: "Compliance Setup", icon: ShieldCheck, path: "/service-profile/compliance-setup" },
         ],
     },
@@ -282,7 +293,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     // Superseded by "Default Compliance Monitoring".
     {
         key: "compliance-monitoring",
-        label: "Compliance Monitoring",
+        label: "Compliance Monitoring (old)",
         icon: Gauge,
         path: "/compliance-monitoring",
         disabled: true,
@@ -290,7 +301,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     // Superseded by "Default Accidents".
     {
         key: "accidents",
-        label: "Accidents",
+        label: "Accidents (old)",
         icon: AlertTriangle,
         path: "/accidents",
         disabled: true,

@@ -87,7 +87,7 @@ export function TestingFormsPage() {
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="mx-auto max-w-5xl px-6 py-8">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Hiring Setup</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Application Tracking System Setup</p>
                 <h1 className="mt-1 text-2xl font-bold text-slate-900">Testing Forms</h1>
                 <p className="mt-1.5 text-sm text-slate-500">Open a form to preview the <span className="font-semibold text-slate-600">email</span> the recipient receives and the <span className="font-semibold text-slate-600">form</span> they complete. Saved drafts and submissions appear under <span className="font-semibold text-slate-600">Saved forms</span>.</p>
 

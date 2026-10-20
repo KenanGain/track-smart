@@ -11,7 +11,10 @@
 // a search row, ruled columns, one pager.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+    ColumnPicker, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
 import {
     Mail, Phone, MapPin, Store, CircleCheck, CircleSlash, Search, Share2, Pencil, Trash2,
 } from "lucide-react";
@@ -28,6 +31,30 @@ import { TablePager } from "./TablePager";
 import { TH, TD, COL_RULE, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
 import { formatVendorAddress, type Vendor } from "./inventory.data";
 import { cn } from "@/lib/utils";
+
+/**
+ * The columns a reader can turn off, and the two they cannot.
+ *
+ * The name is what identifies the row and the menu is what acts on it; a list without
+ * either is a list of anonymous rows nobody can do anything with. `locked` says so in the
+ * picker rather than silently omitting them.
+ */
+type VendorCol = 'vendor' | 'address' | 'contact' | 'status' | 'actions';
+const VENDOR_COLUMNS: PickerColumn<VendorCol>[] = [
+    { id: 'vendor', label: 'Vendor', locked: true },
+    { id: 'address', label: 'Address' },
+    { id: 'contact', label: 'Contact' },
+    { id: 'status', label: 'Status' },
+    { id: 'actions', label: 'Actions', locked: true },
+];
+
+/** What this list can be banded by — the two facts a vendor row actually carries. */
+type VendorGroup = 'none' | 'status' | 'jurisdiction';
+const VENDOR_GROUPS: { id: VendorGroup; label: string }[] = [
+    { id: 'none', label: 'Group by' },
+    { id: 'status', label: 'Status' },
+    { id: 'jurisdiction', label: 'Jurisdiction' },
+];
 
 export function VendorsTable({ vendors, accountId, onOpen, className }: {
     /** Already scoped to the carrier by whoever is showing it. */
@@ -49,6 +76,24 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
     const [status, setStatus] = useState<"all" | "Active" | "Inactive">("all");
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
+    /*
+     * The name and the row's own menu are locked on.
+     *
+     * A list whose first column can be switched off is a list of anonymous rows, and one
+     * whose actions can be switched off has rows nobody can act on. Everything between
+     * them is the reader's to choose.
+     */
+    const [visibleCols, setVisibleCols] = useState<Set<VendorCol>>(
+        () => new Set(VENDOR_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: VendorCol) => setVisibleCols((prev) => {
+        const n = new Set(prev);
+        if (n.has(id)) n.delete(id); else n.add(id);
+        return n;
+    });
+    const showCol = (id: VendorCol) => visibleCols.has(id);
+    /** The band and the empty row have to span whatever is currently on screen. */
+    const colCount = VENDOR_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+    const [groupBy, setGroupBy] = useState<VendorGroup>('none');
     // The row actions. Editing and deleting go through `vendorsStore`, so every list
     // reading the store — here, Settings, the work-order picker — agrees on the next render.
     const [editing, setEditing] = useState<Vendor | null>(null);
@@ -76,15 +121,45 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
         });
     }, [vendors, search, status]);
 
+    /*
+     * What each column sorts by — the value, not the markup.
+     *
+     * Status sorts Active before Inactive rather than alphabetically, because the question
+     * a reader asks of this column is "who is live", not "which word comes first".
+     */
+    const { sort, onSort, sorted } = useTableSort<VendorCol, Vendor>(filtered, {
+        vendor: (v) => v.name,
+        address: (v) => formatVendorAddress(v.address),
+        contact: (v) => v.email ?? v.phone ?? '',
+        status: (v) => (v.status === 'Active' ? 0 : 1),
+    });
+
+    /** The band a grouped list is split by, and the order the bands come in. */
+    const bandOf = (v: Vendor) =>
+        groupBy === 'status' ? (v.status === 'Active' ? 'Active' : 'Inactive')
+            : groupBy === 'jurisdiction' ? (v.address?.state || v.address?.country || 'No address')
+                : '';
+    const banded = useMemo(() => {
+        if (groupBy === 'none') return sorted;
+        return [...sorted].sort((a, b) => bandOf(a).localeCompare(bandOf(b)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sorted, groupBy]);
+    const bandCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy !== 'none') for (const v of banded) m.set(bandOf(v), (m.get(bandOf(v)) ?? 0) + 1);
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [banded, groupBy]);
+
     // A different carrier, a narrower filter — either way page 7 is nowhere.
-    useEffect(() => { setPage(0); }, [vendors, search, status]);
+    useEffect(() => { setPage(0); }, [vendors, search, status, groupBy]);
 
-    const pageCount = Math.max(1, Math.ceil(filtered.length / perPage));
+    const pageCount = Math.max(1, Math.ceil(banded.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
-    const paged = filtered.slice(safePage * perPage, safePage * perPage + perPage);
+    const paged = banded.slice(safePage * perPage, safePage * perPage + perPage);
 
-    const filtering = search.trim() !== "" || status !== "all";
-    const clear = () => { setSearch(""); setStatus("all"); };
+    const filtering = search.trim() !== "" || status !== "all" || groupBy !== 'none';
+    const clear = () => { setSearch(""); setStatus("all"); setGroupBy('none'); };
 
     return (
         <div className={cn("space-y-5", className)}>
@@ -113,6 +188,20 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                             className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
+                    <select
+                        value={groupBy}
+                        onChange={(e) => setGroupBy(e.target.value as VendorGroup)}
+                        title="Band the list"
+                        className={cn(
+                            'h-9 shrink-0 rounded-lg border px-2.5 text-[13px] font-semibold outline-none focus:border-blue-500',
+                            groupBy === 'none'
+                                ? 'border-slate-200 bg-white text-slate-600'
+                                : 'border-blue-300 bg-blue-50/60 text-blue-700',
+                        )}
+                    >
+                        {VENDOR_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                    <ColumnPicker columns={VENDOR_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                     {filtering && (
                         <button
                             type="button"
@@ -129,17 +218,17 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                         <table className="w-full">
                             <thead>
                                 <tr>
-                                    <TH>Vendor</TH>
-                                    <TH className={COL_RULE}>Address</TH>
-                                    <TH className={COL_RULE}>Contact</TH>
-                                    <TH className={COL_RULE}>Status</TH>
-                                    <TH className={cn("w-px text-right", COL_RULE)}>Actions</TH>
+                                    <SortTh col="vendor" label="Vendor" sortable sort={sort} onSort={onSort} />
+                                    {showCol('address') && <SortTh col="address" label="Address" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('contact') && <SortTh col="contact" label="Contact" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    <TH className={cn("sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right", COL_RULE)}>Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {paged.length === 0 && (
                                     <EmptyRow
-                                        colSpan={5}
+                                        colSpan={colCount}
                                         Icon={Store}
                                         title="No vendors match your filters"
                                         hint={search.trim()
@@ -148,9 +237,12 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                         onClear={filtering ? clear : undefined}
                                     />
                                 )}
-                                {paged.map((v) => (
+                                {paged.map((v, i) => (
+                                    <Fragment key={v.id}>
+                                    {groupBy !== 'none' && (i === 0 || bandOf(paged[i - 1]) !== bandOf(v)) && (
+                                        <TableGroupBand label={bandOf(v)} count={bandCounts.get(bandOf(v)) ?? 0} colSpan={colCount} />
+                                    )}
                                     <tr
-                                        key={v.id}
                                         onClick={onOpen ? () => onOpen(v) : undefined}
                                         onKeyDown={onOpen ? (e) => { if (e.key === "Enter") onOpen(v); } : undefined}
                                         tabIndex={onOpen ? 0 : undefined}
@@ -169,6 +261,7 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                                 </div>
                                             </div>
                                         </TD>
+                                        {showCol('address') && (
                                         <TD className={COL_RULE}>
                                             {v.address && formatVendorAddress(v.address) ? (
                                                 <div className="flex max-w-xs items-start gap-1.5 text-sm text-slate-600">
@@ -187,6 +280,8 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                                 <span className="text-sm text-slate-400">—</span>
                                             )}
                                         </TD>
+                                        )}
+                                        {showCol('contact') && (
                                         <TD className={COL_RULE}>
                                             {v.email && (
                                                 <div className="inline-flex items-center gap-1.5 text-sm text-slate-600">
@@ -200,6 +295,8 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                             )}
                                             {!v.email && !v.phone && <span className="text-sm text-slate-400">—</span>}
                                         </TD>
+                                        )}
+                                        {showCol('status') && (
                                         <TD className={COL_RULE}>
                                             <span className={cn(
                                                 "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
@@ -214,10 +311,11 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                                 {v.status}
                                             </span>
                                         </TD>
+                                        )}
                                         {/* The menu does its own thing without opening the page
                                             behind it — a row that is a link still has cells that
                                             are not. */}
-                                        <TD className={COL_RULE} onClick={(e) => e.stopPropagation()}>
+                                        <TD className={cn("sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60", COL_RULE)} onClick={(e) => e.stopPropagation()}>
                                             {/* The same three verbs the service-type list offers. */}
                                             <div className="flex items-center justify-end">
                                                 <KebabMenu
@@ -231,6 +329,7 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                                             </div>
                                         </TD>
                                     </tr>
+                                    </Fragment>
                                 ))}
                             </tbody>
                         </table>

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
     BellRing, Building2, Truck, User, Search, CalendarClock, CircleAlert, AlertTriangle,
-    Clock, Filter, Eye, Layers, Mail, Smartphone, ArrowRight, CircleDashed, ChevronsUpDown, ChevronUp,
+    Clock, Filter, Eye, Layers, Mail, Smartphone, CircleDashed, ChevronsUpDown, ChevronUp,
     LayoutDashboard, CalendarDays, ChevronLeft, ChevronRight, X,
     History, Activity, Columns, ChevronDown, ExternalLink,
     Zap, Trash2, CalendarPlus, ClipboardList, RefreshCw, Check, UserPlus,
-    Send, Upload, ClipboardCheck, Wrench, Sliders, Info, Sparkles,
+    Send, Upload, ClipboardCheck, Wrench, Sliders, Info, Sparkles, MessageSquare, CheckCircle2,
 } from 'lucide-react';
+import { DeliveryPicker, deliverRequest, needsEmail, type Delivery } from '@/components/share/RequestDelivery';
 import { cn } from '@/lib/utils';
 import { SubTabs } from '@/components/ui/SubTabs';
 import { ListPageHeader, ListPageBody, PAGE_PAD } from '@/components/ui/ListPageHeader';
@@ -26,8 +27,16 @@ import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { AssignRecordDialog } from '@/components/share/AssignRecordDialog';
-import { type RecordRef } from '@/pages/messages/messages-store';
+import { setPendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
 import { APP_USERS, findUserById, getManagedAccountIds, type AppUser } from '@/data/users.data';
+import { KpiStatRow } from '@/components/ui/KpiStatCard';
+import { KebabMenu, type KebabItem } from '@/components/ui/KebabMenu';
+import { TablePager } from '@/components/ui/ListChrome';
+import { SOURCE_META, SOURCE_ORDER, inventoryAlerts, maintenanceAlerts, ticketAlerts, hiringAlerts, type AlertSource, type SourceAlert } from '@/pages/compliance/monitoring-sources';
+import { useCarrierTickets } from '@/pages/tickets/tickets.store';
+import { currentInventoryItems, useInventoryAdditions } from '@/pages/inventory/inventory-store';
+import { useApplicants } from '@/pages/hiring-process/applicants.data';
+import { useOnbWorkflows } from '@/pages/hiring-process/onboarding.data';
 
 /**
  * Default Compliance Monitoring — the alerts view over everything captured on the
@@ -137,12 +146,17 @@ const TYPE_META: Record<AlertType, { label: string; Icon: typeof BellRing; tone:
 };
 
 // ── List columns (show/hide via the Columns dropdown) ─────────────────
-type ColId = 'priority' | 'type' | 'monitors' | 'due' | 'assignee' | 'notified' | 'reminders' | 'channels' | 'nextAlert';
+// One fact per column, one line per row. Subject and Status are columns of their own: they
+// used to ride under the record name and under the date, which made every row two lines tall
+// and still left both of them cut off.
+type ColId = 'subject' | 'priority' | 'type' | 'monitors' | 'due' | 'status' | 'assignee' | 'notified' | 'reminders' | 'channels' | 'nextAlert';
 const COLUMNS: { id: ColId; label: string }[] = [
+    { id: 'subject', label: 'Subject' },
     { id: 'priority', label: 'Priority' },
     { id: 'type', label: 'Type' },
     { id: 'monitors', label: 'Monitors' },
-    { id: 'due', label: 'Due / Status' },
+    { id: 'due', label: 'Due' },
+    { id: 'status', label: 'Status' },
     { id: 'assignee', label: 'Assigned to' },
     { id: 'notified', label: 'Notified' },
     { id: 'reminders', label: 'Reminders' },
@@ -150,7 +164,15 @@ const COLUMNS: { id: ColId; label: string }[] = [
     { id: 'nextAlert', label: 'Next alert' },
 ];
 // Keep the default list lean — the essentials only. Everything else stays one click away in Columns.
-const DEFAULT_COLS: ColId[] = ['priority', 'due', 'notified'];
+const DEFAULT_COLS: ColId[] = ['subject', 'priority', 'due', 'status', 'notified'];
+// Fixed widths for every column but Record, which takes the rest and truncates. Without them
+// the table laid itself out to the longest ticket name on the page and put the Actions column
+// a screen-width to the right. Sized so the default set fits a 900px card with the record
+// name still readable; the table scrolls sideways below that rather than squeezing.
+const COL_W: Record<ColId, string> = {
+    subject: 'w-36', priority: 'w-28', type: 'w-40', monitors: 'w-44', due: 'w-28', status: 'w-36', assignee: 'w-44', notified: 'w-36', reminders: 'w-48', channels: 'w-32', nextAlert: 'w-36',
+};
+const CELL_CLS = 'overflow-hidden whitespace-nowrap px-3 py-2.5';
 
 /** Convert any stored data: URL to a blob URL before opening (browsers block data: navigation); real file URLs open directly. */
 function openFile(f: DataDocFile) {
@@ -175,6 +197,8 @@ function openFile(f: DataDocFile) {
 // self = resolve it yourself; the rest are outbound "ask / order" actions to a user or driver.
 type RequestMode = 'request' | 'assign' | 'notify';
 type ActionMode = 'self' | RequestMode;
+/** What the Ask / notify form hands back — really sent through Messages, see `sendRequest`. */
+type SendPayload = { mode: RequestMode; recipient: Assignee; delivery: Delivery; email: string; subject: string; message: string; dueDate: string };
 
 // ── assignee ──────────────────────────────────────────────────────────
 interface Assignee { id: string; name: string }
@@ -193,9 +217,17 @@ function avatarFor(assignee: Assignee): { initials: string; gradient: string } {
 }
 
 // ── alert model ───────────────────────────────────────────────────────
+// One shape for every source. A compliance alert carries its catalog record (the actions
+// that edit a version need it); everything else carries where it came from and a link.
 interface Alert {
     id: string;
-    record: SafetyRecord;
+    source: AlertSource;
+    /** The catalog record — compliance documents only. */
+    record?: SafetyRecord;
+    title: string;
+    description: string;
+    numberLabel?: string;
+    link: { path: string; pendingId?: string; pendingType?: string };
     entity: EntityId;
     subjectId: string;
     subjectLabel: string;
@@ -243,6 +275,12 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const { actions, log } = useMonitoringActions(acct);
     const assets = useMemo(() => getAssetsForAccount(acct), [acct]);
     const drivers = useMemo(() => getDriversForAccount(acct), [acct]);
+    // The other modules' own stores — read live, so a ticket paid or a card renewed leaves
+    // this list the moment it leaves theirs.
+    const tickets = useCarrierTickets(acct);
+    const { additions: inventoryAdditions } = useInventoryAdditions(acct);
+    const { applicants } = useApplicants();
+    const { workflows: onbWorkflows } = useOnbWorkflows();
 
     // Current user (for "by whom" on the activity log) + the users this carrier's alerts can be assigned to.
     const currentUser = useMemo(() => {
@@ -288,6 +326,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const [assignAlert, setAssignAlert] = useState<Alert | null>(null); // Share / Assign to chat
     const [search, setSearch] = useState('');
     const [entityFilter, setEntityFilter] = useState<'all' | EntityId>('all');
+    const [sourceFilter, setSourceFilter] = useState<'all' | AlertSource>('all');
+    // The KPI cards are the filter for themselves — Overdue shows the overdue list.
+    const [dueFilter, setDueFilter] = useState<'all' | 'overdue' | 'week' | 'month'>('all');
     const [priorityFilter, setPriorityFilter] = useState<'all' | PriorityLevel>('all');
     const [typeFilter, setTypeFilter] = useState<'all' | AlertType>('all');
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -308,28 +349,30 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const driverSubjects = useMemo<RosterSubj[]>(() => drivers.map(d => ({ id: d.id, label: d.name, sub: d.driverType ?? undefined, initials: d.avatarInitials })), [drivers]);
     const assetSubjects = useMemo<RosterSubj[]>(() => assets.map(a => ({ id: a.id, label: a.unitNumber, sub: `${a.make} ${a.model}` })), [assets]);
 
-    // Deep-link to the linked record in Default Compliances & Documents (opens its detail page there).
+    // Deep-link to where the item lives: its record on Default Compliances & Documents, or
+    // the module it came from, with that module asked to open the record.
     const openLinked = (a: Alert) => {
-        try { localStorage.setItem('dcd-focus', JSON.stringify({ acct, entity: a.entity, subjectId: a.subjectId, recordId: a.record.id })); } catch { /* ignore */ }
-        onNavigate?.('/default-compliance-documents');
+        if (a.source === 'compliance' && a.record) {
+            try { localStorage.setItem('dcd-focus', JSON.stringify({ acct, entity: a.entity, subjectId: a.subjectId, recordId: a.record.id })); } catch { /* ignore */ }
+            onNavigate?.('/default-compliance-documents');
+            return;
+        }
+        if (a.link.pendingId) setPendingRecord(a.link.path, a.link.pendingId, a.link.pendingType);
+        onNavigate?.(a.link.path);
     };
 
     // Build a clickable record link + a data summary for the Share / Assign-to-chat dialog.
-    const assignRefFor = (a: Alert): RecordRef => ({
-        type: 'compliance',
-        id: `${a.entity}|${a.subjectId}|${a.record.id}`,
-        label: a.record.recordName,
-        sublabel: `${a.subjectLabel} · ${a.entity}`,
-        path: '/default-compliance-documents',
-    });
+    const assignRefFor = (a: Alert): RecordRef => (a.source === 'compliance' && a.record
+        ? { type: 'compliance', id: `${a.entity}|${a.subjectId}|${a.record.id}`, label: a.title, sublabel: `${a.subjectLabel} · ${a.entity}`, path: '/default-compliance-documents' }
+        : { type: a.link.pendingType ?? a.source, id: a.link.pendingId ?? a.id, label: a.title, sublabel: `${a.subjectLabel} · ${SOURCE_META[a.source].short}`, path: a.link.path });
     const assignMetaFor = (a: Alert): Record<string, string> => {
         const dueText = a.daysUntil === null ? '' : a.daysUntil < 0
             ? `Overdue by ${-a.daysUntil} day${-a.daysUntil === 1 ? '' : 's'}`
             : a.daysUntil === 0 ? 'Due today' : `Due in ${a.daysUntil} day${a.daysUntil === 1 ? '' : 's'}`;
-        const m: Record<string, string> = { Subject: a.subjectLabel, Priority: PRIORITY_META[a.priority].label };
+        const m: Record<string, string> = { Source: SOURCE_META[a.source].label, Subject: a.subjectLabel, Priority: PRIORITY_META[a.priority].label };
         if (a.date) m.Due = a.date;
         if (dueText) m.Status = dueText; else if (a.status) m.Status = a.status;
-        if (a.numberValue) m[a.record.numberName || 'Number'] = a.numberValue;
+        if (a.numberValue) m[a.numberLabel || 'Number'] = a.numberValue;
         return m;
     };
 
@@ -340,7 +383,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         return subjectId;
     };
 
-    const alerts = useMemo<Alert[]>(() => {
+    const complianceAlerts = useMemo<Alert[]>(() => {
         const out: Alert[] = [];
         const prefix = `${acct}::`;
         for (const [key, entry] of Object.entries(all)) {
@@ -373,7 +416,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                 const priority = isStatus ? priorityForStatus(v.status) : priorityFor(d ?? 9999, recReminders);
                 out.push({
                     id: `${key}::${instanceId ?? ''}::${v.id}`,
-                    record, entity: record.entity, subjectId, subjectLabel, instanceName, instanceId,
+                    source: 'compliance', record, title: record.recordName, description: record.description, numberLabel: record.numberName,
+                    link: { path: '/default-compliance-documents' },
+                    entity: record.entity, subjectId, subjectLabel, instanceName, instanceId,
                     basis: cfg.basis, type: typeForBasis(cfg.basis), isStatus, recurrence: cfg.recurrence || 'annually',
                     date, daysUntil: d, status: v.status, numberValue: v.numberValue,
                     priority, reminders: recReminders,
@@ -385,6 +430,36 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         return out;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [all, acct, assets, drivers, carrierName, lockSubject, recordsById]);
+
+    // Everything else with a date it can miss — read from each module's own store (see
+    // monitoring-sources) and given the same priority rules as a compliance record.
+    const sourceAlerts = useMemo<Alert[]>(() => {
+        const items: SourceAlert[] = [
+            ...inventoryAlerts(currentInventoryItems(acct), assets, drivers, carrierName),
+            ...maintenanceAlerts(acct, assets),
+            ...ticketAlerts(tickets, drivers, assets),
+            ...hiringAlerts(acct, applicants, onbWorkflows, all),
+        ];
+        return items
+            .filter((s) => !lockSubject || s.subjectId === lockSubject.subjectId)
+            .map((s): Alert => {
+                const reminders = s.reminders.slice().sort((x, y) => y - x);
+                const priority: PriorityLevel = s.isStatus ? (s.statusPriority ?? priorityForStatus(s.status)) : priorityFor(s.daysUntil ?? 9999, reminders);
+                const basis: MonitorBasis = s.isStatus ? 'status' : s.source === 'inventory' ? 'expiry' : 'custom';
+                return {
+                    id: s.id, source: s.source, title: s.title, description: s.description, numberLabel: s.numberLabel, link: s.link,
+                    entity: s.entity, subjectId: s.subjectId, subjectLabel: s.subjectLabel,
+                    basis, type: s.isStatus ? 'status' : s.source === 'inventory' ? 'expiry' : 'scheduled', isStatus: s.isStatus, recurrence: 'annually',
+                    date: s.date, daysUntil: s.daysUntil, status: s.status, numberValue: s.numberValue ?? '',
+                    priority, reminders, nextAlertDate: nextAlert(s.date, s.daysUntil, reminders),
+                    channels: s.channels, assignee: s.assignee, file: s.file ?? null,
+                };
+            });
+        // `inventoryAdditions` is the store signal — the list itself is read fresh each time.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [acct, assets, drivers, carrierName, tickets, inventoryAdditions, applicants, onbWorkflows, all, lockSubject]);
+
+    const alerts = useMemo<Alert[]>(() => [...complianceAlerts, ...sourceAlerts], [complianceAlerts, sourceAlerts]);
 
     // Per-entity counts (drive the Carrier / Drivers / Assets scope tabs).
     const entityCounts = useMemo(() => {
@@ -398,6 +473,12 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         () => (entityFilter === 'all' ? alerts : alerts.filter(a => a.entity === entityFilter)),
         [alerts, entityFilter],
     );
+    // Per-source counts within the scope — what each source pill says it would show.
+    const sourceCounts = useMemo(() => {
+        const c = Object.fromEntries(SOURCE_ORDER.map((s) => [s, 0])) as Record<AlertSource, number>;
+        for (const a of scopedAlerts) c[a.source]++;
+        return c;
+    }, [scopedAlerts]);
 
     const counts = useMemo(() => {
         let overdue = 0, week = 0, month = 0;
@@ -429,6 +510,8 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
 
     // ── Actions on an alert (update the compliance-data store + record to the activity log) ──
     const applyToCurrent = (a: Alert, fn: (v: DocVersion) => DocVersion) => {
+        // Only a compliance record has a version to edit here; the other modules own theirs.
+        if (!a.record) return;
         const entry = getEntry(a.subjectId, a.record.id);
         if (a.instanceId && entry.instances?.length) {
             const instances = entry.instances.map(inst => inst.id === a.instanceId
@@ -438,7 +521,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
             setEntry(a.subjectId, a.record.id, { ...entry, versions: entry.versions.map((v, i) => (i === 0 ? fn(v) : v)) });
         }
     };
-    const logBase = (a: Alert) => ({ recordId: a.record.id, subjectId: a.subjectId, instanceName: a.instanceName, recordName: a.record.recordName, subjectLabel: a.subjectLabel, by: currentUserName });
+    const logBase = (a: Alert) => ({ recordId: a.record?.id ?? a.id, subjectId: a.subjectId, instanceName: a.instanceName, recordName: a.title, subjectLabel: a.subjectLabel, by: currentUserName });
     const setNextDate = (a: Alert, newDate: string) => {
         if (!newDate) return;
         applyToCurrent(a, v => (a.basis === 'custom'
@@ -465,8 +548,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         setActionAlert(null);
     };
     // Ask / order: request a document, assign a review, or notify — to a user or driver.
-    const sendRequest = (a: Alert, p: { mode: RequestMode; recipient: Assignee; channel: 'email' | 'inApp'; dueDate: string }) => {
-        const via = p.channel === 'email' ? 'email' : 'in-app';
+    /** Ask / assign / remind — logged here, and really sent through Messages like every other Ask in the product. */
+    const sendRequest = (a: Alert, p: SendPayload): string => {
+        const via = p.delivery === 'In-app' ? 'in-app chat' : p.delivery === 'External chat' ? 'external chat' : 'email';
         if (p.mode !== 'notify') applyToCurrent(a, v => ({ ...v, monitoring: { ...v.monitoring, assignee: p.recipient } }));
         const due = p.dueDate ? ` · due ${fmtNice(p.dueDate)}` : '';
         const detail = p.mode === 'request' ? `Requested document from ${p.recipient.name} · ${via}${due}`
@@ -474,22 +558,35 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                 : `Reminder sent to ${p.recipient.name} · ${via}`;
         const type: MonitoringActionType = p.mode === 'assign' ? 'assigned' : p.mode === 'request' ? 'requested' : 'notified';
         log({ ...logBase(a), type, detail });
-        setActionAlert(null);
+        return deliverRequest({
+            delivery: p.delivery, name: p.recipient.name, email: p.email, subject: p.subject,
+            message: p.dueDate ? `${p.message}\n\nDue: ${fmtNice(p.dueDate)}` : p.message,
+            asked: p.mode === 'request' ? [a.title] : p.mode === 'assign' ? [`Review: ${a.title}`] : [],
+            source: { type: 'manual', id: a.id, label: `${SOURCE_META[a.source].label} · ${a.title}` },
+            record: assignRefFor(a),
+            roleTag: drivers.some(d => d.id === p.recipient.id) ? 'Driver' : undefined,
+        });
     };
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         return scopedAlerts.filter(a => {
             if (subjectFilter && a.subjectId !== subjectFilter.id) return false;
+            if (sourceFilter !== 'all' && a.source !== sourceFilter) return false;
+            if (dueFilter !== 'all') {
+                const d = a.daysUntil;
+                if (d === null) return false;
+                if (dueFilter === 'overdue' ? d >= 0 : dueFilter === 'week' ? (d < 0 || d > 7) : (d < 0 || d > 30)) return false;
+            }
             if (priorityFilter !== 'all' && a.priority !== priorityFilter) return false;
             if (typeFilter !== 'all' && a.type !== typeFilter) return false;
             if (q) {
-                const hay = `${a.record.recordName} ${a.record.description} ${a.subjectLabel} ${a.instanceName ?? ''} ${a.numberValue} ${TYPE_META[a.type].label} ${BASIS_LABEL[a.basis]} ${a.record.monitorType ?? ''} ${a.status} ${a.assignee?.name ?? ''}`.toLowerCase();
+                const hay = `${a.title} ${a.description} ${a.subjectLabel} ${a.instanceName ?? ''} ${a.numberValue} ${TYPE_META[a.type].label} ${BASIS_LABEL[a.basis]} ${a.record?.monitorType ?? ''} ${a.status} ${a.assignee?.name ?? ''} ${SOURCE_META[a.source].label}`.toLowerCase();
                 if (!hay.includes(q)) return false;
             }
             return true;
         });
-    }, [scopedAlerts, search, priorityFilter, typeFilter, subjectFilter]);
+    }, [scopedAlerts, search, sourceFilter, dueFilter, priorityFilter, typeFilter, subjectFilter]);
 
     const sorted = useMemo(() => {
         const arr = [...filtered];
@@ -510,7 +607,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     const safePage = Math.min(page, totalPages);
     const start = (safePage - 1) * pageSize;
     const pageRows = sorted.slice(start, start + pageSize);
-    useEffect(() => { setPage(1); }, [search, entityFilter, priorityFilter, typeFilter, sortKey, sortDir, pageSize, subjectFilter, subView]);
+    useEffect(() => { setPage(1); }, [search, entityFilter, sourceFilter, dueFilter, priorityFilter, typeFilter, sortKey, sortDir, pageSize, subjectFilter, subView]);
 
     // Records | Drivers/Assets view switch is only offered on the Driver & Asset scopes.
     const showSwitch = entityFilter === 'Driver' || entityFilter === 'Asset';
@@ -543,8 +640,8 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
             ) : (
                 <ListPageHeader
                     Icon={BellRing}
-                    title="Default Compliance Monitoring"
-                    description={<>Upcoming notifications &amp; alerts from <span className="font-semibold text-slate-700">{carrierName}</span>’s compliance &amp; document records — by date and priority.</>}
+                    title="Compliance Monitoring"
+                    description={<>Everything with a date it can miss at <span className="font-semibold text-slate-700">{carrierName}</span> — compliance documents, inventory, maintenance, tickets, training and hiring requests — by date and priority.</>}
                     count={counts.total}
                     countTitle={`${counts.total.toLocaleString()} monitored items`}
                     chips={kpiChips}
@@ -583,13 +680,17 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                 {/* Compliance health meter */}
                 <HealthMeter health={health} scope={entityFilter} />
 
-                {/* KPI tiles */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <KpiTile label="Overdue" value={counts.overdue} Icon={AlertTriangle} accent="rose" />
-                    <KpiTile label="Due this week" value={counts.week} Icon={CircleAlert} accent="orange" />
-                    <KpiTile label="Due in 30 days" value={counts.month} Icon={CalendarClock} accent="amber" />
-                    <KpiTile label="Monitored items" value={counts.total} Icon={BellRing} accent="blue" />
-                </div>
+                {/* KPI cards — the product's shared tiles, and each one is the filter for itself. */}
+                <KpiStatRow
+                    stats={[
+                        { id: 'overdue', label: 'Overdue', value: counts.overdue, Icon: AlertTriangle, accent: 'rose' },
+                        { id: 'week', label: 'Due this week', value: counts.week, Icon: CircleAlert, accent: 'orange' },
+                        { id: 'month', label: 'Due in 30 days', value: counts.month, Icon: CalendarClock, accent: 'amber' },
+                        { id: 'all', label: 'Monitored items', value: counts.total, Icon: BellRing, accent: 'blue' },
+                    ]}
+                    activeId={dueFilter === 'all' ? undefined : dueFilter}
+                    onPick={(id) => setDueFilter((f) => (id === 'all' || f === id ? 'all' : (id as 'overdue' | 'week' | 'month')))}
+                />
 
                 {/* List card */}
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -610,6 +711,21 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                             onOpen={(id, label) => { setSubjectFilter({ id, label }); setSubView('records'); }} />
                     ) : (
                     <>
+                    {/* Source pills — which module the item lives in, each with what it would show. */}
+                    <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-4 py-2.5">
+                        <span className="mr-1 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-slate-400"><Layers size={13} /> Source</span>
+                        <SourcePill label="All" count={scopedAlerts.length} on={sourceFilter === 'all'} onClick={() => setSourceFilter('all')} />
+                        {SOURCE_ORDER.map((s) => (
+                            <SourcePill key={s} label={SOURCE_META[s].label} Icon={SOURCE_META[s].Icon} count={sourceCounts[s]} on={sourceFilter === s}
+                                onClick={() => setSourceFilter((f) => (f === s ? 'all' : s))} />
+                        ))}
+                        {(sourceFilter !== 'all' || dueFilter !== 'all' || priorityFilter !== 'all' || typeFilter !== 'all' || search) && (
+                            <button type="button" onClick={() => { setSourceFilter('all'); setDueFilter('all'); setPriorityFilter('all'); setTypeFilter('all'); setSearch(''); }}
+                                className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">
+                                <X size={13} /> Reset
+                            </button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
                         <div className="relative flex-1 min-w-[220px] max-w-sm">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -632,13 +748,8 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                             {TYPE_ORDER.map(t => <option key={t} value={t}>{TYPE_META[t].label}</option>)}
                         </select>
                         <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
-                        <div className="ml-auto inline-flex items-center gap-1.5 text-[12px] text-slate-500">
-                            <ChevronsUpDown size={13} className="text-slate-400" /> Sort
-                            <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)} className={selectCls} title="Sort by">
-                                <option value="date">By date (soonest)</option>
-                                <option value="priority">By priority</option>
-                            </select>
-                        </div>
+                        {/* Sorting lives in the column headers (Priority, Due) — no separate control. */}
+                        <span className="ml-auto text-[12px] text-slate-400 tabular-nums">{total} of {scopedAlerts.length}</span>
                     </div>
 
                     {sorted.length === 0 ? (
@@ -651,16 +762,17 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                         </div>
                         {/* Desktop: full table */}
                         <div className="hidden lg:block overflow-x-auto">
-                            <table className="w-full min-w-[820px]">
+                            <table className="w-full table-fixed min-w-[900px]">
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                        <th className="px-4 py-2.5 pl-5">Record &amp; Subject</th>
+                                        <th className="w-12 py-2.5 pl-3 pr-1"><span className="sr-only">Source</span></th>
+                                        <th className="px-3 py-2.5">Record</th>
                                         {COLUMNS.filter(c => visibleCols.has(c.id)).map(c => {
                                             const sortForCol: SortKey | null = c.id === 'priority' ? 'priority' : c.id === 'due' ? 'date' : null;
-                                            if (!sortForCol) return <th key={c.id} className="px-4 py-2.5 whitespace-nowrap">{c.label}</th>;
+                                            if (!sortForCol) return <th key={c.id} className={cn('px-3 py-2.5 whitespace-nowrap', COL_W[c.id])}>{c.label}</th>;
                                             const active = sortKey === sortForCol;
                                             return (
-                                                <th key={c.id} className="px-4 py-2.5 whitespace-nowrap">
+                                                <th key={c.id} className={cn('px-3 py-2.5 whitespace-nowrap', COL_W[c.id])}>
                                                     <button type="button" onClick={() => sortBy(sortForCol)}
                                                         className={cn('inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700', active ? 'text-blue-600' : 'text-slate-500')}>
                                                         {c.label}
@@ -669,7 +781,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                                                 </th>
                                             );
                                         })}
-                                        <th className="px-4 py-2.5 pr-5 text-right">Actions</th>
+                                        <th className="w-12 py-2.5 pl-0 pr-3 text-right"><span className="sr-only">Actions</span></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -681,34 +793,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                     )}
 
                     {total > 0 && (
-                        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
-                            <div className="flex items-center gap-3 text-[12px] text-slate-500 flex-wrap">
-                                <label className="flex items-center gap-1.5">
-                                    Rows per page
-                                    <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                                        {[10, 25, 50, 100].map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </label>
-                                <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
-                                {onNavigate && (
-                                    <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
-                                        className="hidden sm:inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-700">
-                                        Manage in Default Compliances &amp; Documents <ArrowRight size={13} />
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
-                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                    <ChevronLeft size={14} /> Prev
-                                </button>
-                                <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
-                                <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
-                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                    Next <ChevronRight size={14} />
-                                </button>
-                            </div>
-                        </div>
+                        <TablePager page={safePage} pageSize={pageSize} total={total} onPage={setPage} onPageSize={setPageSize} className="bg-slate-50/60" />
                     )}
                     </>
                     )}
@@ -724,7 +809,11 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
             {actionAlert && (
                 <ActionModal
                     a={actionAlert}
-                    actions={actions.filter(x => x.recordId === actionAlert.record.id && x.subjectId === actionAlert.subjectId)}
+                    actions={actions.filter(x => x.recordId === (actionAlert.record?.id ?? actionAlert.id) && x.subjectId === actionAlert.subjectId)}
+                    canEdit={actionAlert.source === 'compliance'}
+                    onOpen={onNavigate ? openLinked : undefined}
+                    onOpenMessages={onNavigate ? (id) => { setMessagesFocus(id); onNavigate('/messages'); } : undefined}
+                    onShare={(x) => setAssignAlert(x)}
                     users={assignableUsers}
                     drivers={drivers}
                     onSetNextDate={setNextDate}
@@ -903,13 +992,13 @@ function SubjectAlertRoster({ entity, subjects, alerts, onOpen }: {
 
     return (
         <div>
-            {/* KPI tiles */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-4">
-                <KpiTile label={noun} value={kpis.total} Icon={SubjIcon} accent="blue" />
-                <KpiTile label="With overdue" value={kpis.withOverdue} Icon={AlertTriangle} accent="rose" />
-                <KpiTile label="All clear" value={kpis.allClear} Icon={Check} accent="emerald" />
-                <KpiTile label="Monitored items" value={kpis.monitored} Icon={BellRing} accent="amber" />
-            </div>
+            {/* KPI tiles — the same shared cards the dashboard uses. */}
+            <KpiStatRow className="px-4 py-4" stats={[
+                { id: 'total', label: noun, value: kpis.total, Icon: SubjIcon, accent: 'blue' },
+                { id: 'overdue', label: 'With overdue', value: kpis.withOverdue, Icon: AlertTriangle, accent: 'rose' },
+                { id: 'clear', label: 'All clear', value: kpis.allClear, Icon: Check, accent: 'emerald' },
+                { id: 'monitored', label: 'Monitored items', value: kpis.monitored, Icon: BellRing, accent: 'amber' },
+            ]} />
 
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-4 pb-3 border-b border-slate-100 flex-wrap">
@@ -1037,188 +1126,172 @@ function StageChips({ reminders, daysUntil, isStatus, size = 'sm' }: { reminders
     );
 }
 
-/** Small "stage" caption tying the Notified list to the active reminder (only when escalation is on). */
-function StageCaption({ routing }: { routing: ResolvedRouting }) {
-    if (!routing.staged || routing.activeDay === null) return null;
-    return <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600"><BellRing size={10} /> at {reminderLabel(routing.activeDay)} stage</span>;
+/** One source as a filter pill: icon, name, and the number it would show. Greyed at zero. */
+function SourcePill({ label, count, Icon, on, onClick }: { label: string; count: number; Icon?: typeof Layers; on: boolean; onClick: () => void }) {
+    const dead = count === 0 && !on;
+    return (
+        <button type="button" onClick={onClick} disabled={dead} aria-pressed={on}
+            className={cn('inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[12px] font-semibold transition-colors',
+                on ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                    : dead ? 'cursor-not-allowed border-slate-100 bg-white text-slate-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50')}>
+            {Icon && <Icon size={13} className={on ? 'text-white' : dead ? 'text-slate-300' : 'text-slate-400'} />}
+            {label}
+            <span className={cn('rounded-full px-1.5 text-[10px] font-bold tabular-nums', on ? 'bg-white/20 text-white' : dead ? 'text-slate-300' : 'bg-slate-100 text-slate-500')}>{count}</span>
+        </button>
+    );
 }
 
 // ── Notified + response status ────────────────────────────────────────
 // The recipients an alert routes to (from Settings ▸ roles) + a single RESPONSE badge: green once the
 // record has been updated (date / status / document) via Take action, amber while still awaiting.
 const RESPONSE_KIND_LABEL: Record<AlertResponse['kind'], string> = { date: 'date updated', document: 'document added', status: 'status updated' };
-function NotifiedRecipients({ recipients, response, max = 3 }: {
+/**
+ * Who was told, on one line: the recipients as a stack of avatars, then whether anyone has
+ * responded. Names, stage and the specific-rule flag all sit in the tooltip — a row that
+ * reads "John Doe / Lily Chen / Awaiting response" on three lines was the tallest thing in
+ * the table, and it was the column people scanned least.
+ */
+function NotifiedRecipients({ recipients, response, routing, max = 3 }: {
     recipients: ResolvedRouting['recipients'];
     response?: AlertResponse;
+    routing?: ResolvedRouting;
     max?: number;
 }) {
     if (recipients.length === 0) return <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><BellRing size={12} /> No route</span>;
+    const names = recipients.map(r => r.name).join(', ');
+    const stage = routing?.staged && routing.activeDay !== null ? ` · at ${reminderLabel(routing.activeDay)} stage` : '';
+    const specific = routing?.scoped ? ' · specific rule' : '';
     return (
-        <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap gap-1">
-                {recipients.slice(0, max).map(r => <AssigneeChip key={r.id} assignee={{ id: r.id.replace(/^(user|driver):/, ''), name: r.name }} />)}
-                {recipients.length > max && (
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">+{recipients.length - max}</span>
-                )}
-            </div>
+        <span className="inline-flex items-center gap-2" title={`${names}${stage}${specific}`}>
+            <span className="flex -space-x-1.5">
+                {recipients.slice(0, max).map(r => {
+                    const { initials, gradient } = avatarFor({ id: r.id.replace(/^(user|driver):/, ''), name: r.name });
+                    return <span key={r.id} className={cn('inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br text-[9px] font-bold text-white ring-2 ring-white', gradient)}>{initials}</span>;
+                })}
+                {recipients.length > max && <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[9px] font-bold text-slate-500 ring-2 ring-white">+{recipients.length - max}</span>}
+            </span>
             {response
-                ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600" title={response.detail}><Check size={11} /> Responded · {RESPONSE_KIND_LABEL[response.kind]}</span>
-                : <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600"><Clock size={11} /> Awaiting response</span>}
-        </div>
+                ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700" title={`Responded · ${RESPONSE_KIND_LABEL[response.kind]}${response.detail ? ` · ${response.detail}` : ''}`}><Check size={11} /> Responded</span>
+                : <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"><Clock size={11} /> Awaiting</span>}
+            {routing?.scoped && <span className="rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Specific</span>}
+        </span>
     );
 }
 
 // ── Alert row (column-driven) ─────────────────────────────────────────
-function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeAction, onAssign }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void; onAssign?: (a: Alert) => void }) {
+/**
+ * Everything you can do to an alert, in one menu, in one order: act on it, open it where it
+ * lives, hand it to someone in chat, look at its document. A compliance record is the only
+ * one this page can edit; the rest are asked about and opened in their own module.
+ */
+type RowHandlers = { onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void; onAssign?: (a: Alert) => void };
+function alertMenu(a: Alert, h: RowHandlers): KebabItem[] {
+    const sm = SOURCE_META[a.source];
+    return [
+        ...(h.onTakeAction ? [{ label: a.source === 'compliance' ? 'Take action' : 'Ask / notify', icon: Zap, onClick: () => h.onTakeAction!(a) }] : []),
+        ...(h.onOpenLinked ? [{ label: sm.openLabel, icon: ExternalLink, onClick: () => h.onOpenLinked!(a) }] : []),
+        ...(h.onAssign ? [{ label: 'Share / assign in chat', icon: Send, onClick: () => h.onAssign!(a) }] : []),
+        ...(a.file?.url ? [{ label: 'View document', icon: Eye, onClick: () => openFile(a.file!) }] : []),
+    ];
+}
+
+/** The source as a small square icon, for the first column — the label is in its tooltip. */
+function SourceIcon({ source }: { source: AlertSource }) {
+    const sm = SOURCE_META[source];
+    return <span className={cn('inline-flex h-8 w-8 items-center justify-center rounded-lg', sm.icon)} title={sm.label}><sm.Icon size={15} /></span>;
+}
+
+// One line per alert: source · what and whose · priority · when · who was told · ⋮.
+// Clicking the row does the first thing in its menu; the menu holds the rest.
+function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeAction, onAssign }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId> } & RowHandlers) {
     const EntityIcon = ENTITY_ICON[a.entity];
     const pm = PRIORITY_META[a.priority];
     const tm = TYPE_META[a.type];
     const has = (c: ColId) => visibleCols.has(c);
     // One response (record updated via Take action) = resolved → tint the row green.
     const responded = !!response;
+    const primary = onTakeAction ?? onOpenLinked;
     return (
-        <tr className={cn('border-b align-top transition-colors', responded ? 'border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50' : 'border-slate-100 hover:bg-slate-50/50')}>
-            {/* Record & Subject (locked) — record name opens the record on the Default C&D page */}
-            <td className="px-4 py-3.5 pl-5">
-                {onOpenLinked ? (
-                    <button type="button" onClick={() => onOpenLinked(a)} title="Open this record in Default Compliances & Documents"
-                        className="group inline-flex items-center gap-1 text-left text-sm font-semibold text-slate-900 hover:text-blue-700">
-                        <span className="hover:underline">{a.record.recordName}</span>
-                        <ExternalLink size={12} className="text-slate-300 group-hover:text-blue-500 shrink-0" />
-                    </button>
-                ) : (
-                    <div className="text-sm font-semibold text-slate-900">{a.record.recordName}</div>
-                )}
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                    <span className="inline-flex items-center gap-1"><EntityIcon size={11} className="text-slate-400" /> {a.subjectLabel}</span>
-                    {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">{a.instanceName}</span>}
-                    {a.record.numberName && a.numberValue && <span className="text-slate-400">{a.record.numberName}: <span className="font-medium text-slate-600">{a.numberValue}</span></span>}
-                </div>
+        <tr className={cn('border-b transition-colors', responded ? 'border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50' : 'border-slate-100 hover:bg-slate-50/60', primary && 'cursor-pointer')}
+            onClick={primary ? () => primary(a) : undefined}>
+            <td className="w-12 py-2.5 pl-3 pr-1"><SourceIcon source={a.source} /></td>
+            {/* Record — one line, truncated; number and description sit in the tooltip */}
+            <td className={CELL_CLS}>
+                <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-[13px] font-semibold text-slate-900"
+                        title={[a.title, a.numberValue ? `${a.numberLabel ?? 'Number'}: ${a.numberValue}` : '', a.description].filter(Boolean).join('\n')}>{a.title}</span>
+                    {a.instanceName && <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">{a.instanceName}</span>}
+                </span>
             </td>
-            {/* Priority */}
+            {has('subject') && (
+                <td className={CELL_CLS}>
+                    <span className="flex min-w-0 items-center gap-1.5 text-[12px]" title={`${a.subjectLabel} · ${a.entity}`}>
+                        <EntityIcon size={12} className="shrink-0 text-slate-400" />
+                        <span className="truncate font-medium text-slate-700">{a.subjectLabel}</span>
+                    </span>
+                </td>
+            )}
             {has('priority') && (
-                <td className="px-4 py-3.5">
-                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', pm.tone)}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', pm.dot)} /> {pm.label}
-                    </span>
+                <td className={CELL_CLS}>
+                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold', pm.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', pm.dot)} /> {pm.label}</span>
                 </td>
             )}
-            {/* Type */}
             {has('type') && (
-                <td className="px-4 py-3.5">
-                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', tm.tone)}>
-                        <tm.Icon size={11} /> {tm.label}
+                <td className={CELL_CLS}>
+                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', tm.tone)}><tm.Icon size={11} /> {tm.label}</span>
+                </td>
+            )}
+            {has('monitors') && (
+                <td className="overflow-hidden whitespace-nowrap px-3 py-2.5 text-[12px]">
+                    <span className="inline-flex items-center gap-1 font-medium text-slate-700">{a.isStatus ? <CircleDashed size={12} className="text-slate-400" /> : <CalendarClock size={12} className="text-slate-400" />} {BASIS_LABEL[a.basis]}</span>
+                    {a.record?.monitorType && <span className="ml-1 text-[10px] text-slate-400">· {a.record.monitorType}</span>}
+                </td>
+            )}
+            {has('due') && (
+                <td className={CELL_CLS}>
+                    {a.isStatus
+                        ? <span className="text-[12px] text-slate-400" title="Watching for a status change — no date">—</span>
+                        : <span className="text-[12px] font-semibold text-slate-800">{fmtNice(a.date)}</span>}
+                </td>
+            )}
+            {has('status') && (
+                <td className={CELL_CLS}>
+                    {a.isStatus
+                        ? <span className={cn('inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold', DUE_SOFT[a.priority])} title={`${a.status} · watching for change${a.description ? ` · ${a.description}` : ''}`}><span className="truncate">{a.status || '—'}</span></span>
+                        : <DuePill d={a.daysUntil ?? 0} priority={a.priority} />}
+                </td>
+            )}
+            {has('assignee') && (
+                <td className={CELL_CLS}>
+                    {a.assignee ? <AssigneeChip assignee={a.assignee} /> : <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><UserPlus size={12} /> Unassigned</span>}
+                </td>
+            )}
+            {has('notified') && (
+                <td className={CELL_CLS}><NotifiedRecipients recipients={routing.recipients} response={response} routing={routing} max={2} /></td>
+            )}
+            {has('reminders') && (
+                <td className="px-3 py-2.5"><div className="max-w-[160px]"><StageChips reminders={a.reminders} daysUntil={a.daysUntil} isStatus={a.isStatus} /></div></td>
+            )}
+            {has('channels') && (
+                <td className="overflow-hidden whitespace-nowrap px-3 py-2.5 text-[11px] text-slate-500">
+                    <span className="inline-flex items-center gap-2">
+                        {a.channels.email && <span className="inline-flex items-center gap-1"><Mail size={11} className="text-slate-400" /> Email</span>}
+                        {a.channels.inApp && <span className="inline-flex items-center gap-1"><Smartphone size={11} className="text-slate-400" /> In-app</span>}
+                        {!a.channels.email && !a.channels.inApp && <span className="text-slate-300">—</span>}
                     </span>
                 </td>
             )}
-            {/* Monitors — the trigger field */}
-            {has('monitors') && (
-                <td className="px-4 py-3.5 text-[12px]">
-                    <div className="inline-flex items-center gap-1 font-medium text-slate-700">
-                        {a.isStatus ? <CircleDashed size={12} className="text-slate-400" /> : <CalendarClock size={12} className="text-slate-400" />}
-                        {BASIS_LABEL[a.basis]}
-                    </div>
-                    {a.record.monitorType && <div className="mt-0.5 text-[10px] text-slate-400">{a.record.monitorType}</div>}
-                </td>
-            )}
-            {/* Due / Status */}
-            {has('due') && (
-                <td className="px-4 py-3.5">
-                    {a.isStatus ? (
-                        <div className="text-[12px]">
-                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
-                                a.priority === 'high' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-600')}>
-                                {a.status || '—'}
-                            </span>
-                            <div className="mt-1 text-[10px] text-slate-400">Watching for change</div>
-                        </div>
-                    ) : (
-                        <div className="text-[12px] leading-tight">
-                            <div className="font-semibold text-slate-800 whitespace-nowrap">{fmtNice(a.date)}</div>
-                            <DuePill d={a.daysUntil ?? 0} priority={a.priority} />
-                        </div>
-                    )}
-                </td>
-            )}
-            {/* Assigned to */}
-            {has('assignee') && (
-                <td className="px-4 py-3.5">
-                    {a.assignee
-                        ? <AssigneeChip assignee={a.assignee} />
-                        : <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><UserPlus size={12} /> Unassigned</span>}
-                </td>
-            )}
-            {/* Notified — who this alert routes to (from Settings ▸ roles) + response status */}
-            {has('notified') && (
-                <td className="px-4 py-3.5">
-                    <div className="flex flex-col gap-1 max-w-[230px]">
-                        <NotifiedRecipients recipients={routing.recipients} response={response} max={3} />
-                        {routing.recipients.length > 0 && ((routing.staged && routing.activeDay !== null) || routing.scoped) ? (
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                <StageCaption routing={routing} />
-                                {routing.scoped && <span className="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Specific</span>}
-                            </div>
-                        ) : null}
-                    </div>
-                </td>
-            )}
-            {/* Reminders — current stage solid, fired stages light, upcoming muted */}
-            {has('reminders') && (
-                <td className="px-4 py-3.5">
-                    <div className="max-w-[160px]"><StageChips reminders={a.reminders} daysUntil={a.daysUntil} isStatus={a.isStatus} /></div>
-                </td>
-            )}
-            {/* Channels */}
-            {has('channels') && (
-                <td className="px-4 py-3.5 text-[10px] text-slate-500">
-                    <div className="flex flex-col gap-0.5">
-                        {a.channels.email && <span className="inline-flex items-center gap-1"><Mail size={11} className="text-slate-400" /> Email</span>}
-                        {a.channels.inApp && <span className="inline-flex items-center gap-1"><Smartphone size={11} className="text-slate-400" /> In-App</span>}
-                        {!a.channels.email && !a.channels.inApp && <span className="text-slate-300">—</span>}
-                    </div>
-                </td>
-            )}
-            {/* Next alert */}
             {has('nextAlert') && (
-                <td className="px-4 py-3.5 text-[12px]">
-                    {a.isStatus ? (
-                        <span className="inline-flex items-center gap-1 text-slate-500"><BellRing size={12} className="text-slate-400" /> On any change</span>
-                    ) : a.daysUntil !== null && a.daysUntil < 0 ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-rose-600"><AlertTriangle size={12} /> Action needed</span>
-                    ) : a.nextAlertDate ? (
-                        <span className="inline-flex items-center gap-1 text-slate-600"><Clock size={12} className="text-slate-400" /> {fmtNice(a.nextAlertDate)}</span>
-                    ) : <span className="text-slate-400">—</span>}
+                <td className="overflow-hidden whitespace-nowrap px-3 py-2.5 text-[12px]">
+                    {a.isStatus ? <span className="inline-flex items-center gap-1 text-slate-500"><BellRing size={12} className="text-slate-400" /> On change</span>
+                        : a.daysUntil !== null && a.daysUntil < 0 ? <span className="inline-flex items-center gap-1 font-semibold text-rose-600"><AlertTriangle size={12} /> Action needed</span>
+                            : a.nextAlertDate ? <span className="inline-flex items-center gap-1 text-slate-600"><Clock size={12} className="text-slate-400" /> {fmtNice(a.nextAlertDate)}</span>
+                                : <span className="text-slate-400">—</span>}
                 </td>
             )}
-            {/* Actions — Take action (fix) · Open record · View document */}
-            <td className="px-4 py-3.5 pr-5">
-                <div className="flex items-center justify-end gap-1.5">
-                    {onTakeAction && (
-                        <button type="button" title="Take action — set next date / update status / remove" onClick={() => onTakeAction(a)}
-                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 shadow-sm">
-                            <Zap size={14} /> Take action
-                        </button>
-                    )}
-                    {onOpenLinked && (
-                        <button type="button" title="Open this record in Default Compliances & Documents" onClick={() => onOpenLinked(a)}
-                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100">
-                            <ExternalLink size={14} /> <span className="hidden xl:inline">Open</span>
-                        </button>
-                    )}
-                    {onAssign && (
-                        <button type="button" title="Share / assign this record in chat" onClick={() => onAssign(a)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200">
-                            <Send size={14} />
-                        </button>
-                    )}
-                    <button type="button" title={a.file?.url ? 'View document' : 'No document'} disabled={!a.file?.url}
-                        onClick={() => a.file && openFile(a.file)}
-                        className={cn('inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors',
-                            a.file?.url ? 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200'
-                                : 'border-slate-200 text-slate-300 cursor-not-allowed')}>
-                        <Eye size={15} />
-                    </button>
-                </div>
+            <td className="py-2.5 pl-0 pr-3 text-right" onClick={(e) => e.stopPropagation()}>
+                <KebabMenu items={alertMenu(a, { onOpenLinked, onTakeAction, onAssign })} title={`Actions for ${a.title}`} />
             </td>
         </tr>
     );
@@ -1241,21 +1314,14 @@ function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeActi
     const fields: ReactNode[] = [];
     if (has('type')) fields.push(field('type', 'Type', <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', tm.tone)}><tm.Icon size={11} /> {tm.label}</span>));
     if (has('monitors')) fields.push(field('monitors', 'Monitors', <span className="inline-flex items-center gap-1 text-[12px] font-medium text-slate-700">{a.isStatus ? <CircleDashed size={12} className="text-slate-400" /> : <CalendarClock size={12} className="text-slate-400" />} {BASIS_LABEL[a.basis]}</span>));
-    if (has('due')) fields.push(field('due', 'Due / Status', a.isStatus
-        ? <span className="text-[12px] font-medium text-slate-700">{a.status || '—'} <span className="text-slate-400">· watching</span></span>
-        : <div className="text-[12px]"><span className="font-semibold text-slate-800">{fmtNice(a.date)}</span> <DuePill d={a.daysUntil ?? 0} priority={a.priority} /></div>));
+    if (has('due')) fields.push(field('due', 'Due', a.isStatus
+        ? <span className="text-[12px] text-slate-400">—</span>
+        : <span className="text-[12px] font-semibold text-slate-800">{fmtNice(a.date)}</span>));
+    if (has('status')) fields.push(field('status', 'Status', a.isStatus
+        ? <span className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold', DUE_SOFT[a.priority])}>{a.status || '—'}</span>
+        : <DuePill d={a.daysUntil ?? 0} priority={a.priority} />));
     if (has('assignee')) fields.push(field('assignee', 'Assigned to', a.assignee ? <AssigneeChip assignee={a.assignee} /> : <span className="text-[11px] text-slate-400">Unassigned</span>));
-    if (has('notified')) fields.push(field('notified', 'Notified', (
-        <div className="flex flex-col gap-1">
-            <NotifiedRecipients recipients={routing.recipients} response={response} max={3} />
-            {routing.recipients.length > 0 && ((routing.staged && routing.activeDay !== null) || routing.scoped) ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <StageCaption routing={routing} />
-                    {routing.scoped && <span className="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Specific</span>}
-                </div>
-            ) : null}
-        </div>
-    )));
+    if (has('notified')) fields.push(field('notified', 'Notified', <NotifiedRecipients recipients={routing.recipients} response={response} routing={routing} max={3} />));
     if (has('reminders')) fields.push(field('reminders', 'Reminders', <StageChips reminders={a.reminders} daysUntil={a.daysUntil} isStatus={a.isStatus} />));
     if (has('channels')) fields.push(field('channels', 'Channels', <div className="flex items-center gap-2 text-[11px] text-slate-500">{a.channels.email && <span className="inline-flex items-center gap-1"><Mail size={11} className="text-slate-400" /> Email</span>}{a.channels.inApp && <span className="inline-flex items-center gap-1"><Smartphone size={11} className="text-slate-400" /> In-App</span>}{!a.channels.email && !a.channels.inApp && <span className="text-slate-300">—</span>}</div>));
     if (has('nextAlert')) fields.push(field('nextAlert', 'Next alert', a.isStatus
@@ -1265,20 +1331,21 @@ function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeActi
             : a.nextAlertDate ? <span className="text-[12px] text-slate-600">{fmtNice(a.nextAlertDate)}</span> : <span className="text-slate-400">—</span>));
 
     const responded = !!response;
+    const primary = onTakeAction ?? onOpenLinked;
     return (
         <div className={cn('px-4 py-3.5 border-l-2 transition-colors', responded ? 'border-l-emerald-400 bg-emerald-50/50' : 'border-l-transparent')}>
             <div className="flex items-start justify-between gap-2">
-                <button type="button" onClick={() => onOpenLinked?.(a)} disabled={!onOpenLinked} className="min-w-0 text-left">
-                    <div className="flex items-center gap-1 text-[14px] font-semibold text-slate-900">
-                        <span className="truncate">{a.record.recordName}</span>
-                        {onOpenLinked && <ExternalLink size={12} className="text-slate-300 shrink-0" />}
+                <div className="flex min-w-0 items-start gap-2.5">
+                    <SourceIcon source={a.source} />
+                    <div className="min-w-0">
+                        <div className="truncate text-[14px] font-semibold text-slate-900" title={a.title}>{a.title}</div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                            <span className="inline-flex items-center gap-1"><EntityIcon size={11} className="text-slate-400" /> {a.subjectLabel}</span>
+                            {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">{a.instanceName}</span>}
+                            {a.numberValue && <span className="text-slate-400">{a.numberLabel ?? 'Number'}: <span className="font-medium text-slate-600">{a.numberValue}</span></span>}
+                        </div>
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-                        <span className="inline-flex items-center gap-1"><EntityIcon size={11} className="text-slate-400" /> {a.subjectLabel}</span>
-                        {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">{a.instanceName}</span>}
-                        {a.record.numberName && a.numberValue && <span className="text-slate-400">{a.record.numberName}: <span className="font-medium text-slate-600">{a.numberValue}</span></span>}
-                    </div>
-                </button>
+                </div>
                 {has('priority') && (
                     <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap shrink-0', pm.tone)}>
                         <span className={cn('h-1.5 w-1.5 rounded-full', pm.dot)} /> {pm.label}
@@ -1290,30 +1357,15 @@ function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeActi
                 <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5">{fields}</div>
             )}
 
+            {/* One primary action, the rest behind the dots — same as the table row. */}
             <div className="mt-3 flex items-center gap-2">
-                {onTakeAction && (
-                    <button type="button" onClick={() => onTakeAction(a)}
-                        className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm">
-                        <Zap size={15} /> Take action
+                {primary && (
+                    <button type="button" onClick={() => primary(a)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg bg-blue-600 text-white text-[13px] font-semibold hover:bg-blue-700 shadow-sm">
+                        {onTakeAction ? <><Zap size={15} /> {a.source === 'compliance' ? 'Take action' : 'Ask / notify'}</> : <><ExternalLink size={15} /> Open</>}
                     </button>
                 )}
-                {onOpenLinked && (
-                    <button type="button" onClick={() => onOpenLinked(a)}
-                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[13px] font-semibold hover:bg-blue-100">
-                        <ExternalLink size={15} /> Open
-                    </button>
-                )}
-                {onAssign && (
-                    <button type="button" onClick={() => onAssign(a)} title="Share / assign this record in chat"
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600">
-                        <Send size={16} />
-                    </button>
-                )}
-                <button type="button" disabled={!a.file?.url} onClick={() => a.file && openFile(a.file)} title={a.file?.url ? 'View document' : 'No document'}
-                    className={cn('inline-flex h-9 w-9 items-center justify-center rounded-lg border shrink-0',
-                        a.file?.url ? 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600' : 'border-slate-200 text-slate-300 cursor-not-allowed')}>
-                    <Eye size={16} />
-                </button>
+                <KebabMenu items={alertMenu(a, { onOpenLinked, onTakeAction, onAssign })} title={`Actions for ${a.title}`} className="rounded-lg border border-slate-200" />
             </div>
         </div>
     );
@@ -1328,9 +1380,11 @@ const DUE_SOFT: Record<PriorityLevel, string> = {
     low: 'bg-slate-100 text-slate-500',
 };
 function DuePill({ d, priority }: { d: number; priority: PriorityLevel }) {
-    const label = d < 0 ? `Overdue by ${-d} day${-d === 1 ? '' : 's'}` : d === 0 ? 'Due today' : `in ${d} day${d === 1 ? '' : 's'}`;
+    // Short enough for its own column; the long form is in the tooltip.
+    const label = d < 0 ? `Overdue ${-d}d` : d === 0 ? 'Due today' : `Due in ${d}d`;
+    const long = d < 0 ? `Overdue by ${-d} day${-d === 1 ? '' : 's'}` : d === 0 ? 'Due today' : `Due in ${d} day${d === 1 ? '' : 's'}`;
     return (
-        <span className={cn('mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', DUE_SOFT[priority])}>
+        <span className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', DUE_SOFT[priority])} title={long}>
             {d < 0 && <AlertTriangle size={10} />}{label}
         </span>
     );
@@ -1357,7 +1411,7 @@ function EmptyState({ hasAny, onNavigate, onLoadSample }: { hasAny: boolean; onN
             <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
                 {hasAny
                     ? 'Adjust the entity / priority filters or search to see monitored items.'
-                    : 'Load sample data to preview this page, or enable monitoring on records in Default Compliances & Documents (each version has a Monitoring panel).'}
+                    : 'Load sample data to preview this page, or enable monitoring on records in Compliances & Documents (each version has a Monitoring panel).'}
             </p>
             {!hasAny && (
                 <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
@@ -1370,7 +1424,7 @@ function EmptyState({ hasAny, onNavigate, onLoadSample }: { hasAny: boolean; onN
                     {onNavigate && (
                         <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
                             className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-600 text-sm font-semibold hover:bg-slate-50">
-                            <Layers size={15} /> Go to Default Compliances &amp; Documents
+                            <Layers size={15} /> Go to Compliances &amp; Documents
                         </button>
                     )}
                 </div>
@@ -1530,7 +1584,7 @@ function CalEventRow({ a }: { a: Alert }) {
             </div>
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-slate-900">{a.record.recordName}</span>
+                    <span className="truncate text-sm font-semibold text-slate-900">{a.title}</span>
                     {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">{a.instanceName}</span>}
                 </div>
                 <p className="truncate text-[12px] text-slate-500">{a.subjectLabel}</p>
@@ -1676,33 +1730,44 @@ const ACTION_CARDS: { id: ActionMode; label: string; sub: string; Icon: typeof W
     { id: 'assign', label: 'Assign review', sub: 'Make a user responsible for this item', Icon: ClipboardCheck },
     { id: 'notify', label: 'Alert / Notify', sub: 'Send a reminder or notification', Icon: BellRing },
 ];
-function ActionModal({ a, actions, users, drivers, onSetNextDate, onUpdateStatus, onRemove, onAssign, onSend, onClose }: {
+function ActionModal({ a, actions, users, drivers, canEdit, onOpen, onOpenMessages, onShare, onSetNextDate, onUpdateStatus, onRemove, onAssign, onSend, onClose }: {
     a: Alert; actions: MonitoringAction[]; users: AppUser[]; drivers: { id: string; name: string; email?: string }[];
+    /** Only a compliance record can be renewed / re-statused / unmonitored here; the rest belong to their module. */
+    canEdit: boolean;
+    onOpen?: (a: Alert) => void;
+    /** Jump to the chat a request just created. */
+    onOpenMessages?: (convId: string) => void;
+    /** Hand the item to someone in chat instead — the Share / assign dialog. */
+    onShare?: (a: Alert) => void;
     onSetNextDate: (a: Alert, d: string) => void;
     onUpdateStatus: (a: Alert, s: string) => void;
     onRemove: (a: Alert) => void;
     onAssign: (a: Alert, assignee: Assignee | null) => void;
-    onSend: (a: Alert, p: { mode: RequestMode; recipient: Assignee; channel: 'email' | 'inApp'; dueDate: string }) => void;
+    /** Sends, and returns the conversation it landed in. */
+    onSend: (a: Alert, p: SendPayload) => string;
     onClose: () => void;
 }) {
-    const [mode, setMode] = useState<ActionMode>('self');
+    const [mode, setMode] = useState<ActionMode>(canEdit ? 'self' : 'request');
     const suggested = a.isStatus ? '' : shiftDate(a.date || fmtYMD(new Date()), RECURRENCE_DAYS[a.recurrence] ?? 365);
     const [nextDate, setNextDate] = useState(suggested);
     const [status, setStatus] = useState(a.status || 'Active');
     const tm = TYPE_META[a.type];
+    const sm = SOURCE_META[a.source];
+    const cards = canEdit ? ACTION_CARDS : ACTION_CARDS.filter(c => c.id !== 'self');
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
             <div className="relative z-10 flex w-full max-w-lg max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
                     <div className="min-w-0 flex items-start gap-3">
-                        <div className="h-9 w-9 shrink-0 rounded-lg bg-blue-600 text-white flex items-center justify-center"><Send size={17} /></div>
+                        <div className={cn('h-9 w-9 shrink-0 rounded-lg flex items-center justify-center', sm.icon)}><sm.Icon size={17} /></div>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-lg font-bold text-slate-900">Take action</h3>
+                                <h3 className="text-lg font-bold text-slate-900">{canEdit ? 'Take action' : 'Ask / notify'}</h3>
+                                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', sm.tone)}>{sm.short}</span>
                                 <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', tm.tone)}><tm.Icon size={11} /> {tm.label}</span>
                             </div>
-                            <p className="mt-0.5 text-[12px] text-slate-500 truncate">For “<span className="font-semibold text-slate-700">{a.record.recordName}</span>” · {a.subjectLabel}{a.instanceName ? ` · ${a.instanceName}` : ''}</p>
+                            <p className="mt-0.5 text-[12px] text-slate-500 truncate">For “<span className="font-semibold text-slate-700">{a.title}</span>” · {a.subjectLabel}{a.instanceName ? ` · ${a.instanceName}` : ''}</p>
                         </div>
                     </div>
                     <button type="button" onClick={onClose} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 shrink-0"><X size={18} /></button>
@@ -1712,22 +1777,36 @@ function ActionModal({ a, actions, users, drivers, onSetNextDate, onUpdateStatus
                     <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[12px] text-slate-600 flex items-center justify-between gap-3 flex-wrap">
                         <span>
                             {a.isStatus
-                                ? <>Watching <span className="font-semibold text-slate-800">status</span> — <span className="font-semibold text-slate-800">{a.status || '—'}</span></>
+                                ? <>{a.source === 'compliance' ? <>Watching <span className="font-semibold text-slate-800">status</span> — </> : null}<span className="font-semibold text-slate-800">{a.status || '—'}</span>{a.source !== 'compliance' && a.description ? <span className="text-slate-500"> · {a.description}</span> : null}</>
                                 : <>{BASIS_LABEL[a.basis]}: <span className="font-semibold text-slate-800">{fmtNice(a.date)}</span> · {a.daysUntil !== null && a.daysUntil < 0 ? <span className="font-semibold text-rose-600">overdue by {-a.daysUntil} days</span> : <span>due in {a.daysUntil} days</span>}</>}
                         </span>
-                        {a.assignee && (
-                            <span className="inline-flex items-center gap-2">
-                                <span className="text-slate-400">Owner:</span><AssigneeChip assignee={a.assignee} />
-                                <button type="button" onClick={() => onAssign(a, null)} className="text-[11px] font-semibold text-slate-400 hover:text-rose-600">Clear</button>
-                            </span>
-                        )}
+                        <span className="inline-flex items-center gap-3">
+                            {a.assignee && canEdit && (
+                                <span className="inline-flex items-center gap-2">
+                                    <span className="text-slate-400">Owner:</span><AssigneeChip assignee={a.assignee} />
+                                    <button type="button" onClick={() => onAssign(a, null)} className="text-[11px] font-semibold text-slate-400 hover:text-rose-600">Clear</button>
+                                </span>
+                            )}
+                            {onShare && (
+                                <button type="button" onClick={() => { onClose(); onShare(a); }} title="Send this item, with its details, to a chat"
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"><MessageSquare size={12} /> Share to chat</button>
+                            )}
+                        </span>
                     </div>
+
+                    {/* The item itself is fixed where it lives — say so, and offer the door. */}
+                    {!canEdit && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[12px] text-slate-600">
+                            <span>To renew, pay, complete or sign this, open it in <span className="font-semibold text-slate-800">{sm.label}</span>. From here you can chase it.</span>
+                            {onOpen && <button type="button" onClick={() => { onClose(); onOpen(a); }} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-blue-700 hover:bg-blue-50"><ExternalLink size={13} /> {sm.openLabel}</button>}
+                        </div>
+                    )}
 
                     {/* ACTION selector */}
                     <div>
                         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Action</p>
                         <div className="grid grid-cols-2 gap-2">
-                            {ACTION_CARDS.map(c => {
+                            {cards.map(c => {
                                 const active = mode === c.id;
                                 return (
                                     <button key={c.id} type="button" onClick={() => setMode(c.id)}
@@ -1745,7 +1824,7 @@ function ActionModal({ a, actions, users, drivers, onSetNextDate, onUpdateStatus
                     </div>
 
                     {/* Panel for the selected action */}
-                    {mode === 'self' ? (
+                    {mode === 'self' && canEdit ? (
                         <div className="space-y-4">
                             {a.isStatus ? (
                                 <div>
@@ -1776,7 +1855,7 @@ function ActionModal({ a, actions, users, drivers, onSetNextDate, onUpdateStatus
                             </div>
                         </div>
                     ) : (
-                        <AskForm key={mode} mode={mode} a={a} users={users} drivers={drivers} onSend={onSend} />
+                        <AskForm key={mode} mode={mode === 'self' ? 'request' : mode} a={a} users={users} drivers={drivers} onSend={onSend} onOpenMessages={onOpenMessages} onClose={onClose} />
                     )}
 
                     {/* Recent activity */}
@@ -1802,29 +1881,35 @@ function ActionModal({ a, actions, users, drivers, onSetNextDate, onUpdateStatus
 }
 
 // ── Ask / order form (request document / assign review / alert-notify) ──
-function AskForm({ mode, a, users, drivers, onSend }: {
+// The same Send-via choice as every Ask / Order in the product — in-app chat, external chat
+// or email — and the same delivery: it lands in Messages, where the person can answer.
+function AskForm({ mode, a, users, drivers, onSend, onOpenMessages, onClose }: {
     mode: RequestMode; a: Alert; users: AppUser[]; drivers: { id: string; name: string; email?: string }[];
-    onSend: (a: Alert, p: { mode: RequestMode; recipient: Assignee; channel: 'email' | 'inApp'; dueDate: string }) => void;
+    onSend: (a: Alert, p: SendPayload) => string;
+    onOpenMessages?: (convId: string) => void;
+    onClose: () => void;
 }) {
     const preUser = a.assignee && findUserById(a.assignee.id) ? `user:${a.assignee.id}` : '';
     const [recipientSel, setRecipientSel] = useState(preUser);
     const [otherName, setOtherName] = useState('');
     const [email, setEmail] = useState(a.assignee ? (findUserById(a.assignee.id)?.email ?? '') : '');
-    const [channel, setChannel] = useState<'email' | 'inApp'>('email');
+    const [delivery, setDelivery] = useState<Delivery>('In-app');
+    const [sent, setSent] = useState<string | null>(null);
     const [subject, setSubject] = useState(
-        mode === 'request' ? `Document needed — ${a.record.recordName}`
-            : mode === 'assign' ? `Review needed — ${a.record.recordName}`
-                : `Reminder — ${a.record.recordName}`);
+        mode === 'request' ? `Document needed — ${a.title}`
+            : mode === 'assign' ? `Review needed — ${a.title}`
+                : `Reminder — ${a.title}`);
     const [message, setMessage] = useState(
-        mode === 'request' ? `Please upload or renew ${a.record.recordName} for ${a.subjectLabel}.`
-            : mode === 'assign' ? `Please review ${a.record.recordName} for ${a.subjectLabel} and confirm it's in order.`
-                : `Reminder: ${a.record.recordName} for ${a.subjectLabel} needs attention.`);
+        mode === 'request' ? `Please upload or renew ${a.title} for ${a.subjectLabel}.`
+            : mode === 'assign' ? `Please review ${a.title} for ${a.subjectLabel} and confirm it's in order.`
+                : `Reminder: ${a.title} for ${a.subjectLabel} needs attention.`);
     const suggested = a.isStatus ? '' : shiftDate(a.date || fmtYMD(new Date()), RECURRENCE_DAYS[a.recurrence] ?? 365);
     const [dueDate, setDueDate] = useState(mode === 'notify' ? '' : suggested);
 
     const pick = (val: string) => {
         setRecipientSel(val);
-        if (val === 'other') { setEmail(''); return; }
+        // Somebody outside TrackSmart has no in-app chat to land in.
+        if (val === 'other') { setEmail(''); if (delivery === 'In-app') setDelivery('External chat'); return; }
         const sep = val.indexOf(':'); const kind = val.slice(0, sep), id = val.slice(sep + 1);
         if (kind === 'user') setEmail(users.find(x => x.id === id)?.email ?? '');
         else if (kind === 'driver') setEmail(drivers.find(x => x.id === id)?.email ?? '');
@@ -1839,34 +1924,46 @@ function AskForm({ mode, a, users, drivers, onSend }: {
         return null;
     };
     const rcpt = recipient();
+    const emailOk = !needsEmail(delivery) || /^\S+@\S+\.\S+$/.test(email.trim());
+    const canSend = !!rcpt && emailOk && !!subject.trim();
     const sendLabel = mode === 'assign' ? 'Assign & notify' : mode === 'notify' ? 'Send reminder' : 'Send request';
     const labelCls = 'mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500';
     const inputCls = 'h-9 w-full rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30';
+
+    if (sent) {
+        return (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-5 py-6 text-center">
+                <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><CheckCircle2 size={26} /></span>
+                <p className="text-base font-bold text-slate-900">{mode === 'assign' ? 'Assigned & notified' : mode === 'notify' ? 'Reminder sent' : 'Request sent'}</p>
+                <p className="mt-1 text-[12px] text-slate-600">
+                    {delivery === 'Email' ? `Emailed to ${email.trim()} — one-way, logged in Messages.`
+                        : delivery === 'External chat' ? `Secure chat link emailed to ${email.trim()}. Their reply lands in Messages.`
+                            : `Sent to ${rcpt?.name}'s chat in the app.`}
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                    <button type="button" onClick={onClose} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Done</button>
+                    {onOpenMessages && <button type="button" onClick={() => { onOpenMessages(sent); onClose(); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700"><MessageSquare size={15} /> Open in Messages</button>}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3.5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                    <p className={labelCls}>Send to</p>
-                    <select value={recipientSel} onChange={e => pick(e.target.value)} className={cn(inputCls, 'bg-white')}>
-                        <option value="">Select a person…</option>
-                        <optgroup label="Users">
-                            {users.map(u => <option key={u.id} value={`user:${u.id}`}>{u.name} · {u.title}</option>)}
+            <div>
+                <p className={labelCls}>Send to</p>
+                <select value={recipientSel} onChange={e => pick(e.target.value)} className={cn(inputCls, 'bg-white')}>
+                    <option value="">Select a person…</option>
+                    <optgroup label="Users">
+                        {users.map(u => <option key={u.id} value={`user:${u.id}`}>{u.name} · {u.title}</option>)}
+                    </optgroup>
+                    {drivers.length > 0 && (
+                        <optgroup label="Drivers">
+                            {drivers.map(d => <option key={d.id} value={`driver:${d.id}`}>{d.name}</option>)}
                         </optgroup>
-                        {drivers.length > 0 && (
-                            <optgroup label="Drivers">
-                                {drivers.map(d => <option key={d.id} value={`driver:${d.id}`}>{d.name}</option>)}
-                            </optgroup>
-                        )}
-                        <option value="other">Someone else…</option>
-                    </select>
-                </div>
-                <div>
-                    <p className={labelCls}>Send via</p>
-                    <div className="inline-flex h-9 w-full rounded-lg bg-slate-100 p-0.5">
-                        <button type="button" onClick={() => setChannel('email')} className={cn('flex-1 inline-flex items-center justify-center gap-1.5 rounded-md text-[13px] font-semibold', channel === 'email' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500')}><Mail size={14} /> Email</button>
-                        <button type="button" onClick={() => setChannel('inApp')} className={cn('flex-1 inline-flex items-center justify-center gap-1.5 rounded-md text-[13px] font-semibold', channel === 'inApp' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500')}><Smartphone size={14} /> In-app</button>
-                    </div>
-                </div>
+                    )}
+                    <option value="other">Someone else…</option>
+                </select>
             </div>
 
             {recipientSel === 'other' && (
@@ -1876,7 +1973,13 @@ function AskForm({ mode, a, users, drivers, onSend }: {
                 </div>
             )}
 
-            {channel === 'email' && (
+            <div>
+                <p className={labelCls}>Send via</p>
+                <DeliveryPicker value={delivery} onChange={setDelivery} />
+                {recipientSel === 'other' && delivery === 'In-app' && <p className="mt-1.5 text-[11px] text-amber-700">Someone outside TrackSmart has no in-app chat — use External chat or Email.</p>}
+            </div>
+
+            {needsEmail(delivery) && (
                 <div>
                     <p className={labelCls}>Recipient email</p>
                     <input value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className={inputCls} />
@@ -1900,9 +2003,10 @@ function AskForm({ mode, a, users, drivers, onSend }: {
 
             <div className="flex items-center justify-between gap-2 pt-1">
                 <p className="text-[10px] text-slate-400">
-                    {mode === 'notify' ? 'Sends a reminder — does not change who owns this item.' : 'Sends the request and makes this person the item’s owner.'}
+                    {mode === 'notify' ? 'Sends a reminder — does not change who owns this item.' : 'Sends the request and makes this person the item’s owner.'} Lands in Messages.
                 </p>
-                <button type="button" onClick={() => { if (rcpt) onSend(a, { mode, recipient: rcpt, channel, dueDate }); }} disabled={!rcpt}
+                <button type="button" disabled={!canSend}
+                    onClick={() => { if (!rcpt || !canSend) return; setSent(onSend(a, { mode, recipient: rcpt, delivery, email: email.trim(), subject: subject.trim(), message: message.trim(), dueDate })); }}
                     className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"><Send size={15} /> {sendLabel}</button>
             </div>
         </div>
@@ -1961,24 +2065,3 @@ function ActivityLog({ actions }: { actions: MonitoringAction[] }) {
 }
 
 // ── KPI tile ──────────────────────────────────────────────────────────
-const ACCENT: Record<string, string> = {
-    slate: 'text-slate-500 bg-slate-100',
-    rose: 'text-rose-600 bg-rose-50',
-    orange: 'text-orange-600 bg-orange-50',
-    amber: 'text-amber-600 bg-amber-50',
-    blue: 'text-blue-600 bg-blue-50',
-    emerald: 'text-emerald-600 bg-emerald-50',
-};
-function KpiTile({ label, value, Icon, accent }: { label: string; value: string | number; Icon: typeof Layers; accent: string }) {
-    return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3.5 flex items-center justify-between">
-            <div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
-                <div className="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums">{value}</div>
-            </div>
-            <div className={cn('h-9 w-9 rounded-lg flex items-center justify-center', ACCENT[accent] ?? ACCENT.slate)}>
-                <Icon size={18} />
-            </div>
-        </div>
-    );
-}

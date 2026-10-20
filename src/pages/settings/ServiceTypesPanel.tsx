@@ -15,7 +15,7 @@
 // rather than inside the table. It opens this panel’s dialog through the ref handle.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { Pencil, Trash2, Truck, Car, Layers, Wrench, Search, Share2 } from "lucide-react";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
@@ -30,6 +30,29 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TH, TD, COL_RULE, CatalogTabs, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
+import {
+    ColumnPicker, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
+
+/**
+ * The columns a reader can turn off, and the two they cannot: the name identifies the row
+ * and the menu acts on it.
+ */
+type TypeCol = "name" | "class" | "related" | "actions";
+const TYPE_COLUMNS: PickerColumn<TypeCol>[] = [
+    { id: "name", label: "Maintenance Type", locked: true },
+    { id: "class", label: "Maintenance Class" },
+    { id: "related", label: "Related To" },
+    { id: "actions", label: "Actions", locked: true },
+];
+
+/** What this list can be banded by — the two facts a service type carries. */
+type TypeGroup = "none" | "class" | "related";
+const TYPE_GROUPS: { id: TypeGroup; label: string }[] = [
+    { id: "none", label: "Group by" },
+    { id: "class", label: "Maintenance class" },
+    { id: "related", label: "Related to" },
+];
 import { KpiTile } from "@/pages/inventory/InventoryKpi";
 import { TablePager } from "@/pages/inventory/TablePager";
 import { useServiceTypes, serviceTypesStore } from "@/data/serviceTypesStore";
@@ -92,6 +115,13 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
     const [related, setRelated] = useState<ServiceCategory | "all">("all");
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
+    const [visibleCols, setVisibleCols] = useState<Set<TypeCol>>(() => new Set(TYPE_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: TypeCol) => setVisibleCols((prev) => {
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+    });
+    const showCol = (id: TypeCol) => visibleCols.has(id);
+    const colCount = TYPE_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+    const [groupBy, setGroupBy] = useState<TypeGroup>("none");
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingService, setEditingService] = useState<ServiceType | null>(null);
@@ -135,12 +165,35 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
         });
     }, [serviceTypes, search, activeClass, related]);
 
-    // Narrowing the list must not strand you on a page that no longer exists.
-    useEffect(() => { setPage(0); }, [search, activeClass, related]);
+    const { sort, onSort, sorted } = useTableSort<TypeCol, ServiceType>(filtered, {
+        name: (t) => t.name,
+        class: (t) => t.group,
+        related: (t) => t.category,
+    });
 
-    const pageCount = Math.max(1, Math.ceil(filtered.length / perPage));
+    /** The band a grouped list is split by. */
+    const bandOf = (t: ServiceType) =>
+        groupBy === "class" ? (t.group || "No class")
+            : groupBy === "related" ? String(t.category)
+                : "";
+    const banded = useMemo(() => {
+        if (groupBy === "none") return sorted;
+        return [...sorted].sort((a, b) => bandOf(a).localeCompare(bandOf(b)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sorted, groupBy]);
+    const bandCounts = useMemo(() => {
+        const m = new Map<string, number>();
+        if (groupBy !== "none") for (const t of banded) m.set(bandOf(t), (m.get(bandOf(t)) ?? 0) + 1);
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [banded, groupBy]);
+
+    // Narrowing the list must not strand you on a page that no longer exists.
+    useEffect(() => { setPage(0); }, [search, activeClass, related, groupBy]);
+
+    const pageCount = Math.max(1, Math.ceil(banded.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
-    const paged = filtered.slice(safePage * perPage, safePage * perPage + perPage);
+    const paged = banded.slice(safePage * perPage, safePage * perPage + perPage);
 
     const filtering = search.trim() !== "" || activeClass !== "All" || related !== "all";
     const clear = () => { setSearch(""); setActiveClass("All"); setRelated("all"); };
@@ -204,6 +257,20 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                             className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
+                    <select
+                        value={groupBy}
+                        onChange={(e) => setGroupBy(e.target.value as TypeGroup)}
+                        title="Band the list"
+                        className={cn(
+                            "h-9 shrink-0 rounded-lg border px-2.5 text-[13px] font-semibold outline-none focus:border-blue-500",
+                            groupBy === "none"
+                                ? "border-slate-200 bg-white text-slate-600"
+                                : "border-blue-300 bg-blue-50/60 text-blue-700",
+                        )}
+                    >
+                        {TYPE_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                    <ColumnPicker columns={TYPE_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                     {filtering && (
                         <button
                             type="button"
@@ -220,16 +287,16 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                         <table className="w-full">
                             <thead>
                                 <tr>
-                                    <TH>Maintenance Type</TH>
-                                    <TH className={COL_RULE}>Maintenance Class</TH>
-                                    <TH className={COL_RULE}>Related To</TH>
+                                    <SortTh col="name" label="Maintenance Type" sortable sort={sort} onSort={onSort} />
+                                    {showCol("class") && <SortTh col="class" label="Maintenance Class" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol("related") && <SortTh col="related" label="Related To" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
                                     <TH className={cn("w-px text-right", COL_RULE)}>Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {paged.length === 0 && (
                                     <EmptyRow
-                                        colSpan={4}
+                                        colSpan={colCount}
                                         Icon={Wrench}
                                         title="No service types match your filters"
                                         hint={search.trim()
@@ -238,8 +305,12 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                                         onClear={filtering ? clear : undefined}
                                     />
                                 )}
-                                {paged.map((service) => (
-                                    <tr key={service.id} className="transition-colors hover:bg-slate-50/60">
+                                {paged.map((service, i) => (
+                                    <Fragment key={service.id}>
+                                    {groupBy !== "none" && (i === 0 || bandOf(paged[i - 1]) !== bandOf(service)) && (
+                                        <TableGroupBand label={bandOf(service)} count={bandCounts.get(bandOf(service)) ?? 0} colSpan={colCount} />
+                                    )}
+                                    <tr className="transition-colors hover:bg-slate-50/60">
                                         <TD>
                                             <div className="flex items-center gap-3">
                                                 <RowIcon Icon={iconFor(service.category)} tone="blue" />
@@ -251,12 +322,14 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                                                 </div>
                                             </div>
                                         </TD>
+                                        {showCol("class") && (
                                         <TD className={COL_RULE}>
                                             <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
                                                 {service.group}
                                             </span>
                                         </TD>
-                                        <TD className={COL_RULE}><RelatedTo category={service.category} /></TD>
+                                        )}
+                                        {showCol("related") && <TD className={COL_RULE}><RelatedTo category={service.category} /></TD>}
                                         <TD className={COL_RULE}>
                                             {/* One menu, the same three verbs every record in the app
                                                 offers: pass it on, change it, remove it. */}
@@ -272,6 +345,7 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                                             </div>
                                         </TD>
                                     </tr>
+                                    </Fragment>
                                 ))}
                             </tbody>
                         </table>

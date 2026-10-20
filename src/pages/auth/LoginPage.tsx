@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Truck, Mail, Lock, Eye, EyeOff, LogIn, ChevronDown, AlertCircle, Search, Check, X } from "lucide-react";
 import {
     APP_USERS,
+    isDriverUser,
+    isIndependentDriverUser,
     DEMO_PASSWORD,
     ROLE_LABELS,
     findUserByEmail,
@@ -14,7 +16,7 @@ type Props = {
     onSignIn: (user: AppUser) => void;
 };
 
-const ROLE_ORDER: Record<string, number> = { "super-admin": 0, "admin": 1, "user": 2 };
+const ROLE_ORDER: Record<string, number> = { "super-admin": 0, "admin": 1, "fleet-admin": 2, "safety-manager": 3, "user": 4, "driver": 5 };
 
 export function LoginPage({ onSignIn }: Props) {
     const [selectedUserId, setSelectedUserId] = useState<string>("");
@@ -62,9 +64,17 @@ export function LoginPage({ onSignIn }: Props) {
             .sort((a, b) => a.name.localeCompare(b.name));
         if (supers.length > 0) out.push({ label: "Super Admins", users: supers });
 
+        /*
+         * Office staff per service organisation, then drivers.
+         *
+         * Drivers were listed inside their service profile alongside the admins, so one
+         * group held four office users and twenty-two drivers and you scrolled past the
+         * whole roster to reach anybody. They are a different kind of seat — the driver app,
+         * not the fleet — so they get their own group.
+         */
         for (const sp of SERVICE_PROFILES_DB) {
             const users = APP_USERS
-                .filter((u) => u.serviceProfileId === sp.id && matches(u))
+                .filter((u) => u.serviceProfileId === sp.id && !isDriverUser(u) && matches(u))
                 .sort((a, b) => {
                     const r = (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99);
                     if (r !== 0) return r;
@@ -73,6 +83,31 @@ export function LoginPage({ onSignIn }: Props) {
             if (users.length === 0) continue;
             out.push({ label: sp.dbaName ?? sp.legalName, users });
         }
+
+        // Roster drivers, under the carrier whose roster they are on.
+        const byCarrier = new Map<string, AppUser[]>();
+        for (const u of APP_USERS) {
+            if (!isDriverUser(u) || isIndependentDriverUser(u) || !matches(u)) continue;
+            const key = u.accountName ?? "Drivers";
+            byCarrier.set(key, [...(byCarrier.get(key) ?? []), u]);
+        }
+        for (const [carrier, users] of byCarrier) {
+            out.push({ label: `Drivers — ${carrier}`, users: users.sort((a, b) => a.name.localeCompare(b.name)) });
+        }
+
+        /*
+         * Drivers who belong to no carrier.
+         *
+         * Every group above is a service organisation, so an account with no service profile
+         * falls through all of them and appears in none — which is every unaffiliated driver,
+         * the one seat that cannot be reached by picking a company. Listed last, because they
+         * are nobody's employee rather than the first thing anyone is looking for.
+         */
+        const independents = APP_USERS
+            .filter((u) => isIndependentDriverUser(u) && matches(u))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        if (independents.length > 0) out.push({ label: "Independent drivers — no carrier", users: independents });
+
         return out;
     }, [search]);
 

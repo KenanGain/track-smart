@@ -107,6 +107,11 @@ export interface DocVersion {
     uploadedBy?: string; // name of the person who captured/uploaded this version
     /** The answers, when this copy was completed in the app rather than uploaded. */
     formData?: FilledForm;
+    /**
+     * A reviewer's check of THIS copy — who looked at it and when. Set on the version, not
+     * the record: a form signed again next year is a new copy nobody has verified yet.
+     */
+    verified?: { by: string; at: string; note?: string };
     /** Pinned as THE current record. Unset on every version → the newest one is current.
      *  Only one version in a list carries it; the save paths clear it from the others. */
     isCurrent?: boolean;
@@ -836,6 +841,23 @@ export function writeComplianceVersion(
     const all = loadAll();
     const entry = all[key] ?? emptyEntry();
     persist({ ...all, [key]: { ...entry, versions: [version, ...entry.versions] } });
+}
+
+/** One record's entry, read outside a component (seeding, a check before writing). */
+export function readComplianceEntry(accountId: string | undefined, subjectId: string, recordId: string): RecordDataEntry {
+    return loadAll()[`${accountId ?? 'acct-001'}::${subjectId}::${recordId}`] ?? emptyEntry();
+}
+
+/** Change one version in place — a verification, a relabel — without touching the others. */
+export function patchComplianceVersion(
+    accountId: string | undefined, subjectId: string, recordId: string, versionId: string, patch: Partial<DocVersion>,
+): void {
+    if (!subjectId || !recordId) return;
+    const key = `${accountId ?? 'acct-001'}::${subjectId}::${recordId}`;
+    const all = loadAll();
+    const entry = all[key];
+    if (!entry) return;
+    persist({ ...all, [key]: { ...entry, versions: entry.versions.map(v => (v.id === versionId ? { ...v, ...patch } : v)) } });
 }
 
 // ── Status + completeness ─────────────────────────────────────────────

@@ -17,6 +17,8 @@ import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
 import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
 import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
+import { ServiceUsersRolesPage } from '@/pages/users-roles/ServiceUsersRolesPage'
+import { CarrierUsersRolesPage } from '@/pages/users-roles/CarrierUsersRolesPage'
 import { SettingsDqFilesPage } from '@/pages/settings/SettingsDqFilesPage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
@@ -91,6 +93,7 @@ import { ChatTagsSettingsPage } from '@/pages/settings/ChatTagsSettingsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
 import { DefaultAccidentsPage } from '@/pages/incidents/DefaultAccidentsPage'
+import { CarrierOpportunitiesPage } from '@/pages/driver-app/CarrierOpportunitiesPage'
 import { DriverMobileAppPage } from '@/pages/driver-app/DriverMobileAppPage'
 import { ViolationsListPage } from '@/pages/violations/ViolationsListPage'
 import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
@@ -291,13 +294,16 @@ function App() {
      * old link, a back button or a deep-link from a record would drop a driver onto the
      * fleet's hiring pipeline. The same short list, enforced once on the way in.
      */
-    const DRIVER_PATHS = ["/driver-mobile-app", "/messages", "/profile/me", COLLECTION_FORM_PATH]
+    const DRIVER_PATHS = ["/driver-mobile-app", "/messages", "/profile/me", "/apply-carrier", COLLECTION_FORM_PATH]
     const driverAllowed = (p: string) => DRIVER_PATHS.some((d) => p === d || p.startsWith(`${d}/`))
 
     // Render the appropriate page based on currentPath
     const renderPage = () => {
         if (currentUser && isDriverUser(currentUser) && !driverAllowed(path)) {
             return <DriverMobileAppPage key={selectedAccount?.id ?? 'default'} accountId={selectedAccount?.id} />
+        }
+        if (path === "/apply-carrier") {
+            return <CarrierOpportunitiesPage driverName={currentUser?.name} />
         }
         if (path === "/profile/me" && currentUser) {
             return <MyProfilePage user={currentUser} />
@@ -437,6 +443,25 @@ function App() {
                 />
             )
         }
+        if (path === "/service-profile/users-roles") {
+            // The service profile's: every role, its Admins, its carrier profiles. Resolved the
+            // same way as the profile page above.
+            const explicit = selectedServiceProfileId
+                ? SERVICE_PROFILES_DB.find((x) => x.id === selectedServiceProfileId)
+                : null
+            const profile = explicit
+                ?? (currentUser ? getDefaultServiceProfileForUser(currentUser) : null)
+            return (
+                <ServiceUsersRolesPage
+                    key={profile?.id ?? 'default'}
+                    currentUser={currentUser}
+                    serviceProfileId={profile?.id}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                    onNavigate={handleNavigate}
+                    onSelectAccount={handleSelectAccount}
+                />
+            )
+        }
         if (path === "/accounts/services/new") {
             return <AddServiceProfilePage onNavigate={handleNavigate} />
         }
@@ -572,6 +597,11 @@ function App() {
         }
         if (path === "/settings/general") {
             return <GeneralSettingsPage />
+        }
+        if (path === "/settings/users-roles") {
+            // Settings is the carrier's: its team, its four roles, who gets its alerts.
+            const account = selectedAccount ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <CarrierUsersRolesPage key={account?.id ?? 'none'} currentUser={currentUser} accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/settings/dq-files") {
             const account = selectedAccount ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
@@ -794,7 +824,7 @@ function App() {
             const [policyId, query] = path.slice("/settings/hiring-process/policy/".length).split("?")
             const pdf = new URLSearchParams(query ?? "").get("pdf") === "1"
             const def = POLICY_FORMS.find((f) => f.id === policyId) ?? getOnboardingFormDef(policyId)
-            if (def) return <PolicyForm def={def} startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/onboarding")} />
+            if (def) return <PolicyForm def={def} mode="template" backLabel="Onboarding setup" startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/onboarding")} />
         }
         if (path === "/settings/hiring-process/testing-forms") {
             return <TestingFormsPage />
@@ -807,7 +837,7 @@ function App() {
             const [consentId, query] = path.slice("/settings/hiring-process/consent/".length).split("?")
             const def = POLICY_FORMS.find((f) => f.id === consentId)
             const pdf = new URLSearchParams(query || "").get("pdf") === "1"
-            if (def) return <PolicyForm def={def} startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
+            if (def) return <PolicyForm def={def} mode="template" backLabel="Consent forms" startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
         }
         if (path === "/dq-files") {
             const account = selectedAccount

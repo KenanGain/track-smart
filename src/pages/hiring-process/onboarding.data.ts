@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DRIVER_TYPE_OPTIONS, driverTypeLabel, driverTypeMatches, normalizeDriverType } from "./driver-types";
 import { FileText, FileSignature, BookOpenCheck, PenLine, ListChecks, GraduationCap } from "lucide-react";
 import { TRAINING_TYPES, TRAINING_CATEGORIES } from "@/data/training.data";
 import { policyDocuments, type PolicyFormDef, type PolicyField } from "./policy-forms.data";
@@ -201,7 +202,7 @@ export type OnbReview = { by: string; role?: string; date: string; sig?: string;
 // complete a form, document or quiz, or send a reminder. Mirrors the hiring flow.
 export type OnbRequestAction = "Request" | "Order" | "Review" | "Alert";
 export type OnbRequestRecipient = "Driver" | "Hiring Manager" | "Provider / Agency" | "Trainer / Examiner" | "Other";
-export type OnbRequestChannel = "Email" | "In-app";
+export type OnbRequestChannel = "Email" | "In-app" | "External chat";
 export const ONB_REQUEST_ACTIONS: { id: OnbRequestAction; label: string; hint: string }[] = [
     { id: "Request", label: "Request completion", hint: "Ask someone to complete or sign this item" },
     { id: "Order", label: "Order report", hint: "Order a report / result from a provider or agency" },
@@ -244,7 +245,6 @@ export const STEP_STATUS_META: Record<OnbStepStatus, { label: string; badge: str
 };
 
 // ── Workflow-driven steps ────────────────────────────────────────────────────
-export const REGION_TYPE: Record<string, string> = { us: "us", "us-owner-operator": "cross-border", local: "local", canada: "canada", "cross-border": "cross-border" };
 
 // The ordered steps a workflow produces — only the sections it populates.
 export function onbWorkflowSteps(wf?: OnbWorkflow): OnbStepKind[] {
@@ -311,7 +311,7 @@ export type OnbWorkflow = {
     id: string;
     name: string;
     description?: string;
-    driverType?: string;         // local | us | canada | cross-border (which drivers it's for)
+    driverType?: string;         // us | canada | cross-border (which drivers it's for — driver-types.ts)
     policyForms: string[];       // policy statement ids (Policy forms tab)
     forms: string[];             // onboarding form ids (Onboarding forms tab)
     documents: string[];         // document template ids (Documents & sign tab)
@@ -335,7 +335,7 @@ function seededWorkflows(): OnbWorkflow[] {
             id: "onbwf-standard",
             name: "Standard Onboarding",
             description: "Forms, documents, post-orientation quiz and final checklist for every new hire.",
-            driverType: "local",
+            driverType: "us",
             policyForms: policyIds,
             forms: onbFormIds,
             documents: ["tpl-driver-agreement", "tpl-driver-acknowledgements"],
@@ -385,7 +385,8 @@ function seededWorkflows(): OnbWorkflow[] {
 // Migrate older workflows that kept policy + onboarding form ids together in
 // `forms` — split them into `policyForms` (policy statements) + `forms`.
 function normalizeWf(w: OnbWorkflow): OnbWorkflow {
-    const withT = { ...w, trainings: w.trainings ?? [] };
+    // Saved before the three-type catalog, a workflow may still say "local" — read it as US.
+    const withT = { ...w, driverType: normalizeDriverType(w.driverType) ?? w.driverType, trainings: w.trainings ?? [] };
     if (Array.isArray(w.policyForms)) return withT;
     const policyIds = new Set(policyDocuments().map((d) => d.id));
     const all = w.forms ?? [];
@@ -441,18 +442,18 @@ export function getOnbWorkflow(id: string): OnbWorkflow | undefined { const w = 
 // standard → first available.
 export function resolveOnbWorkflow(o: OnboardingState | undefined, formId: string, workflows: OnbWorkflow[]): OnbWorkflow | undefined {
     if (!workflows.length) return undefined;
+    // Standard is US too now, so for the region default prefer a workflow written for that
+    // type over the general one — US drivers get US Driver Onboarding, not Standard.
+    const forType = workflows.filter((w) => driverTypeMatches(w.driverType, formId));
     return workflows.find((w) => w.id === o?.workflowId)
-        ?? workflows.find((w) => w.driverType === REGION_TYPE[formId])
+        ?? forType.find((w) => w.id !== "onbwf-standard") ?? forType[0]
         ?? workflows.find((w) => w.id === "onbwf-standard") ?? workflows[0];
 }
 export function blankOnbWorkflow(): OnbWorkflow {
     return { id: `onbwf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`, name: "", description: "", driverType: "us", policyForms: [], forms: [], documents: [], quizzes: [], trainings: [], checklistId: null };
 }
 
-export const ONB_DRIVER_TYPES: { id: string; label: string; sub: string }[] = [
-    { id: "local", label: "Local / Domestic", sub: "Domestic" },
-    { id: "us", label: "US Driver", sub: "United States" },
-    { id: "canada", label: "Canada Driver", sub: "Canada" },
-    { id: "cross-border", label: "Cross-Border", sub: "US · Canada" },
-];
-export const onbDriverTypeName = (id?: string) => ONB_DRIVER_TYPES.find((d) => d.id === id)?.label;
+// The same three driver types as hiring and the application forms (driver-types.ts), so an
+// onboarding workflow is always one a hired driver can be matched to.
+export const ONB_DRIVER_TYPES: { id: string; label: string; sub: string }[] = DRIVER_TYPE_OPTIONS.map(({ id, name, region }) => ({ id, label: name, sub: region }));
+export const onbDriverTypeName = (id?: string) => driverTypeLabel(id);

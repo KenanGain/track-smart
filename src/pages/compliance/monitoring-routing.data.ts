@@ -450,6 +450,22 @@ export function defaultRulesFor(users: SeedUser[] = []): RoutingRule[] {
 /** Role-placeholder defaults (no user directory available). */
 export function defaultRules(): RoutingRule[] { return defaultRulesFor([]); }
 
+// ── Open a role in the full editor from elsewhere ─────────────────────
+// A carrier's Users & Roles page offers the short way in (who is on a role); "Edit in full
+// setup" hands the role over to Settings ▸ Default Compliance & Monitoring, which reads this
+// once on mount and opens its editor on it. 'new' opens a blank one.
+const OPEN_ROLE_KEY = 'default-monitoring-open-role';
+export function requestOpenNotificationRole(id: string | 'new'): void {
+    try { localStorage.setItem(OPEN_ROLE_KEY, id); } catch { /* ignore */ }
+}
+export function consumeOpenNotificationRole(): string | null {
+    try {
+        const v = localStorage.getItem(OPEN_ROLE_KEY);
+        if (v) localStorage.removeItem(OPEN_ROLE_KEY);
+        return v;
+    } catch { return null; }
+}
+
 export function useMonitoringRouting(accountId?: string, seedUsers?: SeedUser[]) {
     const acct = accountId ?? NO_ACCOUNT;
     const [store, setStore] = useState<Store>(loadStore);

@@ -1,20 +1,22 @@
-import { cn } from "@/lib/utils";
+import { KpiStatCard } from "@/components/ui/KpiStatCard";
 
-// KPI accents — shared with the carrier-compliance list style.
-const ACCENT_CLS = {
-    red:     { border: "border-l-red-500",     iconBg: "bg-red-50",     iconColor: "text-red-600" },
-    orange:  { border: "border-l-orange-500",  iconBg: "bg-orange-50",  iconColor: "text-orange-600" },
-    amber:   { border: "border-l-amber-500",   iconBg: "bg-amber-50",   iconColor: "text-amber-600" },
-    blue:    { border: "border-l-blue-500",    iconBg: "bg-blue-50",    iconColor: "text-blue-600" },
-    violet:  { border: "border-l-violet-500",  iconBg: "bg-violet-50",  iconColor: "text-violet-600" },
-    emerald: { border: "border-l-emerald-500", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
-    slate:   { border: "border-l-slate-400",   iconBg: "bg-slate-100",  iconColor: "text-slate-600" },
-} as const;
+/**
+ * The maintenance and inventory KPI tile — which is now the app's one KPI card.
+ *
+ * It used to be a second design: a left accent bar, the icon chip stacked ABOVE its label,
+ * and the figure off on the right. Beside the rosters and the compliance lists that made
+ * three different answers to "what does a KPI row look like", and this one was the one that
+ * did not cope with a narrow column — "HOLDING INVENTORY" and "AWAITING REMEDIATION" broke
+ * over two lines beside a stack that was already two deep, so the tiles stood taller than
+ * everything else in the product exactly where there was least room for them.
+ *
+ * The wrapper is what does the work. {@link KpiStatCard} sizes itself from its container, and
+ * the container has to be something whose width the card cannot change — so it is this
+ * padding-free cell, not the card. Every caller's grid keeps deciding how many across; the
+ * card decides how big.
+ */
+export type KpiAccent = "red" | "orange" | "amber" | "blue" | "violet" | "emerald" | "slate";
 
-export type KpiAccent = keyof typeof ACCENT_CLS;
-
-/** KPI tile matching the carrier-compliance list: left accent bar, tinted icon
- *  chip, uppercase label, big value. Shared across the inventory pages. */
 export function KpiTile({ label, value, Icon, accent, onClick, active }: {
     label: string;
     value: number | string;
@@ -24,29 +26,17 @@ export function KpiTile({ label, value, Icon, accent, onClick, active }: {
     onClick?: () => void;
     active?: boolean;
 }) {
-    const cls = ACCENT_CLS[accent];
-    // A div when it does nothing, a button when it does — rather than a div that happens to
-    // have a click handler, which the keyboard cannot reach.
-    const Tag = onClick ? "button" : "div";
     return (
-        <Tag
-            type={onClick ? "button" : undefined}
-            onClick={onClick}
-            aria-pressed={onClick ? !!active : undefined}
-            className={cn(
-                "bg-white border border-slate-200 border-l-4 rounded-xl p-3 shadow-sm flex items-center justify-between gap-3 text-left",
-                cls.border,
-                onClick && "transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40",
-                active && "ring-2 ring-blue-500/40",
-            )}
-        >
-            <div className="min-w-0">
-                <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center mb-2", cls.iconBg)}>
-                    <Icon size={14} className={cls.iconColor} />
-                </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">{label}</div>
-            </div>
-            <div className="text-2xl font-black tabular-nums text-slate-900 leading-none">{value}</div>
-        </Tag>
+        <div className="@container flex">
+            <KpiStatCard
+                className="w-full"
+                label={label}
+                value={value}
+                Icon={Icon}
+                accent={accent}
+                onClick={onClick}
+                active={active}
+            />
+        </div>
     );
 }

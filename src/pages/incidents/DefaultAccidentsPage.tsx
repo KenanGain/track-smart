@@ -472,7 +472,7 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager", o
             {/* The app's standard list header (see `ListPageHeader`). */}
             <ListPageHeader
                 Icon={ShieldAlert}
-                title="Default Accidents"
+                title="Accidents"
                 description="Reported accidents — driver-reported and office-entered, reviewed and verified here"
                 count={recKpis.total}
                 chips={kpiChips}

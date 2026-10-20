@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ChevronLeft, Check, X, FileText, FileSignature, FilePlus2, ClipboardList, ListChecks, GraduationCap, Info } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { policyDocuments } from "./policy-forms.data";
-import { ONBOARDING_FORMS, ONB_DRIVER_TYPES, TRAINING_TYPES, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
+import { ONBOARDING_FORMS, TRAINING_TYPES, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
+import { DriverTypePicker } from "./DriverTypePicker";
 import { useDocTemplates } from "./document-templates.data";
 import { useOnboardingQuizzes } from "./onboarding-quizzes.data";
 import { useChecklists } from "./checklists.data";
@@ -52,18 +52,7 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Driver type</p>
                     <p className="mt-0.5 text-xs text-slate-400">Which drivers this onboarding workflow is for.</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {ONB_DRIVER_TYPES.map((dt) => {
-                            const on = wf.driverType === dt.id;
-                            return (
-                                <button key={dt.id} type="button" onClick={() => set({ driverType: dt.id })}
-                                    className={cn("rounded-xl border px-3 py-2.5 text-left transition", on ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200" : "border-slate-200 hover:bg-slate-50")}>
-                                    <p className={cn("text-sm font-semibold", on ? "text-blue-700" : "text-slate-800")}>{dt.label}</p>
-                                    <p className="text-[11px] text-slate-400">{dt.sub}</p>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <DriverTypePicker className="mt-3" value={wf.driverType} onChange={(id) => set({ driverType: id })} />
                 </div>
 
                 {/* Name + description */}

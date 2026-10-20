@@ -664,6 +664,8 @@ export interface ShareInput {
   currentUserName?: string;
   record?: RecordRef;            // optional clickable record link attached to the shared message
   externalDelivery?: 'chat' | 'email'; // external only: 'chat' = secure chat link (default) · 'email' = one-way document email
+  /** The thread's system line, when the send is not a share — "Requested 3 items…" rather than "Shared 0 items". */
+  systemText?: string;
 }
 
 const SHARE_COLORS = ['bg-orange-500', 'bg-teal-600', 'bg-sky-600', 'bg-rose-500', 'bg-indigo-500', 'bg-emerald-600'];
@@ -687,7 +689,7 @@ export function shareToMessages(input: ShareInput): string {
     if (target) {
       const sys: ChatMessage = {
         id: uid('sys'), fromMe: true, system: true, at, iso: nowIso(),
-        text: `Shared ${attachments.length} item${attachments.length !== 1 ? 's' : ''} from ${input.source.label}.`,
+        text: input.systemText ?? `Shared ${attachments.length} item${attachments.length !== 1 ? 's' : ''} from ${input.source.label}.`,
       };
       const body: ChatMessage = { id: uid('me'), fromMe: true, text: input.message, at, iso: nowIso(), attachments, record: input.record };
       patch(target.id, c => ({ ...c, lastAt: at, messages: [...c.messages, sys, body], source: c.source ?? input.source }), true);
@@ -701,11 +703,11 @@ export function shareToMessages(input: ShareInput): string {
   const id = uid(external ? 'x' : 'c');
   const tk = external && !emailOnly ? token() : undefined;
   const color = input.color ?? SHARE_COLORS[shareColorIx++ % SHARE_COLORS.length];
-  const sysText = emailOnly
+  const sysText = input.systemText ?? (emailOnly
     ? `Emailed ${attachments.length} document${attachments.length !== 1 ? 's' : ''} to ${input.recipientEmail ?? 'the recipient'} · one-way (no reply chat).`
     : external
       ? `Shared ${attachments.length} item${attachments.length !== 1 ? 's' : ''} with ${input.recipientEmail ?? 'the recipient'} · secure chat link sent by email.`
-      : `Shared ${attachments.length} item${attachments.length !== 1 ? 's' : ''} from ${input.source.label}.`;
+      : `Shared ${attachments.length} item${attachments.length !== 1 ? 's' : ''} from ${input.source.label}.`);
   const conv: Conversation = {
     id,
     name: input.recipientName || (input.recipientEmail ?? 'New contact'),

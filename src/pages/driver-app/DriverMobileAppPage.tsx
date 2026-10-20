@@ -12,6 +12,7 @@ import { useAccidentRecords, blankAccidentReport, carrierOwnerInfo, driverAccide
 import { AccidentDisclosure } from "@/pages/incidents/AccidentDisclosure";
 import { buildProfileBundle } from "@/pages/accounts/carrier-datasets.data";
 import { MOCK_DRIVERS } from "@/pages/profile/carrier-profile.data";
+import { INDEPENDENT_DRIVERS, findIndependentDriver } from "@/data/independent-drivers.data";
 import type { Driver } from "@/data/mock-app-data";
 import { useDriverDqHealth, type Health } from "@/pages/ats/DqFilesPage";
 import { useConversations, type InventoryCollection } from "@/pages/messages/messages-store";
@@ -48,11 +49,19 @@ interface DriverVM {
     status: string; type: string; carrier: string;
     phone: string; email: string; hiredDate: string; terminal: string; address: string;
     license: string; licenseClass: string; licenseState: string; licenseExpiry: string;
-    unit: string; dqPct: number;
+    /** Null for a driver on no carrier's roster — there is no fleet to assign from. */
+    unit: string | null; dqPct: number;
 }
 
-/** Stable pseudo assigned-unit for a driver (drivers carry no vehicle field). */
-function unitFor(id: string): string {
+/**
+ * Stable pseudo assigned-unit for a driver (drivers carry no vehicle field).
+ *
+ * A unit belongs to a carrier's fleet, so a driver on no carrier's roster is assigned none
+ * — this used to hand an independent owner-operator an Acme truck, which is a unit from a
+ * fleet they have no relationship with.
+ */
+function unitFor(id: string): string | null {
+    if (findIndependentDriver(id)) return null;
     const digits = (id.match(/\d+/g)?.join("") ?? "0");
     const n = Number(digits.slice(-2) || "0") % 20;
     return `ACM-T01${String(n).padStart(2, "0")}`;
@@ -96,8 +105,22 @@ function buildVM(driver: Driver, health: Health | null, carrier: string): Driver
 
 export function DriverMobileAppPage({ accountId }: { accountId?: string } = {}) {
     const bundle = useMemo(() => buildProfileBundle(accountId), [accountId]);
-    const drivers: Driver[] = (bundle?.drivers ?? MOCK_DRIVERS) as Driver[];
-    const carrier = bundle?.viewData?.page?.carrierHeader?.name ?? "Your carrier";
+
+    /*
+     * Whose app this is.
+     *
+     * A driver signed in with no carrier behind them has no bundle, and the fallback here
+     * was MOCK_DRIVERS — so an unaffiliated driver opened the app and was shown the first
+     * name on a roster they are not on: somebody else's licence, somebody else's DQ file,
+     * somebody else's collection lists. Their own record is found first, and the mock roster
+     * stays only as the demo fallback for an office user opening this page to look at it.
+     */
+    const signedInDriver = findIndependentDriver(driverIdOfUser(currentUser()));
+    const drivers: Driver[] = (bundle?.drivers
+        ?? (signedInDriver ? INDEPENDENT_DRIVERS : MOCK_DRIVERS)) as Driver[];
+    // No carrier to name, rather than a carrier they do not have.
+    const carrier = bundle?.viewData?.page?.carrierHeader?.name
+        ?? (signedInDriver ? "No carrier — independent" : "Your carrier");
 
     // Whoever the office asked to see, when it arrived here from a collection card —
     // otherwise the first driver on the roster, as before. Read ONCE, into a ref, because
@@ -489,18 +512,29 @@ function HomeScreen({ d, health, onReport, toCollect, onCollect, toFix, onFix }:
                 )}
             </div>
 
-            {/* Assigned vehicle */}
+            {/* Assigned vehicle — a unit comes out of a carrier's fleet, so a driver on no
+                roster is assigned none, and the card says that rather than naming a truck
+                from a fleet they have no relationship with. */}
             <div className="mx-5 mt-6">
                 <h3 className="mb-2 text-sm font-bold text-slate-900">Assigned vehicle</h3>
                 <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white"><Truck size={20} /></div>
-                    <div className="min-w-0 flex-1">
-                        <div className="text-sm font-bold text-slate-900">{d.unit}</div>
-                        <div className="truncate text-xs text-slate-500">{d.terminal} terminal</div>
-                    </div>
-                    {d.status === "Active"
-                        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><MapPin size={11} /> On route</span>
-                        : <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">{d.status}</span>}
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${d.unit ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400"}`}><Truck size={20} /></div>
+                    {d.unit ? (
+                        <>
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-bold text-slate-900">{d.unit}</div>
+                                <div className="truncate text-xs text-slate-500">{d.terminal} terminal</div>
+                            </div>
+                            {d.status === "Active"
+                                ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><MapPin size={11} /> On route</span>
+                                : <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">{d.status}</span>}
+                        </>
+                    ) : (
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-bold text-slate-500">No unit assigned</div>
+                            <div className="truncate text-xs text-slate-400">Not on a carrier&rsquo;s fleet</div>
+                        </div>
+                    )}
                 </div>
             </div>
         </Screen>
@@ -894,7 +928,9 @@ function AccidentReportScreen({ d, driverInfo, owner, onClose, onSubmit }: { d: 
     const { dt, today } = mobileNow();
     const [form, setForm] = useState<AccidentRecord>(() =>
         blankAccidentReport({
-            driverId: d.id, driverName: d.name, unitId: d.unit, now: dt, today,
+            // No assigned unit to prefill when the driver is on no fleet; they name the
+            // vehicle they were in on the form.
+            driverId: d.id, driverName: d.name, unitId: d.unit ?? "", now: dt, today,
             driverInfo,
             ownerInfo: owner,
         }),

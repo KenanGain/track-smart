@@ -14,22 +14,10 @@ import {
 } from "./policy-forms.data";
 import { THEMES, type ThemeKey } from "./FormDocument";
 import { usePrefill } from "./application-prefill";
+import { makeSignatureImage, SOURCE_LABEL, type FormCopy } from "./form-copies";
+import { BadgeCheck, FileCheck2, Upload } from "lucide-react";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6];
-
-// Render a typed name as a script-font signature image (for "Fill sample data").
-function makeSignatureImage(name: string): string {
-    if (typeof document === "undefined") return "";
-    const c = document.createElement("canvas");
-    c.width = 440; c.height = 140;
-    const ctx = c.getContext("2d");
-    if (!ctx) return "";
-    ctx.fillStyle = "#1e293b";
-    ctx.font = "48px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
-    ctx.textBaseline = "middle";
-    ctx.fillText(name || "Jane Doe", 16, c.height / 2);
-    return c.toDataURL("image/png");
-}
 
 // Replace {key} placeholders in legal text with the captured value (or a blank line).
 function renderText(text: string, values: Record<string, string>, preview: boolean) {
@@ -440,8 +428,38 @@ export type PolicyFormHandle = { fillSample: () => void; togglePreview: () => vo
 /** What a finished form hands back: everything typed, and everything signed. */
 export type PolicyFormResult = { values: Record<string, string>; sigs: Record<string, string> };
 
-export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onBack: () => void; embedded?: boolean; startPreview?: boolean; sharedSignature?: string; sharedSignatures?: Record<string, string>; sharedValues?: Record<string, string>; onPreviewChange?: (preview: boolean) => void; agree?: { checked: boolean; onChange: () => void; label: string }; onComplete?: (result: PolicyFormResult) => void; completeLabel?: string; readOnly?: boolean }>(
-    function PolicyForm({ def, onBack, embedded, startPreview, sharedSignature, sharedSignatures, sharedValues, onPreviewChange, agree, onComplete, completeLabel, readOnly }, ref) {
+/**
+ * Which of three things the viewer is doing.
+ *
+ *   template — Settings, looking at the blank form: Fill sample data, themes, PDF preview.
+ *   fill     — a person completing it: no sample data; Preview & sign, then Save & file.
+ *   filed    — a signed copy being READ: the document with its answers and signature, a
+ *              banner saying who signed it and whether it was verified, no Edit.
+ *
+ * One form, three chromes. The driver's profile used to open a filed consent in the
+ * Settings chrome, Fill-sample-data button and all.
+ */
+export type PolicyFormMode = "template" | "fill" | "filed";
+
+export const PolicyForm = forwardRef<PolicyFormHandle, {
+    def: PolicyFormDef; onBack: () => void; embedded?: boolean; startPreview?: boolean;
+    sharedSignature?: string; sharedSignatures?: Record<string, string>; sharedValues?: Record<string, string>;
+    onPreviewChange?: (preview: boolean) => void; agree?: { checked: boolean; onChange: () => void; label: string };
+    onComplete?: (result: PolicyFormResult) => void; completeLabel?: string; readOnly?: boolean;
+    mode?: PolicyFormMode;
+    /** What the back link says — where the reader came from. */
+    backLabel?: string;
+    /** Whose form this is, for the header: "Jane Doe · Hiring file". */
+    subject?: string;
+    /** The copy being read, for the filed-mode banner. */
+    copy?: FormCopy;
+    /** Filed mode: offer to verify this copy. */
+    onVerify?: () => void;
+}>(
+    function PolicyForm({ def, onBack, embedded, startPreview, sharedSignature, sharedSignatures, sharedValues, onPreviewChange, agree, onComplete, completeLabel, readOnly, mode, backLabel, subject, copy, onVerify }, ref) {
+    const vm: PolicyFormMode = mode ?? (readOnly ? "filed" : onComplete ? "fill" : "template");
+    const filed = vm === "filed";
+    const locked = readOnly || filed;
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
     const signKeys = def.signers.filter((s) => s.kind === "sign").map((s) => s.key);
@@ -470,7 +488,8 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
     // merge them in without wiping anything the driver edited per-form.
     useEffect(() => { if (sharedValues) setValues((v) => ({ ...v, ...sharedValues })); }, [sharedValues]);
     useEffect(() => { if (sharedSignature) setSigs((s) => ({ ...s, ...Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) })); }, [sharedSignature]);
-    const [preview, setPreview] = useState(!!startPreview);
+    // A filed copy opens as the document — there is no form to go back and edit.
+    const [preview, setPreview] = useState(!!startPreview || filed);
     const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
     const [shared, setShared] = useState(false);
@@ -593,7 +612,16 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
             }`}</style>
 
             <div className={`${embedded ? "hidden" : "no-print"} flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3`}>
-                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> {def.kind === "policy" ? "Policy documents" : "Consent forms"}</button>
+                <div className="flex min-w-0 items-center gap-3">
+                    <button type="button" onClick={onBack} className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> {backLabel ?? (def.kind === "policy" ? "Policy documents" : "Consent forms")}</button>
+                    {/* Whose form, and what is being done with it — the title itself is on the page. */}
+                    {vm !== "template" && (
+                        <span className="hidden min-w-0 items-center gap-2 border-l border-slate-200 pl-3 text-xs font-semibold text-slate-500 sm:flex">
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", filed ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")}>{filed ? "Signed copy" : "Fill out"}</span>
+                            {subject && <span className="truncate">{subject}</span>}
+                        </span>
+                    )}
+                </div>
                 {preview ? (
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -601,10 +629,10 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                                 <button key={t.key} type="button" onClick={() => setTheme(t.key)} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", theme === t.key ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white")}>{t.name}</button>
                             ))}
                         </div>
-                        {!readOnly && <Button variant="outline" size="sm" onClick={() => setPreview(false)}>Edit</Button>}
+                        {!locked && <Button variant="outline" size="sm" onClick={() => setPreview(false)}>Edit</Button>}
                         <Button variant="outline" size="sm" onClick={share}><Share2 className="h-4 w-4" /> {shared ? "Link copied" : "Share"}</Button>
                         <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
-                        <Button variant={onComplete ? "outline" : "default"} size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
+                        <Button variant={onComplete || onVerify ? "outline" : "default"} size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
                         {/* Where a host will FILE this, the last step is filing it — not
                             downloading it and putting it somewhere by hand. */}
                         {onComplete && (
@@ -613,23 +641,31 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                                 <Check className="h-4 w-4" /> {completeLabel ?? "Save & file"}
                             </Button>
                         )}
+                        {/* A filed copy's last step is the reviewer's: looked at, verified. */}
+                        {filed && onVerify && !copy?.verified && (
+                            <Button size="sm" onClick={onVerify}><BadgeCheck className="h-4 w-4" /> Verify this copy</Button>
+                        )}
                     </div>
                 ) : (
                     <div className="flex items-center gap-2">
-                        {!readOnly && <Button variant="outline" size="sm" onClick={fillSample}><Sparkles className="h-4 w-4" /> Fill sample data</Button>}
-                        <Button variant="outline" size="sm" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> PDF Preview</Button>
+                        {vm === "template" && <Button variant="outline" size="sm" onClick={fillSample}><Sparkles className="h-4 w-4" /> Fill sample data</Button>}
+                        <Button variant="outline" size="sm" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> {vm === "fill" ? "Preview & sign" : "PDF Preview"}</Button>
                     </div>
                 )}
             </div>
 
             {preview ? (
                 <div className={embedded ? "overflow-x-auto py-2" : "overflow-x-auto px-6 py-8"}>
-                    <PolicyDocument ref={docRef} def={def} values={values} sigs={sigs} branding={branding} theme={theme} />
+                    {/* The filed banner: what this copy is, who signed it, whether anyone checked it. */}
+                    {filed && copy && !embedded && <FiledBanner copy={copy} onVerify={onVerify} className="no-print mx-auto mb-5" />}
+                    {filed && copy && copy.source === "upload" && !copy.filled && copy.fileUrl
+                        ? <UploadedCopy copy={copy} />
+                        : <PolicyDocument ref={docRef} def={def} values={values} sigs={sigs} branding={branding} theme={theme} />}
                 </div>
             ) : (
                 <div className={embedded ? "space-y-6" : "mx-auto max-w-3xl space-y-6 px-6 py-6"}>
                     <div className={embedded ? "hidden" : undefined}>
-                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: hex }}>{def.kind === "policy" ? "Policy" : "Consent"} · Statement &amp; Signature</p>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: hex }}>{vm === "template" ? "Template · " : ""}{def.kind === "policy" ? "Policy" : "Consent"} · Statement &amp; Signature</p>
                         <h1 className="mt-1 text-2xl font-bold text-slate-900">{def.title} <span style={{ color: hex }}>{def.accentTitle}</span></h1>
                         <p className="mt-1 text-sm text-slate-500">{def.blurb}</p>
                     </div>
@@ -737,7 +773,7 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
 
                     <div className={`${embedded ? "hidden" : "flex"} justify-end gap-3 border-t border-slate-200 pt-5`}>
                         <Button variant="outline" onClick={onBack}>Cancel</Button>
-                        <Button onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> Preview &amp; Sign</Button>
+                        <Button onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> {vm === "fill" ? "Preview & sign" : "Preview & Sign"}</Button>
                     </div>
                 </div>
             )}
@@ -745,6 +781,77 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
     );
 });
 PolicyForm.displayName = "PolicyForm";
+
+/**
+ * What a filed copy is, in one line above the document: how it got here, who signed it,
+ * and whether a reviewer has looked at it. Exported so the onboarding document review
+ * can say the same thing above a PDF.
+ */
+export function FiledBanner({ copy, onVerify, className }: { copy: FormCopy; onVerify?: () => void; className?: string }) {
+    const Icon = copy.source === "upload" ? Upload : FileCheck2;
+    return (
+        <div className={cn("flex w-full max-w-[794px] flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm",
+            copy.verified ? "border-emerald-200 bg-emerald-50/70" : "border-blue-200 bg-blue-50/70", className)}>
+            <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", copy.verified ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700")}><Icon className="h-4.5 w-4.5" /></span>
+            <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">
+                    {SOURCE_LABEL[copy.source]}{copy.by ? <> · signed by <span className="text-slate-700">{copy.by}</span></> : null}{copy.at ? <> on {copy.at}</> : null}
+                </p>
+                <p className={cn("mt-0.5 text-xs font-medium", copy.verified ? "text-emerald-700" : "text-slate-500")}>
+                    {copy.verified
+                        ? <><BadgeCheck className="mr-1 inline h-3.5 w-3.5" />Verified by {copy.verified.by} on {copy.verified.at}{copy.verified.note ? ` — ${copy.verified.note}` : ""}</>
+                        : "Not yet verified by a reviewer."}
+                </p>
+            </div>
+            {onVerify && !copy.verified && <Button size="sm" variant="outline" onClick={onVerify}><BadgeCheck className="h-4 w-4" /> Verify</Button>}
+        </div>
+    );
+}
+
+/**
+ * An uploaded copy as a page of its own — for a PDF signing template, which has no form
+ * to render the answers into. The banner, then the file.
+ */
+export function UploadedCopyView({ copy, title, subject, backLabel, onBack, onVerify }: {
+    copy: FormCopy; title: string; subject?: string; backLabel: string; onBack: () => void; onVerify?: () => void;
+}) {
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                    <button type="button" onClick={onBack} className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> {backLabel}</button>
+                    <span className="hidden min-w-0 items-center gap-2 border-l border-slate-200 pl-3 text-xs font-semibold text-slate-500 sm:flex">
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Signed copy</span>
+                        <span className="truncate">{title}{subject ? ` · ${subject}` : ""}</span>
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    {copy.fileUrl && <a href={copy.fileUrl} download={copy.fileName ?? "copy"} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Download</a>}
+                    {onVerify && !copy.verified && <Button size="sm" onClick={onVerify}><BadgeCheck className="h-4 w-4" /> Verify this copy</Button>}
+                </div>
+            </div>
+            <div className="overflow-x-auto px-6 py-8">
+                <FiledBanner copy={copy} onVerify={onVerify} className="mx-auto mb-5" />
+                {copy.fileUrl
+                    ? <UploadedCopy copy={copy} />
+                    : <div className="mx-auto max-w-[794px] rounded-lg border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-500">No file is attached to this copy — it was recorded as held on paper.</div>}
+            </div>
+        </div>
+    );
+}
+
+/** An uploaded scan, shown as itself — a PDF in a frame, an image as an image. */
+function UploadedCopy({ copy }: { copy: FormCopy }) {
+    const url = copy.fileUrl ?? "";
+    const isPdf = /^data:application\/pdf/i.test(url) || /\.pdf$/i.test(copy.fileName ?? "");
+    return (
+        <div className="mx-auto w-full max-w-[794px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            {isPdf
+                ? <iframe title={copy.fileName ?? "Uploaded copy"} src={url} className="h-[1000px] w-full" />
+                : <img src={url} alt={copy.fileName ?? "Uploaded copy"} className="w-full" />}
+        </div>
+    );
+}
 
 /**
  * A titled block with the form's accent bar beside it.

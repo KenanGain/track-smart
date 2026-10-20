@@ -24,7 +24,11 @@ export function KebabMenu({ items, className, title = 'More actions' }: { items:
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    // A scroll closes the menu (it is positioned, not anchored) — but not one still
+    // settling from the scroll that brought the button into view a moment ago, or the
+    // menu opens and shuts in the same gesture.
+    const openedAt = Date.now();
+    const close = () => { if (Date.now() - openedAt > 250) setOpen(false); };
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
     return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };

@@ -1,17 +1,15 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { ChevronDown, Eye, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_NODES } from "@/data/sidebar.data";
 import { isGroup, type SidebarNode, type SidebarGroup, type SidebarItem } from "@/types/sidebar";
+import type { UserRole } from "@/data/users.data";
+import { menuAccess, useRoleAccess } from "@/pages/users-roles/roles.data";
 
 // shadcn/ui
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-type UserRole = "user" | "admin" | "super-admin";
-
-const ADMIN_ONLY_KEYS = new Set(["admin"]);
 
 /**
  * What a driver's sidebar is.
@@ -22,7 +20,7 @@ const ADMIN_ONLY_KEYS = new Set(["admin"]);
  * is visible to drivers until somebody remembers otherwise, and the way that gets noticed
  * is a driver opening Super Admin.
  */
-const DRIVER_KEYS = new Set(["driver-mobile-app", "messages"]);
+const DRIVER_KEYS = new Set(["driver-mobile-app", "messages", "apply-carrier"]);
 
 type AppSidebarProps = {
     currentPath: string;
@@ -49,11 +47,22 @@ export function AppSidebar({ currentPath, onNavigate, role, driver, mobileOpen =
     }, []);
     // Close the drawer after navigating away.
     const navigateAndClose = (path: string) => { onNavigate(path); onMobileClose?.(); };
+    // Which menus this role gets, and how — from the table on Users & Roles ▸ Roles. Hidden
+    // ones are left out; "light" (view-only) ones are marked, and a light group marks each of
+    // its entries. The driver allowlist stays as the hard rule above it: the driver app is a
+    // different seat, not an office user with fewer menus.
+    const access = useRoleAccess();
     const visibleNodes = React.useMemo(() => {
-        if (driver) return SIDEBAR_NODES.filter((n) => DRIVER_KEYS.has(n.key));
-        const isAdmin = role === "admin" || role === "super-admin";
-        return SIDEBAR_NODES.filter((n) => (ADMIN_ONLY_KEYS.has(n.key) ? isAdmin : true));
-    }, [role, driver]);
+        const base = driver ? SIDEBAR_NODES.filter((n) => DRIVER_KEYS.has(n.key)) : SIDEBAR_NODES;
+        if (role === "super-admin") return base;
+        const mark = (n: SidebarNode): SidebarNode =>
+            isGroup(n) ? { ...n, children: n.children.map(mark) } : { ...n, light: true };
+        return base.flatMap((n) => {
+            if (n.disabled) return [n];
+            const a = menuAccess(access, n.key, role);
+            return a === "hidden" ? [] : a === "light" ? [mark(n)] : [n];
+        });
+    }, [role, driver, access]);
 
     const [isCollapsed, setIsCollapsed] = React.useState(() => {
         if (typeof window !== 'undefined') {
@@ -271,6 +280,7 @@ function SidebarNodeView(props: {
                     onClick={() => node.path && onNavigate(node.path)}
                     isCollapsed={isCollapsed}
                     disabled={node.disabled}
+                    light={node.light}
                 />
             ) : (
                 <div className={cn("space-y-1 transition-all", open && isChildActive && !isCollapsed && "bg-slate-50/80 rounded-xl pb-1")}>
@@ -346,6 +356,7 @@ function SidebarNodeView(props: {
                                             isSubItem
                                             disabled={child.disabled}
                                             badge={child.badge}
+                                            light={child.light}
                                         />
                                     )}
                                 </div>
@@ -451,6 +462,7 @@ function NestedGroup({ node, currentPath, open, onToggle, onNavigate }: {
                                 isSubItem
                                 disabled={c.disabled}
                                 badge={c.badge}
+                                light={c.light}
                             />
                         </div>
                     ))}
@@ -487,14 +499,14 @@ function FlyoutItem({ child, currentPath, onNavigate }: { child: SidebarItem; cu
     );
 }
 
-function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabled, badge }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean; disabled?: boolean; badge?: string }) {
+function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabled, badge, light }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean; disabled?: boolean; badge?: string; light?: boolean }) {
     return (
         <button
             type="button"
             onClick={disabled ? undefined : onClick}
             disabled={disabled}
             aria-disabled={disabled}
-            title={disabled ? "Coming soon" : undefined}
+            title={disabled ? "Coming soon" : light ? `${label} · view only for your role` : undefined}
             className={cn(
                 "relative flex items-center rounded-lg py-2 text-left transition-all duration-200 ease-in-out group/leaf outline-none focus:ring-2 focus:ring-blue-100",
                 "w-full",
@@ -532,6 +544,10 @@ function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabl
                 <span className="ml-1 shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white shadow-sm">
                     {badge}
                 </span>
+            )}
+            {/* Light access — the menu is there to look at. */}
+            {light && !isCollapsed && !disabled && (
+                <Eye aria-label="View only" className={cn("ml-auto h-3.5 w-3.5 shrink-0", active ? "text-blue-400" : "text-slate-300")} />
             )}
         </button>
     );

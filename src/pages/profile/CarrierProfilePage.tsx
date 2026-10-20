@@ -83,7 +83,8 @@ import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
 import { type SubTab } from '@/components/ui/SubTabs';
 import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
 import { PaginationBar, ColumnsDropdown } from '@/components/ui/DataListToolbar';
-import { KpiStatCard } from '@/components/ui/KpiStatCard';
+import { KpiStatRow } from '@/components/ui/KpiStatCard';
+import { useScrolledPast } from '@/components/ui/use-condensing-header';
 import { McCertificateFacts, useMcNumber } from '@/pages/compliance/McAuthorityPanel';
 
 
@@ -685,6 +686,8 @@ export function CarrierProfilePage({
     const [activeModal, setActiveModal] = useState<any>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
     const [activeTab, setActiveTab] = useState("fleet");
+    /** The figures fold away on the way down whichever roster is open. */
+    const { ref: kpiMark, past: kpiPast } = useScrolledPast();
     /**
      * Arrived at by following a shared record link out of a chat.
      *
@@ -1775,26 +1778,22 @@ export function CarrierProfilePage({
 
                 {activeTab === 'drivers' && (
                     <div className="w-full space-y-5">
-                        {/* KPI tiles — the Default Compliance catalog look, still click-to-filter. */}
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                            {[
+                        <div ref={kpiMark} aria-hidden className="h-px" />
+                        {/* KPI tiles — the same row the Assets tab uses, so the two read as
+                            one thing, shrink the same way in a narrow column, and fold away
+                            at the same point on the way down. */}
+                        <KpiStatRow
+                            condensed={kpiPast}
+                            stats={[
                                 { id: 'All',        label: 'Total',      value: driverStats.total,      Icon: Users,     accent: 'blue'    },
                                 { id: 'Active',     label: 'Active',     value: driverStats.active,     Icon: UserCheck, accent: 'emerald' },
                                 { id: 'Inactive',   label: 'Inactive',   value: driverStats.inactive,   Icon: UserMinus, accent: 'slate'   },
                                 { id: 'On Leave',   label: 'On Leave',   value: driverStats.onLeave,    Icon: Clock,     accent: 'amber'   },
                                 { id: 'Terminated', label: 'Terminated', value: driverStats.terminated, Icon: UserX,     accent: 'red'     },
-                            ].map((card) => (
-                                <KpiStatCard
-                                    key={card.id}
-                                    label={card.label}
-                                    value={card.value}
-                                    Icon={card.Icon}
-                                    accent={card.accent}
-                                    active={driverStatusFilter === card.id}
-                                    onClick={() => setDriverStatusFilter(card.id)}
-                                />
-                            ))}
-                        </div>
+                            ]}
+                            activeId={driverStatusFilter}
+                            onPick={setDriverStatusFilter}
+                        />
 
                         {/* ONE card holds the toolbar, the list and the pager — the same list-view
                             shell as the Default Compliance & Documents tables, so this roster reads

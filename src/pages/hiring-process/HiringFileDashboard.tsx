@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, RotateCcw,
     AlertCircle, Clock, ExternalLink, Mail, Printer, Share2,
@@ -13,6 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { KebabMenu, type KebabItem } from "@/components/ui/KebabMenu";
+import { ShareToChat } from "@/components/share/ShareToChat";
+import { DeliveryPicker, deliverRequest, needsEmail } from "@/components/share/RequestDelivery";
+import { StepScroller } from "@/components/ui/StepScroller";
+import { FormRecordView } from "./FormRecordView";
+import { FormRecordCard } from "./FormRecordCard";
+import { VerifyCopyDialog } from "./VerifyCopyDialog";
+import { FORM_STATUS_META, formCopyStatus, formRecordIdFor, seedFormCopiesOnce, subjectOfCopy, useFormCopiesMap, verifyFormCopy, fileFormCopy, uploadFormCopy, type FormCopy } from "./form-copies";
 import {
     useApplicants, ACTOR, STATUS_META, STATUS_ORDER, DOC_STATUS_META, STEP_STATUS_META, relativeTime, formName, formRegion, EMP_MAX_ATTEMPTS, REQUEST_ACTIONS,
     type AppStatus, type DocStatus, type StepStatus, type ReviewSignoff, type Applicant, type AppRequest, type RequestRecipient, type RequestChannel, type RequestAction, type EmpCheck, type UploadedFile, type Remark, type RoadTestMethod, type RoadTestDoc,
@@ -28,7 +36,7 @@ import { ThemedDocumentViewer } from "./ThemedDocumentViewer";
 import { HiringPdfReview } from "./HiringPdfReview";
 import { PrefillProvider, buildPrefill, splitDates, type PrefillEmployer, type PrefillUnemployment, type ApplicantPrefill } from "./application-prefill";
 import { SignatureCreator } from "./SignatureCreator";
-import { PolicyDocument } from "./PolicyForm";
+import { PolicyDocument, PolicyForm } from "./PolicyForm";
 import { POLICY_FORMS } from "./policy-forms.data";
 import { useCompanyBranding, type CompanyBranding } from "../ats/company-branding.data";
 import { AssignExaminerDialog } from "./AssignExaminerDialog";
@@ -87,14 +95,16 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const [openForm, setOpenForm] = useState<string | null>(null);
     const [formPreview, setFormPreview] = useState(false);   // open the form straight into its PDF/document view
     const [uploadFor, setUploadFor] = useState<StepItem | null>(null);   // item whose upload popup is open
-    const [openConsent, setOpenConsent] = useState<string | null>(null);   // consent review (stacked forms)
-    const [consentView, setConsentView] = useState<"form" | "document">("form");  // consent screen: our form UI vs PDF/document
+    const [openConsent, setOpenConsent] = useState<string | null>(null);   // consent review (every signed copy, one after another)
     const [consentFocus, setConsentFocus] = useState<string | null>(null);   // a single consent to show (else all)
+    const [consentRecord, setConsentRecord] = useState<string | null>(null);   // one consent's record page: its copies on file
     const [appSection, setAppSection] = useState<string | null>(null);   // a single application section to show (else all)
     const [docPreview, setDocPreview] = useState<UploadedFile | null>(null);   // uploaded document being previewed
     const [empReview, setEmpReview] = useState<string | null>(null);   // employer being reviewed on its dedicated page (emp-check id)
     const [showPacket, setShowPacket] = useState(false);
     const [pdfReview, setPdfReview] = useState<number | null>(null);
+    // A checklist row being shared to chat — what it is, where it stands, and its files.
+    const [sharing, setSharing] = useState<SharedItem | null>(null);
     const [showChecklistPdf, setShowChecklistPdf] = useState(false);
     const [selected, setSelected] = useState(0);
     const [reqOpen, setReqOpen] = useState<Partial<AppRequest> | null>(null);
@@ -104,11 +114,47 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const [quizRun, setQuizRun] = useState<{ quizId: string; mode: "take" | "review" } | null>(null);   // the quiz the driver is taking / being reviewed
 
     const a = applicants.find((x) => x.id === applicantId);
+    const tpl: HiringTemplate | undefined = a ? (templates.find((t) => t.name === a.template) ?? templates.find((t) => t.id === TEMPLATE_FOR_FORM[a.formId]) ?? templates[0]) : undefined;
+    const steps = tpl?.steps ?? [];
+    // The consents this file asks for, and every signed copy of them on the applicant's
+    // record. Read above the early return below, because hooks run the same way every render.
+    const consentIds = (steps.find((s) => s.kind === "app")?.formIds ?? []).filter((f) => stepGroup(f) === "Policy");
+    const consentCopies = useFormCopiesMap(a?.carrierId, a ? [a.id] : [], consentIds.map(formRecordIdFor));
+    const [branding] = useCompanyBranding();
+    // A seeded applicant who submitted has signed every consent — file the copies that
+    // submission produced, once, so Review opens a signed form rather than a blank one.
+    useEffect(() => {
+        if (!a?.submission) return;
+        const p = buildPrefill(a);
+        const invited = Date.parse(a.invitedAt);
+        seedFormCopiesOnce({
+            accountId: a.carrierId, subjectId: a.id,
+            forms: consentIds.map((defId) => ({
+                defId, signedBy: p.fullName, date: Number.isNaN(invited) ? undefined : new Date(invited).toISOString().slice(0, 10),
+                values: { company: branding.name, prospEmployer: branding.name, ssn: p.ssn, dob: p.dob, licenseNumber: p.licenses[0]?.number ?? "", state: p.licenses[0]?.authority ?? "" },
+            })),
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [a?.id, a?.submission ? 1 : 0, consentIds.join("|")]);
     if (!a) return <NotFound onBack={onBack} />;
 
-    const tpl: HiringTemplate | undefined = templates.find((t) => t.name === a.template) ?? templates.find((t) => t.id === TEMPLATE_FOR_FORM[a.formId]) ?? templates[0];
-    const steps = tpl?.steps ?? [];
     const docOf = (fid: string): DocStatus => a.docs?.[fid] ?? "pending";
+    const setDoc = (fid: string, to: DocStatus, verb: string) => updateOne(a.id, (prev) => {
+        const resolved = (to === "received" || to === "verified" || to === "skipped");
+        return {
+            docs: { ...(prev.docs ?? {}), [fid]: to },
+            requests: resolved ? (prev.requests ?? []).map((r) => (r.fid === fid && r.status === "open" ? { ...r, status: "resolved" as const } : r)) : prev.requests,
+            events: [{ id: `ev-${Date.now()}`, type: "doc", text: `${verb} — ${stepName(fid)}`, at: Date.now(), author: ACTOR }, ...prev.events],
+        };
+    });
+    const openRequestFor = (fid?: string) => setReqOpen(requestPrefill(fid, a.email));
+    // The consent pack's status is what is on file: every copy verified → verified; every
+    // consent with a copy → received; else whatever the file asked for.
+    const consentStatusOf = (fid: string) => formCopyStatus(consentCopies[formRecordIdFor(fid)] ?? [], docOf(fid) === "requested");
+    const consentPackStatus: DocStatus = consentIds.length === 0 ? "pending"
+        : consentIds.every((f) => consentStatusOf(f) === "verified") ? "verified"
+        : consentIds.every((f) => consentStatusOf(f) === "verified" || consentStatusOf(f) === "received") ? "received"
+        : consentIds.some((f) => consentStatusOf(f) === "requested") ? "requested" : "pending";
     const stepDone = (s: HiringTemplate["steps"][number]) => s.formIds.length > 0 && s.formIds.every((f) => DONE_STATES.includes(docOf(f)));
     // Per-step review lifecycle. Explicit status wins; otherwise derive: all docs in → "waiting for review", else "initial".
     const stepStatusOf = (s: HiringTemplate["steps"][number]): StepStatus => a.stepStatus?.[s.id] ?? (stepDone(s) ? "waiting" : "initial");
@@ -117,6 +163,23 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const sel = Math.min(selected, steps.length - 1);
     const step = steps[sel];
     const pf = buildPrefill(a);
+    // Share a checklist row to chat — its files attached, the step and status in the note,
+    // and a link back to this file. Built here, above the early returns, so a record page
+    // opened from a row can offer it too.
+    const shareDialog = sharing && (
+        <ShareToChat
+            open
+            onClose={() => setSharing(null)}
+            title={`Share ${sharing.label}`}
+            subtitle={`${a.firstName} ${a.lastName} · ${step?.title ?? "Hiring file"}`}
+            source={{ type: "manual", id: a.id, label: `Application file — ${a.firstName} ${a.lastName}` }}
+            items={sharing.files.map((name) => ({ name, group: sharing.label }))}
+            record={{ type: "applicant", id: a.id, label: `${a.firstName} ${a.lastName} — ${sharing.label}`, sublabel: `${tpl?.name ?? "Hiring"} · Step ${sel + 1}: ${step?.title ?? ""}`, path: `/hiring-process/hiring/${a.id}` }}
+            defaultSubject={`${sharing.label} — ${a.firstName} ${a.lastName}`}
+            defaultMessage={`${sharing.label} from ${a.firstName} ${a.lastName}'s application file.\n\n  Step: ${step?.title ?? "—"}\n  Status: ${sharing.status}`}
+            defaultChannel="in-app"
+        />
+    );
     const empFid = step?.formIds.find((f) => f === "dot-verification" || f === "employment-verification");
     const isEmpStep = !!empFid && pf.employment.length > 0;
     const isRoadTestStep = !!step && step.kind !== "review" && step.formIds.includes("road-test");
@@ -381,13 +444,40 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
             </div>
         );
     }
+    // One consent's record page — its copies on file, and the viewer they open in.
+    if (consentRecord) {
+        const def = POLICY_FORMS.find((p) => p.id === consentRecord);
+        const fid = consentRecord;
+        if (def) return (
+            <>
+                <FormRecordView def={def} title={stepName(fid)} backLabel="Hiring file" subject={`${a.firstName} ${a.lastName} · Hiring file`}
+                    accountId={a.carrierId} subjectIds={[a.id]} writeSubjectId={a.id} requested={docOf(fid) === "requested"} prefill={pf}
+                    onBack={() => setConsentRecord(null)}
+                    onShare={(copies) => setSharing({ label: stepName(fid), status: FORM_STATUS_META[formCopyStatus(copies, docOf(fid) === "requested")].label, files: copies.map((c) => c.fileName ?? `${stepName(fid)}.pdf`) })}
+                    onAsk={() => openRequestFor(fid)}
+                    onFiled={() => setDoc(fid, "received", "Filed signed copy")}
+                    onVerified={() => setDoc(fid, "verified", "Verified signed copy")}
+                    onReceived={() => setDoc(fid, "received", "Marked received")} />
+                {shareDialog}
+            </>
+        );
+    }
     if (openConsent) {
-        const allConsentIds = (steps.find((s) => s.kind === "app")?.formIds ?? []).filter((f) => stepGroup(f) === "Policy");
-        const consentIds = consentFocus ? allConsentIds.filter((f) => f === consentFocus) : allConsentIds;
-        const markReceived = (f: string) => updateOne(a.id, (prev) => ({ docs: { ...(prev.docs ?? {}), [f]: "received" as DocStatus }, events: [{ id: `ev-${Date.now()}`, type: "doc", text: `Marked received — ${stepName(f)}`, at: Date.now(), author: ACTOR }, ...prev.events] }));
+        const shown = consentFocus ? consentIds.filter((f) => f === consentFocus) : consentIds;
         const appStepId = steps.find((s) => s.kind === "app")?.id;
         const reviewConsents = (r: ReviewSignoff) => updateOne(a.id, (prev) => ({ reviews: { ...(prev.reviews ?? {}), consents: r }, stepStatus: appStepId ? { ...(prev.stepStatus ?? {}), [appStepId]: "reviewed" } : prev.stepStatus, events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed all consent forms — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events] }));
-        return <ConsentReviewView consents={consentIds} pf={pf} statusOf={docOf} existingReview={a.reviews?.consents} initialMode={consentView} onReceived={markReceived} onReview={reviewConsents} onBack={() => { setOpenConsent(null); setConsentFocus(null); }} />;
+        return (
+            <>
+                <ConsentReviewView consents={shown} pf={pf} accountId={a.carrierId} subjectId={a.id} subject={`${a.firstName} ${a.lastName}`}
+                    requestedOf={(f) => docOf(f) === "requested"} existingReview={a.reviews?.consents}
+                    onFiled={(f) => setDoc(f, "received", "Filed signed copy")} onVerified={(f) => setDoc(f, "verified", "Verified signed copy")}
+                    onReceived={(f) => setDoc(f, "received", "Marked received")} onReview={reviewConsents}
+                    onShare={(f, copies) => setSharing({ label: stepName(f), status: FORM_STATUS_META[formCopyStatus(copies, docOf(f) === "requested")].label, files: copies.map((c) => c.fileName ?? `${stepName(f)}.pdf`) })}
+                    onAsk={(f) => openRequestFor(f)}
+                    onBack={() => { setOpenConsent(null); setConsentFocus(null); }} />
+                {shareDialog}
+            </>
+        );
     }
     if (showPacket) {
         const packetSections: DocSection[] = [
@@ -415,15 +505,8 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
         }} />;
     if (showChecklistPdf && reviewChecklist) return <ThemedDocumentViewer title={`${reviewChecklist.name} — ${a.firstName} ${a.lastName}`} subtitle={`${tpl?.name} · ${a.carrier}`} badge="CHECKLIST" sections={buildChecklistSections(reviewChecklist, clState, pf, a.carrier)} fileName={`${a.firstName}-${a.lastName}-checklist.pdf`} onBack={() => setShowChecklistPdf(false)} backLabel="Hiring file" />;
 
-    // ── mutations ──
-    const setDoc = (fid: string, to: DocStatus, verb: string) => updateOne(a.id, (prev) => {
-        const resolved = (to === "received" || to === "verified" || to === "skipped");
-        return {
-            docs: { ...(prev.docs ?? {}), [fid]: to },
-            requests: resolved ? (prev.requests ?? []).map((r) => (r.fid === fid && r.status === "open" ? { ...r, status: "resolved" as const } : r)) : prev.requests,
-            events: [{ id: `ev-${Date.now()}`, type: "doc", text: `${verb} — ${stepName(fid)}`, at: Date.now(), author: ACTOR }, ...prev.events],
-        };
-    });
+    // ── mutations (setDoc / openRequestFor live above the early returns — the record
+    //    views need them) ──
     // Upload popup → store the file against the item and mark it received (resolving any open request).
     const saveUpload = (item: StepItem, fileName: string) => {
         const fid = item.fid ?? item.id;
@@ -456,7 +539,6 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     });
     const resolveRequest = (r: AppRequest) => { if (r.fid) setDoc(r.fid, "received", "Recorded output"); else updateOne(a.id, (prev) => ({ requests: (prev.requests ?? []).map((x) => (x.id === r.id ? { ...x, status: "resolved" as const } : x)), events: [{ id: `ev-${Date.now()}`, type: "resolve", text: `Resolved request — ${r.subject}`, at: Date.now(), author: ACTOR }, ...prev.events] })); };
     const addNote = () => { if (!note.trim()) return; const text = note.trim(); setNote(""); updateOne(a.id, (prev) => ({ remarks: [{ id: `rm-${Date.now()}`, text, at: new Date().toLocaleString(), author: ACTOR }, ...prev.remarks], events: [{ id: `ev-${Date.now()}`, type: "note", text: `Note: ${text}`, at: Date.now(), author: ACTOR }, ...prev.events] })); };
-    const openRequestFor = (fid?: string) => setReqOpen(requestPrefill(fid, a.email));
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -464,19 +546,21 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                 {/* Header */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><ChevronLeft className="h-4 w-4" /> Back to List</button>
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-lg font-bold text-white">{(a.firstName[0] ?? "") + (a.lastName[0] ?? "")}</div>
-                            <div>
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex min-w-0 flex-1 items-center gap-4">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-lg font-bold text-white">{(a.firstName[0] ?? "") + (a.lastName[0] ?? "")}</div>
+                            <div className="min-w-0">
                                 <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Application File</p>
-                                <h1 className="text-2xl font-bold text-slate-900">{a.firstName} {a.lastName}</h1>
-                                <p className="mt-0.5 text-sm text-slate-500">{formName(a.formId)} · {a.position ?? "Driver"} · Applied {a.invitedAt} · {pipelineDays}d in pipeline</p>
+                                <h1 className="truncate text-2xl font-bold text-slate-900">{a.firstName} {a.lastName}</h1>
+                                <p className="mt-0.5 text-sm text-slate-500">{formName(a.formId)} · {a.position ?? "Driver"} · Applied {a.invitedAt} · <span className="whitespace-nowrap">{pipelineDays}d in pipeline</span></p>
                             </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="outline" size="sm" onClick={() => updateOne(a.id, (prev) => ({ events: [{ id: `ev-${Date.now()}`, type: "invited", text: `Invite re-sent to ${a.email}`, at: Date.now(), author: ACTOR }, ...prev.events] }))}><Send className="h-4 w-4" /> Resend invite</Button>
-                            <Button variant="outline" size="sm" onClick={() => window.alert("Opening applicant portal…")}><ExternalLink className="h-4 w-4" /> Portal</Button>
-                            <Button variant="outline" size="sm" onClick={() => setPdfReview(sel)}><FileText className="h-4 w-4" /> Review (PDF)</Button>
+                        {/* One row of equal buttons — the primary action (the review PDF) last
+                            and filled, so the three never wrap into a 2+1 stack. */}
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
+                            <Button variant="outline" size="sm" className="h-9 gap-1.5 whitespace-nowrap px-3" onClick={() => updateOne(a.id, (prev) => ({ events: [{ id: `ev-${Date.now()}`, type: "invited", text: `Invite re-sent to ${a.email}`, at: Date.now(), author: ACTOR }, ...prev.events] }))}><Send className="h-4 w-4" /> Resend invite</Button>
+                            <Button variant="outline" size="sm" className="h-9 gap-1.5 whitespace-nowrap px-3" onClick={() => window.alert("Opening applicant portal…")}><ExternalLink className="h-4 w-4" /> Portal</Button>
+                            <Button size="sm" className="h-9 gap-1.5 whitespace-nowrap px-3" onClick={() => setPdfReview(sel)}><FileText className="h-4 w-4" /> Review (PDF)</Button>
                         </div>
                     </div>
                 </div>
@@ -508,15 +592,14 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                 </div>
 
                 {/* Clickable stepper — sticks to the top while scrolling */}
-                <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
-                    <div className="overflow-x-auto pb-1">
-                        <div className="flex min-w-max items-start">
+                <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-3 py-5 shadow-sm">
+                    <StepScroller focus={sel}>
                             {steps.map((s, i) => {
                                 const done = isStepDone(s);
                                 const isSel = i === sel;
                                 const isCurrent = i === currentIdx;
                                 return (
-                                    <button key={s.id} type="button" onClick={() => setSelected(i)} className="relative flex min-w-[124px] flex-1 flex-col items-center px-1 outline-none">
+                                    <button key={s.id} type="button" data-step onClick={() => setSelected(i)} className="relative flex min-w-[124px] flex-1 flex-col items-center px-1 outline-none">
                                         {i > 0 && <span className="absolute left-0 top-[18px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: i <= currentIdx || currentIdx === -1 ? "#10b981" : "#e2e8f0" }} />}
                                         {i < steps.length - 1 && <span className="absolute right-0 top-[18px] h-0.5 w-1/2 -translate-y-1/2" style={{ backgroundColor: (i < currentIdx || currentIdx === -1) ? "#10b981" : "#e2e8f0" }} />}
                                         <span className={cn("z-10 flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-bold transition",
@@ -527,8 +610,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                     </button>
                                 );
                             })}
-                        </div>
-                    </div>
+                    </StepScroller>
                 </div>
 
                 {/* Main grid */}
@@ -625,30 +707,47 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                             events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed off the insurance step — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
                                         }))} />
                                 ) : (
-                                    <div className="space-y-2.5 p-5">
+                                    <div className="p-5">
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                    {/* Fixed layout so every row stays on one line — the item
+                                        column truncates instead of wrapping. */}
+                                    <table className="w-full min-w-[380px] table-fixed text-sm">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                <th className="w-12 py-2.5 pl-3 pr-0"><span className="sr-only">Expand</span></th>
+                                                <th className="px-3 py-2.5">Item</th>
+                                                <th className="w-[140px] whitespace-nowrap px-3 py-2.5">Status</th>
+                                                <th className="w-20 whitespace-nowrap py-2.5 pl-1 pr-3 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
                                         {items.map((item) => (
                                             <StepItemRow key={item.id} item={item} a={a} mode={item.fid ? stepFormMode(step, item.fid) : "upload"}
                                                 review={item.fid === "application" ? a.reviews?.application : item.fid === "driver-license" ? a.reviews?.[`driver-license:${item.licIndex ?? 0}`] : item.kind === "consent" ? a.reviews?.consents : undefined}
                                                 subItems={
                                                     item.kind === "consent"
-                                                        ? (item.subIds ?? []).map((fid) => ({ id: fid, label: stepName(fid), status: (a.docs?.[fid] ?? (a.submission ? "received" : "pending")) as DocStatus, onView: () => { setFormPreview(false); setConsentView("form"); setConsentFocus(fid); setOpenConsent(fid); }, onPdf: () => { setConsentView("document"); setConsentFocus(fid); setOpenConsent(fid); } }))
+                                                        ? (item.subIds ?? []).map((fid) => ({ id: fid, label: stepName(fid), status: consentStatusOf(fid) as DocStatus, viewLabel: "Open", pdfLabel: "Review signed copy", onView: () => setConsentRecord(fid), onPdf: () => { setConsentFocus(fid); setOpenConsent(fid); } }))
                                                         : item.fid === "application"
                                                             ? (a.submission ?? []).map((s) => ({ id: s.title, label: s.title, onView: () => { setFormPreview(false); setAppSection(s.title); setOpenForm("application"); } }))
                                                             : undefined
                                                 }
-                                                onForm={(vw) => { setFormPreview(false); if (item.kind === "consent") { setConsentView(vw === "document" ? "document" : "form"); setOpenConsent(item.subIds?.[0] ?? null); } else if (item.fid === "driver-license") setOpenForm(`driver-license:${item.licIndex ?? 0}`); else if (item.fid) setOpenForm(item.fid); }} onPdf={() => { if (item.kind === "form" && item.fid && item.fid !== "application" && item.fid !== "driver-license") { setFormPreview(true); setOpenForm(item.fid); } else setPdfReview(sel); }} onUpload={() => setUploadFor(item)} onRequest={() => openRequestFor(item.fid)} onSet={(to, verb) => { if (item.kind === "consent") (item.subIds ?? []).forEach((f) => setDoc(f, to, verb)); else setDoc(item.fid ?? item.id, to, verb); }} />
+                                                status={item.kind === "consent" ? consentPackStatus : undefined}
+                                                onForm={() => { setFormPreview(false); if (item.kind === "consent") { setConsentFocus(null); setOpenConsent(item.subIds?.[0] ?? null); } else if (item.fid === "driver-license") setOpenForm(`driver-license:${item.licIndex ?? 0}`); else if (item.fid) setOpenForm(item.fid); }} onPdf={() => { if (item.kind === "form" && item.fid && item.fid !== "application" && item.fid !== "driver-license") { setFormPreview(true); setOpenForm(item.fid); } else setPdfReview(sel); }} onUpload={() => setUploadFor(item)} onRequest={() => openRequestFor(item.fid)} onSet={(to, verb) => { if (item.kind === "consent") (item.subIds ?? []).forEach((f) => setDoc(f, to, verb)); else setDoc(item.fid ?? item.id, to, verb); }}
+                                                onShare={setSharing} />
                                         ))}
-                                        {items.length === 0 && <p className="text-sm text-slate-400">No items in this step.</p>}
-                                        {step?.kind === "app" && <DocumentsRow items={[
-                                            ...(a.uploads ?? []).map((u) => ({ id: u.id, label: u.label, sublabel: `${u.file} · ${u.category}`, onView: () => setDocPreview(u) })),
+                                        {items.length === 0 && <tbody><tr><td colSpan={STEP_TABLE_COLS} className="px-4 py-6 text-center text-sm text-slate-400">No items in this step.</td></tr></tbody>}
+                                        {step?.kind === "app" && <DocumentsRow onShare={setSharing} items={[
+                                            ...(a.uploads ?? []).map((u) => ({ id: u.id, label: u.label, sublabel: `${u.file} · ${u.category}`, file: u.file, onView: () => setDocPreview(u) })),
                                             ...pf.employment.flatMap((e, i) => EMPLOYER_VERIFICATION_DOCS.map((d) => {
                                                 const st = docOf(`doc:emp-${i}:${d.key}`);
                                                 const provided = DONE_STATES.includes(st);
-                                                return { id: `emp-${i}-${d.key}`, label: d.label, sublabel: e.employer || `Employer ${i + 1}`, status: st, onView: provided ? () => setDocPreview({ id: `emp-${i}-${d.key}`, label: d.label, file: `${d.label}.pdf`, category: "Employment Verification" }) : undefined };
+                                                return { id: `emp-${i}-${d.key}`, label: d.label, sublabel: e.employer || `Employer ${i + 1}`, status: st, file: `${d.label}.pdf`, onView: provided ? () => setDocPreview({ id: `emp-${i}-${d.key}`, label: d.label, file: `${d.label}.pdf`, category: "Employment Verification" }) : undefined };
                                             })),
                                         ]} />}
+                                    </table>
+                                    </div>
                                     </div>
                                 )}
+                                {shareDialog}
                             </div>
                         )}
 
@@ -679,7 +778,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                 </div>
             </div>
 
-            {reqOpen && <RequestDialog prefill={reqOpen} driverEmail={a.email} onClose={() => { setReqOpen(null); setEquivRequestKind(null); }} onSubmit={(req) => {
+            {reqOpen && <RequestDialog prefill={reqOpen} driverEmail={a.email} applicant={a} onClose={() => { setReqOpen(null); setEquivRequestKind(null); }} onSubmit={(req) => {
                 submitRequest(req);
                 if (equivRequestKind) updateOne(a.id, (prev) => ({ roadTest: { ...(prev.roadTest ?? {}), equivRequested: Array.from(new Set([...(prev.roadTest?.equivRequested ?? []), equivRequestKind])) } }));
                 setEquivRequestKind(null);
@@ -1892,7 +1991,7 @@ function ApplicationFormView({ title, subtitle, badge, sections, fileName, focus
 }
 
 // ── Request dialog ────────────────────────────────────────────────────────────
-function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, lockAction, attachments, attachmentsTitle, onClose, onSubmit }: { prefill: Partial<AppRequest>; driverEmail: string; recipients?: RequestRecipient[]; lockAction?: boolean; attachments?: { label: string; ready: boolean }[]; attachmentsTitle?: string; onClose: () => void; onSubmit: (r: Partial<AppRequest>) => void }) {
+function RequestDialog({ prefill, driverEmail, applicant, recipients = GENERIC_RECIPIENTS, lockAction, attachments, attachmentsTitle, onClose, onSubmit }: { prefill: Partial<AppRequest>; driverEmail: string; /** The file this request is about — when set, the request is delivered through Messages. */ applicant?: Applicant; recipients?: RequestRecipient[]; lockAction?: boolean; attachments?: { label: string; ready: boolean }[]; attachmentsTitle?: string; onClose: () => void; onSubmit: (r: Partial<AppRequest>) => void }) {
     const formLabel = prefill.fid ? stepName(prefill.fid) : "this item";
     const [action, setAction] = useState<RequestAction>(prefill.action ?? "Request");
     const [recipient, setRecipient] = useState<RequestRecipient>(prefill.recipient ?? recipients[0]);
@@ -1916,6 +2015,28 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
     };
     const onRecipient = (r: RequestRecipient) => { setRecipient(r); setTo(r === "Driver" ? driverEmail : ""); };
     const verb = action === "Order" ? "Send order" : action === "Alert" ? "Send alert" : action === "Review" ? "Assign review" : "Send request";
+    const canSend = !!subject.trim() && (!needsEmail(channel) || /\S+@\S+\.\S+/.test(to));
+    // Delivered through Messages (in-app chat, external chat link, or one-way email) and
+    // then handed to the caller, which logs it against the file.
+    const submit = () => {
+        if (!canSend) return;
+        if (applicant) {
+            const who = `${applicant.firstName} ${applicant.lastName}`;
+            deliverRequest({
+                delivery: channel,
+                name: recipient === "Driver" ? who : (to.trim() || recipient),
+                email: to.trim(),
+                subject: subject.trim(),
+                message: [message.trim(), dueDate ? `Due by ${dueDate}.` : ""].filter(Boolean).join("\n\n"),
+                asked: prefill.fid ? [formLabel] : [],
+                files: (attachments ?? []).filter((at) => at.ready && (attachChecked[at.label] ?? true)).map((at) => `${at.label}.pdf`),
+                source: { type: "manual", id: applicant.id, label: `Hiring file — ${who}` },
+                record: { type: "applicant", id: applicant.id, label: `${who} — Hiring file`, sublabel: formLabel, path: `/hiring-process/hiring/${applicant.id}` },
+                roleTag: recipient === "Driver" ? "Driver" : "External",
+            });
+        }
+        onSubmit({ fid: prefill.fid, action, recipient, to, channel, subject: subject.trim(), message: message.trim(), dueDate });
+    };
 
     return (
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -1938,7 +2059,11 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
                             </div>
                         </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send via</Label>
+                        <DeliveryPicker className="mt-1.5" value={channel} onChange={setChannel} />
+                    </div>
+                    <div className={cn("grid gap-3", needsEmail(channel) && "sm:grid-cols-2")}>
                         <div>
                             <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">{action === "Order" ? "Order from" : action === "Review" ? "Assign to" : "Send to"}</Label>
                             <Select value={recipient} onValueChange={(v) => onRecipient(v as RequestRecipient)}>
@@ -1946,21 +2071,13 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
                                 <SelectContent>{recipients.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        <div>
-                            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Send via</Label>
-                            <div className="mt-1.5 flex rounded-lg border border-slate-200 p-1">
-                                {(["Email", "In-app"] as RequestChannel[]).map((c) => (
-                                    <button key={c} type="button" onClick={() => setChannel(c)} className={cn("flex-1 rounded-md py-1.5 text-sm font-semibold transition", channel === c ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50")}>{c === "Email" ? <Mail className="mr-1 inline h-3.5 w-3.5" /> : <MessageSquarePlus className="mr-1 inline h-3.5 w-3.5" />}{c}</button>
-                                ))}
+                        {needsEmail(channel) && (
+                            <div>
+                                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Recipient email</Label>
+                                <Input className="mt-1.5" value={to} onChange={(e) => setTo(e.target.value)} placeholder={recipient === "Driver" ? driverEmail : "name@company.com"} />
                             </div>
-                        </div>
+                        )}
                     </div>
-                    {channel === "Email" && (
-                        <div>
-                            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Recipient email</Label>
-                            <Input className="mt-1.5" value={to} onChange={(e) => setTo(e.target.value)} placeholder={recipient === "Driver" ? driverEmail : "name@company.com"} />
-                        </div>
-                    )}
                     <div>
                         <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Subject</Label>
                         <Input className="mt-1.5" value={subject} onChange={(e) => setSubject(e.target.value)} />
@@ -1999,7 +2116,7 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
                 </div>
                 <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button disabled={!subject.trim()} onClick={() => onSubmit({ fid: prefill.fid, action, recipient, to, channel, subject: subject.trim(), message: message.trim(), dueDate })}><Send className="h-4 w-4" /> {verb}</Button>
+                    <Button disabled={!canSend} onClick={submit}><Send className="h-4 w-4" /> {verb}</Button>
                 </div>
             </DialogContent>
         </Dialog>
@@ -2096,17 +2213,22 @@ function itemStatus(item: StepItem, a: Applicant): DocStatus {
     return a.docs?.[item.fid ?? item.id] ?? "pending";
 }
 
-// A checklist item row — a single clean row (no dropdown): label + status + inline
-// actions. Reviewing/data happens in the View screen the buttons open.
-type RowSubItem = { id: string; label: string; status?: DocStatus; onView: () => void; onPdf?: () => void };
-function StepItemRow({ item, a, mode, review, subItems, onForm, onPdf, onRequest, onUpload, onSet }: {
+// A checklist item as a table row group — item · status · actions, with the item's
+// forms (consents, application sections) as expandable child rows in the same columns.
+// Reviewing/data happens in the screen the Review / PDF buttons open.
+type RowSubItem = { id: string; label: string; status?: DocStatus; onView: () => void; onPdf?: () => void; viewLabel?: string; pdfLabel?: string };
+/** What a row hands the Share to chat dialog: its name, where it stands, its files. */
+type SharedItem = { label: string; status: string; files: string[] };
+function StepItemRow({ item, a, mode, review, subItems, status: statusOverride, onForm, onPdf, onRequest, onUpload, onSet, onShare }: {
     item: StepItem; a: Applicant; mode: FulfillMode; review?: ReviewSignoff; subItems?: RowSubItem[];
+    /** When the caller knows better than the file's flags — the consent pack reads its copies. */
+    status?: DocStatus;
     onForm: (view?: "form" | "document") => void; onPdf: () => void; onRequest: () => void; onUpload: () => void; onSet: (to: DocStatus, verb: string) => void;
+    onShare: (s: SharedItem) => void;
 }) {
     const [open, setOpen] = useState(false);
-    const status = itemStatus(item, a);
+    const status = statusOverride ?? itemStatus(item, a);
     const meta = DOC_STATUS_META[status];
-    const tiny = "h-7 shrink-0 gap-1 px-2 text-xs";
     const isConsent = item.kind === "consent";
     const isApp = item.fid === "application";
     const isLicense = item.fid === "driver-license";
@@ -2116,89 +2238,167 @@ function StepItemRow({ item, a, mode, review, subItems, onForm, onPdf, onRequest
     const hasUp = (id: string) => Boolean((a.uploads ?? []).find((u) => u.id === id));
     const imagesOk = isLicense ? (item.licIndex !== undefined ? hasUp(`lic-${item.licIndex}-front`) && hasUp(`lic-${item.licIndex}-back`) : licenseImagesSubmitted(a)) : false;
     const hasSub = !!subItems && subItems.length > 0;
+    // A consent pack shares every signed form in it; anything else shares its own PDF.
+    const share: KebabItem = {
+        label: "Share to chat", icon: Share2,
+        onClick: () => onShare({ label: item.label, status: meta.label, files: isConsent && hasSub ? subItems!.map((s) => `${s.label}.pdf`) : [`${item.label}.pdf`] }),
+    };
+    // Every action lives behind the three dots, in the product's order — Review and PDF,
+    // Share to chat, then whatever this item's fulfilment mode adds (order, upload, mark received).
+    const actions: KebabItem[] = isConsent
+        ? [
+            // Driver-signed consents — submission = received, so just Review / PDF
+            { label: "Review", icon: Eye, onClick: () => onForm("form") },
+            { label: "PDF", icon: FileText, onClick: () => onForm("document") },
+            share,
+        ]
+        : [
+            { label: "Review", icon: Eye, onClick: () => onForm() },
+            { label: "PDF", icon: FileText, onClick: onPdf },
+            share,
+            ...(ordering ? [{ label: "Order / Request", icon: FileSearch, onClick: onRequest }] : []),
+            ...((ordering || uploading) && status === "pending" ? [{ label: "Upload", icon: Upload, onClick: onUpload }] : []),
+            ...(mode === "fill" && !isApp && status === "pending" ? [{ label: "Mark received", icon: Check, onClick: () => onSet("received", "Marked received") }] : []),
+        ];
     return (
-        <div className="rounded-xl border border-slate-200">
-            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-                <div className="flex min-w-0 flex-1 items-center gap-2 font-semibold text-slate-900">
-                    <span className="truncate">{isConsent ? `${item.label} · ${item.subIds?.length ?? 0}` : item.label}</span>
-                    {isLicense && <span className={cn("hidden shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:inline-block", imagesOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{imagesOk ? "Front & Back ✓" : "Images missing"}</span>}
-                </div>
-                <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", meta.badge)}>{meta.label}</span>
-                {review && <span className="hidden shrink-0 items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 sm:inline-flex"><BadgeCheck className="h-3.5 w-3.5" /> Reviewed by {review.by} · {review.date}</span>}
-                {isConsent ? (
-                    <>
-                        {/* Driver-signed consents — submission = received, so just Review / PDF */}
-                        <Button variant="outline" className={tiny} onClick={() => onForm("form")}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                        <Button variant="outline" className={tiny} onClick={() => onForm("document")}><FileText className="h-3.5 w-3.5" /> PDF</Button>
-                    </>
-                ) : (
-                    <>
-                        <Button variant="outline" className={tiny} onClick={() => onForm()}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                        <Button variant="outline" className={tiny} onClick={onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>
-                        {ordering && <Button className={tiny} onClick={onRequest}><FileSearch className="h-3.5 w-3.5" /> Order / Request</Button>}
-                        {(ordering || uploading) && status === "pending" && <Button variant={ordering ? "outline" : "default"} className={tiny} onClick={onUpload}><Upload className="h-3.5 w-3.5" /> Upload</Button>}
-                        {mode === "fill" && !isApp && status === "pending" && <Button className={tiny} onClick={() => onSet("received", "Marked received")}><Check className="h-3.5 w-3.5" /> Received</Button>}
-                    </>
-                )}
-                {hasSub && <button type="button" onClick={() => setOpen((o) => !o)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50" aria-label="Show forms"><ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} /></button>}
-            </div>
-            {/* Per-form dropdown — open each form one by one */}
-            {hasSub && open && (
-                <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/40">
-                    {subItems!.map((s) => {
-                        const sm = s.status ? DOC_STATUS_META[s.status] : null;
-                        return (
-                            <div key={s.id} className="flex flex-wrap items-center gap-2 px-4 py-2 pl-6">
-                                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-700">{s.label}</span>
-                                {sm && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", sm.badge)}>{sm.label}</span>}
-                                <Button variant="outline" className={tiny} onClick={s.onView}><Eye className="h-3.5 w-3.5" /> View</Button>
-                                {s.onPdf && <Button variant="outline" className={tiny} onClick={s.onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
+        <tbody className="border-t border-slate-100 first-of-type:border-t-0">
+            <tr className={cn("transition-colors hover:bg-slate-50/70", hasSub && "cursor-pointer", open && "bg-slate-50/70")}
+                onClick={hasSub ? () => setOpen((o) => !o) : undefined}>
+                <td className="py-2.5 pl-3 pr-0">
+                    {hasSub ? <ExpandToggle open={open} onToggle={() => setOpen((o) => !o)} label={`Show ${item.label}`} /> : <RowIcon icon={FileText} />}
+                </td>
+                <td className="px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-semibold text-slate-900" title={item.label}>{item.label}</span>
+                        {hasSub && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{subItems!.length}</span>}
+                        {isLicense && <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold", imagesOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{imagesOk ? "Front & Back ✓" : "Images missing"}</span>}
+                    </div>
+                </td>
+                <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", meta.badge)}>{meta.label}</span>
+                        {review && <span title={`Reviewed by ${review.by} · ${review.date}`} className="text-blue-600"><BadgeCheck className="h-4 w-4" /></span>}
+                    </div>
+                </td>
+                <td className="py-2.5 pl-1 pr-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <KebabMenu items={actions} title={`Actions for ${item.label}`} />
+                </td>
+            </tr>
+            {/* Per-form dropdown — each form as its own row, in the same columns */}
+            {hasSub && open && subItems!.map((s) => {
+                const sm = s.status ? DOC_STATUS_META[s.status] : null;
+                return (
+                    <tr key={s.id} className="border-t border-slate-100 bg-slate-50/50 transition-colors hover:bg-slate-100/60">
+                        <td className="pl-3 pr-0" />
+                        <td className="py-2 pl-3 pr-3">
+                            <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-slate-700">
+                                <span className="h-px w-3 shrink-0 bg-slate-300" />
+                                <span className="truncate" title={s.label}>{s.label}</span>
+                            </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2">
+                            {sm ? <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", sm.badge)}>{sm.label}</span> : <span className="text-slate-300">&mdash;</span>}
+                        </td>
+                        <td className="py-2 pl-1 pr-3 text-right">
+                            <KebabMenu title={`Actions for ${s.label}`} items={[
+                                { label: s.viewLabel ?? "Review", icon: Eye, onClick: s.onView },
+                                ...(s.onPdf ? [{ label: s.pdfLabel ?? "PDF", icon: FileText, onClick: s.onPdf }] : []),
+                                { label: "Share to chat", icon: Share2, onClick: () => onShare({ label: s.label, status: sm?.label ?? meta.label, files: [`${s.label}.pdf`] }) },
+                            ]} />
+                        </td>
+                    </tr>
+                );
+            })}
+        </tbody>
+    );
+}
+
+// The step checklist's columns: expand · item · status · actions.
+const STEP_TABLE_COLS = 4;
+
+// What sits in the expand column of a row that has nothing to expand — the same 28px
+// square as the toggle, so names line up and the column never reads as a missing button.
+function RowIcon({ icon: Icon }: { icon: React.ElementType }) {
+    return (
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-400" aria-hidden>
+            <Icon className="h-3.5 w-3.5" />
+        </span>
+    );
+}
+
+// The row's dropdown toggle — rotates open, and doesn't double-fire the row click.
+function ExpandToggle({ open, onToggle, label }: { open: boolean; onToggle: () => void; label: string }) {
+    return (
+        <button type="button" aria-expanded={open} aria-label={label}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className={cn("flex h-7 w-7 items-center justify-center rounded-md border transition",
+                open ? "border-blue-200 bg-blue-50 text-blue-600" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50")}>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", open ? "rotate-0" : "-rotate-90")} />
+        </button>
     );
 }
 
 // A collapsible "Documents" row — application uploads (license front/back) plus the
 // employment verification documents, each with status and a View when on file.
-type DocRowItem = { id: string; label: string; sublabel: string; status?: DocStatus; onView?: () => void };
-function DocumentsRow({ items }: { items: DocRowItem[] }) {
+type DocRowItem = { id: string; label: string; sublabel: string; file?: string; status?: DocStatus; onView?: () => void };
+function DocumentsRow({ items, onShare }: { items: DocRowItem[]; onShare: (s: SharedItem) => void }) {
     const [open, setOpen] = useState(false);
-    const tiny = "h-7 shrink-0 gap-1 px-2 text-xs";
+    const onFile = items.filter((it) => it.onView).length;
     return (
-        <div className="rounded-xl border border-slate-200">
-            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-                <div className="flex min-w-0 flex-1 items-center gap-2 font-semibold text-slate-900">
-                    <Paperclip className="h-4 w-4 shrink-0 text-slate-400" />
-                    <span className="truncate">Documents</span>
-                </div>
-                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{items.length}</span>
-                <button type="button" onClick={() => setOpen((o) => !o)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50" aria-label="Show documents"><ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} /></button>
-            </div>
-            {open && (
-                <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/40">
-                    {items.length === 0 && <p className="px-6 py-3 text-[13px] text-slate-400">No documents on this application.</p>}
-                    {items.map((it) => {
-                        const sm = it.status ? DOC_STATUS_META[it.status] : null;
-                        const has = !!it.onView;
-                        return (
-                            <div key={it.id} className="flex flex-wrap items-center gap-2 px-4 py-2 pl-6">
-                                <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm", has ? "text-emerald-500" : "text-slate-400")}><FileText className="h-4 w-4" /></div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[13px] font-medium text-slate-700">{it.label}</p>
-                                    <p className="truncate text-[11px] text-slate-400">{it.sublabel}</p>
-                                </div>
-                                {sm && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", sm.badge)}>{sm.label}</span>}
-                                {has && <Button variant="outline" className={tiny} onClick={it.onView}><Eye className="h-3.5 w-3.5" /> View</Button>}
-                            </div>
-                        );
-                    })}
-                </div>
+        <tbody className="border-t border-slate-100">
+            <tr className={cn("cursor-pointer transition-colors hover:bg-slate-50/70", open && "bg-slate-50/70")} onClick={() => setOpen((o) => !o)}>
+                <td className="py-2.5 pl-3 pr-0">
+                    <ExpandToggle open={open} onToggle={() => setOpen((o) => !o)} label="Show documents" />
+                </td>
+                <td className="px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <Paperclip className="h-4 w-4 shrink-0 text-slate-400" />
+                        <span className="truncate font-semibold text-slate-900">Documents</span>
+                        <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{items.length}</span>
+                    </div>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{onFile} / {items.length} on file</span>
+                </td>
+                <td className="py-2.5 pl-1 pr-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    {onFile > 0 && <KebabMenu title="Actions for documents" items={[
+                        { label: "Share to chat", icon: Share2, onClick: () => onShare({ label: "Documents", status: `${onFile} / ${items.length} on file`, files: items.filter((it) => it.onView).map((it) => it.file ?? it.label) }) },
+                    ]} />}
+                </td>
+            </tr>
+            {open && items.length === 0 && (
+                <tr className="border-t border-slate-100 bg-slate-50/50"><td colSpan={STEP_TABLE_COLS} className="px-6 py-3 text-[13px] text-slate-400">No documents on this application.</td></tr>
             )}
-        </div>
+            {open && items.map((it) => {
+                const sm = it.status ? DOC_STATUS_META[it.status] : null;
+                const has = !!it.onView;
+                return (
+                    <tr key={it.id} className="border-t border-slate-100 bg-slate-50/50 transition-colors hover:bg-slate-100/60">
+                        <td className="pl-3 pr-0" />
+                        <td className="py-2 pl-3 pr-3">
+                            <div className="flex min-w-0 items-center gap-2" title={`${it.label} · ${it.sublabel}`}>
+                                <FileText className={cn("h-3.5 w-3.5 shrink-0", has ? "text-emerald-500" : "text-slate-400")} />
+                                <span className="truncate text-[13px] font-medium text-slate-700">{it.label}</span>
+                                <span className="truncate text-[11px] text-slate-400">· {it.sublabel}</span>
+                            </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2">
+                            {sm ? <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", sm.badge)}>{sm.label}</span>
+                                : has ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Uploaded</span>
+                                : <span className="text-slate-300">&mdash;</span>}
+                        </td>
+                        <td className="py-2 pl-1 pr-3 text-right">
+                            {has
+                                ? <KebabMenu title={`Actions for ${it.label}`} items={[
+                                    { label: "View", icon: Eye, onClick: it.onView! },
+                                    { label: "Share to chat", icon: Share2, onClick: () => onShare({ label: it.label, status: sm?.label ?? "Uploaded", files: [it.file ?? it.label] }) },
+                                ]} />
+                                : <span className="pr-2 text-slate-300" title="Not on file">&mdash;</span>}
+                        </td>
+                    </tr>
+                );
+            })}
+        </tbody>
     );
 }
 
@@ -3142,6 +3342,7 @@ function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
 
             {reqOpen && (
                 <RequestDialog
+                    applicant={a}
                     recipients={["Provider / Agency"]}
                     lockAction
                     driverEmail=""
@@ -3160,6 +3361,7 @@ function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
                 const recipient: RequestRecipient = isLetter ? "Previous Employer" : isReport ? "Provider / Agency" : "Driver";
                 return (
                     <RequestDialog
+                        applicant={a}
                         driverEmail={a.email}
                         prefill={{ fid: reqDoc.key, action: isReport ? "Order" : "Request", recipient,
                             to: recipient === "Driver" ? a.email : "",
@@ -3449,7 +3651,7 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                     }}
                 />
             )}
-            {docMailFor && <RequestDialog recipients={["Previous Employer"]} lockAction prefill={{ fid: docMailFor.id, action: "Request", recipient: "Previous Employer", subject: `Request — ${docMailFor.label}`, message: `Please provide the ${docMailFor.label} for ${a.firstName} ${a.lastName}. The applicant advised they do not have a copy.` }} driverEmail={a.email} onClose={() => setDocMailFor(null)} onSubmit={(req) => { sendDoc(req, docMailFor); setDocMailFor(null); }} />}
+            {docMailFor && <RequestDialog applicant={a} recipients={["Previous Employer"]} lockAction prefill={{ fid: docMailFor.id, action: "Request", recipient: "Previous Employer", subject: `Request — ${docMailFor.label}`, message: `Please provide the ${docMailFor.label} for ${a.firstName} ${a.lastName}. The applicant advised they do not have a copy.` }} driverEmail={a.email} onClose={() => setDocMailFor(null)} onSubmit={(req) => { sendDoc(req, docMailFor); setDocMailFor(null); }} />}
 
             {/* Verification document preview */}
             {docView && (
@@ -3637,64 +3839,112 @@ function ActivityCard({ a }: { a: Applicant }) {
     );
 }
 
-// Consent review — a left sidebar listing every consent form (like the application
-// form's steps sidebar) + the selected consent rendered on the right, with Mark received.
-function ConsentReviewView({ consents, pf, statusOf, existingReview, initialMode = "form", onReceived, onReview, onBack }: {
-    consents: string[]; pf: ApplicantPrefill; existingReview?: ReviewSignoff; initialMode?: "form" | "document";
-    statusOf: (fid: string) => DocStatus; onReceived: (fid: string) => void; onReview: (r: ReviewSignoff) => void; onBack: () => void;
+/*
+ * Consent review — every consent on the file, one after another, each as the SIGNED COPY
+ * on record: the copies card (fill / upload / verify) and the latest copy rendered as the
+ * document underneath, so the reviewer reads what the driver actually signed.
+ *
+ * It used to render a blank, editable form here, or a document with an empty signature
+ * line, and call it "Signed Consent Forms". Now a consent with nothing on file says so.
+ */
+function ConsentReviewView({ consents, pf, accountId, subjectId, subject, requestedOf, existingReview, onFiled, onVerified, onReceived, onReview, onShare, onAsk, onBack }: {
+    consents: string[]; pf: ApplicantPrefill; accountId: string | undefined; subjectId: string; subject: string;
+    requestedOf: (fid: string) => boolean; existingReview?: ReviewSignoff;
+    onFiled: (fid: string) => void; onVerified: (fid: string) => void; onReceived: (fid: string) => void;
+    onReview: (r: ReviewSignoff) => void; onShare: (fid: string, copies: FormCopy[]) => void; onAsk: (fid: string) => void; onBack: () => void;
 }) {
     const [branding] = useCompanyBranding();
-    const [mode, setMode] = useState<"form" | "document">(initialMode);
-    const values: Record<string, string> = {
-        company: branding.name, applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
-        ssn: pf.ssn, licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "", date: "",
+    const copiesByFid = useFormCopiesMap(accountId, [subjectId], consents.map(formRecordIdFor));
+    const copiesOfFid = (fid: string) => copiesByFid[formRecordIdFor(fid)] ?? [];
+    const [open, setOpen] = useState<{ fid: string; copy: FormCopy } | null>(null);
+    const [filling, setFilling] = useState<string | null>(null);
+    const [verifying, setVerifying] = useState<{ fid: string; copy: FormCopy } | null>(null);
+    const onFile = (fid: string) => copiesOfFid(fid).length > 0;
+
+    const verify = (fid: string, copy: FormCopy, r: { by: string; date: string; note?: string }) => {
+        const rid = formRecordIdFor(fid);
+        verifyFormCopy({ accountId, subjectId: subjectOfCopy(accountId, [subjectId], rid, copy.id) ?? subjectId, recordId: rid, copyId: copy.id, by: r.by, date: r.date, note: r.note });
+        onVerified(fid);
+        setVerifying(null);
+        if (open?.copy.id === copy.id) setOpen({ fid, copy: { ...copy, verified: { by: r.by, at: r.date, note: r.note } } });
     };
-    const sigsFor = (d: (typeof POLICY_FORMS)[number]) => Object.fromEntries(d.signers.filter((s) => s.kind === "sign").map((s) => [s.key, ""]));
+    const verifyDialog = verifying && (
+        <VerifyCopyDialog copy={verifying.copy} formName={stepName(verifying.fid)} onClose={() => setVerifying(null)} onConfirm={(r) => verify(verifying.fid, verifying.copy, r)} />
+    );
+
+    if (open) {
+        const def = POLICY_FORMS.find((p) => p.id === open.fid);
+        if (def) return (
+            <>
+                <PolicyForm def={def} mode="filed" copy={open.copy} subject={subject} backLabel="Signed consent forms"
+                    sharedValues={open.copy.filled?.values} sharedSignatures={open.copy.filled?.sigs}
+                    onBack={() => setOpen(null)} onVerify={() => setVerifying(open)} />
+                {verifyDialog}
+            </>
+        );
+    }
+    if (filling) {
+        const def = POLICY_FORMS.find((p) => p.id === filling);
+        if (def) return (
+            <PrefillProvider value={pf}>
+                <PolicyForm def={def} mode="fill" subject={subject} backLabel="Signed consent forms" onBack={() => setFilling(null)}
+                    onComplete={(r) => { fileFormCopy({ accountId, subjectId, defId: def.id, values: r.values, sigs: r.sigs }); onFiled(filling); setFilling(null); }}
+                    completeLabel="Save & file" />
+            </PrefillProvider>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-50">
             <style>{`@media print { body * { visibility: hidden !important; } #consent-print, #consent-print * { visibility: visible !important; } #consent-print { position: absolute !important; left: 0; top: 0; width: 100%; } .no-print { display: none !important; } }`}</style>
             <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
                 <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Hiring file</button>
-                <div className="flex items-center gap-3">
-                    {/* Form (our consent form UI) vs Document / PDF */}
-                    <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                        {(["form", "document"] as const).map((vw) => (
-                            <button key={vw} type="button" onClick={() => setMode(vw)} className={cn("rounded-md px-3 py-1 text-xs font-semibold transition", mode === vw ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}>{vw === "form" ? "Form" : "Document / PDF"}</button>
-                        ))}
-                    </div>
-                    {mode === "document" && <Button variant="outline" size="sm" onClick={() => window.print()}><Download className="h-4 w-4" /> Print / Save PDF</Button>}
-                </div>
+                <Button variant="outline" size="sm" onClick={() => window.print()}><Download className="h-4 w-4" /> Print / Save PDF</Button>
             </div>
             <div id="consent-print" className="mx-auto max-w-4xl space-y-6 px-6 py-8">
                 <div className="no-print">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Consent &amp; Authorization</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Consent &amp; Authorization · {subject}</p>
                     <h1 className="text-2xl font-bold text-slate-900">Signed Consent Forms</h1>
-                    <p className="mt-1 text-sm text-slate-500">Every consent the driver signed, shown one by one for review. {mode === "form" ? "Shown in our consent form layout." : "Read-only document copies — print or save as PDF."}</p>
+                    <p className="mt-1 text-sm text-slate-500">Every consent on this file, with the signed copy on record. Open a copy to read it in full; verify it once you have.</p>
                 </div>
 
                 {existingReview && <div className="no-print"><ReviewedBanner review={existingReview} /></div>}
 
-                {/* All consents, one after another */}
                 {consents.map((fid, i) => {
                     const def = POLICY_FORMS.find((p) => p.id === fid);
-                    const st = statusOf(fid);
-                    const m = DOC_STATUS_META[st];
+                    const copies = copiesOfFid(fid);
+                    const latest = copies[0];
+                    const m = FORM_STATUS_META[formCopyStatus(copies, requestedOf(fid))];
                     return (
-                        <div key={fid} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
-                                <div className="flex items-center gap-3">
-                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{i + 1}</span>
-                                    <h2 className="text-sm font-bold text-slate-800">{stepName(fid)}</h2>
+                        <div key={fid} className="space-y-3">
+                            <div className="no-print flex items-center gap-3">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{i + 1}</span>
+                                <h2 className="text-sm font-bold text-slate-800">{stepName(fid)}</h2>
+                                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", m.badge)}>{m.label}</span>
+                            </div>
+                            <div className="no-print">
+                                <FormRecordCard compact title="Copies on file" copies={copies} requested={requestedOf(fid)}
+                                    onOpen={(copy) => setOpen({ fid, copy })}
+                                    onFill={() => setFilling(fid)}
+                                    onUpload={async (file) => { await uploadFormCopy({ accountId, subjectId, recordId: formRecordIdFor(fid), label: `${stepName(fid)} — uploaded copy`, file, by: ACTOR }); onFiled(fid); }}
+                                    onShare={() => onShare(fid, copies)}
+                                    onAsk={() => onAsk(fid)}
+                                    onVerify={(copy) => setVerifying({ fid, copy })}
+                                    onMarkReceived={() => onReceived(fid)} />
+                            </div>
+                            {/* The latest copy, as the document — the thing being reviewed. */}
+                            {latest && def && latest.filled && (
+                                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100/60 p-5">
+                                    <PolicyDocument def={def} values={latest.filled.values} sigs={latest.filled.sigs} branding={branding} />
                                 </div>
-                                <span className={cn("inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold", m.badge)}>{m.label}</span>
-                            </div>
-                            <div className="overflow-x-auto p-5">
-                                {mode === "form"
-                                    ? <PrefillProvider value={pf}><HiringFormView formId={fid} embedded onBack={onBack} /></PrefillProvider>
-                                    : def
-                                        ? <PolicyDocument def={def} values={values} sigs={sigsFor(def)} branding={branding} />
-                                        : <p className="text-sm text-slate-400">This consent has no document template.</p>}
-                            </div>
+                            )}
+                            {latest && latest.source === "upload" && !latest.filled && latest.fileUrl && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                                    {/^data:application\/pdf/i.test(latest.fileUrl) || /\.pdf$/i.test(latest.fileName ?? "")
+                                        ? <iframe title={latest.fileName} src={latest.fileUrl} className="h-[720px] w-full rounded-lg" />
+                                        : <img src={latest.fileUrl} alt={latest.fileName} className="mx-auto max-h-[720px]" />}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -3704,8 +3954,8 @@ function ConsentReviewView({ consents, pf, statusOf, existingReview, initialMode
                     <div className="no-print rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist</p>
                         <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                            {consents.map((fid) => <CheckLine key={fid} ok={DONE_STATES.includes(statusOf(fid))} label={`${stepName(fid)} signed`} />)}
-                            <CheckLine ok={consents.every((f) => DONE_STATES.includes(statusOf(f)))} label="All consents received" />
+                            {consents.map((fid) => <CheckLine key={fid} ok={onFile(fid)} label={`${stepName(fid)} signed`} />)}
+                            <CheckLine ok={consents.every((f) => !!copiesOfFid(f)[0]?.verified)} label="All copies verified" />
                         </ul>
                     </div>
                 )}
@@ -3716,6 +3966,7 @@ function ConsentReviewView({ consents, pf, statusOf, existingReview, initialMode
                         onConfirm={(r) => { consents.forEach((f) => onReceived(f)); onReview({ ...r, at: Date.now() }); }} />
                 </div>
             </div>
+            {verifyDialog}
         </div>
     );
 }

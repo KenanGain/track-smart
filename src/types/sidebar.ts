@@ -7,6 +7,7 @@ export type SidebarItem = {
     path?: string; // leaf nodes use path
     disabled?: boolean; // shown greyed-out and non-clickable
     badge?: string; // small red "New"-style tag shown after the label
+    light?: boolean; // view-only for the signed-in role (see users-roles/roles.data) — marked, still clickable
 };
 
 export type SidebarGroup = {

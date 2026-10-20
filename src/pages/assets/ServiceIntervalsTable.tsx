@@ -15,7 +15,23 @@ import {
 import { TH, TD, COL_RULE, RowIcon, EmptyRow } from '@/components/ui/CatalogTable';
 import { KebabMenu } from '@/components/ui/KebabMenu';
 // The chips, the banding and the reset every long list in the app wears.
-import { FilterChip, ResetFilters, TableGroupBand } from '@/components/ui/ListChrome';
+import {
+    ColumnPicker, FilterChip, ResetFilters, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+} from '@/components/ui/ListChrome';
+
+/** The sortable columns on this list. */
+type IntervalCol = 'name' | 'services' | 'mileage' | 'days' | 'hours' | 'assets' | 'status' | 'actions';
+/** The columns a reader can turn off. The rule's name and its menu stay. */
+const INTERVAL_COLUMNS: PickerColumn<IntervalCol>[] = [
+    { id: 'name', label: 'Maintenance Interval', locked: true },
+    { id: 'services', label: 'Services' },
+    { id: 'mileage', label: 'Mileage Interval' },
+    { id: 'days', label: 'Time Interval' },
+    { id: 'hours', label: 'Operating Hour' },
+    { id: 'assets', label: 'Assets' },
+    { id: 'status', label: 'Status' },
+    { id: 'actions', label: 'Actions', locked: true },
+];
 import { tierOf, tierLabel, tierRank } from './service-intervals';
 import { ShareToChat } from '@/components/share/ShareToChat';
 import { KpiTile } from '@/pages/inventory/InventoryKpi';
@@ -128,14 +144,39 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
         return { rank: 0, label: '' };
     };
 
+    /*
+     * What each column sorts by.
+     *
+     * The three clocks sort on the figure they run on — miles, hours, days — so a rule
+     * that comes round every 5,000 miles ranks under one that comes round every 25,000,
+     * which reading the column cannot tell you when the cells say "every 25,000 mi". A rule
+     * that does not run on that clock has no figure, and sorts last rather than as zero.
+     */
+    const [visibleCols, setVisibleCols] = useState<Set<IntervalCol>>(() => new Set(INTERVAL_COLUMNS.map((c) => c.id)));
+    const toggleCol = (id: IntervalCol) => setVisibleCols((prev) => {
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+    });
+    const showCol = (id: IntervalCol) => visibleCols.has(id);
+    const colCount = INTERVAL_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
+
+    const { sort, onSort, sorted } = useTableSort<IntervalCol, typeof filtered[number]>(filtered, {
+        name: (r) => r.name,
+        services: (r) => r.serviceTypeIds.length,
+        mileage: (r) => r.intervals?.mileage?.every ?? null,
+        days: (r) => r.intervals?.days?.every ?? null,
+        hours: (r) => r.intervals?.engineHours?.every ?? null,
+        assets: (r) => r.assetIds.length,
+        status: (r) => (r.counts.overdue ? 0 : r.counts.due ? 1 : r.counts.upcoming ? 2 : 3),
+    });
+
     const banded = useMemo(() => {
-        if (groupBy === 'none') return filtered;
-        return [...filtered].sort((a, b) => {
+        if (groupBy === 'none') return sorted;
+        return [...sorted].sort((a, b) => {
             const ba = bandOf(a), bb = bandOf(b);
             return ba.rank - bb.rank || ba.label.localeCompare(bb.label) || a.name.localeCompare(b.name);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtered, groupBy]);
+    }, [sorted, groupBy]);
 
     const bandCounts = useMemo(() => {
         const m = new Map<string, number>();
@@ -199,6 +240,7 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                         >
                             {INTERVAL_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                         </select>
+                        <ColumnPicker columns={INTERVAL_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
                     </div>
                     <div className="ml-auto">
                         <ResetFilters on={filtering} onReset={clear} />
@@ -210,20 +252,20 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                         <table className="w-full">
                             <thead>
                                 <tr>
-                                    <TH>Maintenance Interval</TH>
-                                    <TH className={COL_RULE}>Services</TH>
-                                    <TH className={COL_RULE}>Mileage Interval</TH>
-                                    <TH className={COL_RULE}>Time Interval</TH>
-                                    <TH className={COL_RULE}>Operating Hour</TH>
-                                    <TH className={COL_RULE}>Assets</TH>
-                                    <TH className={COL_RULE}>Status</TH>
+                                    <SortTh col="name" label="Maintenance Interval" sortable sort={sort} onSort={onSort} />
+                                    {showCol('services') && <SortTh col="services" label="Services" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('mileage') && <SortTh col="mileage" label="Mileage Interval" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('days') && <SortTh col="days" label="Time Interval" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('hours') && <SortTh col="hours" label="Operating Hour" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('assets') && <SortTh col="assets" label="Assets" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
+                                    {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
                                     <TH className={cn('w-px text-right', COL_RULE)}>Actions</TH>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {paged.length === 0 && (
                                     <EmptyRow
-                                        colSpan={8}
+                                        colSpan={colCount}
                                         Icon={CalendarClock}
                                         title="No service intervals match your filters"
                                         hint={search.trim()
@@ -239,7 +281,7 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                                     return (
                                         <Fragment key={r.id}>
                                         {band && (!prevBand || prevBand.label !== band.label) && (
-                                            <TableGroupBand label={band.label} count={bandCounts.get(band.label) ?? 0} colSpan={8} />
+                                            <TableGroupBand label={band.label} count={bandCounts.get(band.label) ?? 0} colSpan={colCount} />
                                         )}
                                         <tr
                                             // The row opens the rule. Reading one should not mean hunting for
@@ -289,6 +331,7 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                                                     </div>
                                                 </div>
                                             </TD>
+                                            {showCol('services') && (
                                             <TD className={COL_RULE}>
                                                 {/* The names, on a line, with the rest behind a count and a
                                                     tooltip. Two chips that wrap are two rows of table for a
@@ -307,9 +350,17 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                                                     )}
                                                 </div>
                                             </TD>
+                                            )}
+                                            {showCol('mileage') && (
                                             <TD className={COL_RULE}><Clock3 value={clocks.mileage} Icon={Gauge} /></TD>
+                                            )}
+                                            {showCol('days') && (
                                             <TD className={COL_RULE}><Clock3 value={clocks.days} Icon={CalendarDays} /></TD>
+                                            )}
+                                            {showCol('hours') && (
                                             <TD className={COL_RULE}><Clock3 value={clocks.hours} Icon={Clock} /></TD>
+                                            )}
+                                            {showCol('assets') && (
                                             <TD className={COL_RULE}>
                                                 {/* How many, and that is all. Listing the first two unit
                                                     numbers printed raw ids ("a1, a2") for every seeded rule,
@@ -325,6 +376,8 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                                                     </span>
                                                 )}
                                             </TD>
+                                            )}
+                                            {showCol('status') && (
                                             <TD className={COL_RULE}>
                                                 {/* The rule's output, by state — which is the only place the two
                                                     views of this tab meet. */}
@@ -337,6 +390,7 @@ export function ServiceIntervalsTable({ rows, assetLabel, serviceName, onOpen, o
                                                     )}
                                                 </div>
                                             </TD>
+                                            )}
                                             {/* The menu must not also open the row underneath it. */}
                                             <TD className={COL_RULE} onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-end">

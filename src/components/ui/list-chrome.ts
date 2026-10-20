@@ -6,6 +6,8 @@ export const PAGE_SIZES = [10, 25, 50, 100];
 
 /** Header cell class — every list's column headings read the same. */
 export const TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
+/** A header row whose cells carry their own padding — the same type as TH_CLS, set once on the row. */
+export const TH_ROW_CLS = 'border-b border-slate-200 bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500';
 
 /** Which column is sorted, and which way. `null` = the list's own natural order. */
 export interface SortState<C extends string> { col: C; dir: 'asc' | 'desc' }

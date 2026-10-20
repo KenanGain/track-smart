@@ -36,5 +36,17 @@ export default defineConfig(({ mode }) => {
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Third-party code in its own chunk. Everything used to land in one ~16 MB minified
+        // file — a single line long enough that Vite's import scanner failed to parse it
+        // ("Parse error @:1:1"), so any small addition to the app broke the build.
+        manualChunks(id) {
+          if (id.includes('node_modules')) return 'vendor'
+        },
+      },
+    },
+  },
   }
 })
