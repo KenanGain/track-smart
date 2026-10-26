@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import {
-    Search, Plus, Eye, Edit, X, ChevronDown, RotateCcw,
-    Trash2, Tag, Layers, Settings as SettingsIcon, ShieldAlert, Hash, Layers3,
+    Plus, X, ChevronDown, RotateCcw, Trash2, Tag, Layers, Settings as SettingsIcon, ShieldAlert, Hash, Layers3, Edit, AlertTriangle, LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SubTabs } from "@/components/ui/SubTabs";
+import { ListPageHeader } from "@/components/ui/ListPageHeader";
+import { ListScrollFrame } from "@/components/ui/ListScrollFrame";
+import { KpiStatRow, type KpiStat } from "@/components/ui/KpiStatCard";
+import { ListHeaderBridge, chipsFromStats, useHeaderChips } from "@/components/ui/list-header-bridge";
+import { usePageChrome } from "@/components/ui/PageChrome";
+import {
+    ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, TablePager,
+    useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from "@/components/ui/list-chrome";
+import { RowActions } from "@/components/ui/RowActions";
 import {
     ACCIDENT_TYPES,
     ACCIDENT_GROUPS,
@@ -69,13 +78,39 @@ interface Row extends AccidentTypeDef {
     isOverridden: boolean;
 }
 
+/** Where a type comes from — a filter and a grouping. */
+type Source = "FMCSA" | "Custom" | "Edited";
+const SOURCES: Source[] = ["FMCSA", "Custom", "Edited"];
+const sourceOf = (t: Row): Source => (t.isCustom ? "Custom" : t.isOverridden ? "Edited" : "FMCSA");
+
+type Col = "name" | "group" | "description" | "risk" | "points" | "mapping";
+const COLUMNS: PickerColumn<Col>[] = [
+    { id: "name", label: "Display name", locked: true },
+    { id: "group", label: "Group" },
+    { id: "description", label: "Description" },
+    { id: "risk", label: "Risk type" },
+    { id: "points", label: "Risk points" },
+    { id: "mapping", label: "Class mapping" },
+];
+type GroupBy = "none" | "group" | "risk" | "source";
+const GROUPS: { id: GroupBy; label: string }[] = [
+    { id: "none", label: "No grouping" },
+    { id: "group", label: "Group: Accident group" },
+    { id: "risk", label: "Group: Risk type" },
+    { id: "source", label: "Group: FMCSA / Custom / Edited" },
+];
+
+const TD = ({ children, className, title }: { children?: React.ReactNode; className?: string; title?: string }) => (
+    <td title={title} className={cn("px-4 py-2.5 text-sm align-middle whitespace-nowrap", className)}>{children}</td>
+);
+
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export function AccidentsSettingsPage() {
     const [activeTab, setActiveTab] = useState<MainCategory | "all">("all");
-    const [searchQuery, setSearchQuery] = useState("");
     const [overrides, setOverrides] = useState<Record<string, BuiltinOverride>>(() => loadOverrides());
     const [custom, setCustom] = useState<AccidentTypeDef[]>(() => loadCustom());
+    const { scrollRef, onScroll, condensed, bridge } = usePageChrome(activeTab);
 
     const [modalState, setModalState] = useState<
         | { kind: "closed" }
@@ -106,28 +141,8 @@ export function AccidentsSettingsPage() {
         return rows;
     }, [overrides, custom]);
 
-    const visibleRows = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        return allRows.filter((t) => {
-            if (activeTab !== "all") {
-                const cats = getMainCategories(t);
-                if (!cats.includes(activeTab as MainCategory)) return false;
-            }
-            if (!q) return true;
-            return (
-                t.displayName.toLowerCase().includes(q) ||
-                t.description.toLowerCase().includes(q) ||
-                t.group.toLowerCase().includes(q)
-            );
-        });
-    }, [allRows, searchQuery, activeTab]);
-
-    const stats = useMemo(() => {
-        const fmcsa = ACCIDENT_TYPES.filter((t) => t.fromFmcsa).length;
-        const customCount = custom.length;
-        const overriddenCount = Object.values(overrides).filter((o) => o.riskType != null || o.riskPoints != null || o.classMapping != null).length;
-        return { total: allRows.length, fmcsa, custom: customCount, overrides: overriddenCount };
-    }, [allRows.length, custom.length, overrides]);
+    const tabRows = useMemo(() => activeTab === "all" ? allRows : allRows.filter((t) => getMainCategories(t).includes(activeTab as MainCategory)), [allRows, activeTab]);
+    const overrideCount = Object.values(overrides).filter((o) => o.riskType != null || o.riskPoints != null || o.classMapping != null).length;
 
     // Mutations
     const upsertCustom = (item: AccidentTypeDef) => {
@@ -142,179 +157,58 @@ export function AccidentsSettingsPage() {
         setOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
     const resetBuiltin = (id: string) =>
         setOverrides((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    const resetAllOverrides = () => setOverrides({});
+    const resetAllOverrides = () => { if (window.confirm(`Reset ${overrideCount} edited accident type${overrideCount === 1 ? "" : "s"} to the FMCSA defaults?`)) setOverrides({}); };
 
     const editing = (modalState.kind === "edit" || modalState.kind === "view")
         ? allRows.find((r) => r.id === modalState.id) ?? null
         : null;
 
+    const tabs = [
+        { id: "all", label: "All accidents", icon: LayoutGrid, count: allRows.length },
+        ...MAIN_CATEGORIES.map((c) => ({ id: c.id, label: c.label, icon: AlertTriangle, count: allRows.filter((t) => getMainCategories(t).includes(c.id)).length })),
+    ];
+
     return (
-        <div className="flex flex-col h-full bg-slate-50/50">
-            <div className="px-8 py-6 max-w-[1600px] mx-auto w-full">
-
-                {/* Header */}
-                <div className="flex items-end justify-between mb-8">
-                    <div>
-                        <nav className="flex text-sm text-slate-500 mb-1 font-medium items-center gap-2">
-                            <span>Settings</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="text-slate-900">Accident Types</span>
-                        </nav>
-                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-2">
-                            Accident Type Configuration
-                        </h1>
-                        <p className="text-slate-600 max-w-3xl text-sm">
-                            Configure accident types and map each one onto FMCSA / CVOR / NSC class taxonomies plus driver and vehicle action triggers.
-                            These mappings drive the groupings used in <span className="font-semibold text-slate-900">Beta Safety Analysis → Accident / Collision</span>.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {stats.overrides > 0 && (
-                            <Button variant="outline" onClick={resetAllOverrides}
-                                className="h-9 px-3 text-xs font-semibold uppercase tracking-wide border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
-                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                                Reset {stats.overrides} override{stats.overrides > 1 ? "s" : ""}
-                            </Button>
-                        )}
-                        <Button onClick={() => setModalState({ kind: "create" })}
-                            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 px-4 text-xs font-semibold uppercase tracking-wide">
-                            <Plus className="h-3.5 w-3.5 mr-2" />
-                            Add Accident Type
+        <ListHeaderBridge value={bridge.value}>
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            <ListPageHeader
+                Icon={AlertTriangle}
+                title="Accident Types"
+                description={<>Each accident type mapped onto FMCSA / CVOR / NSC classes and driver and vehicle triggers — the groupings behind <span className="font-semibold text-slate-700">Beta Safety Analysis → Accident / Collision</span>.</>}
+                count={allRows.length}
+                countTitle={`${allRows.length} accident types`}
+                condensed={condensed}
+                chips={bridge.chips ?? undefined}
+                tabs={tabs}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as MainCategory | "all")}
+                tabsLabel="Accident categories"
+                showZeroCounts
+                actions={<>
+                    {overrideCount > 0 && (
+                        <Button variant="outline" onClick={resetAllOverrides}
+                            className={cn("gap-1.5 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100", condensed ? "h-8" : "h-9")}>
+                            <RotateCcw className="h-4 w-4" /> Reset {overrideCount} edited
                         </Button>
-                    </div>
-                </div>
+                    )}
+                    <Button onClick={() => setModalState({ kind: "create" })} className={cn("gap-2 bg-blue-600 text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}>
+                        <Plus className="h-4 w-4" /> Add accident type
+                    </Button>
+                </>}
+            />
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-                    <StatCard label="Total Accident Types"  value={stats.total}     icon={Layers}      tone="blue"   />
-                    <StatCard label="From FMCSA SMS"        value={stats.fmcsa}     icon={ShieldAlert} tone="emerald"/>
-                    <StatCard label="Custom / Internal"     value={stats.custom}    icon={Tag}         tone="violet" />
-                    <StatCard label="With Overrides"        value={stats.overrides} icon={SettingsIcon}tone="amber"  />
-                </div>
-
-                {/* Tabs & Search */}
-                <div className="flex flex-col space-y-4 mb-4">
-                    <SubTabs
-                        tabs={[
-                            { id: "all", label: "All Accidents", count: allRows.length },
-                            ...MAIN_CATEGORIES.map((c) => ({
-                                id: c.id,
-                                label: c.label,
-                                count: allRows.filter((t) => getMainCategories(t).includes(c.id)).length,
-                            })),
-                        ]}
-                        activeId={activeTab}
-                        onChange={(id) => setActiveTab(id as MainCategory | "all")}
-                    />
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="relative flex-1 max-w-sm">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                            <Input
-                                placeholder="Search accident types…"
-                                className="pl-8 h-8 bg-white border-slate-200 text-xs"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="text-xs text-slate-400 font-medium">
-                            {visibleRows.length} Accident Type{visibleRows.length === 1 ? "" : "s"} Found
-                        </div>
-                    </div>
-                </div>
-
-                {/* Table */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                <tr>
-                                    <th className="px-4 py-2 w-[24%]">Display Name</th>
-                                    {activeTab === "all" && <th className="px-4 py-2 w-[10%]">Group</th>}
-                                    <th className="px-4 py-2">Description</th>
-                                    <th className="px-4 py-2 text-center w-[9%]">Risk Type</th>
-                                    <th className="px-4 py-2 text-center w-[7%]">Risk Pts</th>
-                                    <th className="px-4 py-2 w-[20%]">Class Mapping</th>
-                                    <th className="px-4 py-2 text-right w-[110px]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {visibleRows.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={activeTab === "all" ? 7 : 6} className="px-6 py-12 text-center text-slate-500">
-                                            <p className="font-medium text-sm">No accident types found</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    visibleRows.map((t) => (
-                                        <tr key={t.id} className="group hover:bg-slate-50/80 transition-colors">
-                                            <td className="px-4 py-3 align-middle">
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-slate-900 text-sm" title={t.displayName}>{t.displayName}</span>
-                                                    <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                                        {t.fromFmcsa && (<span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 font-bold uppercase tracking-wider">FMCSA</span>)}
-                                                        {t.isCustom && (<span className="text-[10px] px-1.5 py-0.5 bg-violet-50 text-violet-700 rounded border border-violet-200 font-bold uppercase tracking-wider">Custom</span>)}
-                                                        {t.isOverridden && (<span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 font-bold uppercase tracking-wider">Edited</span>)}
-                                                        {getMainCategories(t).map((cat) => {
-                                                            const meta = MAIN_CATEGORIES.find((c) => c.id === cat);
-                                                            return (
-                                                                <span key={cat} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider", MAIN_CATEGORY_TONE[cat])}>
-                                                                    {meta?.label ?? cat}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {activeTab === "all" && (
-                                                <td className="px-4 py-3 align-middle">
-                                                    <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-semibold whitespace-nowrap", ACCIDENT_GROUP_TONE[t.group])}>
-                                                        {t.group}
-                                                    </span>
-                                                </td>
-                                            )}
-                                            <td className="px-4 py-3 align-middle">
-                                                <p className="text-xs text-slate-600 leading-snug line-clamp-2 max-w-2xl" title={t.description}>{t.description}</p>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-center">
-                                                <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wider", RISK_TYPE_TONE[t.defaultRiskType])}>
-                                                    {t.defaultRiskType}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-center">
-                                                <div className="inline-flex items-center justify-center gap-1 text-slate-700">
-                                                    <Hash className="w-3 h-3 text-slate-400" />
-                                                    <span className="font-semibold text-sm tabular-nums">{t.defaultRiskPoints}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle">
-                                                <ClassMappingSummary mapping={t.defaultClassMapping} />
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-right">
-                                                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                    <Button variant="ghost" size="sm" onClick={() => setModalState({ kind: "view", id: t.id })}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50" title="View Details">
-                                                        <Eye className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="sm" onClick={() => setModalState({ kind: "edit", id: t.id })}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50" title="Edit">
-                                                        <Edit className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    {t.isCustom && (
-                                                        <Button variant="ghost" size="sm" onClick={() => { if (window.confirm(`Delete "${t.displayName}"?`)) deleteCustom(t.id); }}
-                                                            className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete">
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            <AccidentTypesList
+                key={activeTab}
+                rows={tabRows}
+                tabLabel={tabs.find((t) => t.id === activeTab)?.label ?? "Accident types"}
+                showGroup={activeTab === "all"}
+                onView={(id) => setModalState({ kind: "view", id })}
+                onEdit={(id) => setModalState({ kind: "edit", id })}
+                onDelete={(t) => deleteCustom(t.id)}
+                onResetOne={resetBuiltin}
+                scrollRef={scrollRef}
+                onScroll={onScroll}
+            />
 
             {/* Modal */}
             {modalState.kind !== "closed" && (
@@ -330,6 +224,180 @@ export function AccidentsSettingsPage() {
                 />
             )}
         </div>
+        </ListHeaderBridge>
+    );
+}
+
+// ── The list ───────────────────────────────────────────────────────────────
+
+function AccidentTypesList({ rows, tabLabel, showGroup, onView, onEdit, onDelete, onResetOne, scrollRef, onScroll }: {
+    rows: Row[];
+    tabLabel: string;
+    showGroup: boolean;
+    onView: (id: string) => void;
+    onEdit: (id: string) => void;
+    onDelete: (t: Row) => void;
+    onResetOne: (id: string) => void;
+    scrollRef?: React.Ref<HTMLDivElement>;
+    onScroll?: React.UIEventHandler<HTMLDivElement>;
+}) {
+    const [search, setSearch] = useState("");
+    const [group, setGroup] = useState("");
+    const [risk, setRisk] = useState("");
+    const [source, setSource] = useState("");
+    const [groupBy, setGroupBy] = useState<GroupBy>("none");
+    const [visible, setVisible] = useState<Set<Col>>(() => new Set(COLUMNS.map((c) => c.id)));
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
+    const stats: KpiStat[] = [
+        { id: "all", label: "Accident types", value: rows.length, Icon: Layers, accent: "blue" },
+        { id: "FMCSA", label: "From FMCSA SMS", value: rows.filter((t) => t.fromFmcsa).length, Icon: ShieldAlert, accent: "emerald" },
+        { id: "Custom", label: "Custom / internal", value: rows.filter((t) => t.isCustom).length, Icon: Tag, accent: "violet" },
+        { id: "Edited", label: "With overrides", value: rows.filter((t) => t.isOverridden).length, Icon: SettingsIcon, accent: "amber" },
+    ];
+    const pickKpi = (id: string) => { setPage(1); setSource(id === "all" || source === id ? "" : id); };
+    useHeaderChips(chipsFromStats(stats, source || "all", pickKpi));
+
+    const q = search.trim().toLowerCase();
+    const filtered = rows.filter((t) => {
+        if (group && t.group !== group) return false;
+        if (risk && t.defaultRiskType !== risk) return false;
+        if (source === "FMCSA" && !t.fromFmcsa) return false;
+        if (source === "Custom" && !t.isCustom) return false;
+        if (source === "Edited" && !t.isOverridden) return false;
+        return !q || [t.displayName, t.description, t.group].some((x) => x.toLowerCase().includes(q));
+    });
+    const readers = useMemo(() => ({
+        name: (t: Row) => t.displayName,
+        group: (t: Row) => t.group,
+        description: (t: Row) => t.description,
+        risk: (t: Row) => RISK_TYPES.indexOf(t.defaultRiskType),
+        points: (t: Row) => t.defaultRiskPoints,
+        mapping: (t: Row) => classMappingCount(t.defaultClassMapping),
+    }), []);
+    const { sort, onSort, sorted } = useTableSort<Col, Row>(filtered, readers, null);
+    const groupOf = (t: Row): { rank: number; label: string } | null =>
+        groupBy === "group" ? { rank: ACCIDENT_GROUPS.indexOf(t.group), label: t.group }
+            : groupBy === "risk" ? { rank: RISK_TYPES.indexOf(t.defaultRiskType), label: t.defaultRiskType }
+                : groupBy === "source" ? { rank: SOURCES.indexOf(sourceOf(t)), label: sourceOf(t) }
+                    : null;
+    const grouped = groupBy === "none" ? sorted : sorted
+        .map((t, i) => ({ t, i, g: groupOf(t)! }))
+        .sort((x, y) => x.g.rank - y.g.rank || x.i - y.i)
+        .map((x) => x.t);
+    const groupCounts = new Map<string, number>();
+    if (groupBy !== "none") grouped.forEach((t) => { const l = groupOf(t)!.label; groupCounts.set(l, (groupCounts.get(l) ?? 0) + 1); });
+
+    const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const slice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const show = (c: Col) => visible.has(c) && (c !== "group" || showGroup);
+    const colCount = COLUMNS.filter((c) => c.locked || show(c.id)).length + 1;
+    const filterCount = [!!group, !!risk, !!source, groupBy !== "none"].filter(Boolean).length;
+    const touched = filterCount > 0 || !!q;
+    const reset = () => { setSearch(""); setGroup(""); setRisk(""); setSource(""); setGroupBy("none"); setPage(1); };
+    const toPage1 = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(1); };
+
+    return (
+        <ListScrollFrame
+            above={<KpiStatRow stats={stats} activeId={source || "all"} onPick={pickKpi} />}
+            title={tabLabel}
+            count={grouped.length}
+            total={rows.length}
+            description="FMCSA types can have their risk and class mapping edited; custom types are fully yours. Click a row to see its details."
+            actions={<ColumnPicker columns={showGroup ? COLUMNS : COLUMNS.filter((c) => c.id !== "group")} visible={visible}
+                onToggle={(id) => setVisible((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} />}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+            contentKey={`${filtersOpen}|${slice.length}`}
+            toolbar={
+                <ListToolbar search={search} onSearch={toPage1(setSearch)} placeholder="Search accident types…"
+                    filters={<div className={mobileFold(filtersOpen)}>
+                        <FilterSelect value={group} onChange={toPage1(setGroup)} title="Accident group" allLabel="All groups" options={[...ACCIDENT_GROUPS]} />
+                        <FilterSelect value={risk} onChange={toPage1(setRisk)} title="Risk type" allLabel="All risk types" options={[...RISK_TYPES]} />
+                        <FilterSelect value={source} onChange={toPage1(setSource)} title="Source" allLabel="FMCSA, custom and edited" options={SOURCES} />
+                    </div>}
+                    filtersExtra={<>
+                        <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen((o) => !o)} count={filterCount} />
+                        <div className={mobileFold(filtersOpen)}>
+                            <GroupBySelect value={groupBy} onChange={toPage1(setGroupBy)} options={showGroup ? GROUPS : GROUPS.filter((g) => g.id !== "group")} />
+                            <ResetFilters on={touched} onReset={reset} />
+                        </div>
+                    </>} />
+            }
+            footer={<TablePager page={safePage} pageSize={pageSize} total={grouped.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
+        >
+            <table className="w-full">
+                <thead>
+                    <tr>
+                        <SortTh col="name" label="Display name" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+                        {show("group") && <SortTh col="group" label="Group" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("description") && <SortTh col="description" label="Description" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("risk") && <SortTh col="risk" label="Risk type" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("points") && <SortTh col="points" label="Risk pts" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("mapping") && <SortTh col="mapping" label="Class mapping" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {slice.length === 0 && (
+                        <tr>
+                            <td colSpan={colCount} className="px-6 py-14 text-center">
+                                <AlertTriangle className="mx-auto h-7 w-7 text-slate-300" />
+                                <p className="mt-3 text-sm font-semibold text-slate-700">No accident type matches</p>
+                                {touched && (
+                                    <button type="button" onClick={reset} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Clear filters</button>
+                                )}
+                            </td>
+                        </tr>
+                    )}
+                    {slice.map((t, i) => {
+                        const g = groupOf(t);
+                        const prev = i === 0 || !g ? null : groupOf(slice[i - 1]);
+                        return (
+                            <Fragment key={t.id}>
+                                {g && (!prev || prev.label !== g.label) && (
+                                    <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={colCount} />
+                                )}
+                                <tr className="group cursor-pointer transition-colors hover:bg-slate-50" onClick={() => onView(t.id)}>
+                                    <TD title={t.displayName}>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-slate-900">{t.displayName}</span>
+                                            {t.fromFmcsa && <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700">FMCSA</span>}
+                                            {t.isCustom && <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">Custom</span>}
+                                            {t.isOverridden && <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Edited</span>}
+                                            {getMainCategories(t).map((cat) => {
+                                                const meta = MAIN_CATEGORIES.find((c) => c.id === cat);
+                                                return <span key={cat} className={cn("rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", MAIN_CATEGORY_TONE[cat])}>{meta?.label ?? cat}</span>;
+                                            })}
+                                        </div>
+                                    </TD>
+                                    {show("group") && (
+                                        <TD><span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold", ACCIDENT_GROUP_TONE[t.group])}>{t.group}</span></TD>
+                                    )}
+                                    {show("description") && <TD className="max-w-[22rem] truncate text-[13px] text-slate-600" title={t.description}>{t.description}</TD>}
+                                    {show("risk") && (
+                                        <TD><span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider", RISK_TYPE_TONE[t.defaultRiskType])}>{t.defaultRiskType}</span></TD>
+                                    )}
+                                    {show("points") && (
+                                        <TD><span className="inline-flex items-center gap-1 text-slate-700"><Hash className="h-3 w-3 text-slate-400" /><span className="font-semibold tabular-nums">{t.defaultRiskPoints}</span></span></TD>
+                                    )}
+                                    {show("mapping") && <TD><ClassMappingSummary mapping={t.defaultClassMapping} /></TD>}
+                                    <td className={cn("px-4 py-2.5", PIN_TD_ACTIONS)} onClick={(e) => e.stopPropagation()}>
+                                        <RowActions noun="accident type" name={t.displayName} openLabel="View details"
+                                            onOpen={() => onView(t.id)} onEdit={() => onEdit(t.id)}
+                                            extra={t.isOverridden ? [{ label: "Reset to FMCSA default", icon: RotateCcw, onClick: () => onResetOne(t.id) }] : []}
+                                            onDelete={t.isCustom ? () => onDelete(t) : undefined} />
+                                    </td>
+                                </tr>
+                            </Fragment>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </ListScrollFrame>
     );
 }
 
@@ -349,7 +417,7 @@ function ClassMappingSummary({ mapping }: { mapping?: AccidentClassMapping }) {
         return Object.values(v).some((arr) => Array.isArray(arr) && arr.length > 0);
     }).slice(0, 4);
     return (
-        <div className="flex items-center gap-1 flex-wrap">
+        <div className="flex items-center gap-1 whitespace-nowrap">
             {lenses.map((l) => (
                 <span key={l.key} className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider", LENS_TONE[l.key])}>
                     {l.short}
@@ -359,32 +427,6 @@ function ClassMappingSummary({ mapping }: { mapping?: AccidentClassMapping }) {
                 <span className="text-[10px] text-slate-400 font-semibold">+{lensCount - 4}</span>
             )}
             <span className="text-[10px] text-slate-400 ml-1 tabular-nums">{total} class{total === 1 ? "" : "es"}</span>
-        </div>
-    );
-}
-
-// ── Stat card ──────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: "blue" | "emerald" | "violet" | "amber"; }) {
-    const valueTone = tone === "blue" ? "text-slate-900"
-        : tone === "emerald" ? "text-emerald-600"
-        : tone === "violet" ? "text-violet-600"
-        : "text-amber-600";
-    const iconBg = tone === "blue" ? "bg-blue-50 text-blue-600"
-        : tone === "emerald" ? "bg-emerald-50 text-emerald-600"
-        : tone === "violet" ? "bg-violet-50 text-violet-600"
-        : "bg-amber-50 text-amber-600";
-    return (
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
-                    <p className={cn("text-2xl font-bold mt-1 tabular-nums", valueTone)}>{value}</p>
-                </div>
-                <div className={cn("p-3 rounded-lg", iconBg)}>
-                    <Icon className="w-5 h-5" />
-                </div>
-            </div>
         </div>
     );
 }

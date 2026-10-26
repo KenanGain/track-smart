@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { Plug, Check, KeyRound, Link2, Unlink, ScrollText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
+import { Plug, Check, KeyRound, Link2, Unlink, ScrollText, ShieldAlert, Eye, EyeOff, CircleSlash } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PageHeader } from '@/pages/ats/ats-ui';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { KpiStatRow, type KpiStat } from '@/components/ui/KpiStatCard';
+import { ListHeaderBridge, chipsFromStats, useHeaderChips } from '@/components/ui/list-header-bridge';
+import { ScrollBody, usePageChrome } from '@/components/ui/PageChrome';
 import { ELD_PROVIDERS, useEldIntegrations, type EldProvider } from '@/data/eld-providers.data';
 
 const ACCENT: Record<string, { bar: string; icon: string; ring: string; btn: string }> = {
@@ -119,42 +122,75 @@ function ProviderCard({ provider, connected, connectedAt, apiKey, onConnect, onD
   );
 }
 
+type Tab = 'all' | 'connected' | 'available';
+
+/**
+ * Settings ▸ Integrations — the ELD and telematics providers, as cards, under the standard
+ * page header: a tab per connection state, the figures in the header once the cards scroll.
+ */
 export function IntegrationsSettingsPage({ accountId }: { accountId?: string } = {}) {
   const { connections, connect, disconnect } = useEldIntegrations(accountId);
+  const [tab, setTab] = useState<Tab>('all');
+  const { scrollRef, onScroll, condensed, bridge } = usePageChrome(tab);
   const connectedCount = Object.keys(connections).length;
+  const shown = ELD_PROVIDERS.filter(p => tab === 'all' || (tab === 'connected') === !!connections[p.id]);
+
+  const stats: KpiStat[] = [
+    { id: 'all', label: 'Providers', value: ELD_PROVIDERS.length, Icon: Plug, accent: 'blue' },
+    { id: 'connected', label: 'Connected', value: connectedCount, Icon: Check, accent: 'emerald' },
+    { id: 'available', label: 'Not connected', value: ELD_PROVIDERS.length - connectedCount, Icon: CircleSlash, accent: 'slate' },
+  ];
+  const pick = (id: string) => setTab(id as Tab);
+  useHeaderChips(chipsFromStats(stats, tab, pick));
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <PageHeader
-        iconGradient="from-indigo-500 to-violet-600"
+    <ListHeaderBridge value={bridge.value}>
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      <ListPageHeader
         Icon={Plug}
         title="Integrations"
-        subtitle="Connect your ELD & telematics providers — HOS logs and violations sync from the company you connect"
+        description="Connect your ELD and telematics providers — HOS logs and violations sync from the company you connect."
+        count={connectedCount}
+        countTitle={`${connectedCount} of ${ELD_PROVIDERS.length} connected`}
+        condensed={condensed}
+        chips={bridge.chips ?? undefined}
+        tabs={[
+          { id: 'all', label: 'All providers', icon: Plug, count: ELD_PROVIDERS.length },
+          { id: 'connected', label: 'Connected', icon: Link2, count: connectedCount },
+          { id: 'available', label: 'Not connected', icon: Unlink, count: ELD_PROVIDERS.length - connectedCount },
+        ]}
+        activeTab={tab}
+        onTabChange={(id) => setTab(id as Tab)}
+        tabsLabel="Connection state"
+        showZeroCounts
       />
-      <div className="space-y-5 p-4 sm:p-8">
-        <div className="flex items-center gap-2 text-[13px] text-slate-500">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600 shadow-sm">
-            <Plug size={13} className="text-indigo-500" /> {connectedCount} of {ELD_PROVIDERS.length} connected
-          </span>
-          <span>Add an API key for a provider to pull that company's driver logs and violations.</span>
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {ELD_PROVIDERS.map(p => {
-            const conn = connections[p.id];
-            return (
-              <ProviderCard
-                key={p.id}
-                provider={p}
-                connected={!!conn}
-                connectedAt={conn?.connectedAt}
-                apiKey={conn?.apiKey}
-                onConnect={key => connect(p.id, key)}
-                onDisconnect={() => disconnect(p.id)}
-              />
-            );
-          })}
-        </div>
-      </div>
+      <ScrollBody scrollRef={scrollRef} onScroll={onScroll}>
+        <KpiStatRow stats={stats} activeId={tab} onPick={pick} />
+        <p className="text-[13px] text-slate-500">Add an API key for a provider to pull that company's driver logs and violations.</p>
+        {shown.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center text-sm text-slate-500">
+            {tab === 'connected' ? 'Nothing is connected yet — add an API key on a provider.' : 'Every provider is connected.'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {shown.map(p => {
+              const conn = connections[p.id];
+              return (
+                <ProviderCard
+                  key={p.id}
+                  provider={p}
+                  connected={!!conn}
+                  connectedAt={conn?.connectedAt}
+                  apiKey={conn?.apiKey}
+                  onConnect={key => connect(p.id, key)}
+                  onDisconnect={() => disconnect(p.id)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </ScrollBody>
     </div>
+    </ListHeaderBridge>
   );
 }

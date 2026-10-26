@@ -1,4 +1,5 @@
 import { CA_PROVINCES } from '@/pages/compliance/jurisdiction.data';
+import { LICENSE_CLASS_VALUES } from '@/data/license-classes.data';
 
 /**
  * SAFETY SOFTWARE — Document and Compliance classification (system default).
@@ -86,8 +87,8 @@ export interface RecordSelectField extends RecordFieldPlacement {
     options: string[];
     required?: boolean;
     placeholder?: string;
-    /** How it is picked — a dropdown (default), or radio buttons for a short either/or set. */
-    control?: 'select' | 'radio';
+    /** How it is picked — a dropdown (default), radio buttons for a short either/or set, or a search box over a long list. */
+    control?: 'select' | 'radio' | 'search';
     /**
      * The value records filed BEFORE this field existed must have had.
      *
@@ -1361,8 +1362,10 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recurring: 'Per licence term', monitorType: 'Licence expiry date', tracksIssueDate: true, nameFromRecord: true,
       versionName: 'Driver License', versionRenamedFrom: 'CDL',
       jurisdiction: 'Issuing state / province',
+      // The class comes from the one shared list (license-classes.data) — the same values the
+      // application form offers — searched, since Canada and the US between them have a dozen.
+      selectFields: [{ key: 'licenseClass', label: 'License class', options: LICENSE_CLASS_VALUES, placeholder: 'Search a class — 1 / A, 3 / C…', control: 'search' }],
       textFields: [
-          { key: 'licenseClass', label: 'License class', placeholder: 'e.g. A', demoValues: ['A', 'B', 'A', 'C'] },
           // Endorsements and restrictions are lists, often written out in full — they need room.
           { key: 'endorsements', label: 'Endorsements', placeholder: 'e.g. H — Hazmat, N — Tank vehicle', multiline: true,
             demoValues: ['H — Hazmat, N — Tank vehicle', 'T — Double/triple trailers', 'N — Tank vehicle, T — Double/triple trailers', 'H — Hazmat'] },

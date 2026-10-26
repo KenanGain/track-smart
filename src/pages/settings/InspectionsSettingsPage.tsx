@@ -1,6 +1,28 @@
 import { useMemo, useState } from 'react';
 import { useAppData } from '@/context/AppDataContext';
-import { AlertTriangle, ClipboardCheck, RotateCcw, Save, ShieldAlert, TrendingDown, Edit3 } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, RotateCcw, Save, ShieldAlert, TrendingDown, Edit3, CircleDot } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { ScrollBody, usePageChrome } from '@/components/ui/PageChrome';
+
+type Tab = 'cvor' | 'sms';
+
+/**
+ * One threshold, as a card with a % input. Declared at module level: defined inside the page
+ * it was a new component on every render, so the input was replaced on each keystroke and
+ * lost focus after one digit.
+ */
+function InputMetric({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      <div className="mb-2 text-center text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="relative w-24">
+        <input type="number" min={0} max={100} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-xl font-bold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500" value={value} onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+        <span className="absolute right-2 top-2.5 text-xs font-semibold text-slate-400">%</span>
+      </div>
+    </div>
+  );
+}
 
 type SmsCategoryThreshold = { warningEnabled: boolean; warning: number; criticalEnabled: boolean; critical: number };
 type CvorCategoryThreshold = { warningEnabled: boolean; warning: number; auditEnabled: boolean; audit: number; showCauseEnabled: boolean; showCause: number; seizureEnabled: boolean; seizure: number };
@@ -62,7 +84,16 @@ export function InspectionsSettingsPage() {
   const [localSmsCategory, setLocalSmsCategory] = useState<Record<string, SmsCategoryThreshold>>({ ...defaultSmsMap(), ...csaCategoryThresholds });
   const [localCvorCategory, setLocalCvorCategory] = useState<Record<string, CvorCategoryThreshold>>({ ...defaultCvorMap(), ...cvorCategoryThresholds });
   const [saved, setSaved] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
+  const [tab, setTab] = useState<Tab>('cvor');
+  const { scrollRef, onScroll, condensed } = usePageChrome(tab);
+
+  // What was last saved, to say when there are changes that are not.
+  const snapshot = () => JSON.stringify([localSmsGlobal, localCvorGlobal, localSmsOos, localCvorOos, localSmsCategory, localCvorCategory]);
+  const [baseline, setBaseline] = useState<string>(() => JSON.stringify([
+    { ...csaThresholds }, { ...cvorThresholds }, { ...csaOosThresholds }, { ...cvorOosThresholds },
+    { ...defaultSmsMap(), ...csaCategoryThresholds }, { ...defaultCvorMap(), ...cvorCategoryThresholds },
+  ]));
+  const dirty = snapshot() !== baseline;
 
   const errors = useMemo(() => {
     const list: string[] = [];
@@ -90,7 +121,6 @@ export function InspectionsSettingsPage() {
   const hasErrors = errors.length > 0;
 
   const onSave = () => {
-    setShowErrors(true);
     if (hasErrors) return;
     setCsaThresholds({ warning: clamp(localSmsGlobal.warning), critical: clamp(localSmsGlobal.critical) });
     setCvorThresholds({
@@ -103,6 +133,7 @@ export function InspectionsSettingsPage() {
     setCvorOosThresholds({ ...localCvorOos, overall: clamp(localCvorOos.overall), vehicle: clamp(localCvorOos.vehicle), driver: clamp(localCvorOos.driver) });
     setCsaCategoryThresholds(localSmsCategory);
     setCvorCategoryThresholds(localCvorCategory);
+    setBaseline(snapshot());
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -114,61 +145,64 @@ export function InspectionsSettingsPage() {
     setLocalCvorOos(defaultOos());
     setLocalSmsCategory(defaultSmsMap());
     setLocalCvorCategory(defaultCvorMap());
-    setShowErrors(false);
   };
 
-  const InputMetric = ({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void; }) => {
-    return (
-      <div className={`rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-center items-center shadow-[0_1px_2px_rgba(0,0,0,0.02)]`}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-2 text-center text-slate-500">{label}</div>
-        <div className="relative w-24">
-          <input type="number" min={0} max={100} className="w-full border border-slate-200 rounded-lg bg-slate-50 px-2 py-1.5 text-center font-bold text-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800" value={value} onChange={(e) => onChange(clamp(Number(e.target.value)))} />
-          <span className="absolute right-2 top-2.5 text-xs font-semibold text-slate-400">%</span>
-        </div>
-      </div>
-    );
-  };
+  const cvorErrors = errors.filter((e) => e.startsWith('CVOR') || e.startsWith('Global CVOR')).length;
+  const smsErrors = errors.length - cvorErrors;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto min-h-screen">
-      <div className="mb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4 border-b border-slate-200 pb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <ClipboardCheck className="w-8 h-8 text-blue-600" />
-            Inspections & Risk Thresholds
-          </h1>
-          <p className="text-slate-500 mt-2 text-sm max-w-2xl">Configure CVOR and SMS algorithm limits, OOS boundaries, and the performance thresholds that drive fleet compliance alerts and UI highlighting.</p>
-        </div>
-        <div className="flex gap-3 shrink-0">
-          <button type="button" onClick={onReset} className="bg-white text-slate-700 text-sm font-bold py-2.5 px-4 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <RotateCcw className="w-4 h-4" /> Reset
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      <ListPageHeader
+        Icon={ClipboardCheck}
+        title="Inspections & Risk Thresholds"
+        description="CVOR and SMS limits, out-of-service bounds and the thresholds that drive fleet compliance alerts and highlighting."
+        condensed={condensed}
+        chips={[
+          { id: 'status', label: hasErrors ? 'Issues' : dirty ? 'Changes' : 'Status', value: hasErrors ? errors.length : dirty ? 'Unsaved' : 'Saved', tone: hasErrors ? 'text-rose-600' : dirty ? 'text-amber-600' : 'text-emerald-600' },
+          { id: 'cvor', label: 'CVOR warning', value: `${localCvorGlobal.warning}%`, active: tab === 'cvor', onClick: () => setTab('cvor') },
+          { id: 'sms', label: 'SMS warning', value: `${localSmsGlobal.warning}%`, active: tab === 'sms', onClick: () => setTab('sms') },
+        ]}
+        tabs={[
+          { id: 'cvor', label: 'CVOR · Ontario MTO', icon: AlertTriangle, count: cvorErrors || undefined },
+          { id: 'sms', label: 'SMS · FMCSA', icon: ShieldAlert, count: smsErrors || undefined },
+        ]}
+        activeTab={tab}
+        onTabChange={(id) => setTab(id as Tab)}
+        tabsLabel="Threshold systems"
+        actions={<>
+          {dirty && !hasErrors && <span className="hidden items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-700 sm:inline-flex"><CircleDot className="h-3.5 w-3.5" /> Unsaved changes</span>}
+          <button type="button" onClick={onReset} className={cn('flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}>
+            <RotateCcw className="h-4 w-4" /> Reset
           </button>
-          <button type="button" onClick={onSave} className={`text-sm font-bold py-2.5 px-6 rounded-lg transition-colors flex items-center gap-2 shadow-sm ${hasErrors ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`} disabled={hasErrors}>
-            <Save className="w-4 h-4" /> Save Settings
+          <button type="button" onClick={onSave} disabled={hasErrors}
+            className={cn('flex items-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors', condensed ? 'h-8' : 'h-9',
+              hasErrors ? 'cursor-not-allowed bg-slate-300 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700')}>
+            <Save className="h-4 w-4" /> Save settings
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
-      {showErrors && hasErrors && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 mb-8 flex items-start gap-3 shadow-sm">
-          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+      <ScrollBody scrollRef={scrollRef} onScroll={onScroll}>
+      {hasErrors && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
           <div>
-            <h3 className="text-sm font-bold text-red-800 mb-1">Validation Errors</h3>
-            <ul className="space-y-1 list-inside list-disc">
-              {errors.map((err) => <li key={err} className="text-sm text-red-700 font-medium">{err}</li>)}
+            <h3 className="mb-1 text-sm font-bold text-red-800">{errors.length} threshold{errors.length === 1 ? '' : 's'} out of order — fix before saving</h3>
+            <ul className="list-inside list-disc space-y-1">
+              {errors.map((err) => <li key={err} className="text-sm font-medium text-red-700">{err}</li>)}
             </ul>
           </div>
         </div>
       )}
       {saved && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-8 flex items-center gap-3 text-emerald-800 font-bold text-sm shadow-sm">
-          <ClipboardCheck className="w-5 h-5 text-emerald-600" /> Threshold settings saved successfully.
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 shadow-sm">
+          <ClipboardCheck className="h-5 w-5 text-emerald-600" /> Threshold settings saved successfully.
         </div>
       )}
 
       <div className="space-y-8">
         {/* ======================= CVOR SECTION =======================  */}
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {tab === 'cvor' && <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="border-b border-slate-100 bg-slate-50 px-6 py-4">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -283,10 +317,10 @@ export function InspectionsSettingsPage() {
             </div>
 
           </div>
-        </section>
+        </section>}
 
         {/* ======================= SMS SECTION =======================  */}
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {tab === 'sms' && <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="border-b border-slate-100 bg-slate-50 px-6 py-4">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-blue-600" />
@@ -383,8 +417,9 @@ export function InspectionsSettingsPage() {
               </div>
             </div>
           </div>
-        </section>
+        </section>}
       </div>
+      </ScrollBody>
     </div>
   );
 }

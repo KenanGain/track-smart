@@ -309,6 +309,33 @@ export function addCarrierAsset(accountId: string | undefined, asset: Asset): vo
     } catch { /* ignore */ }
 }
 
+// ── Changes to fleet records ──────────────────────────────────────────────────
+// A status changed from the list, kept as a patch on top of the seed and replayed here, so
+// it survives a reload and every reader of the fleet sees it. Same scheme as the drivers.
+const ASSET_PATCHES_KEY = 'ts_carrier_asset_patches_v1';
+export const ASSETS_CHANGED_EVENT = 'carrier-assets-changed';
+type AssetPatches = Record<string, Record<string, Partial<Asset>>>;
+function loadAssetPatches(): AssetPatches {
+    try { return JSON.parse(localStorage.getItem(ASSET_PATCHES_KEY) || '{}'); } catch { return {}; }
+}
+try {
+    for (const [acct, byId] of Object.entries(loadAssetPatches())) {
+        if (CARRIER_ASSETS[acct]) CARRIER_ASSETS[acct] = CARRIER_ASSETS[acct].map(a => (byId[a.id] ? { ...a, ...byId[a.id] } : a));
+    }
+} catch { /* ignore */ }
+
+/** Change one fleet record in place — its status, a detail — and keep it across reloads. */
+export function updateCarrierAsset(accountId: string | undefined, assetId: string, patch: Partial<Asset>): void {
+    if (!accountId || !assetId) return;
+    CARRIER_ASSETS[accountId] = (CARRIER_ASSETS[accountId] ?? []).map(a => (a.id === assetId ? { ...a, ...patch } : a));
+    try {
+        const all = loadAssetPatches();
+        all[accountId] = { ...(all[accountId] ?? {}), [assetId]: { ...(all[accountId]?.[assetId] ?? {}), ...patch } };
+        localStorage.setItem(ASSET_PATCHES_KEY, JSON.stringify(all));
+    } catch { /* ignore */ }
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ASSETS_CHANGED_EVENT, { detail: { accountId, assetId } }));
+}
+
 export const getAssetsForAccount = (accountId: string): Asset[] =>
     CARRIER_ASSETS[accountId] ?? [];
 

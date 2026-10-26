@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical, User, Phone, CreditCard, ShieldAlert, Briefcase, CalendarClock, GraduationCap, Car, Ban, Award } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical, User, Phone, CreditCard, ShieldAlert, Briefcase, CalendarClock, GraduationCap, Car, Ban, Award } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LICENSE_CLASS_VALUES, normalizeLicenseClass } from "@/data/license-classes.data";
 import { MonitoringToggle } from "@/pages/compliance/MonitoringToggle";
 import { ALL_COUNTRIES } from "@/pages/compliance/jurisdiction.data";
 import { UploadZone } from "@/components/ui/UploadZone";
@@ -64,19 +65,16 @@ export const CA_PROVINCES = [
 ];
 export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
 const POSITIONS = ["Company Driver", "Owner Operator", "Lease Operator", "Driver Trainee", "Other"];
-const CONTACT_METHODS = ["Primary Phone", "Cell Phone", "Email Address"];
-const CONTACT_TIMES = ["Any", "Morning", "Afternoon", "Evening"];
-export const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
+// License classes come from the shared list (license-classes.data) — the same one the
+// licence record in Compliances & Documents files against.
 const ENDORSEMENTS = ["None", "Other", "Tanker", "Doubles / Triples", "X Endorsement", "HazMat"];
 const BRANCHES = ["Army", "Navy", "Air Force", "Marine Corps", "Coast Guard", "Space Force", "National Guard", "Reserves"];
-const MONTHS = range(1, 12).map(pad);
-const DAYS = range(1, 31).map(pad);
 const DOB_YEARS = range(1940, 2010).reverse().map(String);
 const EXP_YEARS = range(2024, 2040).map(String);
 const HIST_YEARS = range(1980, 2027).reverse().map(String);
 
 type DateVal = { m: string; d: string; y: string };
-type DateMY = { m: string; y: string };
+type DateMY = { m: string; y: string; d?: string };
 const emptyDate: DateVal = { m: "", d: "", y: "" };
 const emptyMY: DateMY = { m: "", y: "" };
 
@@ -94,14 +92,44 @@ type License = {
     exp: DateVal; medicalExp: DateVal;
     current: string; commercial: string; licenseClass: string;
     endorsements: string[];
+    /** "Yes" / "No" — any restrictions printed on the license; `restrictions` is what they are. */
+    restricted: string; restrictions: string;
     frontImage: string; backImage: string;
 };
 const newLicense = (): License => ({
     number: "", country: "United States", authority: "",
     exp: { ...emptyDate }, medicalExp: { ...emptyDate },
     current: "", commercial: "", licenseClass: "", endorsements: [],
+    restricted: "", restrictions: "",
     frontImage: "", backImage: "",
 });
+
+/** Who to call — captured with the contact details, filed on the driver record. */
+export type EmergencyContact = { name: string; relation: string; phone: string; email?: string };
+const newEmergencyContact = (): EmergencyContact => ({ name: "", relation: "", phone: "", email: "" });
+
+/** On-duty hours per day (keyed YYYY-MM-DD) for the days before the start date, and a note. */
+export type HosHistory = { hours: Record<string, string>; note: string };
+const newHosHistory = (): HosHistory => ({ hours: {}, note: "" });
+/**
+ * How many days of on-duty history a new driver accounts for before starting: a US driver
+ * the previous 8 days (the FMCSA 70-hour / 8-day rule, §395.8(j)(2)); a Canadian or
+ * cross-border driver the previous 14 (the Canadian 14-day cycle).
+ */
+export const hosDaysFor = (typeId: string): number => (typeId === "us" ? 8 : 14);
+const hosDay = (ymd: string) => new Date(`${ymd}T00:00:00`);
+/** The N calendar days before `from` (YYYY-MM-DD; today when blank), oldest first. */
+export function hosDates(from: string, n: number): string[] {
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(from) ? hosDay(from) : new Date();
+    return Array.from({ length: n }, (_, i) => {
+        const d = new Date(base);
+        d.setDate(base.getDate() - (n - i));
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    });
+}
+const hosWeekday = (ymd: string) => hosDay(ymd).toLocaleDateString(undefined, { weekday: "short" });
+const hosShort = (ymd: string) => hosDay(ymd).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const hosLong = (ymd: string) => hosDay(ymd).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
 type Military = {
     // `dd214` is the "Can you obtain your DD214?" Yes/No answer; `dd214Doc` is the
@@ -380,22 +408,28 @@ function SearchSelect({ value, onChange, items, placeholder, className }: {
     );
 }
 
+/*
+ * Every date on the form is the same control: one mm/dd/yyyy box with a calendar, like Date of
+ * Birth. The values keep their split shape ({ m, d, y }) because the driver record, the PDF and
+ * the hiring forms read them that way — only the picker changed. `years` bounds the calendar.
+ */
+const isoOf = (y?: string, m?: string, d?: string) => (y && m ? `${y}-${m.padStart(2, "0")}-${(d || "01").padStart(2, "0")}` : "");
+const boundsOf = (years: string[]) => {
+    const ys = years.map(Number).filter(Boolean);
+    return ys.length ? { min: `${Math.min(...ys)}-01-01`, max: `${Math.max(...ys)}-12-31` } : {};
+};
 function DateTriple({ value, onChange, years }: { value: DateVal; onChange: (v: DateVal) => void; years: string[] }) {
     return (
-        <div className="flex gap-2">
-            <Select className="w-[88px]" value={value.m} placeholder="MM" onChange={(m) => onChange({ ...value, m })}><Options items={MONTHS} /></Select>
-            <Select className="w-[88px]" value={value.d} placeholder="DD" onChange={(d) => onChange({ ...value, d })}><Options items={DAYS} /></Select>
-            <Select className="w-[110px]" value={value.y} placeholder="YYYY" onChange={(y) => onChange({ ...value, y })}><Options items={years} /></Select>
-        </div>
+        <DateInput {...boundsOf(years)} value={isoOf(value.y, value.m, value.d)}
+            onChange={(e) => { const [y = "", m = "", d = ""] = e.target.value.split("-"); onChange({ m, d, y }); }} />
     );
 }
 
+/** A month-and-year answer, picked on the same calendar; the day is kept but never required. */
 function DateDuo({ value, onChange, years }: { value: DateMY; onChange: (v: DateMY) => void; years: string[] }) {
     return (
-        <div className="flex gap-2">
-            <Select className="w-[88px]" value={value.m} placeholder="MM" onChange={(m) => onChange({ ...value, m })}><Options items={MONTHS} /></Select>
-            <Select className="w-[110px]" value={value.y} placeholder="YYYY" onChange={(y) => onChange({ ...value, y })}><Options items={years} /></Select>
-        </div>
+        <DateInput {...boundsOf(years)} value={isoOf(value.y, value.m, value.d)}
+            onChange={(e) => { const [y = "", m = "", d = ""] = e.target.value.split("-"); onChange({ m, y, d }); }} />
     );
 }
 
@@ -560,7 +594,10 @@ export function InlineCollector<T,>({ items, setItems, factory, addLabel, cardTi
     renderCard: (item: T) => React.ReactNode;
     renderForm: (draft: T, set: (patch: Partial<T>) => void) => React.ReactNode;
 }) {
-    const [editIdx, setEditIdx] = useState<number | null>(items.length ? null : null);
+    // A single, still-blank record opens as its form straight away — answering Yes puts the
+    // form in front of you, not a card to click. A saved record stays a card.
+    const [editIdx, setEditIdx] = useState<number | null>(() =>
+        items.length === 1 && JSON.stringify(items[0]) === JSON.stringify(factory()) ? 0 : null);
     const setItem = (i: number, patch: Partial<T>) => setItems((prev) => prev.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
     const add = () => { const at = items.length; setItems((prev) => [...prev, factory()]); setEditIdx(at); };
     const removeAt = (i: number) => { setItems((prev) => prev.filter((_, idx) => idx !== i)); setEditIdx((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur)); };
@@ -734,6 +771,10 @@ export type ApplicationData = {
     address: { addr1: string; unit: string; addr2: string; country: string; city: string; state: string; zip: string };
     resided3yr: string; residenceRows: ResidenceRow[];
     preferredContact: string; bestTime: string;
+    /** Captured with the contact details; becomes the driver record's first emergency contact. */
+    emergencyContact?: EmergencyContact;
+    /** On-duty hours for the days before the start date — see `hosDaysFor`. */
+    hos?: HosHistory;
     licenses: License[]; drivingExp: DrivingExp[];
     mvr: Record<string, MvrAnswer>;
     hadAccidents: string; accidents: Accident[];
@@ -761,9 +802,19 @@ export type ApplicationData = {
 // Section → rail icon (page/Add-Driver mode). Falls back to FileText.
 const STEP_ICONS: Record<string, React.ElementType> = {
     applicant: User, address: MapPin, contact: Phone, license: CreditCard,
-    disqualification: ShieldAlert, employment: Briefcase, unemployment: CalendarClock,
-    education: GraduationCap, accident: Car, violation: Ban, military: Award, signature: FileSignature,
+    disqualification: ShieldAlert, "travel-documents": Globe, employment: Briefcase, unemployment: CalendarClock,
+    education: GraduationCap, accident: Car, violation: Ban, military: Award, hos: Clock3, signature: FileSignature,
 };
+
+/**
+ * The sections in the order they are filled in. Licence, then what has happened to it,
+ * then the papers to cross a border on; the hours-of-service statement is the last thing
+ * before signing, because it is signed for.
+ */
+const STEP_ORDER = [
+    "applicant", "address", "contact", "license", "disqualification", "travel-documents", "driving-experience",
+    "employment", "unemployment", "education", "accident", "violation", "military", "hos", "signature",
+];
 
 // ----------------------------- application form view -----------------------------
 export function ApplicationFormView({ config, onBack, onPreview, initialPhase, mode = "wizard", onSaveDriver, onConfigChange, saveLabel = "Save Driver", headerTitle, initialData }: {
@@ -809,14 +860,17 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
     const [primaryPhone, setPrimaryPhone] = useState(d0?.phone ?? "");
     const [cellPhone, setCellPhone] = useState(d0?.cellPhone ?? "");
     const [email, setEmail] = useState(d0?.email ?? "");
-    const [confirmEmail, setConfirmEmail] = useState(d0?.email ?? "");
     const [preferredContact, setPreferredContact] = useState(d0?.preferredContact || "Primary Phone");
     const [bestTime, setBestTime] = useState(d0?.bestTime || "Any");
+    const [emergencyContact, setEmergencyContact] = useState<EmergencyContact>(d0?.emergencyContact ?? newEmergencyContact());
+    const [hos, setHos] = useState<HosHistory>(d0?.hos ?? newHosHistory());
     const [position, setPosition] = useState(d0?.position ?? "");
     const [hireDate, setHireDate] = useState(d0?.hireDate ?? "");
 
     // Licenses (multiple) — one blank license is present by default; "Add Another License" adds more.
-    const [licenses, setLicenses] = useState<License[]>(() => (d0?.licenses && d0.licenses.length ? d0.licenses : [newLicense()]));
+    const [licenses, setLicenses] = useState<License[]>(() => (d0?.licenses && d0.licenses.length
+        ? d0.licenses.map((l) => ({ ...newLicense(), ...l, licenseClass: normalizeLicenseClass(l.licenseClass) }))
+        : [newLicense()]));
 
     // Driving experience (multiple) — one default entry shown inline.
     const [drivingExp, setDrivingExp] = useState<DrivingExp[]>(() => (d0?.drivingExp && d0.drivingExp.length ? d0.drivingExp : [newDrivingExp()]));
@@ -1146,9 +1200,12 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         setOperatesInUS(isCanada && !isCross ? "No" : "Yes");
         setAddr1("18 Maple Ridge Rd"); setUnit("4"); setAddr2(""); setCountry(config.defaultCountry);
         setCity("Springfield"); setState(st); setZip("62704"); setResided3yr("Yes");
-        setCellPhone("(555) 218-4471"); setConfirmEmail("kenan.gain@example.com");
+        setCellPhone("(555) 218-4471");
         setPreferredContact("Primary Phone"); setBestTime("Any");
-        setLicenses([{ number: "D1234-5678-90", country: config.defaultCountry, authority: st, exp: { m: "03", d: "04", y: "2027" }, medicalExp: { m: "06", d: "30", y: "2026" }, current: "Yes", commercial: "Yes", licenseClass: "Class A", endorsements: ["HazMat", "Tanker"], frontImage: "license-front.jpg", backImage: "license-back.jpg" }]);
+        setEmergencyContact({ name: "Priya Gain", relation: "Spouse", phone: "(555) 218-9900", email: "priya.gain@example.com" });
+        setLicenses([{ number: "D1234-5678-90", country: config.defaultCountry, authority: st, exp: { m: "03", d: "04", y: "2027" }, medicalExp: { m: "06", d: "30", y: "2026" }, current: "Yes", commercial: "Yes", licenseClass: "Class 1 / A", endorsements: ["HazMat", "Tanker"], restricted: "Yes", restrictions: "Corrective lenses", frontImage: "license-front.jpg", backImage: "license-back.jpg" }]);
+        // Eight or fourteen days of hours, a normal working pattern with the weekend off.
+        setHos({ hours: Object.fromEntries(hosDates(hireDate, hosDaysFor(config.id)).map((d, i) => [d, [0, 6].includes(hosDay(d).getDay()) ? "0" : i % 3 === 0 ? "10" : "8.5"])), note: "Off duty on the weekend; previous employer confirmed the hours." });
         setDrivingExp([{ equipmentClass: "Tractor-trailer", freightTypes: ["Van", "Reefer"], regions: ["USA", "Border"], from: "2021-01-01", to: "2024-03-01", miles: "250000", ownerOperator: "No" }]);
         setMvr(Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "No", my: { ...emptyMY }, explain: "", doc: "" }])));
         setHadAccidents("Yes");
@@ -1229,11 +1286,20 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                 <Grid>
                     <Field label="Is this your current driver license?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
                     <Field label="Is this a commercial driver license?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                    {d.commercial === "Yes" && (
-                        <Field label="License Class" required><Select value={d.licenseClass} placeholder="Please Choose" onChange={(v) => set({ licenseClass: v })}><Options items={LICENSE_CLASSES} /></Select></Field>
-                    )}
+                    {/* The shared class list, narrowed to the licence's country, searched — "A", "1", "AZ". */}
+                    <Field label="License Class" required={d.commercial === "Yes"}>
+                        <SearchSelect value={d.licenseClass} placeholder="Search a class — 1, A, 3 / C…" items={LICENSE_CLASS_VALUES} onChange={(v) => set({ licenseClass: v })} />
+                    </Field>
                     <Field label="DOT Medical Card Expiration Date"><DateTriple value={d.medicalExp} years={EXP_YEARS} onChange={(v) => set({ medicalExp: v })} /></Field>
                     <Field className="sm:col-span-2" label="Endorsements"><CheckList items={ENDORSEMENTS} selected={d.endorsements} onToggle={(v) => set({ endorsements: toggleArr(d.endorsements, v) })} /></Field>
+                    <Field className="sm:col-span-2" label="Any restrictions on this license?" required>
+                        <YesNo value={d.restricted} onChange={(v) => set({ restricted: v, restrictions: v === "Yes" ? d.restrictions : "" })} />
+                    </Field>
+                    {d.restricted === "Yes" && (
+                        <Field className="sm:col-span-2" label="Restrictions" hint="As printed on the license — e.g. L — No air brakes, corrective lenses" required>
+                            <Textarea rows={3} value={d.restrictions} placeholder="Describe each restriction on the license" onChange={(e) => set({ restrictions: e.target.value })} />
+                        </Field>
+                    )}
                 </Grid>
             </FormSection>
         </div>
@@ -1442,13 +1508,15 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
             ),
         },
         {
-            key: "contact", title: "Contact Details", fields: 5, render: () => (
+            // The applicant's own email and phone are asked in Applicant Information; this is who
+            // to call if something happens to them — filed on the driver record.
+            key: "contact", title: "Emergency Contact", fields: 4, render: () => (
                 <Grid>
-                    <p className="text-sm italic text-slate-500 sm:col-span-2">If your cell phone is also your primary phone, enter it in both fields below.</p>
-                    <Field label="Cell Phone"><TextInput type="tel" value={cellPhone} onChange={(e) => setCellPhone(e.target.value)} /></Field>
-                    <Field label="Confirm Email Address" required><TextInput type="email" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} /></Field>
-                    <Field label="Preferred method of contact"><Select value={preferredContact} onChange={setPreferredContact}><Options items={CONTACT_METHODS} /></Select></Field>
-                    <Field label="Best time to contact you"><Select value={bestTime} onChange={setBestTime}><Options items={CONTACT_TIMES} /></Select></Field>
+                    <p className="text-sm italic text-slate-500 sm:col-span-2">Who should we contact in an emergency? This must be someone other than you.</p>
+                    <Field label="Contact name" required><TextInput value={emergencyContact.name} onChange={(e) => setEmergencyContact((c) => ({ ...c, name: e.target.value }))} /></Field>
+                    <Field label="Relationship" required><TextInput value={emergencyContact.relation} placeholder="e.g. Spouse, Parent, Friend" onChange={(e) => setEmergencyContact((c) => ({ ...c, relation: e.target.value }))} /></Field>
+                    <Field label="Phone" required><TextInput type="tel" value={emergencyContact.phone} onChange={(e) => setEmergencyContact((c) => ({ ...c, phone: e.target.value }))} /></Field>
+                    <Field label="Email"><TextInput type="email" value={emergencyContact.email ?? ""} onChange={(e) => setEmergencyContact((c) => ({ ...c, email: e.target.value }))} /></Field>
                 </Grid>
             ),
         },
@@ -1664,7 +1732,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         {
             key: "unemployment", title: "Employment Gaps", fields: 3, render: () => (
                 <div className="space-y-5">
-                    <Field label="Were there any gaps in your employment during the last 3 years?" required><YesNo value={wasUnemployed} onChange={setWasUnemployed} /></Field>
+                    <Field label="Were there any gaps in your employment during the last 3 years?" required>
+                        <YesNo value={wasUnemployed} onChange={(v) => { setWasUnemployed(v); if (v === "Yes" && unemployment.length === 0) setUnemployment([newUnemployment()]); }} />
+                    </Field>
                     {wasUnemployed === "Yes" && (
                         <InlineCollector
                             items={unemployment}
@@ -1688,7 +1758,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         {
             key: "education", title: "Education Details", fields: 2, render: () => (
                 <div className="space-y-5">
-                    <Field label="Have you attended a school (not related to truck driving) in the last 3 years?" required><YesNo value={attendedSchool} onChange={setAttendedSchool} /></Field>
+                    <Field label="Have you attended a school (not related to truck driving) in the last 3 years?" required>
+                        <YesNo value={attendedSchool} onChange={(v) => { setAttendedSchool(v); if (v === "Yes" && education.length === 0) setEducation([newEducation()]); }} />
+                    </Field>
                     {attendedSchool === "Yes" && (
                         <InlineCollector
                             items={education}
@@ -1737,7 +1809,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         {
             key: "accident", title: "Accident Details", fields: 3, render: () => (
                 <div className="space-y-5">
-                    <Field label="Were you involved in any accidents/incidents with any vehicle in the last 5 years (even if not at fault)?" required><YesNo value={hadAccidents} onChange={setHadAccidents} /></Field>
+                    <Field label="Were you involved in any accidents/incidents with any vehicle in the last 5 years (even if not at fault)?" required>
+                        <YesNo value={hadAccidents} onChange={(v) => { setHadAccidents(v); if (v === "Yes" && accidents.length === 0) setAccidents([newAccident()]); }} />
+                    </Field>
                     {hadAccidents === "Yes" && (
                         <>
                             <p className="text-sm italic text-slate-500">Please enter detailed information about each accident, whether chargeable, recordable, reportable, or your fault.</p>
@@ -1794,6 +1868,70 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
                     )}
                 </div>
             ),
+        },
+        {
+            // The on-duty statement a new driver gives before their first shift (§395.8(j)(2)) —
+            // the days counted back from the start date, hours in a row, a note for the rest.
+            key: "hos", title: "Hours of Service", fields: 2, render: () => {
+                const days = hosDaysFor(config.id);
+                const dates = hosDates(hireDate, days);
+                const total = dates.reduce((n, d) => n + (parseFloat(hos.hours[d] || "0") || 0), 0);
+                const setHours = (date: string, v: string) => setHos((h) => ({ ...h, hours: { ...h.hours, [date]: v } }));
+                return (
+                    <div className="space-y-5">
+                        <InfoAlert>
+                            On-duty hours for the <strong>{days} days before the start date</strong>{hireDate && /^\d{4}-\d{2}-\d{2}$/.test(hireDate) ? ` (${hosLong(hireDate)})` : ""} —{" "}
+                            {config.id === "us"
+                                ? "a US driver accounts for the previous 8 days (FMCSA 70-hour / 8-day rule, §395.8(j)(2))."
+                                : "a Canadian or cross-border driver accounts for the previous 14 days (the Canadian hours-of-service 14-day cycle)."}
+                            {!hireDate && " Set the start date in Applicant Information to count back from it; until then the days count back from today."}
+                        </InfoAlert>
+                        {/* One row per week: 8 days fit on one line, 14 go as two rows of 7 — the
+                            table wraps instead of scrolling sideways. The total sits under them. */}
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                            {(() => {
+                                const perRow = days <= 8 ? days : Math.ceil(days / Math.ceil(days / 7));
+                                const rows = Array.from({ length: Math.ceil(dates.length / perRow) }, (_, r) => dates.slice(r * perRow, (r + 1) * perRow));
+                                return rows.map((row, r) => (
+                                    <table key={r} className={cn("w-full table-fixed text-center text-sm", r > 0 && "border-t border-slate-200")}>
+                                        <colgroup><col className="w-20" />{Array.from({ length: perRow }, (_, i) => <col key={i} />)}</colgroup>
+                                        <thead>
+                                            <tr className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                <th className="px-3 py-2 text-left">{rows.length > 1 ? `Week ${r + 1}` : "Day"}</th>
+                                                {Array.from({ length: perRow }, (_, i) => row[i]).map((d, i) => (
+                                                    <th key={d ?? `pad-${i}`} className="whitespace-nowrap px-1 py-2">
+                                                        {d && <>{hosWeekday(d)}<br /><span className="font-semibold normal-case tracking-normal text-slate-400">{hosShort(d)}</span></>}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr className="border-t border-slate-100">
+                                                <td className="px-3 py-2 text-left text-[12px] font-semibold text-slate-600">Hours</td>
+                                                {Array.from({ length: perRow }, (_, i) => row[i]).map((d, i) => (
+                                                    <td key={d ?? `pad-${i}`} className="px-1 py-2">
+                                                        {d && (
+                                                            <input type="number" min={0} max={24} step={0.5} value={hos.hours[d] ?? ""} onChange={(e) => setHours(d, e.target.value)} placeholder="0" aria-label={`Hours on ${hosLong(d)}`}
+                                                                className="h-9 w-full max-w-[3.5rem] rounded-md border border-slate-200 text-center text-sm tabular-nums focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                                        )}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                ));
+                            })()}
+                            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-2.5">
+                                <span className="text-[12px] font-semibold text-slate-600">Total on-duty hours · {days} days</span>
+                                <span className="text-sm font-bold tabular-nums text-slate-900">{Number.isInteger(total) ? total : total.toFixed(1)}</span>
+                            </div>
+                        </div>
+                        <Field label="Notes" hint="Days off, a previous employer's confirmation — anything the hours alone do not say.">
+                            <Textarea rows={3} value={hos.note} onChange={(e) => setHos((h) => ({ ...h, note: e.target.value }))} />
+                        </Field>
+                    </div>
+                );
+            },
         },
         {
             key: "signature", title: "Signature & Declarations", fields: 4, render: () => (
@@ -1866,7 +2004,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         },
     ];
 
-    const steps = dataSteps;
+    const steps = [...dataSteps].sort((a, b) => STEP_ORDER.indexOf(a.key) - STEP_ORDER.indexOf(b.key));
     const current = steps[step];
     const isLast = step === steps.length - 1;
 
@@ -1881,6 +2019,7 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         legalRightCA: hasRightToWork(travelProfile, "Canada") || savedLegalRightCA,
         address: { addr1, unit, addr2, country, city, state, zip },
         resided3yr, residenceRows, preferredContact, bestTime,
+        emergencyContact, hos,
         licenses, drivingExp, mvr,
         hadAccidents, accidents, hadViolations, incidents,
         employedRecently, employers, wasUnemployed, unemployment, attendedSchool, education,
@@ -1924,8 +2063,9 @@ export function ApplicationFormView({ config, onBack, onPreview, initialPhase, m
         switch (key) {
             case "applicant": return sectionFilled(dd.firstName, dd.lastName, dd.email, dd.phone, dd.dob, dd.ssn, dd.position);
             case "address": return sectionFilled(dd.address.addr1, dd.address.city, dd.address.state, dd.address.zip, dd.address.country);
-            case "contact": return sectionFilled(dd.cellPhone, dd.preferredContact, dd.bestTime);
+            case "contact": return sectionFilled(dd.emergencyContact?.name, dd.emergencyContact?.relation, dd.emergencyContact?.phone, dd.emergencyContact?.email);
             case "license": return dd.licenses.filter((l) => l.number || l.authority).length;
+            case "hos": return (Object.values(dd.hos?.hours ?? {}).some((h) => h !== "") ? 1 : 0) + (dd.hos?.note ? 1 : 0);
             case "disqualification": return sectionFilled(...Object.values(dd.mvr ?? {}));
             case "employment": return (dd.employers ?? []).filter((e) => e.company).length;
             case "unemployment": return sectionFilled(dd.wasUnemployed) + (dd.unemployment?.length ?? 0);

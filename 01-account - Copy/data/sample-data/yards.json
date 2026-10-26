@@ -1,0 +1,111 @@
+[
+  {
+    "_id": "66f1a2b3c4d5e6f708091b01",
+    "carrierId": "acct-001",
+    "locationId": "LOC-1001",
+    "name": "Atlanta Distribution Center",
+    "address": {
+      "street": "123 Peachtree St",
+      "city": "Atlanta",
+      "state": "GA",
+      "zip": "30303"
+    },
+    "timezone": "America/New_York",
+    "status": "Active",
+    "security": {
+      "fenced": true,
+      "gated": true,
+      "cctv": true,
+      "guard": true,
+      "restricted": false
+    },
+    "score": 92,
+    "group": "Yard / Terminal Locations",
+    "assignedAssetIds": [
+      "acct-001-a-0100",
+      "acct-001-a-0101"
+    ],
+    "createdAt": "2024-03-10T12:00:00Z",
+    "updatedAt": "2026-05-14T08:20:00Z"
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091b02",
+    "carrierId": "acct-001",
+    "locationId": "LOC-1002",
+    "name": "Dallas Terminal Hub",
+    "address": {
+      "street": "456 Commerce St",
+      "city": "Dallas",
+      "state": "TX",
+      "zip": "75201"
+    },
+    "timezone": "America/Chicago",
+    "status": "Active",
+    "security": {
+      "fenced": true,
+      "gated": true,
+      "cctv": false,
+      "guard": false,
+      "restricted": true
+    },
+    "score": 75,
+    "group": "Yard / Terminal Locations",
+    "assignedAssetIds": [
+      "acct-001-a-0102"
+    ],
+    "createdAt": "2024-03-10T12:00:00Z",
+    "updatedAt": "2024-03-10T12:00:00Z"
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091b03",
+    "carrierId": "acct-001",
+    "locationId": "LOC-1003",
+    "name": "Chicago West Yard",
+    "address": {
+      "street": "789 Wacker Dr",
+      "city": "Chicago",
+      "state": "IL",
+      "zip": "60606"
+    },
+    "timezone": "America/Chicago",
+    "status": "Maintenance",
+    "security": {
+      "fenced": true,
+      "gated": true,
+      "cctv": true,
+      "guard": false,
+      "restricted": false
+    },
+    "score": 82,
+    "group": "Yard / Terminal Locations",
+    "assignedAssetIds": [],
+    "createdAt": "2024-09-01T12:00:00Z",
+    "updatedAt": "2026-10-01T07:45:00Z"
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091b04",
+    "carrierId": "acct-002",
+    "locationId": "LOC-1001",
+    "name": "Mississauga Cold Store",
+    "address": {
+      "street": "2200 Derry Rd E",
+      "city": "Mississauga",
+      "state": "ON",
+      "zip": "L5S 1B1"
+    },
+    "timezone": "America/Toronto",
+    "status": "Active",
+    "security": {
+      "fenced": true,
+      "gated": true,
+      "cctv": true,
+      "guard": true,
+      "restricted": true
+    },
+    "score": 100,
+    "group": "Yard / Terminal Locations",
+    "assignedAssetIds": [],
+    "createdAt": "2024-06-20T12:00:00Z",
+    "updatedAt": "2024-06-20T12:00:00Z"
+  }
+]

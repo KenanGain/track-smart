@@ -12,6 +12,10 @@ import { SERVICE_PROFILES_DB } from "@/pages/accounts/service-profiles.data";
 import { CarrierAccessPicker } from "./CarrierAccessPicker";
 import { ServiceProfileAccessPicker } from "./ServiceProfileAccessPicker";
 import { cn } from "@/lib/utils";
+import { addAppUser, initialsOf, newUserId, updateAppUser } from "@/data/users.data";
+import { findSignedUpUser, isUnplaced, placeExistingUser } from "@/data/signup";
+import { gradientFor } from "@/pages/users-roles/scope";
+import { Search, UserCheck } from "lucide-react";
 
 type Props = {
     currentUser: AppUser;
@@ -56,6 +60,16 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
     const [applyToAllServiceProfiles, setApplyToAllServiceProfiles] = useState(false);
     const [sendInvite, setSendInvite] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [source, setSource] = useState<"new" | "existing">("new");
+    const [lookup, setLookup] = useState("");
+    const [existing, setExisting] = useState<AppUser | null>(null);
+    const findExisting = () => {
+        const u = findSignedUpUser(lookup);
+        if (!u) { setError("No account with that user ID or email. They sign up first, from the sign-in page."); return; }
+        if (u.role === "super-admin" && !isSuperAdmin) { setError("Only a Super Admin can place a Super Admin."); return; }
+        const [first, ...rest] = u.name.split(" ");
+        setExisting(u); setFirstName(first ?? ""); setLastName(rest.join(" ")); setEmail(u.email); setPhone(u.phone ?? ""); setTitle(u.title && u.title !== "User" ? u.title : ""); setError(null);
+    };
 
     // Service profiles the current actor is allowed to assign:
     //   - Super admin → all
@@ -145,7 +159,28 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
                     : undefined,
             sendInvite,
         };
-        console.log("New user payload:", payload);
+        const name = `${payload.firstName} ${payload.lastName}`;
+        if (source === "existing") {
+            if (!existing) { setError("Find the person by their user ID or email first."); return; }
+            if (role === "super-admin") {
+                // Only a Super Admin reaches this branch — grantableRoles keeps the option from everyone else.
+                updateAppUser(existing.id, { name, phone: payload.phone, title: payload.title, role: "super-admin", accountId: undefined, accountName: undefined, managedAccountIds: undefined, serviceProfileId: undefined, serviceProfileIds: undefined, carrierRoles: undefined });
+            } else {
+                updateAppUser(existing.id, { name, phone: payload.phone, title: payload.title });
+                if (role === "admin" && resolvedServiceProfileIds[0]) placeExistingUser(existing, { serviceProfileId: resolvedServiceProfileIds[0] });
+                for (const id of resolvedCarrierIds) placeExistingUser({ ...existing, name }, { carrierId: id, role: role === "admin" ? "fleet-admin" : "user" });
+            }
+            onNavigate("/admin/users");
+            return;
+        }
+        const id = newUserId();
+        addAppUser({
+            id, name, email: payload.email, role: payload.role, status: payload.sendInvite ? "Invited" : "Active",
+            phone: payload.phone, title: payload.title, initials: initialsOf(name), avatarGradient: gradientFor(id),
+            accountId: payload.accountId, accountName: payload.accountName, managedAccountIds: payload.managedAccountIds,
+            serviceProfileId: payload.serviceProfileId, serviceProfileIds: payload.serviceProfileIds,
+            carrierRoles: payload.role === "user" && payload.managedAccountIds ? Object.fromEntries(payload.managedAccountIds.map((c) => [c, "user" as UserRole])) : undefined,
+        });
         onNavigate("/admin/users");
     };
 
@@ -194,8 +229,32 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
             </header>
 
             <main className="flex-1 overflow-y-auto px-8 py-8 space-y-6 max-w-5xl mx-auto w-full">
-                {/* 1. Identity */}
-                <FormSection number={1} title="Identity" subtitle="Basic profile information." icon={<UserIcon size={14} className="text-blue-600" />}>
+                {/* 1. Who — a new person, or somebody who already signed up */}
+                <FormSection number={1} title="Who" subtitle="A new person — or somebody who already signed up and gave you their user ID." icon={<UserCheck size={14} className="text-blue-600" />}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {([["new", "A new person", "Create their login and send them an invitation."], ["existing", "Already signed up", "They created an account from the sign-in page and gave you their user ID or email."]] as const).map(([id, label, sub]) => (
+                            <button key={id} type="button" onClick={() => { setSource(id); if (id === "new") setExisting(null); setError(null); }}
+                                className={cn("rounded-lg border p-3 text-left transition-colors", source === id ? "border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/15" : "border-slate-200 hover:border-slate-300")}>
+                                <span className="block text-sm font-semibold text-slate-900">{label}</span>
+                                <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {source === "existing" && (
+                        <div className="mt-4 flex items-center gap-2">
+                            <div className="flex-1"><TextInput value={lookup} onChange={setLookup} placeholder="User ID (u-…) or email" /></div>
+                            <button type="button" onClick={findExisting} className="h-10 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"><Search size={14} /> Find</button>
+                        </div>
+                    )}
+                    {existing && (
+                        <p className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                            <UserCheck size={15} className="shrink-0" /> {existing.name} · {existing.email} · {isUnplaced(existing) ? "not on any carrier yet" : `currently ${existing.role}`} — set the role and access below, then Save.
+                        </p>
+                    )}
+                </FormSection>
+
+                {/* 2. Identity */}
+                <FormSection number={2} title="Identity" subtitle="Basic profile information." icon={<UserIcon size={14} className="text-blue-600" />}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <FormField label="First Name" required>
                             <TextInput value={firstName} onChange={setFirstName} placeholder="Jane" />
@@ -216,7 +275,7 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
                 </FormSection>
 
                 {/* 2. Role & Carrier */}
-                <FormSection number={2} title="Role & Carrier Access" subtitle="What this user is allowed to do, and where." icon={<Building2 size={14} className="text-blue-600" />}>
+                <FormSection number={3} title="Role & Carrier Access" subtitle="What this user is allowed to do, and where." icon={<Building2 size={14} className="text-blue-600" />}>
                     <div className="space-y-5">
                         {/* Role select — constrained width so it doesn't stretch */}
                         <div className="md:max-w-md">
@@ -310,7 +369,7 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
                 </FormSection>
 
                 {/* 3. Invite */}
-                <FormSection number={3} title="Invitation" subtitle="How the new user will be onboarded.">
+                <FormSection number={4} title="Invitation" subtitle="How the new user will be onboarded.">
                     <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white cursor-pointer">
                         <input
                             type="checkbox"

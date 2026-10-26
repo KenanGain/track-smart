@@ -13,7 +13,7 @@
 
 import { useRef, useState, type ReactNode, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Columns, Filter, Lock, Search, SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PAGE_SIZES, TH_CLS, bandTone, type SortState } from '@/components/ui/list-chrome';
 
@@ -363,4 +363,42 @@ export function useTableSort<C extends string, T>(
     }, [rows, sort, readers]);
 
     return { sort, onSort, sorted };
+}
+
+/**
+ * Phones only: the button that folds a list's filter row away, so the table keeps the
+ * screen. Wrap the controls it folds in `mobileFold(open)`. Shows how many are set.
+ */
+export function FiltersToggle({ open, onToggle, count }: { open: boolean; onToggle: () => void; count: number }) {
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold md:hidden',
+                count ? 'border-blue-300 bg-blue-50/60 text-blue-700' : 'border-slate-200 bg-white text-slate-600')}
+        >
+            <SlidersHorizontal size={14} /> Filters{count ? ` · ${count}` : ''}
+        </button>
+    );
+}
+
+/** How a list bands its rows. Tinted while a grouping is on, so it reads as set. */
+export function GroupBySelect<G extends string>({ value, onChange, options }: {
+    value: G; onChange: (g: G) => void; options: { id: G; label: string }[];
+}) {
+    const off = value === options[0]?.id;
+    return (
+        <select
+            value={value}
+            onChange={(e) => onChange(e.target.value as G)}
+            title="Group the list"
+            className={cn(
+                'h-9 shrink-0 rounded-lg border px-2.5 text-[13px] font-semibold outline-none focus:ring-2 focus:ring-blue-500/30',
+                off ? 'border-slate-200 bg-white text-slate-600' : 'border-blue-300 bg-blue-50/60 text-blue-700',
+            )}
+        >
+            {options.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+        </select>
+    );
 }

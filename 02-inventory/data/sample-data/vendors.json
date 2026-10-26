@@ -1,0 +1,94 @@
+[
+  {
+    "_id": "v-001",
+    "carrierId": "acct-001",
+    "name": "Comdata",
+    "companyName": "Comdata Inc.",
+    "categoryId": "cat-fuel-card",
+    "status": "Active",
+    "contactName": "Lisa Howard",
+    "email": "lisa.h@comdata.example",
+    "phone": "(615) 555-0142",
+    "address": {
+      "country": "United States",
+      "street": "5301 Maryland Way",
+      "apt": "",
+      "city": "Brentwood",
+      "state": "TN",
+      "zip": "37027"
+    },
+    "companyIssued": false,
+    "deletedAt": null,
+    "createdAt": "2024-03-04T15:00:00Z",
+    "updatedAt": "2024-03-04T15:00:00Z"
+  },
+  {
+    "_id": "v-acme-shop-01",
+    "carrierId": "acct-001",
+    "name": "Wilmington Truck Service",
+    "companyName": "Wilmington Truck Service Inc.",
+    "categoryId": "cat-repair-maintenance",
+    "status": "Active",
+    "contactName": "Greg Bailey",
+    "email": "service@wilmtruck.example",
+    "phone": "(302) 555-0184",
+    "address": {
+      "country": "United States",
+      "street": "1200 Maryland Ave",
+      "apt": "",
+      "city": "Wilmington",
+      "state": "DE",
+      "zip": "19805"
+    },
+    "companyIssued": false,
+    "deletedAt": null,
+    "createdAt": "2024-03-04T15:00:00Z",
+    "updatedAt": "2026-09-12T15:00:00Z"
+  },
+  {
+    "_id": "v-012-tire",
+    "carrierId": "acct-012",
+    "name": "Northern Tire & Wheel",
+    "companyName": "Northern Tire & Wheel Ltd.",
+    "categoryId": "cat-repair-maintenance",
+    "status": "Active",
+    "contactName": "Anne Dubois",
+    "email": "anne@northerntire.example",
+    "phone": "(613) 555-0119",
+    "address": {
+      "country": "Canada",
+      "street": "88 Industrial Rd",
+      "apt": "Unit 4",
+      "city": "Ottawa",
+      "state": "ON",
+      "zip": "K1B 3V7"
+    },
+    "companyIssued": false,
+    "deletedAt": null,
+    "createdAt": "2025-02-11T15:00:00Z",
+    "updatedAt": "2025-02-11T15:00:00Z"
+  },
+  {
+    "_id": "vnd-mh2k9q",
+    "carrierId": "acct-001",
+    "name": "Demo Tire Co",
+    "companyName": "",
+    "categoryId": "cat-other",
+    "status": "Inactive",
+    "contactName": "Pat Lee",
+    "email": "",
+    "phone": "",
+    "address": {
+      "country": "United States",
+      "street": "",
+      "apt": "",
+      "city": "",
+      "state": "",
+      "zip": ""
+    },
+    "companyIssued": false,
+    "deletedAt": null,
+    "createdAt": "2026-10-23T15:00:00Z",
+    "updatedAt": "2026-10-23T15:00:00Z"
+  }
+]

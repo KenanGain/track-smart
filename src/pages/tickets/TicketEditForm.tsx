@@ -11,8 +11,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Save, User as UserIcon, Truck, Clock, MapPin, Globe, FileText, Hash, Ticket, Check,
+    Save, User as UserIcon, Truck, Clock, MapPin, Globe, FileText, Ticket, Check, CalendarClock, Container,
 } from 'lucide-react';
+import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
+import type { MonitoringConfig } from '@/pages/compliance/compliance-data-store';
+import { vehicleFromAsset, findTicketAsset } from './ticket-vehicles';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS } from '@/pages/assets/assets.data';
 import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
@@ -23,7 +26,7 @@ import { useAppData } from '@/context/AppDataContext';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { FileDropZone, type DropFile } from '@/components/compliance/FileDropZone';
 import { useAccidentRecords } from '@/data/accident-records.data';
-import type { TicketIdentifiers, TicketViolation } from './tickets.data';
+import { defaultTicketMonitoring, type TicketIdentifiers, type TicketViolation, type TicketVehicle } from './tickets.data';
 import { PENALTY_OPTIONS } from './violation-presets';
 import { ViolationPicker } from './ViolationPicker';
 
@@ -40,6 +43,14 @@ export interface TicketFormDraft {
     driverName?: string;
     assetId?: string;
     assetUnitNumber?: string;
+    /** Vehicle 1 (power unit) and vehicle 2 (trailer), copied off the asset when picked. */
+    vehicle?: TicketVehicle;
+    vehicle2?: TicketVehicle;
+    /** The two dates the ticket is watched on, each with its own monitoring block. */
+    dueDate?: string;
+    finalDate?: string;
+    dueMonitoring?: MonitoringConfig;
+    finalMonitoring?: MonitoringConfig;
     // Structured location
     locationStreet?: string;
     locationCity?: string;
@@ -48,7 +59,8 @@ export interface TicketFormDraft {
     locationCountry?: 'USA' | 'Canada';
     // Money
     fineAmount?: number;
-    expenseAmount?: number;
+    /** What dealing with the ticket cost — lawyer, paralegal, court fees. */
+    legalExpense?: number;
     currency?: 'USD' | 'CAD';
     // Classification — `violationType` stays the narrow bucket (Speeding,
     // Overweight, …) used for badges/filters. `violationSubtype` is the
@@ -130,10 +142,11 @@ const TOGGLE_DOC_TYPES = [
 const TICKET_STATUS_OPTIONS = ['Due', 'In Court', 'Paid', 'Closed'] as const;
 
 const STEPS: WizardStep[] = [
-    { id: 'who', label: 'Driver & Asset', icon: UserIcon },
+    { id: 'who', label: 'Driver & Vehicles', icon: UserIcon },
     { id: 'when', label: 'Identifiers & Date', icon: Clock },
     { id: 'where', label: 'Location', icon: MapPin },
     { id: 'what', label: 'Violation & Fine', icon: FileText },
+    { id: 'dates', label: 'Dates & Monitoring', icon: CalendarClock },
     { id: 'docs', label: 'Ticket Documents', icon: Ticket },
 ];
 
@@ -145,6 +158,52 @@ function toDropFiles(list: FileList | null): DropFile[] {
         fileName: f.name,
         fileSize: f.size,
     }));
+}
+
+/**
+ * One vehicle slot: the pick, then what came with it. The plate, jurisdiction, VIN and make
+ * are copied off the fleet record the moment a unit is picked — the ticket keeps its own
+ * copy, so it still reads right after the plate is renewed or the unit leaves the fleet.
+ */
+function VehicleSlot({ label, icon: Icon, value, options, placeholder, onPick }: {
+    label: string; icon: typeof Truck; value?: TicketVehicle;
+    options: { id: string; unitNumber: string; make: string; model: string; plateNumber?: string; assetType?: string; vehicleType?: string }[];
+    placeholder: string; onPick: (assetId: string) => void;
+}) {
+    const inputClass = 'w-full h-10 px-3 rounded-lg border border-slate-200 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:text-slate-300';
+    const labelClass = 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5';
+    const cell = (k: string, v?: string, mono?: boolean) => (
+        <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{k}</p>
+            <p className={'truncate text-[13px] text-slate-800 ' + (mono ? 'font-mono' : 'font-medium')} title={v}>{v || <span className="text-slate-300">—</span>}</p>
+        </div>
+    );
+    return (
+        <div>
+            <label className={labelClass}>{label}</label>
+            <div className="relative">
+                <select className={inputClass} value={value?.assetId || ''} onChange={e => onPick(e.target.value)}>
+                    <option value="">{placeholder}</option>
+                    {options.map(a => (
+                        <option key={a.id} value={a.id}>{a.unitNumber} — {a.make} {a.model}{a.vehicleType ? ` (${a.vehicleType})` : ''}</option>
+                    ))}
+                </select>
+                <Icon className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+            </div>
+            {value?.assetId && (
+                <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        {cell('Unit #', value.unitNumber)}
+                        {cell('Plate', value.plateNumber, true)}
+                        {cell('Jurisdiction', value.plateJurisdiction)}
+                        {cell('VIN', value.vin, true)}
+                        <div className="col-span-2 min-w-0">{cell('Vehicle', [value.label, value.kind].filter(Boolean).join(' · '))}</div>
+                    </div>
+                    <p className="mt-2 text-[10px] text-blue-600/80">Filled in from the fleet record — printed on the ticket as the vehicle.</p>
+                </div>
+            )}
+        </div>
+    );
 }
 
 export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEditFormProps) => {
@@ -221,16 +280,41 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                 dataId: base.violationDataId,
             }];
         }
+        // An older ticket holds only an asset id (or a unit number) — read it back against the
+        // fleet so the vehicle block shows the plate and VIN it would have copied.
+        const vehicle = base.vehicle ?? (() => { const a = findTicketAsset(base.assetId, accountId); return a ? vehicleFromAsset(a) : undefined; })();
         setDraft({
             currency: 'USD',
             locationCountry: 'USA',
             status: 'Due',
             ...base,
+            vehicle,
+            assetId: vehicle?.assetId ?? base.assetId,
+            dueMonitoring: base.dueMonitoring ?? defaultTicketMonitoring(),
+            finalMonitoring: base.finalMonitoring ?? defaultTicketMonitoring(),
             violations,
             identifiers: { ...(base.identifiers ?? {}) },
         });
         setDocs(record?.attachedDocuments ?? []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [record]);
+
+    // The power units first for vehicle 1, the trailers first for vehicle 2 — the whole fleet
+    // is on both lists, just in the order each slot is usually filled.
+    const isTrailer = (a: { assetType?: string }) => /trailer/i.test(a.assetType ?? '');
+    const vehicle1Options = useMemo(() => [...assetsForCarrier].sort((a, b) => Number(isTrailer(a)) - Number(isTrailer(b))), [assetsForCarrier]);
+    const vehicle2Options = useMemo(() => [...assetsForCarrier].sort((a, b) => Number(isTrailer(b)) - Number(isTrailer(a))), [assetsForCarrier]);
+    const pickVehicle = (slot: 1 | 2, assetId: string) => {
+        const a = assetsForCarrier.find(x => x.id === assetId);
+        const v = a ? vehicleFromAsset(a) : undefined;
+        setDraft(prev => slot === 1
+            ? {
+                ...prev, vehicle: v, assetId: v?.assetId, assetUnitNumber: v?.unitNumber,
+                // The ticket's own copy of the plate and VIN — what the citation printed.
+                identifiers: { ...(prev.identifiers ?? {}), plateNumber: v?.plateNumber, vinNumber: v?.vin },
+            }
+            : { ...prev, vehicle2: v });
+    };
 
     const set = <K extends keyof TicketFormDraft>(key: K, value: TicketFormDraft[K]) => {
         setDraft(prev => ({ ...prev, [key]: value }));
@@ -264,7 +348,7 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draft.violations]);
 
-    const totalAmount = (draft.fineAmount ?? 0) + (draft.expenseAmount ?? 0);
+    const totalAmount = (draft.fineAmount ?? 0) + (draft.legalExpense ?? 0);
     const stateOptions = draft.locationCountry === 'Canada' ? CA_PROVINCE_ABBREVS : US_STATE_ABBREVS;
 
     // The Violation Type picker (ViolationPicker) needs to know whether to offer
@@ -319,10 +403,11 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
     const filled = (...vals: unknown[]) => vals.filter(v => v !== '' && v !== undefined && v !== null && v !== false).length;
     const completionFor = (id: string) => {
         switch (id) {
-            case 'who': return filled(draft.driverId, draft.assetId);
-            case 'when': return filled(draft.offenseNumber, draft.identifiers?.ticketNumber, draft.date, draft.time);
+            case 'who': return filled(draft.driverId, draft.vehicle?.assetId, draft.vehicle2?.assetId);
+            case 'when': return filled(draft.offenseNumber, draft.date, draft.time);
             case 'where': return filled(draft.locationStreet, draft.locationCity, draft.locationState, draft.locationZip);
-            case 'what': return filled(draft.violationSubtype, draft.status, draft.fineAmount, draft.expenseAmount);
+            case 'what': return filled(draft.violationSubtype, draft.status, draft.fineAmount, draft.legalExpense);
+            case 'dates': return filled(draft.dueDate, draft.finalDate);
             case 'docs': return docs.length;
             default: return 0;
         }
@@ -359,8 +444,8 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                     <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
 
                         {/* ===== WHO ===== */}
-                        <WizardSection id="who" icon={UserIcon} title="Driver & Asset" subtitle="The driver — and optional vehicle — the ticket was issued to.">
-                            <div className="space-y-4">
+                        <WizardSection id="who" icon={UserIcon} title="Driver & Vehicles" subtitle="Who the ticket was issued to, and the unit — and trailer — they were driving. Plate, jurisdiction and VIN fill in from the fleet record.">
+                            <div className="space-y-5">
                                 <div>
                                     <label className={labelClass}>Driver</label>
                                     <div className="relative">
@@ -369,17 +454,21 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                             value={draft.driverId || ''}
                                             onChange={e => {
                                                 const d = driversForCarrier.find(d => d.id === e.target.value);
-                                                if (d) {
-                                                    setDraft(prev => ({
-                                                        ...prev,
-                                                        driverId: d.id,
-                                                        driverName: `${(d as any).firstName ?? ''} ${(d as any).lastName ?? (d as any).name ?? ''}`.trim(),
-                                                        identifiers: {
-                                                            ...(prev.identifiers ?? {}),
-                                                            driverLicenceNumber: (d as any).licenseNumber || undefined,
-                                                        },
-                                                    }));
-                                                }
+                                                if (!d) return;
+                                                // The unit this driver is assigned to, if the fleet says so and nothing is picked yet.
+                                                const assigned = !draft.vehicle ? assetsForCarrier.find(a => (a.driverAssignments ?? []).some(x => x.driverId === d.id && !x.endDate)) : undefined;
+                                                const v = assigned ? vehicleFromAsset(assigned) : undefined;
+                                                setDraft(prev => ({
+                                                    ...prev,
+                                                    driverId: d.id,
+                                                    driverName: `${(d as any).firstName ?? ''} ${(d as any).lastName ?? (d as any).name ?? ''}`.trim(),
+                                                    ...(v ? { vehicle: v, assetId: v.assetId, assetUnitNumber: v.unitNumber } : {}),
+                                                    identifiers: {
+                                                        ...(prev.identifiers ?? {}),
+                                                        driverLicenceNumber: (d as any).licenseNumber || undefined,
+                                                        ...(v ? { plateNumber: v.plateNumber, vinNumber: v.vin } : {}),
+                                                    },
+                                                }));
                                             }}
                                         >
                                             <option value="">Select Driver...</option>
@@ -391,72 +480,49 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                         </select>
                                         <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                     </div>
+                                    {draft.identifiers?.driverLicenceNumber && (
+                                        <p className="mt-1.5 text-[11px] text-slate-500">Licence <span className="font-mono font-semibold text-slate-700">{draft.identifiers.driverLicenceNumber}</span> · from the driver record</p>
+                                    )}
                                 </div>
 
-                                <div>
-                                    <label className={labelClass}>Vehicle / Asset (Optional)</label>
-                                    <div className="relative">
-                                        <select
-                                            className={inputClass}
-                                            value={draft.assetId || ''}
-                                            onChange={e => {
-                                                const a = assetsForCarrier.find(a => a.id === e.target.value);
-                                                setDraft(prev => ({
-                                                    ...prev,
-                                                    assetId: a?.id ?? undefined,
-                                                    assetUnitNumber: a?.unitNumber ?? undefined,
-                                                    identifiers: {
-                                                        ...(prev.identifiers ?? {}),
-                                                        plateNumber: a?.plateNumber || undefined,
-                                                        vinNumber: (a as any)?.vin || undefined,
-                                                    },
-                                                }));
-                                            }}
-                                        >
-                                            <option value="">None / Not Applicable</option>
-                                            {assetsForCarrier.map(a => (
-                                                <option key={a.id} value={a.id}>
-                                                    {a.unitNumber} — {a.make} {a.model}{a.plateNumber ? ` (${a.plateNumber})` : ''}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <Truck className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                    </div>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <VehicleSlot
+                                        label="Vehicle 1 — power unit" icon={Truck} value={draft.vehicle} options={vehicle1Options}
+                                        placeholder="Select the unit…" onPick={id => pickVehicle(1, id)} />
+                                    <VehicleSlot
+                                        label="Vehicle 2 — trailer (optional)" icon={Container} value={draft.vehicle2} options={vehicle2Options}
+                                        placeholder="None / not applicable" onPick={id => pickVehicle(2, id)} />
                                 </div>
                             </div>
                         </WizardSection>
 
                         {/* ===== WHEN ===== */}
-                        <WizardSection id="when" icon={Clock} title="Identifiers & Date" subtitle="Offense / ticket numbers and when the ticket was issued.">
+                        <WizardSection id="when" icon={Clock} title="Identifiers & Date" subtitle="The citation number and when the ticket was issued.">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className={labelClass}>Offense #</label>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            className={inputClass + ' pl-9'}
-                                            placeholder="OFF-84741"
-                                            value={draft.offenseNumber || ''}
-                                            onChange={e => set('offenseNumber', e.target.value)}
-                                        />
-                                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                    </div>
+                                    <label className={labelClass}>Ticket citation number</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. OFF-84741 or CT-IL-12345"
+                                        value={draft.offenseNumber || ''}
+                                        onChange={e => setDraft(prev => ({
+                                            ...prev,
+                                            offenseNumber: e.target.value,
+                                            // One number, kept everywhere the record is read by it.
+                                            identifiers: { ...(prev.identifiers ?? {}), ticketNumber: e.target.value, citationNumber: e.target.value },
+                                        }))}
+                                    />
                                 </div>
                                 <div>
-                                    <label className={labelClass}>Ticket #</label>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            className={inputClass + ' pl-9'}
-                                            placeholder="CT-IL-12345"
-                                            value={draft.identifiers?.ticketNumber || ''}
-                                            onChange={e => setDraft(prev => ({
-                                                ...prev,
-                                                identifiers: { ...(prev.identifiers ?? {}), ticketNumber: e.target.value },
-                                            }))}
-                                        />
-                                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                    </div>
+                                    <label className={labelClass}>Microfilm number <span className="font-normal normal-case tracking-normal text-slate-400">· optional</span></label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="Court archive reference, if printed"
+                                        value={draft.identifiers?.microfilmNumber || ''}
+                                        onChange={e => setDraft(prev => ({ ...prev, identifiers: { ...(prev.identifiers ?? {}), microfilmNumber: e.target.value } }))}
+                                    />
                                 </div>
                                 <div>
                                     <label className={labelClass}>Date</label>
@@ -471,13 +537,12 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                     <div className="relative">
                                         <input
                                             type="text"
-                                            className={inputClass + ' pl-9'}
+                                            className={inputClass}
                                             placeholder="Link an accident (e.g. ACC-2026-0001)"
                                             value={draft.accidentNumber || ''}
                                             onChange={e => set('accidentNumber', e.target.value)}
                                             list="ticket-accident-numbers"
                                         />
-                                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                                         <datalist id="ticket-accident-numbers">
                                             {accidentNumberOptions.map(n => <option key={n} value={n} />)}
                                         </datalist>
@@ -543,7 +608,7 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                         </WizardSection>
 
                         {/* ===== WHAT ===== */}
-                        <WizardSection id="what" icon={FileText} title="Violation & Fine" subtitle="The violation code plus the fine, expense and status.">
+                        <WizardSection id="what" icon={FileText} title="Violation & Fine" subtitle="The violation code plus the fine, legal expense and status.">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <ViolationPicker
@@ -644,8 +709,8 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                     <input type="number" min="0" step="1" className={inputClass} placeholder="e.g. 2" value={draft.demeritPoints ?? ''} onChange={e => set('demeritPoints', e.target.value === '' ? undefined : Number(e.target.value))} />
                                 </div>
                                 <div>
-                                    <label className={labelClass}>Expense Amount</label>
-                                    <input type="number" min="0" step="0.01" className={inputClass} placeholder="0.00" value={draft.expenseAmount ?? ''} onChange={e => set('expenseAmount', e.target.value === '' ? undefined : Number(e.target.value))} />
+                                    <label className={labelClass}>Legal expense</label>
+                                    <input type="number" min="0" step="0.01" className={inputClass} placeholder="0.00" title="Lawyer, paralegal and court costs on top of the fine" value={draft.legalExpense ?? ''} onChange={e => set('legalExpense', e.target.value === '' ? undefined : Number(e.target.value))} />
                                 </div>
                                 <div>
                                     <label className={labelClass}>Currency</label>
@@ -661,6 +726,40 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
                                             ${totalAmount.toFixed(2)} <span className="text-[10px] text-slate-400 font-medium">{draft.currency || 'USD'}</span>
                                         </span>
                                     </div>
+                                </div>
+                            </div>
+                        </WizardSection>
+
+                        {/* ===== DATES — the two deadlines, each with its own monitoring ===== */}
+                        <WizardSection id="dates" icon={CalendarClock} title="Dates & Monitoring" subtitle="When the ticket must be paid or answered, and the last date anything can be done — each with its own reminders.">
+                            <div className="space-y-5">
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className={labelClass}>Ticket due date</label>
+                                            <input type="date" className={inputClass} value={draft.dueDate || ''} onChange={e => set('dueDate', e.target.value)} />
+                                            <p className="mt-1 text-[11px] text-slate-400">Pay the fine or answer the ticket by this date.</p>
+                                        </div>
+                                    </div>
+                                    <MonitoringToggle
+                                        record={{ id: 'ticket-due', monitorType: 'Ticket due date' }}
+                                        monitoring={draft.dueMonitoring ?? defaultTicketMonitoring()}
+                                        issueDate={draft.date || ''} expiryDate={draft.dueDate || ''} status={draft.status || 'Due'}
+                                        onChange={cfg => set('dueMonitoring', cfg)} />
+                                </div>
+                                <div className="space-y-3 border-t border-slate-100 pt-5">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className={labelClass}>Final date</label>
+                                            <input type="date" className={inputClass} value={draft.finalDate || ''} onChange={e => set('finalDate', e.target.value)} />
+                                            <p className="mt-1 text-[11px] text-slate-400">The court date or last deadline — after it, nothing more can be done.</p>
+                                        </div>
+                                    </div>
+                                    <MonitoringToggle
+                                        record={{ id: 'ticket-final', monitorType: 'Final date' }}
+                                        monitoring={draft.finalMonitoring ?? defaultTicketMonitoring()}
+                                        issueDate={draft.date || ''} expiryDate={draft.finalDate || ''} status={draft.status || 'Due'}
+                                        onChange={cfg => set('finalMonitoring', cfg)} />
                                 </div>
                             </div>
                         </WizardSection>

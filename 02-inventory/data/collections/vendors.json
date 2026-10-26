@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/inventory/vendors.json",
+  "title": "vendors",
+  "description": "Shared by Inventory (an item is filed against a vendor) and Maintenance (work orders and bills). The prototype also keeps one \"Company Issued\" placeholder vendor per accessory; in the model these are a flag, not rows (TO CONFIRM).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"v-001\" style id."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "name": {
+      "type": "string",
+      "description": "Vendor name (\"Comdata\"). Required on Add Vendor."
+    },
+    "companyName": {
+      "type": "string",
+      "description": "Legal company (\"Comdata Inc.\").",
+      "default": ""
+    },
+    "categoryId": {
+      "type": "string",
+      "description": "→ `inventory_categories._id`. Add Vendor files new vendors under \"Others\".",
+      "default": "cat-other"
+    },
+    "status": {
+      "type": "string",
+      "description": "Not editable in the UI today (TO CONFIRM).",
+      "enum": [
+        "Active",
+        "Inactive"
+      ],
+      "default": "Active"
+    },
+    "contactName": {
+      "type": "string",
+      "default": ""
+    },
+    "email": {
+      "type": "string",
+      "description": "Validated as an email when present.",
+      "default": ""
+    },
+    "phone": {
+      "type": "string",
+      "default": ""
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "type": "string",
+          "description": "Stored as the full name (the edit dialog writes \"USA\" today).",
+          "enum": [
+            "United States",
+            "Canada"
+          ],
+          "default": "United States"
+        },
+        "street": {
+          "type": "string",
+          "default": ""
+        },
+        "apt": {
+          "type": "string",
+          "description": "Apartment, suite, etc.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "US state / DC or Canadian province code.",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "description": "ZIP or postal code.",
+          "default": ""
+        }
+      }
+    },
+    "companyIssued": {
+      "type": "boolean",
+      "description": "true = not a supplier (company-issued accessories). Hidden from vendor lists and pickers.",
+      "default": false
+    },
+    "deletedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Soft delete; items and orders keep their vendorId."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "name",
+    "categoryId",
+    "status",
+    "companyIssued",
+    "createdAt",
+    "updatedAt"
+  ]
+}

@@ -1,0 +1,97 @@
+[
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-default-mobile.png",
+    "caption": "Fleet Overview tab: carrier identity, operations & authority, addresses, fleet counts, cargo, office locations, directors."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-edit-corporate-identity-mobile.png",
+    "caption": "Fleet Overview › \"Edit Corporate Identity\" modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-operations-authority-mobile.png",
+    "caption": "Fleet Overview › \"Operations & Authority\" modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-edit-legal-main-address-mobile.png",
+    "caption": "Fleet Overview › \"Edit Legal / Main Address\" modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-edit-mailing-address-mobile.png",
+    "caption": "Fleet Overview › \"Edit Mailing Address\" modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-edit-cargo-carried-mobile.png",
+    "caption": "Fleet Overview › \"Edit Cargo Carried\" modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-add-office-location-mobile.png",
+    "caption": "Fleet Overview › Corporate Office Locations › \"Add Office Location\" modal (label, address, contact, phone, hours)."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-director-details-mobile.png",
+    "caption": "Fleet Overview › Directors & Officers › \"Director Details\" view modal."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-edit-director-mobile.png",
+    "caption": "Fleet Overview › \"Edit Director\" modal (name, role, contact, ownership %, dates, responsibility)."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-modal-add-director-mobile.png",
+    "caption": "Fleet Overview › \"Add Director\" (empty Edit Director modal)."
+  },
+  {
+    "folder": "fleet-overview",
+    "name": "fleet-overview-condensed-header-mobile.png",
+    "caption": "Fleet Overview scrolled down: the page header condenses to one row."
+  },
+  {
+    "folder": "yard-terminals",
+    "name": "yard-terminals-default-mobile.png",
+    "caption": "Yard Terminals tab: filters, grouped locations table with security features and score, pagination."
+  },
+  {
+    "folder": "yard-terminals",
+    "name": "yard-terminals-modal-add-new-location-mobile.png",
+    "caption": "Yard Terminals › \"Add New Location\" modal: name, ID, address, time zone, initial status, five security toggles."
+  },
+  {
+    "folder": "yard-terminals",
+    "name": "yard-terminals-modal-location-view-mobile.png",
+    "caption": "Yard Terminals › location view modal: score circle, address, security features."
+  },
+  {
+    "folder": "yard-terminals",
+    "name": "yard-terminals-row-menu-open-mobile.png",
+    "caption": "Yard Terminals › row ⋮ menu: Open, Edit, Share to chat, Delete."
+  },
+  {
+    "folder": "yard-terminals",
+    "name": "yard-terminals-empty-no-match-mobile.png",
+    "caption": "Yard Terminals › no location matches the filters."
+  },
+  {
+    "folder": "assets",
+    "name": "assets-default-mobile.png",
+    "caption": "Assets tab: KPI tiles, sub-tabs, toolbar, assets table with inline status and row menus."
+  },
+  {
+    "folder": "assets",
+    "name": "assets-row-menu-open-mobile.png",
+    "caption": "Assets › row ⋮ menu: Open asset, Edit asset, Share to chat, Delete asset."
+  },
+  {
+    "folder": "assets",
+    "name": "assets-modal-share-to-chat-mobile.png",
+    "caption": "Assets › \"Share to chat\" dialog for one unit."
+  }
+]

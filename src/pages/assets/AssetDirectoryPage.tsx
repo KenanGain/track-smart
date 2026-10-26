@@ -16,7 +16,7 @@ import { commitAssetRecords, assetRecordsFromForm } from './asset-records-bridge
 import { commitPmEnrolment, pmEnrolmentFromForm } from './asset-pm-enrolment';
 import { VENDORS, isCompanyIssuedVendor } from '@/pages/inventory/inventory.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
-import { addCarrierAsset } from '@/pages/accounts/carrier-assets.data';
+import { addCarrierAsset, updateCarrierAsset } from '@/pages/accounts/carrier-assets.data';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { KpiStatRow } from '@/components/ui/KpiStatCard';
@@ -102,10 +102,38 @@ const Badge = ({ children, variant = 'default', className }: { children: React.R
     );
 };
 
+// --- Status, changed where it is read ---
+const ASSET_STATUSES = ['Active', 'Maintenance', 'OutOfService', 'Drafted', 'Deactivated'] as const;
+type AssetStatus = (typeof ASSET_STATUSES)[number];
+const ASSET_STATUS_LABEL: Record<AssetStatus, string> = { Active: 'Active', Maintenance: 'Maintenance', OutOfService: 'Out of Service', Drafted: 'Draft', Deactivated: 'Deactivated' };
+const ASSET_STATUS_PILL: Record<AssetStatus, string> = {
+    Active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    Maintenance: 'bg-rose-50 text-rose-700 border-rose-200',
+    OutOfService: 'bg-amber-50 text-amber-700 border-amber-200',
+    Drafted: 'bg-blue-50 text-blue-700 border-blue-200',
+    Deactivated: 'bg-slate-100 text-slate-500 border-slate-200',
+};
+/**
+ * The status pill is the control that changes it: pick a status in the row, it is saved.
+ * Stops the click so the row behind it does not open.
+ */
+const AssetStatusSelect = ({ value, onChange }: { value?: string; onChange: (s: AssetStatus) => void }) => {
+    const status = (ASSET_STATUSES as readonly string[]).includes(value ?? '') ? (value as AssetStatus) : 'Active';
+    return (
+        <span className="relative inline-flex items-center" onClick={(e) => e.stopPropagation()}>
+            <select value={status} onChange={(e) => onChange(e.target.value as AssetStatus)} aria-label="Asset status" title="Change status"
+                className={cn('h-7 cursor-pointer appearance-none rounded-full border pl-3 pr-7 text-[10px] font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-blue-500/30', ASSET_STATUS_PILL[status])}>
+                {ASSET_STATUSES.map((st) => <option key={st} value={st}>{ASSET_STATUS_LABEL[st]}</option>)}
+            </select>
+            <ChevronDown size={12} className="pointer-events-none absolute right-2 opacity-60" />
+        </span>
+    );
+};
+
 // --- Table Components ---
 const TH = ({ children, className, align = 'left' }: { children?: React.ReactNode; className?: string; align?: string }) => (
     <th className={cn(
-        'px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider',
+        'px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap',
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
         className
     )}>
@@ -145,7 +173,7 @@ const SortTH = ({
         <th
             onClick={() => onClick(id)}
             className={cn(
-                'px-4 py-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors',
+                'px-4 py-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors whitespace-nowrap',
                 active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700',
                 align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
                 className
@@ -367,6 +395,16 @@ export function AssetDirectoryPage({
         }, 600);
     };
 
+    // Status picked in the row — kept on the fleet record so it survives a reload.
+    const [statusNote, setStatusNote] = useState<string | null>(null);
+    useEffect(() => { if (!statusNote) return; const t = setTimeout(() => setStatusNote(null), 3000); return () => clearTimeout(t); }, [statusNote]);
+    const changeStatus = (asset: Asset, status: AssetStatus) => {
+        if (asset.operationalStatus === status) return;
+        setAssets(prev => prev.map(a => a.id === asset.id ? { ...a, operationalStatus: status } : a));
+        updateCarrierAsset(accountId, asset.id, { operationalStatus: status } as Partial<Asset>);
+        setStatusNote(`${asset.unitNumber} is now ${ASSET_STATUS_LABEL[status]}`);
+    };
+
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
     };
@@ -572,19 +610,19 @@ export function AssetDirectoryPage({
                                  * the right of the page with no scrollbar and no way to reach them.
                                  */}
                                 <div className={isEmbedded ? "overflow-x-auto" : "flex-1 overflow-auto"}>
-                                    <table className="pin-first w-full text-left border-collapse min-w-[1300px]">
+                                    <table className="pin-first w-full text-left border-collapse min-w-[1240px]">
                                         <thead className="bg-slate-50/80 border-b border-slate-200 sticky-head">
                                             <tr>
                                                 <SortTH id="unitNumber"  label="Unit #"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32 pl-6" />
-                                                <SortTH id="type"        label="Type"                 current={sortKey} dir={sortDir} onClick={handleSort} className="w-40" />
-                                                <SortTH id="plate"       label="Plate (No. / State)"  current={sortKey} dir={sortDir} onClick={handleSort} className="w-48" />
-                                                <SortTH id="plateExpiry" label="Plate Expiry"         current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
-                                                <SortTH id="vin"         label="VIN"                  current={sortKey} dir={sortDir} onClick={handleSort} className="w-56" />
-                                                <SortTH id="makeModel"   label="Make / Model / Year"  current={sortKey} dir={sortDir} onClick={handleSort} />
-                                                <SortTH id="dateAdded"   label="Date Added"           current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
+                                                <SortTH id="type"        label="Type"                 current={sortKey} dir={sortDir} onClick={handleSort} className="w-44" />
+                                                <SortTH id="status"      label="Status"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-40" />
+                                                <SortTH id="plate"       label="Plate"                current={sortKey} dir={sortDir} onClick={handleSort} className="w-36" />
+                                                <SortTH id="plateExpiry" label="Plate Expiry"         current={sortKey} dir={sortDir} onClick={handleSort} className="w-40" />
+                                                <SortTH id="vin"         label="VIN"                  current={sortKey} dir={sortDir} onClick={handleSort} className="w-52" />
+                                                <SortTH id="makeModel"   label="Make / Model / Year"  current={sortKey} dir={sortDir} onClick={handleSort} className="min-w-[240px]" />
                                                 <SortTH id="ownership"   label="Ownership"            current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
-                                                <TH className="w-32 text-center" align="center">Compliance</TH>
-                                                <SortTH id="status"      label="Status"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
+                                                <TH className="w-36 text-center" align="center">Compliance</TH>
+                                                <SortTH id="dateAdded"   label="Date Added"           current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
                                                 {/* Pinned to the right edge, as the driver roster's is.
                                                     This table has a 1300px floor in a ~950px column, so an
                                                     Actions column that scrolls with the rest is an Actions
@@ -604,7 +642,8 @@ export function AssetDirectoryPage({
                                                         <TD className="pl-6">
                                                             <span className="font-bold text-slate-900 text-sm">{asset.unitNumber}</span>
                                                         </TD>
-                                                        <TD><span className="text-[12px] font-semibold text-slate-700 bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/30">{asset.assetType} - {asset.vehicleType}</span></TD>
+                                                        <TD><span className="inline-block max-w-[11rem] truncate rounded-lg border border-slate-200/30 bg-slate-100/80 px-2.5 py-1 align-middle text-[12px] font-semibold text-slate-700" title={`${asset.assetType} - ${asset.vehicleType}`}>{asset.assetType} · {asset.vehicleType}</span></TD>
+                                                        <TD><AssetStatusSelect value={asset.operationalStatus} onChange={(st) => changeStatus(asset, st)} /></TD>
                                                         <TD>
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[13px] font-bold text-slate-800">{asset.plateNumber || '—'}</span>
@@ -612,9 +651,12 @@ export function AssetDirectoryPage({
                                                             </div>
                                                         </TD>
                                                         <TD>
-                                                            <span className={cn("text-[11px] font-bold uppercase", asset.registrationExpiryDate ? "text-blue-600" : "text-slate-300")}>
-                                                                {asset.registrationExpiryDate || 'No Expiry'}
-                                                            </span>
+                                                            {(() => {
+                                                                const exp = asset.registrationExpiryDate;
+                                                                if (!exp) return <span className="text-[12px] text-slate-300">—</span>;
+                                                                const past = new Date(`${exp}T00:00:00`) < new Date();
+                                                                return <span className={cn("text-[12px] font-semibold tabular-nums", past ? "text-rose-600" : "text-slate-700")}>{exp}{past && <span className="ml-1.5 rounded bg-rose-50 px-1 text-[9px] font-bold uppercase text-rose-600">Expired</span>}</span>;
+                                                            })()}
                                                         </TD>
                                                         <TD>
                                                             <div className="flex items-center gap-2 group/vin w-fit">
@@ -625,18 +667,11 @@ export function AssetDirectoryPage({
                                                             </div>
                                                         </TD>
                                                         <TD>
-                                                            {/* On one line. Stacked, the year and colour made every row
-                                                                in the table two lines tall for six words nobody scans
-                                                                down a column — and the roster beside it is one line. */}
-                                                            <div className="flex items-baseline gap-2 whitespace-nowrap">
-                                                                <span className="text-[13px] font-bold text-slate-900">{asset.make} {asset.model}</span>
-                                                                <span className="text-[10px] font-bold uppercase tracking-tight text-slate-400">{asset.year} • {asset.color || 'White'}</span>
+                                                            {/* One line; a long make and model truncates and says itself in full on hover. */}
+                                                            <div className="flex max-w-[18rem] items-baseline gap-2 overflow-hidden whitespace-nowrap" title={`${asset.make} ${asset.model} · ${asset.year} · ${asset.color || 'White'}`}>
+                                                                <span className="truncate text-[13px] font-bold text-slate-900">{asset.make} {asset.model}</span>
+                                                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-tight text-slate-400">{asset.year} · {asset.color || 'White'}</span>
                                                             </div>
-                                                        </TD>
-                                                        <TD>
-                                                            <span className="text-xs font-semibold text-slate-500 flex items-center gap-2">
-                                                                <Calendar size={12} className="text-slate-300" /> {asset.insuranceAddedDate || '—'}
-                                                            </span>
                                                         </TD>
                                                         <TD><Badge variant={asset.financialStructure}>{asset.financialStructure}</Badge></TD>
                                                         <TD align="center">
@@ -668,7 +703,11 @@ export function AssetDirectoryPage({
                                                                 );
                                                             })()}
                                                         </TD>
-                                                        <TD><Badge variant={asset.operationalStatus}>{asset.operationalStatus}</Badge></TD>
+                                                        <TD>
+                                                            <span className="text-xs font-semibold text-slate-500 flex items-center gap-2">
+                                                                <Calendar size={12} className="text-slate-300" /> {asset.insuranceAddedDate || '—'}
+                                                            </span>
+                                                        </TD>
                                                         {/* Opaque, and opaque again on hover — a see-through sticky
                                                             cell shows the scrolled columns through itself. */}
                                                         <TD align="right" className="sticky right-0 z-10 border-l border-slate-200 bg-white pl-4 pr-5 group-hover:bg-blue-50/40">
@@ -738,6 +777,11 @@ export function AssetDirectoryPage({
             {/* Share — the unit, its plating and everything already filed against it.
                 Built by the shared payload so an asset shared from here and the same asset
                 shared from the maintenance module arrive carrying the same thing. */}
+            {statusNote && (
+                <div role="status" className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl">
+                    <Check size={15} className="text-emerald-400" /> {statusNote}
+                </div>
+            )}
             {sharingAsset && (
                 <ShareToChat
                     open

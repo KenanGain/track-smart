@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/inventory/signed_receipts.json",
+  "title": "signed_receipts",
+  "description": "The filed copy of a receipt signed from a collection card. In the prototype this is a version on the driver's compliance record (record id `onbform:<defId>` or `consent:<defId>`, tag \"Filled in system\"); the model keeps it as its own immutable document that the compliance record points at.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "driverId": {
+      "type": "string",
+      "description": "→ `drivers._id`."
+    },
+    "collectionId": {
+      "type": "string",
+      "description": "→ `inventory_collections._id`."
+    },
+    "formDefId": {
+      "type": "string",
+      "description": "Form definition (\"equipment-issue\")."
+    },
+    "complianceRecordId": {
+      "type": "string",
+      "description": "\"onbform:equipment-issue\" / \"consent:<id>\" — where it is filed in Compliance."
+    },
+    "title": {
+      "type": "string",
+      "description": "\"Uniform & Equipment Issue Receipt — ACM-T0100\"."
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ itemId, name, serial }` — only the items ticked."
+    },
+    "values": {
+      "type": "object",
+      "description": "The filled fields (employee name, issue date, …)."
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ signerId, mode: draw|type, image?, typedName?, signedAt, ip?, userAgent? }`."
+    },
+    "signedByName": {
+      "type": "string"
+    },
+    "signedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pdfFileId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Rendered PDF in file storage (the prototype keeps a 0-byte placeholder)."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "Filled in system"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Immutable after insert — no updatedAt."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "driverId",
+    "collectionId",
+    "formDefId",
+    "complianceRecordId",
+    "title",
+    "lines",
+    "values",
+    "signatures",
+    "signedByName",
+    "signedAt",
+    "tags",
+    "createdAt"
+  ]
+}

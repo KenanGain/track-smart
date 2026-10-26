@@ -1,0 +1,73 @@
+[
+  {
+    "_id": "6716b6c1a2b3c4d5e6f70201",
+    "carrierId": "acct-001",
+    "ticketId": "tkt-6716b0c1a2b3",
+    "kind": "created",
+    "title": "Ticket recorded",
+    "detail": "Logged as ticket OFF-84729",
+    "changes": [],
+    "byUserId": "usr-0002",
+    "byName": "Kenan Gain",
+    "role": "Office",
+    "at": "2026-10-02T18:40:00Z"
+  },
+  {
+    "_id": "6716b6c1a2b3c4d5e6f70202",
+    "carrierId": "acct-001",
+    "ticketId": "tkt-6716b0c1a2b3",
+    "kind": "uploaded",
+    "title": "Ticket file uploaded",
+    "detail": "citation-front.pdf, citation-back.jpg",
+    "changes": [],
+    "byUserId": "usr-0002",
+    "byName": "Kenan Gain",
+    "role": "Office",
+    "at": "2026-10-02T18:42:00Z"
+  },
+  {
+    "_id": "6716b6c1a2b3c4d5e6f70203",
+    "carrierId": "acct-001",
+    "ticketId": "tkt-6716b0c1a2b3",
+    "kind": "status",
+    "title": "Status — In Court",
+    "detail": "Due → In Court",
+    "changes": [
+      {
+        "field": "status",
+        "from": "Due",
+        "to": "In Court"
+      }
+    ],
+    "byUserId": "usr-0003",
+    "byName": "Anika Rao",
+    "role": "Office",
+    "at": "2026-10-11T10:15:00Z"
+  },
+  {
+    "_id": "6716b6c1a2b3c4d5e6f70204",
+    "carrierId": "acct-001",
+    "ticketId": "tkt-6716b0c1a2b3",
+    "kind": "verified",
+    "title": "Verified",
+    "detail": "Verified against the record.",
+    "changes": [],
+    "byUserId": "usr-0004",
+    "byName": "Marcus Reed",
+    "role": "Reviewer",
+    "at": "2026-10-23T19:04:00Z"
+  },
+  {
+    "_id": "6716b6c1a2b3c4d5e6f70205",
+    "carrierId": "acct-001",
+    "ticketId": "tkt-6716b0c1a2b3",
+    "kind": "resolved",
+    "title": "Closed — Issue warning letter",
+    "detail": "sent to Anjali Bhatia's in-app chat — filed to the driver's Warning Letter record",
+    "changes": [],
+    "byUserId": "usr-0004",
+    "byName": "Marcus Reed",
+    "role": "Reviewer",
+    "at": "2026-10-23T19:08:00Z"
+  }
+]

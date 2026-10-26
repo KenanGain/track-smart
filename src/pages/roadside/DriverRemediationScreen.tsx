@@ -32,15 +32,18 @@ export function openRemediations(list: RoadsideInspection[], driverId: string): 
 /** One inspection, and the upload for it. */
 function Card({ i, driverName }: { i: RoadsideInspection; driverName: string }) {
     const [by, setBy] = useState<RemediationBy | null>(null);
+    const [defect, setDefect] = useState<boolean | null>(null);
     const [on, setOn] = useState(todayIso());
     const [sent, setSent] = useState(false);
 
     const upload = (files: FileList | null) => {
-        if (!files?.length || !by) return;
+        if (!files?.length || !by || defect === null) return;
         addInspectionDoc(i.id, "remediation", {
             ...newDoc(files[0], driverName, "driver-app"),
             performedBy: by,
+            performedByName: by === "driver" ? driverName : undefined,
             performedOn: on,
+            defectFound: defect,
         });
         setSent(true);
     };
@@ -81,7 +84,21 @@ function Card({ i, driverName }: { i: RoadsideInspection; driverName: string }) 
                 </p>
             ) : (
                 <>
-                    <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Who re-inspected it?</p>
+                    {/* The DVIR's own question, first: it is what the sheet in their hand says. */}
+                    <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Is there any defect?</p>
+                    <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        {([true, false] as const).map((v) => (
+                            <button key={String(v)} type="button" onClick={() => setDefect(v)}
+                                className={cn("rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors",
+                                    defect === v
+                                        ? v ? "border-rose-500 bg-rose-50 text-rose-700" : "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                        : "border-slate-200 bg-white text-slate-600")}>
+                                {v ? "Yes — defect found" : "No defect"}
+                            </button>
+                        ))}
+                    </div>
+
+                    <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Who did the post-inspection DVIR?</p>
                     <div className="mt-1.5 grid grid-cols-2 gap-2">
                         {(["mechanic", "driver"] as RemediationBy[]).map((k) => (
                             <button key={k} type="button" onClick={() => setBy(k)}
@@ -93,15 +110,15 @@ function Card({ i, driverName }: { i: RoadsideInspection; driverName: string }) 
                         ))}
                     </div>
 
-                    <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Re-inspected on</p>
+                    <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">DVIR date</p>
                     <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
                         className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-800" />
 
                     {/* The camera is the point: the sheet is on the counter in front of them. */}
                     <label className={cn("mt-3 flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-[13px] font-bold transition-colors",
-                        by ? "cursor-pointer bg-blue-600 text-white hover:bg-blue-700" : "cursor-not-allowed bg-slate-200 text-slate-400")}>
-                        <Camera size={16} /> {by ? "Photograph or attach the report" : "Say who re-inspected it first"}
-                        <input type="file" accept="image/*,application/pdf" className="hidden" disabled={!by}
+                        by && defect !== null ? "cursor-pointer bg-blue-600 text-white hover:bg-blue-700" : "cursor-not-allowed bg-slate-200 text-slate-400")}>
+                        <Camera size={16} /> {by && defect !== null ? "Photograph or attach the DVIR" : "Answer the two questions first"}
+                        <input type="file" accept="image/*,application/pdf" className="hidden" disabled={!by || defect === null}
                             onChange={(e) => upload(e.target.files)} />
                     </label>
                 </>

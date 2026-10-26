@@ -11,6 +11,7 @@ import { ListPageHeader, PAGE_PAD } from '@/components/ui/ListPageHeader';
 import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import { KpiStatCard } from '@/components/ui/KpiStatCard';
 import { ShareToChat, type ShareItem } from '@/components/share/ShareToChat';
+import { ShareButton } from '@/components/share/ShareButton';
 import { setMessagesFocus, consumePendingRecord, sendWidgetToDriver, type RecordRef, type ChatWidget } from '@/pages/messages/messages-store';
 import { loadTelematicsEventTypes } from '@/pages/safety-events/safety-event-types.data';
 import {
@@ -586,7 +587,7 @@ function SafetyEventModal({ record, riskFor, onClose, onAddNote, onDispose, onAs
           )}
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
-          <button type="button" onClick={() => setShareOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><Share2 size={15} /> Share</button>
+          <ShareButton onClick={() => setShareOpen(true)} />
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Close</button>
         </div>
       </div>

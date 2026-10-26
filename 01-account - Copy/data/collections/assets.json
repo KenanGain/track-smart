@@ -1,0 +1,404 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/assets.json",
+  "title": "assets",
+  "description": "One document per unit. Mirrors the Add / Edit Asset wizard section by section. Monitoring reminders and compliance records live in their own collections (Compliance section) and reference `assets._id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"acct-001-a-0100\" style id."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "unitNumber": {
+      "type": "string",
+      "description": "Unique per carrier (\"ACM-T0100\")."
+    },
+    "assetCategory": {
+      "type": "string",
+      "description": "Derived from `assetType`.",
+      "enum": [
+        "CMV",
+        "Non-CMV"
+      ],
+      "default": "CMV"
+    },
+    "assetType": {
+      "type": "string",
+      "enum": [
+        "Truck",
+        "Trailer",
+        "Non-CMV Vehicle"
+      ]
+    },
+    "vehicleType": {
+      "type": "string",
+      "description": "One of the type's list (Power Unit, Dry Van, Pickup…) or the typed-in \"Other\" name.",
+      "default": ""
+    },
+    "operationalStatus": {
+      "type": "string",
+      "description": "The inline status pill.",
+      "enum": [
+        "Active",
+        "Maintenance",
+        "OutOfService",
+        "Drafted",
+        "Deactivated"
+      ],
+      "default": "Active"
+    },
+    "vin": {
+      "type": "string",
+      "description": "Exactly 17 characters; unique per carrier."
+    },
+    "year": {
+      "type": "integer",
+      "description": "1900 … current year + 2."
+    },
+    "make": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string",
+      "default": ""
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gross": {
+          "type": "number",
+          "description": "Loaded weight."
+        },
+        "grossUnit": {
+          "type": "string",
+          "enum": [
+            "lbs",
+            "kg"
+          ],
+          "default": "lbs"
+        },
+        "unloaded": {
+          "type": "number"
+        },
+        "unloadedUnit": {
+          "type": "string",
+          "enum": [
+            "lbs",
+            "kg"
+          ],
+          "default": "lbs"
+        }
+      }
+    },
+    "odometer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "description": "Required when status is Active."
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "mi",
+            "km"
+          ],
+          "default": "mi"
+        }
+      }
+    },
+    "plate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "type": "string",
+          "default": ""
+        },
+        "jurisdiction": {
+          "type": "string",
+          "description": "State / province code.",
+          "default": ""
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "IRP",
+            "Local"
+          ],
+          "default": "IRP"
+        },
+        "country": {
+          "type": "string",
+          "enum": [
+            "USA",
+            "Canada"
+          ],
+          "default": "USA"
+        },
+        "issueDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "expiryDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Drives the \"Plate expiry\" tile and chip."
+        },
+        "monitoring": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "basedOn": {
+              "type": "string",
+              "enum": [
+                "expiry_date",
+                "issue_date"
+              ],
+              "default": "expiry_date"
+            },
+            "recurrence": {
+              "type": "string",
+              "enum": [
+                "annually",
+                "quarterly",
+                "custom"
+              ],
+              "default": "annually"
+            },
+            "reminderDays": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Days before.",
+              "default": [
+                90,
+                60,
+                30
+              ]
+            },
+            "channels": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "email",
+                  "in-app",
+                  "sms"
+                ]
+              },
+              "default": [
+                "email",
+                "in-app"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "yardId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$",
+      "description": "→ `yards._id`; null = Unassigned."
+    },
+    "driverAssignments": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Max 2 rows: `{ driverId → drivers._id, startDate, endDate? }`.",
+      "default": []
+    },
+    "annualSafety": {
+      "type": "object",
+      "description": "Last annual safety inspection: `{ performedOn, odometer, hours, vendorName, performedBy (vendor|driver|mechanic), driverId?, mechanicName?, labour, parts, currency, notes, remarks }`."
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "structure": {
+          "type": "string",
+          "enum": [
+            "Owned",
+            "Leased",
+            "Financed",
+            "Rented"
+          ],
+          "default": "Owned"
+        },
+        "marketValue": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD",
+            "CAD"
+          ],
+          "default": "USD"
+        },
+        "ownerName": {
+          "type": "string",
+          "default": ""
+        },
+        "leasingName": {
+          "type": "string",
+          "description": "Leased: leasing company.",
+          "default": ""
+        },
+        "lienHolderBusiness": {
+          "type": "string",
+          "description": "Financed: lien holder.",
+          "default": ""
+        },
+        "rentalAgencyName": {
+          "type": "string",
+          "description": "Rented: agency.",
+          "default": ""
+        },
+        "agreementStartDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Leased / Financed."
+        },
+        "agreementEndDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "monthlyPayment": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "structure"
+      ]
+    },
+    "billOfSale": {
+      "type": "object",
+      "description": "`{ recordName, purchasePrice, seller, street, city, zip, documentId → documents._id }` — also filed as a compliance record."
+    },
+    "insurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "liabilityPolicyNumber": {
+          "type": "string",
+          "description": "Policy number on the pink slip.",
+          "default": ""
+        },
+        "pinkSlipExpiry": {
+          "type": "string",
+          "format": "date"
+        },
+        "pinkSlipDocumentId": {
+          "type": "string",
+          "description": "→ `documents._id`."
+        },
+        "addedDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Required when status is Active."
+        },
+        "removedDate": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "dateAdded": {
+      "type": "string",
+      "format": "date",
+      "description": "Date added to fleet."
+    },
+    "dateRemoved": {
+      "type": "string",
+      "format": "date",
+      "description": "Required when Deactivated."
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street line, as written on the record.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "description": "City.",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province code (DE, ON).",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "description": "ZIP or postal code.",
+          "default": ""
+        },
+        "country": {
+          "type": "string",
+          "description": "\"United States\" or \"Canada\".",
+          "enum": [
+            "United States",
+            "Canada"
+          ],
+          "default": "United States"
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "≤ 2000 chars.",
+      "default": ""
+    },
+    "complianceMissing": {
+      "type": "integer",
+      "description": "Computed: required compliance records with no document. Shown as the \"n missing\" chip.",
+      "default": 0
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "unitNumber",
+    "assetCategory",
+    "assetType",
+    "operationalStatus",
+    "vin",
+    "make",
+    "model",
+    "dateAdded",
+    "createdAt",
+    "updatedAt"
+  ]
+}

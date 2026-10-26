@@ -36,7 +36,7 @@ function toDomain(d: ApplicationData) {
             status: "Valid",
             conditions: "",
             endorsements: l.endorsements,
-            restrictions: [] as string[],
+            restrictions: l.restricted === "Yes" && l.restrictions ? l.restrictions.split(/\s*[,\n]\s*/).filter(Boolean) : ([] as string[]),
             isPrimary: i === 0,
             suspended: false,
             uploadType: "images",
@@ -88,6 +88,9 @@ function toDomain(d: ApplicationData) {
         avatarInitials: `${first.charAt(0)}${last.charAt(0)}`.toUpperCase(),
         dob: d.dob,
         hiredDate: d.hireDate,
+        // Entered today — the hire date above is when they start, not when the record was keyed in.
+        dateAdded: new Date().toISOString().slice(0, 10),
+        hosHistory: d.hos ?? { hours: {}, note: "" },
         gender: "Prefer not to say",
         ssn: d.ssn,
         citizenship: toCountry(d.address.country),
@@ -105,7 +108,9 @@ function toDomain(d: ApplicationData) {
         licenseExpiry: primary?.expiryDate ?? "",
         licenses,
         employmentHistory,
-        emergencyContacts: [] as any[],
+        emergencyContacts: d.emergencyContact?.name
+            ? [{ name: d.emergencyContact.name, relation: d.emergencyContact.relation, phone: d.emergencyContact.phone, email: d.emergencyContact.email ?? "" }]
+            : ([] as any[]),
         previousResidences,
         travelDocuments,
         documents: [

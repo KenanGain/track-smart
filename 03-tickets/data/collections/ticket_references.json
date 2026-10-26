@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/tickets/ticket_references.json",
+  "title": "ticket_references",
+  "description": "Every reference that should have a ticket: the carrier's citation-issued violations and the regulator feeds (SMS, contraventions, CVOR / NSC convictions). \"Missing\" = no ticket matches it. Replaces the prototype's in-memory dismissals and synced batches.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"mt-viol-<id>\" / \"mt-ext-<externalId>\"."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": [
+        "violation",
+        "external-feed"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "VIOL-LOG",
+        "SMS",
+        "CONTRAV",
+        "CVOR-CONV",
+        "NSC-AB-CONV",
+        "NSC-NS-CONV",
+        "NSC-PEI-CONV"
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD."
+    },
+    "time": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "driverName": {
+      "type": "string"
+    },
+    "driverLicense": {
+      "type": "string",
+      "default": ""
+    },
+    "city": {
+      "type": "string",
+      "default": ""
+    },
+    "state": {
+      "type": "string",
+      "default": ""
+    },
+    "country": {
+      "type": "string",
+      "enum": [
+        "USA",
+        "CA"
+      ],
+      "default": "USA"
+    },
+    "ticketNumber": {
+      "type": "string",
+      "default": ""
+    },
+    "citationNumber": {
+      "type": "string",
+      "default": ""
+    },
+    "convictionNumber": {
+      "type": "string",
+      "default": ""
+    },
+    "convictionDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "violationCode": {
+      "type": "string"
+    },
+    "violationDescription": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "OOS",
+        "Critical",
+        "Serious",
+        "Moderate",
+        "Minor"
+      ],
+      "default": "Minor"
+    },
+    "fineAmount": {
+      "type": "number",
+      "default": 0
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "USD",
+        "CAD"
+      ],
+      "default": "USD"
+    },
+    "normalizedRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Alphanumeric lower-case reference numbers used for matching.",
+      "default": []
+    },
+    "matchedTicketId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `tickets._id` once on file (null = missing)."
+    },
+    "dismissedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "dismissedByUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "syncedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the feed delivered it."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "sourceKind",
+    "source",
+    "date",
+    "driverName",
+    "violationCode",
+    "violationDescription",
+    "severity",
+    "currency",
+    "normalizedRefs",
+    "syncedAt"
+  ]
+}

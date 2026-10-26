@@ -3,14 +3,15 @@ import {
   User, Phone, MapPin, Briefcase,
   AlertTriangle, Edit, Edit3, Trash2, Mail, History,
   UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
-  CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe, Share2
+  CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProfileTabs } from '@/components/ui/ProfileTabs';
 import { SectionNav } from '@/components/ui/SectionNav';
 import { sectionId } from '@/components/ui/section-anchor';
 // Removed: import { Badge } from '../../components/ui/Badge';
-import { StatusBadge, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge, Toggle, AddressFormFields } from './DriverComponents';
+import { StatusBadge, DriverStatusSelect, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge, Toggle, AddressFormFields } from './DriverComponents';
+import { updateCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
 import { MVR_QUESTIONS } from '@/pages/hiring-process/ApplicationSettingsPage';
 import { MOCK_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
@@ -19,7 +20,7 @@ import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
-import { Boxes, ClipboardList } from 'lucide-react';
+import { Boxes, ClipboardList, Activity } from 'lucide-react';
 import { DriverDqFile } from '@/pages/ats/DqFilesPage';
 import { HolderInventoryPanel, useHolderInventory } from '@/pages/inventory/HolderInventoryPanel';
 import { type SubTab } from '@/components/ui/SubTabs';
@@ -34,6 +35,7 @@ import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records
 import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data';
 import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
 import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
+import { ShareButton } from '@/components/share/ShareButton';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { useAccidentRecords, ACCIDENT_STATUS_META, type AccidentRecord } from '@/data/accident-records.data';
 import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/accident-types.data';
@@ -1856,6 +1858,7 @@ const HEADER_TRANSITION =
         { id: 'Overview',       label: 'Overview',         icon: LayoutDashboard, group: 'identity' },
         { id: 'Profile',        label: 'Profile',          icon: User,            group: 'identity' },
         { id: 'Compliance',     label: 'Monitoring',       icon: ShieldCheck,     group: 'identity' },
+        { id: 'Activity',       label: 'Activity',         icon: Activity,        group: 'identity' },
         // Records
         { id: 'Documents',      label: 'Records',          icon: FileText,        group: 'records' },
         { id: 'Application',    label: 'Consent Forms',    icon: ClipboardList,   group: 'records' },
@@ -2106,8 +2109,18 @@ const HEADER_TRANSITION =
                     <CalendarX className="w-3 h-3 text-slate-400" />
                     Hired {formatDate(driverData.hiredDate || driverData.dateHired)}
                   </span>
+                  {driverData.dateAdded && driverData.dateAdded !== driverData.hiredDate && (
+                    <>
+                      <span className="text-slate-300">|</span>
+                      <span className="flex items-center gap-1" title="When the driver was added to the fleet">Added {formatDate(driverData.dateAdded)}</span>
+                    </>
+                  )}
                   <span className="text-slate-300">|</span>
-                  <StatusBadge status={driverData.status} />
+                  {/* The status is changed where it is read — the same pill the list uses. */}
+                  <DriverStatusSelect value={driverData.status} onChange={(status) => {
+                    updateDriverData({ ...driverData, status });
+                    updateCarrierDriver(accountId, driverData.id, { status });
+                  }} />
                   {workCountries && (
                     <>
                       <span className="text-slate-300">|</span>
@@ -2126,14 +2139,7 @@ const HEADER_TRANSITION =
               'flex items-center gap-2 flex-shrink-0 flex-wrap', HEADER_TRANSITION,
               condensed ? 'pt-0 self-center [&>button]:h-8' : 'pt-1 self-start lg:self-auto',
             )}>
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                className="h-9 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all inline-flex items-center justify-center gap-1.5 shadow-sm"
-              >
-                <Share2 className="w-4 h-4 text-slate-500" />
-                <span className="hidden sm:inline">Share</span>
-              </button>
+              <ShareButton onClick={() => setShareOpen(true)} />
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -2255,6 +2261,17 @@ const HEADER_TRANSITION =
                     <DefaultComplianceMonitoringPage
                         accountId={accountId}
                         embedded
+                        lockSubject={{ entity: 'Driver', subjectId: driverData.id, label: `${driverData.firstName} ${driverData.lastName}` }}
+                    />
+                </div>
+            )}
+            {/* What was done about this driver's monitored items — its own tab, not a tab inside Monitoring. */}
+            {activeTab === 'Activity' && (
+                <div className="animate-in fade-in">
+                    <DefaultComplianceMonitoringPage
+                        accountId={accountId}
+                        embedded
+                        view="activity"
                         lockSubject={{ entity: 'Driver', subjectId: driverData.id, label: `${driverData.firstName} ${driverData.lastName}` }}
                     />
                 </div>

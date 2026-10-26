@@ -54,12 +54,12 @@ function buildSchema(config: FormConfig): PSection[] {
             ],
         },
         {
-            title: "Contact Details",
+            title: "Emergency Contact",
             fields: [
-                { label: "Cell Phone", sample: "(555) 218-4471" },
-                { label: "Confirm Email", sample: "kenan.gain@example.com" },
-                { label: "Preferred method of contact", sample: "Primary Phone" },
-                { label: "Best time to contact", sample: "Any" },
+                { label: "Contact name", sample: "Priya Gain" },
+                { label: "Relationship", sample: "Spouse" },
+                { label: "Phone", sample: "(555) 218-9900" },
+                { label: "Email", sample: "priya.gain@example.com" },
             ],
         },
         {
@@ -68,11 +68,24 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: "License Number", sample: "D1234-5678-90" },
                 { label: "Country", sample: country },
                 { label: "Licensing Authority", sample: st },
-                { label: "License Class", sample: "Class A" },
+                { label: "License Class", sample: "Class 1 / A" },
                 { label: "Current driver license?", sample: "Yes" },
                 { label: "Commercial (CDL)?", sample: "Yes" },
                 { label: "Expiration Date", sample: "03-04-2027" },
                 { label: "Endorsements", sample: "HazMat, Tanker", full: true },
+                { label: "Restrictions on license?", sample: "Yes" },
+                { label: "Restrictions", sample: "Corrective lenses", full: true },
+            ],
+        },
+        {
+            title: "License Disqualification",
+            fields: [
+                { label: "License ever denied / suspended / revoked?", sample: "No", full: true },
+                { label: "Convicted of driving during suspension?", sample: "No", full: true },
+                { label: "Alcohol / controlled-substance offense?", sample: "No", full: true },
+                { label: "Illegal substance possession / sale?", sample: "No", full: true },
+                { label: "Reckless / careless driving conviction?", sample: "No", full: true },
+                { label: "Failed / refused a DOT drug or alcohol test?", sample: "No", full: true },
             ],
         },
         // Citizenship first: a US or Canadian citizen answers nothing else here but the
@@ -94,17 +107,6 @@ function buildSchema(config: FormConfig): PSection[] {
                 { label: "Visa Number", sample: "V-99120" },
                 { label: "TWIC Card — held?", sample: "No" },
                 { label: "FAST Card — held?", sample: "Yes", full: true },
-            ],
-        },
-        {
-            title: "License Disqualification",
-            fields: [
-                { label: "License ever denied / suspended / revoked?", sample: "No", full: true },
-                { label: "Convicted of driving during suspension?", sample: "No", full: true },
-                { label: "Alcohol / controlled-substance offense?", sample: "No", full: true },
-                { label: "Illegal substance possession / sale?", sample: "No", full: true },
-                { label: "Reckless / careless driving conviction?", sample: "No", full: true },
-                { label: "Failed / refused a DOT drug or alcohol test?", sample: "No", full: true },
             ],
         },
         {
@@ -174,6 +176,17 @@ function buildSchema(config: FormConfig): PSection[] {
             title: "Military Service",
             fields: [
                 { label: "Were you ever in the military?", sample: "No", full: true },
+            ],
+        },
+        {
+            title: "Hours of Service",
+            note: config.id === "us"
+                ? "On-duty hours for the 8 days before the start date — the FMCSA 70-hour / 8-day rule (§395.8(j)(2))."
+                : "On-duty hours for the 14 days before the start date — the Canadian hours-of-service 14-day cycle.",
+            fields: [
+                { label: "Days accounted for", sample: config.id === "us" ? "8" : "14" },
+                { label: "Total on-duty hours", sample: config.id === "us" ? "34.5" : "61" },
+                { label: "Notes", sample: "Off duty on the weekend; previous employer confirmed the hours.", full: true },
             ],
         },
         {

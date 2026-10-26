@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/tickets/record_reviews.json",
+  "title": "record_reviews",
+  "description": "One review per reviewed record. Shared by tickets, accidents, HOS violations and safety events; for this section `subjectKind = \"ticket\"`.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "subjectKind": {
+      "type": "string",
+      "enum": [
+        "ticket",
+        "accident",
+        "hos-violation",
+        "safety-event"
+      ]
+    },
+    "subjectId": {
+      "type": "string",
+      "description": "→ `tickets._id` here."
+    },
+    "status": {
+      "type": "string",
+      "description": "Every ticket starts in review.",
+      "enum": [
+        "review",
+        "resolved"
+      ],
+      "default": "review"
+    },
+    "verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "verifiedByUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "disposition": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "training",
+        "warning",
+        "alert",
+        "notice",
+        "terminated",
+        "false",
+        null
+      ]
+    },
+    "trainingName": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Course, when disposition = training."
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "via": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "in-app",
+            "external",
+            "email",
+            null
+          ]
+        },
+        "to": {
+          "type": "string",
+          "description": "Email for external / email.",
+          "default": ""
+        },
+        "conversationId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ the Messages conversation."
+        }
+      }
+    },
+    "warningLetterId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The Warning Letter filed on the driver's compliance record."
+    },
+    "reviewedByUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ text, byUserId, at }`.",
+      "default": []
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "subjectKind",
+    "subjectId",
+    "status",
+    "verified",
+    "createdAt",
+    "updatedAt"
+  ]
+}

@@ -1,0 +1,213 @@
+[
+  {
+    "_id": "acct-001",
+    "legalName": "Acme Trucking Inc.",
+    "dbaName": "Acme Logistics",
+    "status": "Active",
+    "country": "US",
+    "identity": {
+      "dotNumber": "1234567",
+      "mcNumber": "",
+      "safetyRegType": "",
+      "safetyRegNumber": "",
+      "nscNumbers": [],
+      "rinNumber": "",
+      "businessType": "Corporation",
+      "stateOfInc": "DE",
+      "extraProvincial": false
+    },
+    "authority": {
+      "operationClassification": [
+        "Authorized for Hire"
+      ],
+      "carrierOperation": [
+        "Interstate",
+        "Cross-Border"
+      ],
+      "hazmatOperation": [
+        "Non-Hazmat"
+      ],
+      "fmcsaAuthorityTypes": [
+        "Motor Carrier of Property",
+        "Motor Carrier of Household Goods"
+      ]
+    },
+    "legalAddress": {
+      "street": "1200 North Dupont Hwy",
+      "apt": "",
+      "city": "Wilmington",
+      "state": "DE",
+      "zip": "19801",
+      "country": "United States"
+    },
+    "mailingAddress": {
+      "streetOrPoBox": "PO Box 8890",
+      "city": "Wilmington",
+      "state": "DE",
+      "zip": "19899",
+      "country": "United States"
+    },
+    "fleetCounts": {
+      "powerUnits": 12,
+      "drivers": 22,
+      "nonCmv": 2
+    },
+    "cargoTypes": [
+      "General Freight",
+      "Household Goods",
+      "Building Materials",
+      "Fresh Produce",
+      "Refrigerated Food",
+      "Beverages"
+    ],
+    "cargoFamilies": [
+      "general",
+      "household",
+      "building",
+      "produce",
+      "refrigerated",
+      "beverages"
+    ],
+    "safetyRating": "Satisfactory",
+    "riskScore": 94,
+    "serviceProfileId": "svc-001",
+    "createdByUserId": "usr-0002",
+    "createdAt": "2024-03-04T14:12:00Z",
+    "updatedAt": "2026-10-21T09:40:00Z"
+  },
+  {
+    "_id": "acct-002",
+    "legalName": "Great Lakes Cold Chain Ltd.",
+    "dbaName": "GLCC",
+    "status": "Active",
+    "country": "CA",
+    "identity": {
+      "dotNumber": "2987134",
+      "mcNumber": "MC-1122334",
+      "safetyRegType": "CVOR",
+      "safetyRegNumber": "CVOR-00123",
+      "nscNumbers": [
+        "AB-99012"
+      ],
+      "rinNumber": "RIN-0099",
+      "businessType": "Corporation",
+      "stateOfInc": "ON",
+      "extraProvincial": true
+    },
+    "authority": {
+      "operationClassification": [
+        "Authorized for Hire"
+      ],
+      "carrierOperation": [
+        "Interstate",
+        "Cross-Border"
+      ],
+      "hazmatOperation": [
+        "Non-Hazmat"
+      ],
+      "fmcsaAuthorityTypes": [
+        "Motor Carrier of Property"
+      ]
+    },
+    "legalAddress": {
+      "street": "4120 Dundas Street West",
+      "apt": "Suite 300",
+      "city": "Mississauga",
+      "state": "ON",
+      "zip": "L5B 3C2",
+      "country": "Canada"
+    },
+    "mailingAddress": {
+      "streetOrPoBox": "4120 Dundas Street West, Suite 300",
+      "city": "Mississauga",
+      "state": "ON",
+      "zip": "L5B 3C2",
+      "country": "Canada"
+    },
+    "fleetCounts": {
+      "powerUnits": 31,
+      "drivers": 40,
+      "nonCmv": 4
+    },
+    "cargoTypes": [
+      "Refrigerated Food",
+      "Fresh Produce",
+      "Meat"
+    ],
+    "cargoFamilies": [
+      "refrigerated",
+      "produce",
+      "meat"
+    ],
+    "safetyRating": "Satisfactory",
+    "riskScore": 88,
+    "serviceProfileId": "svc-001",
+    "createdByUserId": "usr-0002",
+    "createdAt": "2024-06-18T10:02:00Z",
+    "updatedAt": "2026-09-30T16:05:00Z"
+  },
+  {
+    "_id": "acct-003",
+    "legalName": "Lone Star Freight LLC",
+    "dbaName": "Lone Star Freight",
+    "status": "Pending",
+    "country": "US",
+    "identity": {
+      "dotNumber": "3310221",
+      "mcNumber": "",
+      "safetyRegType": "",
+      "safetyRegNumber": "",
+      "nscNumbers": [],
+      "rinNumber": "",
+      "businessType": "LLC",
+      "stateOfInc": "TX",
+      "extraProvincial": false
+    },
+    "authority": {
+      "operationClassification": [
+        "Private Carrier"
+      ],
+      "carrierOperation": [
+        "Intrastate"
+      ],
+      "hazmatOperation": [
+        "Hazmat"
+      ],
+      "fmcsaAuthorityTypes": []
+    },
+    "legalAddress": {
+      "street": "8800 Harry Hines Blvd",
+      "apt": "",
+      "city": "Dallas",
+      "state": "TX",
+      "zip": "75235",
+      "country": "United States"
+    },
+    "mailingAddress": {
+      "streetOrPoBox": "PO Box 22011",
+      "city": "Dallas",
+      "state": "TX",
+      "zip": "75222",
+      "country": "United States"
+    },
+    "fleetCounts": {
+      "powerUnits": 6,
+      "drivers": 7,
+      "nonCmv": 1
+    },
+    "cargoTypes": [
+      "Chemicals",
+      "General Freight"
+    ],
+    "cargoFamilies": [
+      "chemicals",
+      "general"
+    ],
+    "safetyRating": "Not Rated",
+    "riskScore": null,
+    "serviceProfileId": "svc-003",
+    "createdByUserId": "usr-0003",
+    "createdAt": "2026-08-02T18:30:00Z",
+    "updatedAt": "2026-08-02T18:30:00Z"
+  }
+]

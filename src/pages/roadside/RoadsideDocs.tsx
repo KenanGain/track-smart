@@ -37,8 +37,11 @@ function docSummary(
 ): string {
     if (shelf === "reports") return doc.documentDate ? `Dated ${doc.documentDate}` : "No date on the report.";
     if (shelf === "remediation") {
-        return [doc.performedByName?.trim() || "Performer not stated", doc.performedOn || null]
-            .filter(Boolean).join(" · ");
+        return [
+            doc.defectFound === undefined ? "Defect not answered" : doc.defectFound ? "Defect found" : "No defect",
+            doc.performedByName?.trim() || "Performer not stated",
+            doc.performedOn || null,
+        ].filter(Boolean).join(" · ");
     }
     const named = units.filter((u) => doc.assetIds?.includes(u.id)).map((u) => u.label);
     return [
@@ -128,9 +131,9 @@ const SHELVES: { key: Shelf; icon: React.ElementType; title: string; blurb: stri
     },
     {
         key: "remediation", icon: ShieldCheck,
-        title: "Remediation inspection report",
-        blurb: "Performed after the defect was fixed. Say whether a mechanic or the driver did it.",
-        accepts: "Attach the signed re-inspection — PDF, JPG or PNG up to 10MB",
+        title: "Post-inspection DVIR",
+        blurb: "The driver vehicle inspection report done after the defect was fixed. Say whether any defect was still found, and who did it.",
+        accepts: "Attach the signed DVIR — PDF, JPG or PNG up to 10MB",
     },
     {
         key: "repairBills", icon: Receipt,
@@ -211,7 +214,7 @@ export function DocShelf({ inspection, uploadedBy, onChange, readOnly }: {
                         {idle && docs.length === 0 ? (
                             <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[12px] text-slate-500">
                                 {key === "remediation"
-                                    ? "This inspection passed and nothing was put out of service, so there is nothing to re-inspect."
+                                    ? "This inspection passed and nothing was put out of service, so no post-inspection DVIR is owed."
                                     : "No maintenance-related violation on this inspection, so no repair to bill for."}
                             </p>
                         ) : readOnly ? (

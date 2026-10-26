@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode, type Ref, type UIEventHandler } from "react";
 import { CheckCircle2, Lock, PanelLeft, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TableGroupBand } from "@/components/ui/ListChrome";
 import { TH_ROW_CLS } from "@/components/ui/list-chrome";
+import { ListScrollFrame } from "@/components/ui/ListScrollFrame";
 import { ROLE_BADGE, ROLE_LABELS, ROLE_ORDER, type AppUser, type UserRole } from "@/data/users.data";
 import {
     ACCESS_CYCLE, ACCESS_META, LEVEL_META, MENU_GROUPS, MENU_ROWS, ROLE_META, isAccessChanged, resetRoleAccess,
@@ -88,14 +89,20 @@ export function RoleCardsGrid({ roles, countOf, countSuffix, showLevel = true }:
  * Which sidebar menus each role gets — Full, Light (view only) or Hidden. Only a Super Admin
  * changes it; the sidebar follows it for everyone with that role.
  */
-export function AccessMatrix({ roles, editable, note }: { roles: UserRole[]; editable: boolean; note?: string }) {
+export function AccessMatrix({ roles, editable, note, frame }: {
+    roles: UserRole[]; editable: boolean; note?: string;
+    /**
+     * Fill the page body: what sits above scrolls away, then the table scrolls in its own box
+     * under pinned role headings — at every width, not only where it fits without a side scroll.
+     */
+    frame?: { above?: ReactNode; scrollRef?: Ref<HTMLDivElement>; onScroll?: UIEventHandler<HTMLDivElement> };
+}) {
     const access = useRoleAccess();
     const changed = MENU_ROWS.some((m) => roles.some((r) => isAccessChanged(access, m.id, r)));
     const groups = MENU_GROUPS.filter((g) => MENU_ROWS.some((m) => m.group === g));
     const span = roles.length + 1;
 
-    return (
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    const heading = (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
                 <div className="flex min-w-0 items-center gap-2">
                     <PanelLeft className="h-4 w-4 text-blue-600" />
@@ -112,11 +119,10 @@ export function AccessMatrix({ roles, editable, note }: { roles: UserRole[]; edi
                     {editable && changed && <Button size="sm" variant="outline" onClick={resetRoleAccess}><RotateCcw className="h-3.5 w-3.5" /> Reset to defaults</Button>}
                 </div>
             </div>
-            {/* Sideways scroll only where the table cannot fit; where it can, there is no scroll box,
-                so the role headings can stick to the top of the page as the menus scroll past. */}
-            <div className="overflow-x-auto xl:overflow-x-visible">
+    );
+    const table = (
                 <table className="w-full table-fixed text-sm" style={{ minWidth: 340 + roles.length * 104 }}>
-                    <thead className="xl:sticky xl:top-0 xl:z-10">
+                    <thead className={cn(frame ? "sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]" : "xl:sticky xl:top-0 xl:z-10")}>
                         <tr className={TH_ROW_CLS}>
                             <th className="px-5 py-2.5">Sidebar menu</th>
                             {roles.map((r) => (
@@ -164,7 +170,21 @@ export function AccessMatrix({ roles, editable, note }: { roles: UserRole[]; edi
                         })}
                     </tbody>
                 </table>
-            </div>
+    );
+
+    if (frame) {
+        return (
+            <ListScrollFrame above={frame.above} toolbar={heading} scrollRef={frame.scrollRef} onScroll={frame.onScroll}>
+                {table}
+            </ListScrollFrame>
+        );
+    }
+    return (
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            {heading}
+            {/* Sideways scroll only where the table cannot fit; where it can, there is no scroll box,
+                so the role headings can stick to the top of the page as the menus scroll past. */}
+            <div className="overflow-x-auto xl:overflow-x-visible">{table}</div>
         </section>
     );
 }

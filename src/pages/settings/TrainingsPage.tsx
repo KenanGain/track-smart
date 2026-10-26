@@ -1,11 +1,21 @@
-import { useState } from "react";
-import { GraduationCap, Search, Plus, Eye, Edit, Check, X, Clock, FileText, Bell } from "lucide-react";
+import React, { Fragment, useMemo, useState } from "react";
+import { GraduationCap, Plus, Check, X, Clock, FileText, Bell, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { TRAINING_TYPES, TRAINING_CATEGORIES } from "@/data/training.data";
 import type { TrainingType } from "@/types/training.types";
 import { TrainingEditModal } from "./TrainingEditModal";
-import { SubTabs } from "@/components/ui/SubTabs";
+import { ListPageHeader } from "@/components/ui/ListPageHeader";
+import { ListScrollFrame } from "@/components/ui/ListScrollFrame";
+import { KpiStatRow, type KpiStat } from "@/components/ui/KpiStatCard";
+import { ListHeaderBridge, chipsFromStats, useHeaderChips } from "@/components/ui/list-header-bridge";
+import { usePageChrome } from "@/components/ui/PageChrome";
+import {
+    ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, TablePager,
+    useTableSort, type PickerColumn,
+} from "@/components/ui/ListChrome";
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from "@/components/ui/list-chrome";
+import { RowActions } from "@/components/ui/RowActions";
 
 // Helper Components
 const StatusBadge = ({ status }: { status: 'active' | 'inactive' }) => {
@@ -53,37 +63,38 @@ const buildProjectedNotificationText = (
     return `Monitor ${basedOnLabel}. Reminders at ${sortedDays.map(day => `${day} day${day > 1 ? "s" : ""}`).join(", ")} before.`;
 };
 
+/** A new, empty training type — the editor fills it in. */
+const blankTraining = (category: string): TrainingType => ({
+    id: `trn-${Date.now().toString(36)}`,
+    name: "",
+    category,
+    status: "active",
+    defaultMandatory: false,
+    defaultDueDays: 30,
+    defaultDeliveryModes: ["online"],
+    defaultDocuments: { required: false, documentTypeIds: [] },
+    defaultAssessment: { enabled: false, passingScore: null, maxAttempts: null },
+    monitoringNotifications: {
+        enabled: false,
+        monitorBasedOn: "expiry_date",
+        renewalRecurrence: "annual",
+        notificationRemindersDaysBefore: [30],
+        notificationChannels: { email: true, inApp: true, sms: false },
+        projectedNotificationScheduleText: buildProjectedNotificationText("expiry_date", [30]),
+    },
+    tags: [],
+});
+
 const TrainingsPage = () => {
     const [trainings, setTrainings] = useState<TrainingType[]>(TRAINING_TYPES);
     const [activeTab, setActiveTab] = useState<string>("all");
-    const [searchQuery, setSearchQuery] = useState("");
     const [selectedTraining, setSelectedTraining] = useState<TrainingType | null>(null);
     const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [editForm, setEditForm] = useState<TrainingType | null>(null);
 
-    // Filter trainings
-    const getVisibleTrainings = () => {
-        let filtered = trainings;
-
-        // Filter by category
-        if (activeTab !== "all") {
-            filtered = filtered.filter(t => t.category === activeTab);
-        }
-
-        // Filter by search
-        if (searchQuery) {
-            filtered = filtered.filter(t =>
-                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-        }
-
-        return filtered;
-    };
-
-    const visibleTrainings = getVisibleTrainings();
+    const { scrollRef, onScroll, condensed, bridge } = usePageChrome(activeTab);
+    const visibleTrainings = activeTab === "all" ? trainings : trainings.filter(t => t.category === activeTab);
 
     const handleView = (training: TrainingType) => {
         setSelectedTraining(training);
@@ -120,7 +131,10 @@ const TrainingsPage = () => {
             }
         };
 
-        setTrainings(prev => prev.map(training => training.id === updatedTraining.id ? updatedTraining : training));
+        // A new one is added; an existing one is replaced where it stands.
+        setTrainings(prev => prev.some(t => t.id === updatedTraining.id)
+            ? prev.map(training => training.id === updatedTraining.id ? updatedTraining : training)
+            : [...prev, updatedTraining]);
         setSelectedTraining(prev => prev?.id === updatedTraining.id ? updatedTraining : prev);
         setEditForm(null);
         setIsEditDialogOpen(false);
@@ -151,231 +165,47 @@ const TrainingsPage = () => {
         return labels[recurrence] || recurrence;
     };
 
+    const startNew = () => {
+        setEditForm(blankTraining(activeTab !== "all" ? activeTab : TRAINING_CATEGORIES[0]));
+        setIsEditDialogOpen(true);
+    };
+    const tabCount = (id: string) => (id === "all" ? trainings.length : trainings.filter(t => t.category === id).length);
+
     return (
-        <div className="flex flex-col h-full bg-slate-50/50">
-            <div className="px-8 py-6 max-w-[1600px] mx-auto w-full">
+        <ListHeaderBridge value={bridge.value}>
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            <ListPageHeader
+                Icon={GraduationCap}
+                title="Training Management"
+                description="Training requirements, delivery methods, assessments and monitoring for driver development programs."
+                condensed={condensed}
+                chips={bridge.chips ?? undefined}
+                tabs={[
+                    { id: "all", label: "All training types", icon: LayoutGrid, count: tabCount("all") },
+                    ...TRAINING_CATEGORIES.map((c) => ({ id: c, label: c, icon: c.startsWith("Driver") ? ShieldCheck : Users, count: tabCount(c) })),
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id)}
+                tabsLabel="Training categories"
+                showZeroCounts
+                actions={
+                    <Button onClick={startNew} className={cn("gap-2 bg-blue-600 text-white shadow-sm hover:bg-blue-700", condensed ? "h-8" : "h-9")}>
+                        <Plus className="h-4 w-4" /> Add training type
+                    </Button>
+                }
+            />
 
-                {/* Header */}
-                <div className="flex items-end justify-between mb-8">
-                    <div>
-                        <nav className="flex text-sm text-slate-500 mb-1 font-medium items-center gap-2">
-                            <span>Settings</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="text-slate-900">Training Types</span>
-                        </nav>
-                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-2">
-                            Training Management
-                        </h1>
-                        <p className="text-slate-600 max-w-3xl text-sm">
-                            Configure training requirements, delivery methods, assessments, and monitoring for driver development programs.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 px-4 text-xs font-semibold uppercase tracking-wide">
-                            <Plus className="h-3.5 w-3.5 mr-2" />
-                            Add Training Type
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-                    <div className="bg-white rounded-lg border border-slate-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Training Types</p>
-                                <p className="text-2xl font-bold text-slate-900 mt-1">{trainings.length}</p>
-                            </div>
-                            <div className="p-3 bg-blue-50 rounded-lg">
-                                <GraduationCap className="w-5 h-5 text-blue-600" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Mandatory</p>
-                                <p className="text-2xl font-bold text-rose-600 mt-1">{trainings.filter(t => t.defaultMandatory).length}</p>
-                            </div>
-                            <div className="p-3 bg-rose-50 rounded-lg">
-                                <Check className="w-5 h-5 text-rose-600" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">With Assessment</p>
-                                <p className="text-2xl font-bold text-amber-600 mt-1">{trainings.filter(t => t.defaultAssessment.enabled).length}</p>
-                            </div>
-                            <div className="p-3 bg-amber-50 rounded-lg">
-                                <FileText className="w-5 h-5 text-amber-600" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Monitored</p>
-                                <p className="text-2xl font-bold text-emerald-600 mt-1">{trainings.filter(t => t.monitoringNotifications.enabled).length}</p>
-                            </div>
-                            <div className="p-3 bg-emerald-50 rounded-lg">
-                                <Bell className="w-5 h-5 text-emerald-600" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Tabs & Search Bar */}
-                <div className="flex flex-col space-y-4 mb-4">
-                    <SubTabs
-                        tabs={[
-                            { id: "all", label: "All Training Types" },
-                            ...TRAINING_CATEGORIES.map((c) => ({ id: c, label: c })),
-                        ]}
-                        activeId={activeTab}
-                        onChange={(id) => setActiveTab(id)}
-                    />
-
-                    {/* Toolbar */}
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="relative flex-1 max-w-sm">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                            <Input
-                                placeholder="Search trainings..."
-                                className="pl-8 h-8 bg-white border-slate-200 text-xs"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="text-xs text-slate-400 font-medium">
-                            {visibleTrainings.length} Training Types Found
-                        </div>
-                    </div>
-                </div>
-
-                {/* Trainings List Table */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                <tr>
-                                    <th className="px-4 py-2 w-[30%]">Training Name</th>
-                                    {activeTab === "all" && (
-                                        <th className="px-4 py-2 w-[18%]">Category</th>
-                                    )}
-                                    <th className="px-4 py-2 text-center w-[8%]">Status</th>
-                                    <th className="px-4 py-2 text-center w-[8%]">Required</th>
-                                    <th className="px-4 py-2 text-center w-[8%]">Due Days</th>
-                                    <th className="px-4 py-2 w-[15%]">Configuration</th>
-                                    <th className="px-4 py-2 text-right w-[100px]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {visibleTrainings.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                                            <p className="font-medium text-sm">No training types found</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    visibleTrainings.map((training) => (
-                                        <tr key={training.id} className="group hover:bg-slate-50/80 transition-colors">
-                                            <td className="px-4 py-3 align-middle">
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-slate-900 text-sm" title={training.name}>
-                                                        {training.name}
-                                                    </span>
-                                                    <div className="flex items-center gap-1 mt-1">
-                                                        {training.tags.slice(0, 2).map(tag => (
-                                                            <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
-                                                                {tag}
-                                                            </span>
-                                                        ))}
-                                                        {training.tags.length > 2 && (
-                                                            <span className="text-[10px] text-slate-400">+{training.tags.length - 2}</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {activeTab === "all" && (
-                                                <td className="px-4 py-3 align-middle">
-                                                    <span className="text-xs text-slate-600 block max-w-[150px]" title={training.category}>
-                                                        {training.category}
-                                                    </span>
-                                                </td>
-                                            )}
-                                            <td className="px-4 py-3 align-middle text-center">
-                                                <div className="flex justify-center">
-                                                    <StatusBadge status={training.status} />
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-center">
-                                                <div className="flex justify-center">
-                                                    <MandatoryBadge mandatory={training.defaultMandatory} />
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-center">
-                                                <div className="flex items-center justify-center gap-1 text-slate-700">
-                                                    <Clock className="w-3 h-3 text-slate-400" />
-                                                    <span className="font-semibold text-sm">{training.defaultDueDays}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle">
-                                                <div className="space-y-1">
-                                                    {training.defaultAssessment.enabled && (
-                                                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                            <Check size={12} className="text-emerald-600" />
-                                                            <span>Assessment: {training.defaultAssessment.passingScore}%</span>
-                                                        </div>
-                                                    )}
-                                                    {training.monitoringNotifications.enabled && (
-                                                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                            <Bell size={12} className="text-blue-600" />
-                                                            <span>Monitored ({formatRecurrence(training.monitoringNotifications.renewalRecurrence)})</span>
-                                                        </div>
-                                                    )}
-                                                    {training.defaultDocuments.required && (
-                                                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                            <FileText size={12} className="text-amber-600" />
-                                                            <span>Docs Required</span>
-                                                        </div>
-                                                    )}
-                                                    {!training.defaultAssessment.enabled && !training.monitoringNotifications.enabled && !training.defaultDocuments.required && (
-                                                        <span className="text-slate-400 text-xs">-</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 align-middle text-right">
-                                                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleView(training)}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                        title="View Details"
-                                                    >
-                                                        <Eye className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleEdit(training)}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                        title="Edit"
-                                                    >
-                                                        <Edit className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            <TrainingsList
+                key={activeTab}
+                trainings={visibleTrainings}
+                tabLabel={activeTab === "all" ? "Training types" : activeTab}
+                showCategory={activeTab === "all"}
+                onView={handleView}
+                onEdit={handleEdit}
+                formatRecurrence={formatRecurrence}
+                scrollRef={scrollRef}
+                onScroll={onScroll}
+            />
 
             {/* View Dialog */}
             {isViewDialogOpen && selectedTraining && (
@@ -507,7 +337,206 @@ const TrainingsPage = () => {
                 onSave={handleSaveEdit}
             />
         </div>
+        </ListHeaderBridge>
     );
 };
+
+type Col = "name" | "category" | "status" | "required" | "due" | "configuration";
+const COLUMNS: PickerColumn<Col>[] = [
+    { id: "name", label: "Training name", locked: true },
+    { id: "category", label: "Category" },
+    { id: "status", label: "Status" },
+    { id: "required", label: "Required" },
+    { id: "due", label: "Due days" },
+    { id: "configuration", label: "Configuration" },
+];
+type GroupBy = "none" | "category" | "status" | "required";
+const GROUPS: { id: GroupBy; label: string }[] = [
+    { id: "none", label: "No grouping" },
+    { id: "category", label: "Group: Category" },
+    { id: "status", label: "Group: Status" },
+    { id: "required", label: "Group: Required / Optional" },
+];
+const CONFIG_OPTIONS = ["With assessment", "Monitored", "Docs required"];
+
+const TD = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <td className={cn("px-4 py-2.5 text-sm align-middle whitespace-nowrap", className)}>{children}</td>
+);
+
+function TrainingsList({ trainings, tabLabel, showCategory, onView, onEdit, formatRecurrence, scrollRef, onScroll }: {
+    trainings: TrainingType[];
+    tabLabel: string;
+    showCategory: boolean;
+    onView: (t: TrainingType) => void;
+    onEdit: (t: TrainingType) => void;
+    formatRecurrence: (r: string) => string;
+    scrollRef?: React.Ref<HTMLDivElement>;
+    onScroll?: React.UIEventHandler<HTMLDivElement>;
+}) {
+    const [search, setSearch] = useState("");
+    const [status, setStatus] = useState("");
+    const [required, setRequired] = useState("");
+    const [config, setConfig] = useState("");
+    const [groupBy, setGroupBy] = useState<GroupBy>("none");
+    const [visible, setVisible] = useState<Set<Col>>(() => new Set(COLUMNS.map(c => c.id)));
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
+    const stats: KpiStat[] = [
+        { id: "all", label: "Training types", value: trainings.length, Icon: GraduationCap, accent: "blue" },
+        { id: "Required", label: "Mandatory", value: trainings.filter(t => t.defaultMandatory).length, Icon: Check, accent: "rose" },
+        { id: "With assessment", label: "With assessment", value: trainings.filter(t => t.defaultAssessment.enabled).length, Icon: FileText, accent: "amber" },
+        { id: "Monitored", label: "Monitored", value: trainings.filter(t => t.monitoringNotifications.enabled).length, Icon: Bell, accent: "emerald" },
+    ];
+    const kpiActive = required === "Required" ? "Required" : config || (!required && !status ? "all" : "");
+    const pickKpi = (id: string) => {
+        setPage(1);
+        if (id === "all") { setRequired(""); setConfig(""); return; }
+        if (id === "Required") { setConfig(""); setRequired(r => (r === "Required" ? "" : "Required")); return; }
+        setRequired(""); setConfig(c => (c === id ? "" : id));
+    };
+    useHeaderChips(chipsFromStats(stats, kpiActive, pickKpi));
+
+    const q = search.trim().toLowerCase();
+    const rows = trainings.filter(t => {
+        if (status && (t.status === "active" ? "Active" : "Inactive") !== status) return false;
+        if (required && (t.defaultMandatory ? "Required" : "Optional") !== required) return false;
+        if (config === "With assessment" && !t.defaultAssessment.enabled) return false;
+        if (config === "Monitored" && !t.monitoringNotifications.enabled) return false;
+        if (config === "Docs required" && !t.defaultDocuments.required) return false;
+        return !q || [t.name, t.category, ...t.tags].some(x => x.toLowerCase().includes(q));
+    });
+    const readers = useMemo(() => ({
+        name: (t: TrainingType) => t.name,
+        category: (t: TrainingType) => t.category,
+        status: (t: TrainingType) => (t.status === "active" ? 0 : 1),
+        required: (t: TrainingType) => (t.defaultMandatory ? 0 : 1),
+        due: (t: TrainingType) => t.defaultDueDays,
+        configuration: (t: TrainingType) => Number(t.defaultAssessment.enabled) + Number(t.monitoringNotifications.enabled) + Number(t.defaultDocuments.required),
+    }), []);
+    const { sort, onSort, sorted } = useTableSort<Col, TrainingType>(rows, readers, null);
+    const groupOf = (t: TrainingType): { rank: number; label: string } | null =>
+        groupBy === "category" ? { rank: TRAINING_CATEGORIES.indexOf(t.category), label: t.category }
+            : groupBy === "status" ? { rank: t.status === "active" ? 0 : 1, label: t.status === "active" ? "Active" : "Inactive" }
+                : groupBy === "required" ? { rank: t.defaultMandatory ? 0 : 1, label: t.defaultMandatory ? "Required" : "Optional" }
+                    : null;
+    const grouped = groupBy === "none" ? sorted : sorted
+        .map((t, i) => ({ t, i, g: groupOf(t)! }))
+        .sort((x, y) => x.g.rank - y.g.rank || x.i - y.i)
+        .map(x => x.t);
+    const groupCounts = new Map<string, number>();
+    if (groupBy !== "none") grouped.forEach(t => { const l = groupOf(t)!.label; groupCounts.set(l, (groupCounts.get(l) ?? 0) + 1); });
+
+    const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const slice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const show = (c: Col) => visible.has(c) && (c !== "category" || showCategory);
+    const colCount = COLUMNS.filter(c => c.locked || show(c.id)).length + 1;
+    const filterCount = [!!status, !!required, !!config, groupBy !== "none"].filter(Boolean).length;
+    const touched = filterCount > 0 || !!q;
+    const reset = () => { setSearch(""); setStatus(""); setRequired(""); setConfig(""); setGroupBy("none"); setPage(1); };
+    const toPage1 = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(1); };
+
+    return (
+        <ListScrollFrame
+            above={<KpiStatRow stats={stats} activeId={kpiActive} onPick={pickKpi} />}
+            title={tabLabel}
+            count={grouped.length}
+            total={trainings.length}
+            description="What each training requires — due days, delivery, assessment and monitoring. Click a row to see its details."
+            actions={<ColumnPicker columns={showCategory ? COLUMNS : COLUMNS.filter(c => c.id !== "category")} visible={visible}
+                onToggle={(id) => setVisible(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} />}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+            contentKey={`${filtersOpen}|${slice.length}`}
+            toolbar={
+                <ListToolbar search={search} onSearch={toPage1(setSearch)} placeholder="Search name, category, tag…"
+                    filters={<div className={mobileFold(filtersOpen)}>
+                        <FilterSelect value={status} onChange={toPage1(setStatus)} title="Status" allLabel="All statuses" options={["Active", "Inactive"]} />
+                        <FilterSelect value={required} onChange={toPage1(setRequired)} title="Required" allLabel="Required and optional" options={["Required", "Optional"]} />
+                        <FilterSelect value={config} onChange={toPage1(setConfig)} title="Configuration" allLabel="Any configuration" options={CONFIG_OPTIONS} />
+                    </div>}
+                    filtersExtra={<>
+                        <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen(o => !o)} count={filterCount} />
+                        <div className={mobileFold(filtersOpen)}>
+                            <GroupBySelect value={groupBy} onChange={toPage1(setGroupBy)} options={showCategory ? GROUPS : GROUPS.filter(g => g.id !== "category")} />
+                            <ResetFilters on={touched} onReset={reset} />
+                        </div>
+                    </>} />
+            }
+            footer={<TablePager page={safePage} pageSize={pageSize} total={grouped.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
+        >
+            <table className="w-full">
+                <thead>
+                    <tr>
+                        <SortTh col="name" label="Training name" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+                        {show("category") && <SortTh col="category" label="Category" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("status") && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("required") && <SortTh col="required" label="Required" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("due") && <SortTh col="due" label="Due days" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show("configuration") && <SortTh col="configuration" label="Configuration" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {slice.length === 0 && (
+                        <tr>
+                            <td colSpan={colCount} className="px-6 py-14 text-center">
+                                <GraduationCap className="mx-auto h-7 w-7 text-slate-300" />
+                                <p className="mt-3 text-sm font-semibold text-slate-700">{trainings.length ? "No training type matches" : "No training types here yet"}</p>
+                                {touched && (
+                                    <button type="button" onClick={reset} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Clear filters</button>
+                                )}
+                            </td>
+                        </tr>
+                    )}
+                    {slice.map((training, i) => {
+                        const g = groupOf(training);
+                        const prev = i === 0 || !g ? null : groupOf(slice[i - 1]);
+                        return (
+                            <Fragment key={training.id}>
+                                {g && (!prev || prev.label !== g.label) && (
+                                    <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={colCount} />
+                                )}
+                                <tr className="group cursor-pointer transition-colors hover:bg-slate-50" onClick={() => onView(training)}>
+                                    <TD>
+                                        <div className="flex items-center gap-2.5" title={[training.name, ...training.tags].join(" · ")}>
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><GraduationCap size={14} /></span>
+                                            <span className="font-semibold text-slate-900">{training.name}</span>
+                                            {training.tags.slice(0, 2).map(tag => (
+                                                <span key={tag} className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{tag}</span>
+                                            ))}
+                                            {training.tags.length > 2 && <span className="text-[10px] text-slate-400">+{training.tags.length - 2}</span>}
+                                        </div>
+                                    </TD>
+                                    {show("category") && <TD className="text-[13px] text-slate-600">{training.category}</TD>}
+                                    {show("status") && <TD><StatusBadge status={training.status} /></TD>}
+                                    {show("required") && <TD><MandatoryBadge mandatory={training.defaultMandatory} /></TD>}
+                                    {show("due") && (
+                                        <TD><span className="inline-flex items-center gap-1 text-slate-700"><Clock className="h-3 w-3 text-slate-400" /><span className="font-semibold tabular-nums">{training.defaultDueDays}</span></span></TD>
+                                    )}
+                                    {show("configuration") && (
+                                        <TD>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {training.defaultAssessment.enabled && <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700"><Check size={11} /> {training.defaultAssessment.passingScore}%</span>}
+                                                {training.monitoringNotifications.enabled && <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700"><Bell size={11} /> {formatRecurrence(training.monitoringNotifications.renewalRecurrence)}</span>}
+                                                {training.defaultDocuments.required && <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700"><FileText size={11} /> Docs</span>}
+                                                {!training.defaultAssessment.enabled && !training.monitoringNotifications.enabled && !training.defaultDocuments.required && <span className="text-xs text-slate-300">—</span>}
+                                            </span>
+                                        </TD>
+                                    )}
+                                    <td className={cn("px-4 py-2.5", PIN_TD_ACTIONS)} onClick={(e) => e.stopPropagation()}>
+                                        <RowActions noun="training type" name={training.name} openLabel="View details" onOpen={() => onView(training)} onEdit={() => onEdit(training)} />
+                                    </td>
+                                </tr>
+                            </Fragment>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </ListScrollFrame>
+    );
+}
 
 export default TrainingsPage;

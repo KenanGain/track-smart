@@ -88,6 +88,7 @@ export type DocDraft = Partial<RoadsideDoc>;
 export function docProblems(shelf: Shelf, d: DocDraft, hasFile: boolean, unitCount: number): string[] {
     const out: string[] = [];
     if (!hasFile) out.push("a file");
+    if (shelf === "remediation" && d.defectFound === undefined) out.push("whether a defect was found");
     if (shelf === "remediation" && !d.performedByName?.trim()) out.push("the name of the person who did it");
     if (shelf === "repairBills" && !d.vendorCompany?.trim() && !d.vendorName?.trim() && !d.performedByName?.trim()) {
         out.push("who did the work");
@@ -129,33 +130,57 @@ export function DocFields({ inspection, shelf, doc, onPatch }: {
         );
     }
 
-    // ── The re-inspection: when, and who ───────────────────────────────────
+    // ── The post-inspection DVIR: was a defect found, when, and who ─────────
     if (shelf === "remediation") {
+        const answered = doc.defectFound !== undefined;
         return (
-            <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                    <L>Remediation date</L>
-                    <input type="date" className={cn(FIELD, "mt-1.5")}
-                        value={doc.performedOn ?? ""}
-                        onChange={(e) => onPatch({ performedOn: e.target.value })} />
-                </div>
+            <div className="space-y-4">
                 {/*
-                 * One field, not a picker and a field.
-                 *
-                 * It used to ask "mechanic or driver?" and then ask for the name, which
-                 * made the person answer the same question twice in two shapes. Whoever
-                 * signed the sheet writes their name; what they are is said in the hint,
-                 * because it tells you what to write rather than making you classify it.
+                 * The question first. A DVIR exists to answer it, and the answer decides
+                 * what the office does next: "no defect" closes the loop, "defect found"
+                 * means the unit is still not right and the upload is the evidence of that.
                  */}
                 <div>
-                    <L required>Performed by</L>
-                    <input className={cn(FIELD, "mt-1.5")}
-                        value={doc.performedByName ?? ""}
-                        onChange={(e) => onPatch({ performedByName: e.target.value })}
-                        placeholder="Dale Foster" />
+                    <L required>Is there any defect?</L>
+                    <div className="mt-1.5 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                        {([true, false] as const).map((v) => {
+                            const on = doc.defectFound === v;
+                            return (
+                                <button key={String(v)} type="button" onClick={() => onPatch({ defectFound: v })}
+                                    className={cn("rounded-md px-4 py-1.5 text-[13px] font-semibold transition-colors",
+                                        on ? (v ? "bg-rose-600 text-white shadow-sm" : "bg-emerald-600 text-white shadow-sm") : "text-slate-500 hover:text-slate-700")}>
+                                    {v ? "Yes" : "No"}
+                                </button>
+                            );
+                        })}
+                    </div>
                     <p className="mt-1 text-[11px] text-slate-400">
-                        The mechanic or the driver who did the re-inspection, by name.
+                        {!answered ? "What the DVIR says — then attach it below."
+                            : doc.defectFound ? "A defect was still found: the unit is not back in service until it is put right."
+                                : "No defect found: the unit is back in service once this is on file."}
                     </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <L>DVIR date</L>
+                        <input type="date" className={cn(FIELD, "mt-1.5")}
+                            value={doc.performedOn ?? ""}
+                            onChange={(e) => onPatch({ performedOn: e.target.value })} />
+                    </div>
+                    {/*
+                     * One field, not a picker and a field: whoever signed the sheet writes
+                     * their name, and the hint says what they are.
+                     */}
+                    <div>
+                        <L required>Performed by</L>
+                        <input className={cn(FIELD, "mt-1.5")}
+                            value={doc.performedByName ?? ""}
+                            onChange={(e) => onPatch({ performedByName: e.target.value })}
+                            placeholder="Dale Foster" />
+                        <p className="mt-1 text-[11px] text-slate-400">
+                            The mechanic or the driver who did the post-inspection DVIR, by name.
+                        </p>
+                    </div>
                 </div>
             </div>
         );

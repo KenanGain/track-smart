@@ -12,6 +12,7 @@ import { TableGroupBand } from '@/components/ui/ListChrome';
 import { useDriverDqFiles } from '@/pages/dq-files/dq-driver-files.data';
 import { driverTypeLabel } from '@/pages/settings/settings-dq-checklists.data';
 import { SubTabs } from '@/components/ui/SubTabs';
+import { TabScroller } from '@/components/ui/TabScroller';
 import {
     Building2, Truck, User, Layers, Search, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
@@ -888,10 +889,11 @@ export function DefaultComplianceDataPage({ accountId, onNavigate }: { accountId
         const id = consumePendingRecord('/default-compliance-documents');
         if (!id) return;
         const [ent, subj, rec] = id.split('|');
-        if (!rec) return;
+        if (!ent) return;
         if (ent === 'Carrier' || ent === 'Asset' || ent === 'Driver') setEntity(ent);
         setSelectedSubject(ent && ent !== 'Carrier' ? (subj || null) : null);
-        setFocusRecordId(rec);
+        // With a record the detail opens; without one the subject's list is enough.
+        if (rec) setFocusRecordId(rec);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1819,11 +1821,12 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                 <div className="border-b border-slate-100">
                     <div className="flex items-end gap-3 px-4 pt-3">
                         {!hideCategoryTabs && (
-                        <div className="-mb-px flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
+                        // The rail pages with arrows instead of a browser scrollbar (TabScroller).
+                        <TabScroller className="min-w-0 flex-1" navClassName="items-end gap-1" ariaLabel="Record categories" activeKey={String(category)}>
                             {categoryTabs.map(t => {
                                 const active = category === t.id;
                                 return (
-                                    <button key={String(t.id)} type="button" onClick={() => setCategory(t.id)}
+                                    <button key={String(t.id)} type="button" onClick={() => setCategory(t.id)} data-tab-active={active}
                                         title={`${t.label} — ${t.count} ${t.count === 1 ? 'record' : 'records'}`}
                                         className={cn('inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-[13px] font-medium transition-colors',
                                             active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
@@ -1832,7 +1835,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                                     </button>
                                 );
                             })}
-                        </div>
+                        </TabScroller>
                         )}
                         <div className={cn('shrink-0 pb-2', hideCategoryTabs && 'ml-auto')}>
                             <EnablementSwitch value={enablementView} onChange={setEnablementView}
@@ -3972,6 +3975,17 @@ function ExtraFieldInput({ def, value, onChange, inputCls, name, currency, onCur
         // A short either/or set reads better fully visible than hidden behind a dropdown.
         if (def.control === 'radio') {
             return <RadioChoice name={name} value={value} options={def.options} onChange={onChange} />;
+        }
+        // A long list is typed into and matched as you go, with the whole list a click away.
+        if (def.control === 'search') {
+            const listId = `${name}-options`;
+            return (
+                <>
+                    <input list={listId} value={value} onChange={e => onChange(e.target.value)}
+                        placeholder={def.placeholder ?? `Search ${def.label.toLowerCase()}`} className={inputCls} />
+                    <datalist id={listId}>{def.options.map(o => <option key={o} value={o} />)}</datalist>
+                </>
+            );
         }
         return (
             <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>

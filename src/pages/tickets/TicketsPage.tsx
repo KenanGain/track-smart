@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import {
     Search,
     FileText,
-    Edit2,
     Eye,
     Plus,
     Scale,
@@ -33,10 +32,13 @@ import { consumePendingRecord, setMessagesFocus, type RecordRef } from '@/pages/
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
-import { type TicketStatus, type ViolationType, type TicketRecord } from './tickets.data';
+import { type ViolationType, type TicketRecord } from './tickets.data';
 import { useCarrierTickets, addTicket, updateTicket, removeTicket, buildTicketFromViolation, type ViolationLike } from './tickets.store';
 import { TicketEditForm, type TicketFormDraft } from './TicketEditForm';
 import { TicketDetailPage } from './TicketDetailPage';
+import { TicketStatusSelect } from './ticket-status';
+import { resolveTicketVehicle, vehicleLine } from './ticket-vehicles';
+import { Pencil } from 'lucide-react';
 import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import { ListPageHeader } from '@/components/ui/ListPageHeader';
 import { CA_PROVINCE_ABBREVS } from '@/data/geo-data';
@@ -153,6 +155,9 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
     const { scrollRef, condensed, onScroll } = useCondensingHeader(basicTab);
     const [subCatFilter, setSubCatFilter] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    // Opened from somewhere that named a ticket — a roadside inspection's citation, a
+    // monitoring alert — this lands on that ticket rather than on the list.
+    useEffect(() => { const id = consumePendingRecord('/tickets'); if (id) setExpandedId(id); }, []);
     // Back closes the ticket rather than leaving the app.
     useBackAwareView(!!expandedId, () => setExpandedId(null), "ticket");
     // Ticket awaiting a Remove confirmation. Null when the dialog is closed.
@@ -238,7 +243,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
     const stats = useMemo(() => {
         const outstandingFines = tickets
             .filter(t => t.status === 'Due' || t.status === 'In Court')
-            .reduce((s, t) => s + (t.fineAmount || 0), 0);
+            .reduce((s, t) => s + (t.fineAmount || 0) + (t.legalExpense || 0), 0);
         const openOffenses = tickets.filter(t => t.status === 'Due').length;
         const inCourt = tickets.filter(t => t.status === 'In Court').length;
         const thisMonth = new Date().toISOString().slice(0, 7);
@@ -247,19 +252,6 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
         return { total: tickets.length, outstandingFines, openOffenses, inCourt, paidThisMonth, electronic };
     }, [tickets]);
 
-    const getStatusBadge = (status: TicketStatus) => {
-        const styles = {
-            'Due': 'bg-yellow-100 text-yellow-800',
-            'In Court': 'bg-blue-100 text-blue-800',
-            'Paid': 'bg-green-100 text-green-800',
-            'Closed': 'bg-slate-100 text-slate-800'
-        };
-        return (
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[status]}`}>
-                {status}
-            </span>
-        );
-    };
 
     const getViolationBadge = (type: ViolationType) => {
         const styles: Record<string, string> = {
@@ -343,27 +335,6 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
         return matchesSearch && matchesStatus && matchesViolation && matchesDocType && matchesSource && matchesFrom && matchesTo;
     });
 
-    // Doc-type chip styling per primary doc type id — matches the colour
-    // language used elsewhere (paper = blue, electronic = violet, etc).
-    const getDocTypeBadge = (ticket: TicketRecord) => {
-        const id = (ticket as any).primaryDocTypeId
-            ?? (ticket.ticketKind === 'Electronic' ? 'viol_eticket' : 'viol_ticket');
-        const label = (ticket as any).primaryDocTypeLabel
-            ?? DOC_TYPE_OPTIONS.find(d => d.id === id)?.label
-            ?? '—';
-        const palette: Record<string, string> = {
-            viol_ticket:            'bg-blue-50 text-blue-700 border-blue-200',
-            viol_eticket:           'bg-violet-50 text-violet-700 border-violet-200',
-            viol_summons:           'bg-amber-50 text-amber-700 border-amber-200',
-            viol_officer_report:    'bg-slate-100 text-slate-700 border-slate-200',
-            viol_fine_receipt:      'bg-emerald-50 text-emerald-700 border-emerald-200',
-            viol_court_disposition: 'bg-rose-50 text-rose-700 border-rose-200',
-        };
-        const cls = palette[id] ?? 'bg-slate-50 text-slate-600 border-slate-200';
-        return (
-            <span className={`px-2 py-1 rounded text-[11px] font-medium border ${cls}`}>{label}</span>
-        );
-    };
 
     const resetFilters = () => {
         setSearchTerm('');
@@ -400,6 +371,13 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                     driverId: editingTicket.driverId,
                     driverName: editingTicket.driverName,
                     assetId: editingTicket.assetId,
+                    vehicle: editingTicket.vehicle,
+                    vehicle2: editingTicket.vehicle2,
+                    legalExpense: editingTicket.legalExpense,
+                    dueDate: editingTicket.dueDate,
+                    finalDate: editingTicket.finalDate,
+                    dueMonitoring: editingTicket.dueMonitoring,
+                    finalMonitoring: editingTicket.finalMonitoring,
                     locationStreet: editingTicket.description,
                     locationCity: city.trim(),
                     locationState: state,
@@ -464,14 +442,20 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                         time: draft.time,
                         driverId: draft.driverId,
                         driverName: draft.driverName,
-                        assetId: draft.assetId,
+                        assetId: draft.vehicle?.assetId ?? draft.assetId,
+                        vehicle: draft.vehicle,
+                        vehicle2: draft.vehicle2,
+                        dueDate: draft.dueDate,
+                        finalDate: draft.finalDate,
+                        dueMonitoring: draft.dueMonitoring,
+                        finalMonitoring: draft.finalMonitoring,
                         locationStreet: draft.locationStreet,
                         locationCity: draft.locationCity,
                         locationState: draft.locationState,
                         locationZip: draft.locationZip,
                         locationCountry: draft.locationCountry,
                         fineAmount: draft.fineAmount,
-                        expenseAmount: draft.expenseAmount,
+                        expenseAmount: draft.legalExpense,
                         currency: draft.currency,
                         status: draft.status,
                         category: draft.violationType,
@@ -574,16 +558,18 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                 onTabChange={id => { setBasicTab(id as (typeof BASIC_TABS)[number]['key']); setSubCatFilter(null); setPage(1); setExpandedId(null); }}
                 actions={<>
                     <button
-                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
+                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 sm:px-4 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50', condensed ? 'h-8' : 'h-9')}
+                        title="Export" aria-label="Export"
                         onClick={() => { /* CSV export hook lands later */ }}
                     >
-                        <Download className="w-4 h-4" /> Export
+                        <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export</span>
                     </button>
                     <button
                         onClick={handleAdd}
-                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500', condensed ? 'h-8' : 'h-9')}
+                        className={cn('inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 sm:px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700', condensed ? 'h-8' : 'h-9')}
+                        title="Add Ticket"
                     >
-                        <Plus className="w-4 h-4" /> Add Ticket
+                        <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Ticket</span><span className="sm:hidden">Add</span>
                     </button>
                 </>}
             />
@@ -594,7 +580,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                 <div className="p-4 space-y-4">
 
                 {/* KPI Cards — vertical color bar, matches ViolationsListPage */}
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
                     <KPICard
                         label="Total Tickets"
                         value={stats.total.toLocaleString()}
@@ -742,7 +728,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                             <div className={cn('w-1.5 shrink-0', isOk ? 'bg-emerald-500' : 'bg-amber-500')} />
                             <div className="flex-1 min-w-0">
                                 <div className="px-4 py-3 flex items-start justify-between gap-4 flex-wrap">
-                                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                                    <div className="flex items-start gap-3 min-w-0 flex-1 basis-full sm:basis-[22rem]">
                                         <div className={cn(
                                             'h-8 w-8 rounded-lg flex items-center justify-center shrink-0',
                                             isOk ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600',
@@ -1213,7 +1199,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                                 <input
                                     className="w-full h-8 pl-8 pr-3 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                                    placeholder="Search offense #, ticket #, driver, asset, location…"
+                                    placeholder="Search ticket citation #, driver, vehicle, location…"
                                     value={searchTerm}
                                     onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
                                 />
@@ -1230,9 +1216,9 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                         </div>
 
                         {/* Filter row 2 — date range + dropdowns */}
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <div className="relative">
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+                            <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
+                                <div className="relative min-w-0 flex-1 sm:flex-none">
                                     <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     <input
                                         type="date"
@@ -1240,11 +1226,11 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                         max={dateTo || undefined}
                                         onChange={e => { setDateFrom(e.target.value); setPage(1); }}
                                         aria-label="From date"
-                                        className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
                                     />
                                 </div>
                                 <span className="text-slate-400">-</span>
-                                <div className="relative">
+                                <div className="relative min-w-0 flex-1 sm:flex-none">
                                     <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     <input
                                         type="date"
@@ -1252,13 +1238,13 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                         min={dateFrom || undefined}
                                         onChange={e => { setDateTo(e.target.value); setPage(1); }}
                                         aria-label="To date"
-                                        className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
                                     />
                                 </div>
                             </div>
 
                             <select
-                                className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="h-9 w-full min-w-0 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:w-auto"
                                 value={statusFilter}
                                 onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
                             >
@@ -1269,7 +1255,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                 <option>Closed</option>
                             </select>
                             <select
-                                className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="h-9 w-full min-w-0 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:w-auto"
                                 value={violationFilter}
                                 onChange={e => { setViolationFilter(e.target.value); setPage(1); }}
                             >
@@ -1277,7 +1263,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                 {VIOLATION_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                             <select
-                                className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="h-9 w-full min-w-0 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:w-auto"
                                 value={docTypeFilter}
                                 onChange={e => { setDocTypeFilter(e.target.value); setPage(1); }}
                             >
@@ -1285,7 +1271,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                                 {DOC_TYPE_OPTIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
                             </select>
                             <select
-                                className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="h-9 w-full min-w-0 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:w-auto"
                                 value={sourceFilter}
                                 onChange={e => { setSourceFilter(e.target.value as typeof sourceFilter); setPage(1); }}
                                 title="Filter by regulator source"
@@ -1302,183 +1288,100 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                     <div className="border-t border-slate-200" />
 
                     {/* Data Table */}
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    {/* Phone: one card per ticket (below). From md up: the table — wider than the
+                        screen when it has to be, scrolling sideways, with the citation pinned left
+                        and the ⋮ actions pinned right so neither scrolls out of reach. */}
+                    <div className="hidden overflow-x-auto md:block">
+                        {/* One line per ticket, the facts in columns, every action behind the ⋮.
+                            The status pill is the control that changes it. */}
+                        <table className="w-full min-w-[1400px] table-fixed text-left border-separate border-spacing-0">
                             <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200">
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Offense #</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Ticket #</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date & Time</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Location</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Asset</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Driver</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Violation</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Document Type</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Fine</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-center">Status</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-center">Docs</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap text-right">Actions</th>
+                                <tr className="bg-slate-50">
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[168px] pl-5 bg-slate-50 border-b border-slate-200 sticky left-0 z-10 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.12)]">Ticket citation #</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[132px] border-b border-slate-200">Date</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[150px] border-b border-slate-200">Driver</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[180px] border-b border-slate-200">Vehicle</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[140px] border-b border-slate-200">Location</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap border-b border-slate-200">Violation</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[108px] text-right border-b border-slate-200">Fine</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[132px] border-b border-slate-200">Status</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[96px] text-center border-b border-slate-200">Docs</th>
+                                    <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap w-[76px] text-center bg-slate-50 border-b border-slate-200 sticky right-0 z-10 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody>
                                 {pageRows.map((ticket) => {
-                                    const isViewing = expandedId === ticket.id;
+                                    const v1 = resolveTicketVehicle(ticket, accountId);
+                                    const v2 = resolveTicketVehicle(ticket, accountId, 2);
+                                    const vehicleText = vehicleLine(v1);
+                                    const vehicleTitle = [v1 && `Vehicle 1: ${vehicleLine(v1)}${v1.vin ? ` · VIN ${v1.vin}` : ''}`, v2 && `Vehicle 2: ${vehicleLine(v2)}`].filter(Boolean).join('\n');
+                                    const violationTitle = ticket.violations?.length ? ticket.violations.map(v => v.label).join(' · ') : (ticket.violationSubtype || ticket.violationType);
+                                    const actions = [
+                                        { label: 'Open ticket', icon: Eye, onClick: () => setExpandedId(ticket.id) },
+                                        { label: 'Edit ticket', icon: Pencil, onClick: () => handleEdit(ticket) },
+                                        { label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(ticketRef(ticket)) },
+                                        { label: 'Delete ticket', icon: Trash2, danger: true, onClick: () => setRemoveCandidate(ticket) },
+                                    ];
                                     return (
                                     <tr
                                         key={ticket.id}
                                         className="hover:bg-slate-50 transition-colors group cursor-pointer"
                                         onClick={() => setExpandedId(ticket.id)}
                                     >
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer">{ticket.offenseNumber}</span>
-                                                {/* Ticket-kind chip — Paper (blue) vs Electronic (violet).
-                                                    Defaults to Paper for legacy records (undefined). */}
-                                                <span
-                                                    className={`inline-flex w-fit items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
-                                                        ticket.ticketKind === 'Electronic'
-                                                            ? 'bg-violet-50 text-violet-700 border-violet-200'
-                                                            : 'bg-blue-50 text-blue-700 border-blue-200'
-                                                    }`}
-                                                >
-                                                    {ticket.ticketKind === 'Electronic' ? 'eTicket' : 'Ticket'}
+                                        <td className="px-4 py-3 pl-5 whitespace-nowrap border-b border-slate-100 bg-white group-hover:bg-slate-50 sticky left-0 z-10 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.12)]">
+                                            <span className="flex min-w-0 items-center gap-2">
+                                                <span className="truncate text-sm font-semibold text-blue-600 group-hover:underline" title={ticket.offenseNumber}>{ticket.offenseNumber}</span>
+                                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${ticket.ticketKind === 'Electronic' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                                    {ticket.ticketKind === 'Electronic' ? 'eTicket' : 'Paper'}
                                                 </span>
-                                            </div>
+                                            </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-mono font-medium text-slate-800">
-                                                    {ticket.identifiers?.ticketNumber || <span className="text-slate-300 font-sans italic font-normal">—</span>}
-                                                </span>
-                                                {ticket.identifiers?.violationCode && (
-                                                    <span className="text-[10px] text-slate-400 font-mono">code {ticket.identifiers.violationCode}</span>
+                                        <td className="px-4 py-3 whitespace-nowrap text-[13px] tabular-nums text-slate-900 border-b border-slate-100">
+                                            {ticket.date}{ticket.time && ticket.time !== '00:00' ? <span className="ml-1.5 text-[11px] text-slate-400">{ticket.time}</span> : null}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <span className="block truncate text-[13px] font-medium text-slate-800" title={`${ticket.driverName}${ticket.driverId ? ` · ${ticket.driverId}` : ''}`}>{ticket.driverName || <span className="text-slate-300">—</span>}</span>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <span className="block truncate text-[13px] text-slate-700" title={vehicleTitle || undefined}>
+                                                {vehicleText ? <>{vehicleText}{v2?.unitNumber && <span className="ml-1.5 rounded bg-slate-100 px-1 text-[10px] font-bold text-slate-500" title={`Vehicle 2: ${vehicleLine(v2)}`}>+ {v2.unitNumber}</span>}</> : <span className="text-slate-300">—</span>}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <span className="block truncate text-[13px] text-slate-700" title={[ticket.location, ticket.description].filter(Boolean).join(' — ')}>{ticket.location || <span className="text-slate-300">—</span>}</span>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <span className="flex min-w-0 items-center gap-1.5" title={violationTitle}>
+                                                {getViolationBadge(ticket.violationType)}
+                                                {ticket.violationSubtype && <span className="truncate text-[12px] text-slate-600">{ticket.violationSubtype}</span>}
+                                                {ticket.violations && ticket.violations.length > 1 && (
+                                                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">+{ticket.violations.length - 1}</span>
                                                 )}
-                                            </div>
+                                                {ticket.isOos && <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">OOS</span>}
+                                            </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-slate-900">{ticket.date}</span>
-                                                <span className="text-xs text-slate-500">{ticket.time}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="whitespace-nowrap text-sm font-medium text-slate-900">{ticket.location.split(',')[0]}</span>
-                                                <span className="text-xs text-slate-500 truncate max-w-[150px]" title={ticket.description}>
-                                                    {ticket.location.split(',')[1] || ''}
-                                                    {ticket.description}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-900 whitespace-nowrap">{ticket.assetId}</td>
-                                        <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">{ticket.driverName}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col gap-1.5 min-w-[220px]">
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                    {getViolationBadge(ticket.violationType)}
-                                                    {ticket.violations && ticket.violations.length > 1 && (
-                                                        <span
-                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200"
-                                                            title={ticket.violations.map(v => v.label).join(' · ')}
-                                                        >
-                                                            +{ticket.violations.length - 1} more
-                                                        </span>
-                                                    )}
-                                                    {ticket.isOos && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
-                                                            OOS
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {ticket.violationSubtype && (
-                                                    <span
-                                                        className="text-[11px] text-slate-700 leading-tight truncate max-w-[260px]"
-                                                        title={ticket.violationSubtype}
-                                                    >
-                                                        {ticket.violationSubtype}
-                                                    </span>
-                                                )}
-                                                {(ticket.violationCategory || ticket.violationGroup) && (
-                                                    <div className="flex items-center gap-1 flex-wrap">
-                                                        {ticket.violationCategory && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                                                {ticket.violationCategory}
-                                                            </span>
-                                                        )}
-                                                        {ticket.violationGroup && (
-                                                            <>
-                                                                <span className="text-[10px] text-slate-300">/</span>
-                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                                                    {ticket.violationGroup}
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {getDocTypeBadge(ticket)}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-900 whitespace-nowrap">
+                                        <td className="px-4 py-3 whitespace-nowrap text-right text-[13px] font-bold tabular-nums text-slate-900 border-b border-slate-100" title={ticket.legalExpense ? `Fine ${ticket.fineAmount.toFixed(2)} + legal expense ${ticket.legalExpense.toFixed(2)}` : undefined}>
                                             {ticket.currency === 'CAD' ? 'CA$' : '$'}{ticket.fineAmount.toFixed(2)}
                                         </td>
-                                        <td className="px-6 py-4 text-center whitespace-nowrap">
-                                            {getStatusBadge(ticket.status)}
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <TicketStatusSelect value={ticket.status} onChange={(status) => updateTicket(ticket.id, { status })} />
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-center gap-3">
-                                                 <span title="Offense Ticket">
-                                                     <FileText className={`w-4 h-4 cursor-pointer hover:scale-110 transition-transform ${ticket.hasTicketFile ? 'text-green-600' : 'text-slate-200'}`} />
-                                                 </span>
-                                                 <span title="Payment Receipt">
-                                                     <FileCheck className={`w-4 h-4 cursor-pointer hover:scale-110 transition-transform ${ticket.hasReceiptFile ? 'text-green-600' : 'text-slate-200'}`} />
-                                                 </span>
-                                                 <span title="Notice of Trial">
-                                                     <Scale className={`w-4 h-4 cursor-pointer hover:scale-110 transition-transform ${ticket.hasNoticeFile ? 'text-gray-600' : 'text-slate-200'}`} />
-                                                 </span>
+                                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                                            <div className="flex items-center justify-center gap-2.5">
+                                                <span title="Offense ticket"><FileText className={`w-4 h-4 ${ticket.hasTicketFile ? 'text-emerald-600' : 'text-slate-200'}`} /></span>
+                                                <span title="Payment receipt"><FileCheck className={`w-4 h-4 ${ticket.hasReceiptFile ? 'text-emerald-600' : 'text-slate-200'}`} /></span>
+                                                <span title="Notice of trial"><Scale className={`w-4 h-4 ${ticket.hasNoticeFile ? 'text-slate-600' : 'text-slate-200'}`} /></span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); setExpandedId(ticket.id); }}
-                                                    className={cn(
-                                                        'p-1.5 rounded-md transition-colors',
-                                                        isViewing
-                                                            ? 'text-blue-700 bg-blue-50'
-                                                            : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'
-                                                    )}
-                                                    title="View details"
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); handleEdit(ticket); }}
-                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                                    title="Edit ticket"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); setRemoveCandidate(ticket); }}
-                                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                                                    title="Remove ticket"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                                <KebabMenu items={[{ label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(ticketRef(ticket)) }]} />
-                                            </div>
+                                        <td className="px-2 py-3 text-center border-b border-slate-100 bg-white group-hover:bg-slate-50 sticky right-0 z-10 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex justify-center"><KebabMenu title={`Actions for ${ticket.offenseNumber}`} items={actions} /></div>
                                         </td>
                                     </tr>
                                     );
                                 })}
                                 {pageRows.length === 0 && (
                                     <tr>
-                                        <td colSpan={12} className="px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
                                             <div className="flex flex-col items-center gap-2">
                                                 <Search className="w-8 h-8 text-slate-300" />
                                                 <p>No tickets found matching your criteria.</p>
@@ -1489,6 +1392,70 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Phone: one card per ticket — citation and ⋮ on top, the violation, the four
+                        facts in two columns, then the fine beside the status control. */}
+                    <ul className="divide-y divide-slate-100 md:hidden">
+                        {pageRows.map((ticket) => {
+                            const v1 = resolveTicketVehicle(ticket, accountId);
+                            const v2 = resolveTicketVehicle(ticket, accountId, 2);
+                            const actions = [
+                                { label: 'Open ticket', icon: Eye, onClick: () => setExpandedId(ticket.id) },
+                                { label: 'Edit ticket', icon: Pencil, onClick: () => handleEdit(ticket) },
+                                { label: 'Share to chat', icon: Share2, onClick: () => setShareRecord(ticketRef(ticket)) },
+                                { label: 'Delete ticket', icon: Trash2, danger: true, onClick: () => setRemoveCandidate(ticket) },
+                            ];
+                            const fact = (k: string, v?: string) => (
+                                <div className="min-w-0">
+                                    <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{k}</dt>
+                                    <dd className="truncate text-[13px] text-slate-700" title={v}>{v || <span className="text-slate-300">—</span>}</dd>
+                                </div>
+                            );
+                            return (
+                                <li key={ticket.id} className="px-4 py-3.5 active:bg-slate-50" onClick={() => setExpandedId(ticket.id)}>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <span className="truncate text-[15px] font-semibold text-blue-600">{ticket.offenseNumber}</span>
+                                            <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${ticket.ticketKind === 'Electronic' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                                {ticket.ticketKind === 'Electronic' ? 'eTicket' : 'Paper'}
+                                            </span>
+                                            {ticket.isOos && <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold bg-red-50 text-red-700 border border-red-200">OOS</span>}
+                                        </div>
+                                        <div className="-mr-1 -mt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                            <KebabMenu title={`Actions for ${ticket.offenseNumber}`} items={actions} />
+                                        </div>
+                                    </div>
+                                    <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                                        {getViolationBadge(ticket.violationType)}
+                                        {ticket.violationSubtype && <span className="truncate text-[12px] text-slate-600">{ticket.violationSubtype}</span>}
+                                        {ticket.violations && ticket.violations.length > 1 && (
+                                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">+{ticket.violations.length - 1}</span>
+                                        )}
+                                    </div>
+                                    <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
+                                        {fact('Driver', ticket.driverName)}
+                                        {fact('Vehicle', [vehicleLine(v1), v2?.unitNumber && `+ ${v2.unitNumber}`].filter(Boolean).join(' '))}
+                                        {fact('Date', `${ticket.date}${ticket.time && ticket.time !== '00:00' ? ` · ${ticket.time}` : ''}`)}
+                                        {fact('Location', ticket.location)}
+                                    </dl>
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[15px] font-bold tabular-nums text-slate-900">{ticket.currency === 'CAD' ? 'CA$' : '$'}{ticket.fineAmount.toFixed(2)}</span>
+                                            <span className="flex items-center gap-1.5" aria-label="Documents on file">
+                                                <FileText className={`h-3.5 w-3.5 ${ticket.hasTicketFile ? 'text-emerald-600' : 'text-slate-200'}`} />
+                                                <FileCheck className={`h-3.5 w-3.5 ${ticket.hasReceiptFile ? 'text-emerald-600' : 'text-slate-200'}`} />
+                                                <Scale className={`h-3.5 w-3.5 ${ticket.hasNoticeFile ? 'text-slate-600' : 'text-slate-200'}`} />
+                                            </span>
+                                        </div>
+                                        <TicketStatusSelect value={ticket.status} onChange={(status) => updateTicket(ticket.id, { status })} />
+                                    </div>
+                                </li>
+                            );
+                        })}
+                        {pageRows.length === 0 && (
+                            <li className="px-6 py-12 text-center text-sm text-slate-500">No tickets found matching your criteria.</li>
+                        )}
+                    </ul>
 
                     {/* Pagination footer — same shape as ViolationsListPage. */}
                     {filteredTickets.length > 0 && (
@@ -1558,10 +1525,7 @@ export const TicketsPage = ({ accountId, onNavigate }: { accountId?: string; onN
                             <div className="min-w-0 flex-1">
                                 <h3 className="text-base font-bold text-slate-900">Remove this ticket?</h3>
                                 <p className="text-sm text-slate-600 mt-1">
-                                    Offense <span className="font-mono font-semibold">{removeCandidate.offenseNumber}</span>
-                                    {removeCandidate.identifiers?.ticketNumber && (
-                                        <> (ticket <span className="font-mono">{removeCandidate.identifiers.ticketNumber}</span>)</>
-                                    )} will be removed from your ledger. This cannot be undone.
+                                    Ticket citation <span className="font-mono font-semibold">{removeCandidate.offenseNumber}</span> will be removed from your ledger. This cannot be undone.
                                 </p>
                             </div>
                         </div>

@@ -1,0 +1,326 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/drivers.json",
+  "title": "drivers",
+  "description": "One document per driver. The Add / Edit Driver form (the hiring application in page mode) writes it section by section. Personal data: `ssn` is stored encrypted with only the last four in clear; `dob` and licence numbers are personal too.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"DRV-001-0010\" style id."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "driverType": {
+      "type": "string",
+      "description": "Picked at the top of the form; drives labels and the HOS window.",
+      "enum": [
+        "us-only",
+        "canada-only",
+        "cross-border"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "description": "The inline status pill.",
+      "enum": [
+        "Active",
+        "On Leave",
+        "Inactive",
+        "Terminated"
+      ],
+      "default": "Active"
+    },
+    "firstName": {
+      "type": "string"
+    },
+    "middleName": {
+      "type": "string",
+      "default": ""
+    },
+    "lastName": {
+      "type": "string"
+    },
+    "suffix": {
+      "type": "string",
+      "default": ""
+    },
+    "name": {
+      "type": "string",
+      "description": "\"First Last\", kept for search and lists."
+    },
+    "avatarInitials": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "description": "Unique per carrier when set.",
+      "default": ""
+    },
+    "phone": {
+      "type": "string",
+      "default": ""
+    },
+    "cellPhone": {
+      "type": "string",
+      "default": ""
+    },
+    "dob": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of birth."
+    },
+    "ssnEncrypted": {
+      "type": "string",
+      "description": "SSN / SIN encrypted at rest (AES-256-GCM, key outside the DB)."
+    },
+    "ssnLast4": {
+      "type": "string",
+      "description": "Last four digits for display (\"•••-••-6129\").",
+      "default": ""
+    },
+    "gender": {
+      "type": "string",
+      "default": ""
+    },
+    "citizenship": {
+      "type": "string",
+      "default": ""
+    },
+    "authorizedToWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "us": {
+          "type": "boolean",
+          "description": "Legal right to work in the United States.",
+          "default": false
+        },
+        "ca": {
+          "type": "boolean",
+          "description": "Legal right to work in Canada.",
+          "default": false
+        }
+      }
+    },
+    "position": {
+      "type": "string",
+      "description": "Position type (\"Company Driver\").",
+      "default": ""
+    },
+    "operatesInUS": {
+      "type": "boolean",
+      "description": "\"Will this driver operate in or cross into the United States?\"",
+      "default": false
+    },
+    "hiredDate": {
+      "type": "string",
+      "format": "date",
+      "description": "Start date; every tenure / DQ clock counts from it."
+    },
+    "dateAdded": {
+      "type": "string",
+      "format": "date",
+      "description": "When the record was entered (on or after `hiredDate`). The \"Added to fleet\" column."
+    },
+    "terminal": {
+      "type": "string",
+      "description": "Home terminal label.",
+      "default": ""
+    },
+    "carrierCode": {
+      "type": "string",
+      "description": "Carrier-internal driver code.",
+      "default": ""
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street line, as written on the record.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "description": "City.",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province code (DE, ON).",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "description": "ZIP or postal code.",
+          "default": ""
+        },
+        "country": {
+          "type": "string",
+          "description": "\"United States\" or \"Canada\".",
+          "enum": [
+            "United States",
+            "Canada"
+          ],
+          "default": "United States"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit / apt.",
+          "default": ""
+        },
+        "addr2": {
+          "type": "string",
+          "description": "Building, floor.",
+          "default": ""
+        }
+      }
+    },
+    "resided3Years": {
+      "type": "boolean",
+      "description": "\"Residence 3+ years?\"",
+      "default": true
+    },
+    "previousResidences": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ address, unit, country, city, state, zip, startDate, endDate }` when `resided3Years` is false.",
+      "default": []
+    },
+    "emergencyContacts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ name, relation, phone, email }`; the form captures the first.",
+      "default": []
+    },
+    "licenses": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Repeatable: `{ number, country, authority, class, issueDate, expiryDate, medicalExpiry, current, commercial, endorsements[], restricted, restrictions, isPrimary, status, frontDocumentId, backDocumentId }`. `class` is one of \"Class 1 / A\" … \"Class M\".",
+      "default": []
+    },
+    "licensePrimary": {
+      "type": "object",
+      "description": "`{ number, state, expiry }` copied from the primary licence for lists."
+    },
+    "disqualification": {
+      "type": "object",
+      "description": "Six questions keyed `denied, drivingWhileSuspended, alcoholOffense, substanceOffense, reckless, failedDotTest` → `{ answer: \"Yes\"|\"No\", when: {m,y}, explain, documentId }`.",
+      "default": {}
+    },
+    "travel": {
+      "type": "object",
+      "description": "`{ citizenshipCountry, workAuthUS, workAuthCA, passport{ number, country, expiry, documentId }, visa{ has, number, type, expiry, documentId, monitor, reminderDays[] }, workPermit{…}, twic{ has, number, expiry, documentId }, fast{…} }`. Each document is also filed as a compliance record.",
+      "default": {}
+    },
+    "drivingExperience": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ equipmentClass, freightTypes[], regions[], from, to, miles, ownerOperator }`.",
+      "default": []
+    },
+    "employment": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ company, start, end, address…, telephone, position, reasonLeaving, terminated, current, mayContact, operatedCMV, subjectFMCSR, safetySensitive, documentIds[] }`.",
+      "default": []
+    },
+    "employmentGaps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ start, end, comments }`.",
+      "default": []
+    },
+    "education": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ school, start, end, city, state, country, telephone, study, graduation }`.",
+      "default": []
+    },
+    "accidents": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ date, type, state, commercialVehicle, atFault, ticketed, details }`.",
+      "default": []
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ date, charge, state, commercialVehicle, penalty, fineAmount }`.",
+      "default": []
+    },
+    "military": {
+      "type": "object",
+      "description": "`{ served, country, branch, start, end, rank, dd214, dd214DocumentId }`."
+    },
+    "hos": {
+      "type": "object",
+      "description": "`{ days: { \"YYYY-MM-DD\": hours }, note }` — 8 days (US) or 14 (Canada / cross-border) before `hiredDate`."
+    },
+    "signature": {
+      "type": "object",
+      "description": "`{ declarationAccepted, applicantName, signedDate, signatureDocumentId, certified }`."
+    },
+    "dqCompletionPct": {
+      "type": "integer",
+      "description": "Computed: DQ file completeness. The \"DQ File\" column.",
+      "default": 0
+    },
+    "complianceMissing": {
+      "type": "integer",
+      "description": "Computed: required records missing. The \"n missing\" chip.",
+      "default": 0
+    },
+    "deletedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Soft delete (TO CONFIRM) — keeps compliance history readable."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "driverType",
+    "status",
+    "firstName",
+    "lastName",
+    "name",
+    "hiredDate",
+    "dateAdded",
+    "createdAt",
+    "updatedAt"
+  ]
+}

@@ -375,6 +375,19 @@ export const SERVICE_PROFILES_DB: ServiceProfile[] = [
     },
 ];
 
+export const SERVICE_PROFILES_CHANGED_EVENT = "app-service-profiles-changed";
+const ADDED_PROFILES_KEY = "service-profiles-added-v1";
+function readAddedProfiles(): ServiceProfile[] {
+    try { const raw = typeof localStorage !== "undefined" ? localStorage.getItem(ADDED_PROFILES_KEY) : null; return raw ? (JSON.parse(raw) as ServiceProfile[]) : []; } catch { return []; }
+}
+for (const p of [...readAddedProfiles()].reverse()) if (!SERVICE_PROFILES_DB.some((x) => x.id === p.id)) SERVICE_PROFILES_DB.unshift(p);
+/** A new service profile, on top of the list and kept across reloads. */
+export function addServiceProfile(p: ServiceProfile): void {
+    if (!SERVICE_PROFILES_DB.some((x) => x.id === p.id)) SERVICE_PROFILES_DB.unshift(p);
+    try { localStorage.setItem(ADDED_PROFILES_KEY, JSON.stringify([p, ...readAddedProfiles().filter((x) => x.id !== p.id)])); } catch { /* private window */ }
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(SERVICE_PROFILES_CHANGED_EVENT));
+}
+
 export function isUnlimitedLimit(limit: number): boolean {
     return limit === ACCOUNT_LIMIT_UNLIMITED;
 }

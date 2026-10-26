@@ -209,7 +209,12 @@ function buildDriversForCarrier(account: AccountRecord, count: number): Driver[]
         const shortId = account.id.replace('acct-', '');
         const driverId = `DRV-${shortId}-${pad(i + 1, 4)}`;
         const licClassLabel = account.country === 'CA' ? 'Class AZ' : 'CDL Class A';
-        const licClass = account.country === 'CA' ? 'AZ' : 'A';
+        // The class as the shared list names it (license-classes.data) — the same value the
+        // application form picks and the licence record files.
+        const licClass = 'Class 1 / A';
+        // When the record was entered — the roster is not keyed in on the day someone starts.
+        const addedAt = new Date(hireYear, hireMonth - 1, hireDay + (hash(driverId) % 21));
+        const dateAdded = `${addedAt.getFullYear()}-${pad(addedAt.getMonth() + 1, 2)}-${pad(addedAt.getDate(), 2)}`;
         const licenseNumber = `${last.slice(0, 3).toUpperCase()}${pad(1000 + (hash(driverId) % 90000), 5)}`;
 
         // Optional prior employer for drivers hired in 2018+
@@ -232,7 +237,7 @@ function buildDriversForCarrier(account: AccountRecord, count: number): Driver[]
             phone: `(${areaCode}) ${pad(200 + i % 799, 3)}-${pad((i * 37) % 9999, 4)}`,
             email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@${domainFor(account)}`,
             hiredDate: hireDate,
-            dateAdded: hireDate,
+            dateAdded,
             terminal,
             carrierCode: `${account.id.slice(-3).toUpperCase()}-${pad(i + 1, 3)}`,
             driverType: DRIVER_TYPES[i % DRIVER_TYPES.length],
@@ -334,6 +339,38 @@ try {
         CARRIER_DRIVERS[acct] = [...list, ...base.filter(d => !ids.has(d.id))];
     }
 } catch { /* ignore */ }
+
+// ── Changes to roster records ────────────────────────────────────────────────
+// A status flipped from the list, a detail edited on the profile. Seed drivers are built
+// at load, so a change is kept as a patch on top and replayed into the roster here; a
+// driver added through the UI is patched in the same way. The event tells open lists.
+const DRIVER_PATCHES_KEY = 'carrier-driver-patches';
+export const DRIVERS_CHANGED_EVENT = 'carrier-drivers-changed';
+type DriverPatches = Record<string, Record<string, Partial<Driver>>>; // accountId -> driverId -> patch
+function loadDriverPatches(): DriverPatches {
+    try { return JSON.parse(localStorage.getItem(DRIVER_PATCHES_KEY) || '{}'); } catch { return {}; }
+}
+try {
+    const patches = loadDriverPatches();
+    for (const [acct, byId] of Object.entries(patches)) {
+        if (!CARRIER_DRIVERS[acct]) continue;
+        CARRIER_DRIVERS[acct] = CARRIER_DRIVERS[acct].map(d => (byId[d.id] ? { ...d, ...byId[d.id] } : d));
+    }
+} catch { /* ignore */ }
+
+/** Change one roster record in place — status, a detail — and keep the change across reloads. */
+export function updateCarrierDriver(accountId: string | undefined, driverId: string, patch: Partial<Driver>): void {
+    if (!accountId || !driverId) return;
+    const list = CARRIER_DRIVERS[accountId];
+    if (!list?.some(d => d.id === driverId)) return;
+    CARRIER_DRIVERS[accountId] = list.map(d => (d.id === driverId ? { ...d, ...patch } : d));
+    try {
+        const patches = loadDriverPatches();
+        patches[accountId] = { ...(patches[accountId] ?? {}), [driverId]: { ...(patches[accountId]?.[driverId] ?? {}), ...patch } };
+        localStorage.setItem(DRIVER_PATCHES_KEY, JSON.stringify(patches));
+    } catch { /* ignore */ }
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DRIVERS_CHANGED_EVENT, { detail: { accountId, driverId } }));
+}
 
 /** Register a driver added through the UI so the shared roster — and every consumer,
  *  e.g. the accident form's driver picker — can see it. Upserts by id and persists. */

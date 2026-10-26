@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Building2, Check } from "lucide-react";
+import { vendorsStore } from "@/data/vendorsStore";
 import {
     CARRIER_NAME,
     ADDRESS_COUNTRIES,
@@ -10,6 +11,10 @@ import {
 
 type Props = {
     onNavigate: (path: string) => void;
+    /** The carrier the vendor is added to. */
+    accountId?: string;
+    /** Where Save / Cancel / Back return to — the list this was opened from. */
+    backPath?: string;
 };
 
 export type VendorFormPayload = {
@@ -21,7 +26,7 @@ export type VendorFormPayload = {
     contactName?: string;
 };
 
-export function AddVendorPage({ onNavigate }: Props) {
+export function AddVendorPage({ onNavigate, accountId, backPath = "/inventory/vendors" }: Props) {
     // 1. Vendor Identity
     const [name, setName] = useState("");
     const [companyName, setCompanyName] = useState("");
@@ -63,8 +68,21 @@ export function AddVendorPage({ onNavigate }: Props) {
             phone: phone || undefined,
             contactName: contactName || undefined,
         };
-        console.log("Vendor saved:", payload);
-        onNavigate("/inventory/vendors");
+        // Into the live vendor store, so the list it returns to shows it. The form asks no
+        // category, so a vendor added here files under "Others" until it is edited.
+        vendorsStore.add({
+            id: `vnd-${Date.now().toString(36)}`,
+            name: payload.name.trim(),
+            companyName: payload.companyName,
+            categoryId: "cat-other",
+            accountId: accountId ?? "",
+            address: payload.address,
+            email: payload.email,
+            phone: payload.phone,
+            contactName: payload.contactName,
+            status: "Active",
+        });
+        onNavigate(backPath);
     };
 
     return (
@@ -74,7 +92,7 @@ export function AddVendorPage({ onNavigate }: Props) {
                 <div>
                     <button
                         type="button"
-                        onClick={() => onNavigate("/inventory/vendors")}
+                        onClick={() => onNavigate(backPath)}
                         className="text-xs text-slate-500 hover:text-slate-900 inline-flex items-center gap-1 mb-1"
                     >
                         <ArrowLeft size={12} /> Back to Vendors
@@ -94,7 +112,7 @@ export function AddVendorPage({ onNavigate }: Props) {
                 <div className="flex gap-3">
                     <button
                         type="button"
-                        onClick={() => onNavigate("/inventory/vendors")}
+                        onClick={() => onNavigate(backPath)}
                         className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
                     >
                         Cancel

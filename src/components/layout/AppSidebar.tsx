@@ -629,5 +629,20 @@ function isActive(current: string, path: string) {
         return current === '/ats' || current.startsWith('/ats/');
     }
 
-    return current.startsWith(path);
+    if (!matches(current, path)) return false;
+    // Only the most specific entry lights up. `/service-profile` (Profile) is a prefix of every
+    // page in its group, and lit up beside Users & Roles and Monitoring & Notifications; a page
+    // belongs to the entry that names it, and to the group's root entry only when none does.
+    const best = ALL_PATHS.filter((p) => matches(current, p)).reduce((x, y) => (y.length > x.length ? y : x), '');
+    return best === path;
 }
+
+/** A path and the pages under it, at a segment boundary — `/fuel` is not `/fuel-cards`. */
+function matches(current: string, path: string) {
+    return current === path || current.startsWith(path + '/');
+}
+
+/** Every page the sidebar opens, at any depth. */
+const ALL_PATHS: string[] = (function walk(nodes: SidebarNode[]): string[] {
+    return nodes.flatMap((n) => (isGroup(n) ? walk(n.children) : n.path ? [n.path] : []));
+})(SIDEBAR_NODES);

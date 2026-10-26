@@ -44,7 +44,9 @@ import {
 import { SubTabs, type SubTab } from "@/components/ui/SubTabs";
 import { PaginationBar } from "@/components/ui/DataListToolbar";
 import { APP_USERS, ROLE_BADGE, ROLE_LABELS, type AppUser } from "@/data/users.data";
-import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data";
+import { AccountsListPage } from "@/pages/accounts/AccountsListPage";
+import { ServiceProfilesListPage } from "@/pages/accounts/ServiceProfilesListPage";
 import { SERVICE_PROFILES_DB } from "@/pages/accounts/service-profiles.data";
 import {
     SUBSCRIPTIONS,
@@ -62,6 +64,9 @@ import { cn } from "@/lib/utils";
 
 type Props = {
     currentUser: AppUser;
+    onNavigate?: (path: string) => void;
+    onSelectAccount?: (account: AccountRecord) => void;
+    onSelectServiceProfile?: (id: string) => void;
 };
 
 // Theme palette — pulled from the existing app tokens so charts and pills
@@ -80,6 +85,8 @@ const STATUS_COLORS: Record<string, string> = {
 type TabKey =
     | "overview"
     | "users"
+    | "services"
+    | "carriers"
     | "activity"
     | "transactions"
     | "subscriptions"
@@ -88,6 +95,8 @@ type TabKey =
 const TAB_ORDER: TabKey[] = [
     "overview",
     "users",
+    "services",
+    "carriers",
     "activity",
     "transactions",
     "subscriptions",
@@ -97,6 +106,8 @@ const TAB_ORDER: TabKey[] = [
 const TAB_LABELS: Record<TabKey, string> = {
     overview: "Overview",
     users: "Users",
+    services: "Service Profiles",
+    carriers: "Carrier Profiles",
     activity: "Activity",
     transactions: "Transactions",
     subscriptions: "Subscriptions",
@@ -106,6 +117,8 @@ const TAB_LABELS: Record<TabKey, string> = {
 const TAB_COLORS: Record<TabKey, string> = {
     overview: "#2563eb",       // blue-600
     users: "#8b5cf6",          // violet-500
+    services: "#6366f1",       // indigo-500
+    carriers: "#14b8a6",       // teal-500
     activity: "#10b981",       // emerald-500
     transactions: "#0ea5e9",   // sky-500
     subscriptions: "#ec4899",  // pink-500
@@ -164,7 +177,7 @@ const formatDurationShort = (ms: number): string => {
     return `${h}h ${(m % 60).toString().padStart(2, "0")}m`;
 };
 
-export function SuperAdminDashboardPage({ currentUser }: Props) {
+export function SuperAdminDashboardPage({ currentUser, onNavigate, onSelectAccount, onSelectServiceProfile }: Props) {
     // ── Live platform clock ──────────────────────────────────────────────────
     const [now, setNow] = useState(() => new Date());
     const [mountedAt] = useState(() => Date.now());
@@ -179,6 +192,8 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
     const [tabTimes, setTabTimes] = useState<Record<TabKey, number>>({
         overview: 0,
         users: 0,
+        services: 0,
+        carriers: 0,
         activity: 0,
         transactions: 0,
         subscriptions: 0,
@@ -410,6 +425,8 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
     const SUBTABS: SubTab<TabKey>[] = [
         { id: "overview", label: TAB_LABELS.overview, icon: LayoutDashboard },
         { id: "users", label: TAB_LABELS.users, icon: UsersIcon, count: stats.total },
+        { id: "services", label: TAB_LABELS.services, icon: Briefcase, count: SERVICE_PROFILES_DB.length },
+        { id: "carriers", label: TAB_LABELS.carriers, icon: Building2, count: ACCOUNTS_DB.length },
         { id: "activity", label: TAB_LABELS.activity, icon: Activity, count: 1 },
         { id: "transactions", label: TAB_LABELS.transactions, icon: Receipt, count: billingTotals.totalTransactions },
         { id: "subscriptions", label: TAB_LABELS.subscriptions, icon: CreditCard, count: billingTotals.activeSubs + billingTotals.pastDueSubs },
@@ -926,6 +943,33 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
                 )}
 
                 {/* ───────────────── Activity ───────────────── */}
+                {/* ───────────────── Service Profiles ───────────────── */}
+                {/* The list brings its own gutter — pull it back to this tab's edge. */}
+                {activeTab === "services" && (
+                    <div className="-mx-6 -mt-5">
+                        <ServiceProfilesListPage
+                            onNavigate={onNavigate}
+                            currentUser={currentUser}
+                            onSelectServiceProfile={onSelectServiceProfile}
+                            pad="px-6"
+                        />
+                    </div>
+                )}
+
+                {/* ───────────────── Carrier Profiles ───────────────── */}
+                {/* The list brings its own px-6 / pt-5 gutter — pull it back to this tab's edge. */}
+                {activeTab === "carriers" && (
+                    <div className="-mx-6 -mt-5">
+                        <AccountsListPage
+                            onNavigate={onNavigate}
+                            onSelectAccount={onSelectAccount}
+                            embedded
+                            currentUser={currentUser}
+                            pad="px-6"
+                        />
+                    </div>
+                )}
+
                 {activeTab === "activity" && (
                     <div className="space-y-6">
                         {/* Live active users hero */}

@@ -4,10 +4,10 @@ import { TopNavbar } from '@/components/layout/TopNavbar'
 import { MessagesPage } from '@/pages/messages/MessagesPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { MyProfilePage } from '@/pages/profile/MyProfilePage'
-import { UsersListPage } from '@/pages/admin/UsersListPage'
 import { AddUserPage } from '@/pages/admin/AddUserPage'
 import { SuperAdminDashboardPage } from '@/pages/admin/SuperAdminDashboardPage'
-import { findUserById, isDriverUser, type AppUser } from '@/data/users.data'
+import { findUserById, isDriverUser, roleOn, updateAppUser, type AppUser } from '@/data/users.data'
+import { canOpenCarrier, profilesFor } from '@/pages/users-roles/scope'
 import { recordNavigation, clearNavigationHistory } from '@/lib/nav-history'
 import { CollectionFormPage } from '@/pages/inventory/CollectionFormPage'
 import { COLLECTION_FORM_PATH } from '@/pages/inventory/collection-form-handoff'
@@ -18,10 +18,20 @@ import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
 import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import { ServiceUsersRolesPage } from '@/pages/users-roles/ServiceUsersRolesPage'
+import { ServiceMonitoringPage } from '@/pages/users-roles/ProfileNotifications'
+import { AuditLogPage } from '@/pages/admin/AuditLogPage'
+import { DashboardPage } from '@/pages/dashboard/DashboardPage'
+import { logAudit } from '@/data/audit-log.data'
 import { CarrierUsersRolesPage } from '@/pages/users-roles/CarrierUsersRolesPage'
+import { AdminRolesPage } from '@/pages/users-roles/AdminRolesPage'
+import { NoAccessPage, ViewOnlyBanner } from '@/pages/users-roles/AccessGate'
+import { menuAccess, menuKeyForPath, menuLabelOf, useRoleAccess } from '@/pages/users-roles/roles.data'
 import { SettingsDqFilesPage } from '@/pages/settings/SettingsDqFilesPage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
+import { ServiceProfileLimitsPage } from '@/pages/admin/ServiceProfileLimitsPage'
+import { CarrierProfileLimitsPage } from '@/pages/admin/CarrierProfileLimitsPage'
+import { ProfileInsightsPage } from '@/pages/admin/ProfileInsightsPage'
 import { ComplianceTemplatesPage } from '@/pages/admin/ComplianceTemplatesPage'
 import { loadCarrierAssignment } from '@/pages/admin/carrier-compliance.data'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
@@ -132,6 +142,9 @@ function App() {
         const id = localStorage.getItem('app_current_user_id')
         return id ? findUserById(id) ?? null : null
     })
+    // Which sidebar menus each role gets (Users & Roles ▸ Roles) — read here too, so a page a
+    // role does not have is gated on the way in, not only left out of the menu.
+    const roleAccess = useRoleAccess()
 
     // On first mount, if a user is restored from localStorage but no carrier
     // is selected yet, pick one for them (so /account/profile shows their
@@ -143,6 +156,17 @@ function App() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // A selected carrier this person may not see — their access was taken away, or a page
+    // handed the app a carrier they were never given — goes back to their own carrier. A
+    // carrier role is per carrier, so standing on the wrong carrier would read as the wrong
+    // role everywhere.
+    useEffect(() => {
+        if (!currentUser || !selectedAccount || canOpenCarrier(currentUser, selectedAccount)) return
+        const next = getDefaultCarrierForUser(currentUser)
+        setSelectedAccount(next && canOpenCarrier(currentUser, next) ? next : null)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser, selectedAccount])
 
     useEffect(() => {
         if (currentUser) {
@@ -214,7 +238,19 @@ function App() {
         return null
     }
 
+    /**
+     * Sign somebody in — from the login page, or an Admin's "Sign in as" on a test account.
+     * One funnel, so both do the same things: accepting an invitation is signing in for the
+     * first time, and nothing of the previous person's (trail, selections) is inherited.
+     */
     const handleSignIn = (user: AppUser) => {
+        // Written now, not in the effect: the first render after signing in already reads the
+        // session from storage (the Driver app, Messages' seat), and must not read the previous one.
+        try { localStorage.setItem('app_current_user_id', user.id) } catch { /* private window */ }
+        if (user.status === "Invited") updateAppUser(user.id, { status: "Active" })
+        logAudit({ category: "auth", kind: "received", title: `${user.name} signed in`, detail: isDriverUser(user) ? "Driver app" : undefined, actor: user, accountId: getDefaultCarrierForUser(user)?.id })
+        clearNavigationHistory()
+        setSelectedServiceProfileId(undefined)
         setCurrentUser(user)
         setSelectedAccount(getDefaultCarrierForUser(user))
         // A driver signing in is not an office user with fewer menus — they are a different
@@ -228,6 +264,18 @@ function App() {
         setCurrentUser(null)
         setPath("/dashboard")
         setSelectedAccount(null)
+        setSelectedServiceProfileId(undefined)
+    }
+
+    /**
+     * The service profile a page shows: the one picked in the top bar when this person may
+     * see it, else their own. A pick is never inherited across a sign-in, and an Admin's
+     * page never shows another organisation's profile however it was asked to.
+     */
+    const resolveServiceProfile = (user: AppUser): ServiceProfile | null => {
+        const explicit = selectedServiceProfileId ? SERVICE_PROFILES_DB.find((x) => x.id === selectedServiceProfileId) : undefined
+        if (explicit && profilesFor(user).some((p) => p.id === explicit.id)) return explicit
+        return getDefaultServiceProfileForUser(user)
     }
 
     const handleNavigate = (newPath: string) => {
@@ -283,6 +331,12 @@ function App() {
     }, [])
 
     const handleSelectAccount = (account: AccountRecord) => {
+        // Only a carrier this person has access to. A page can list every carrier of a
+        // service profile; the app does not re-scope to one they were not given.
+        if (currentUser && !canOpenCarrier(currentUser, account)) {
+            console.log("Carrier not in scope for this user:", account.id)
+            return
+        }
         setSelectedAccount(account)
         console.log("Selected account:", account.id, account.legalName)
     }
@@ -309,7 +363,14 @@ function App() {
             return <MyProfilePage user={currentUser} />
         }
         if (path === "/admin/dashboard" && currentUser) {
-            return <SuperAdminDashboardPage currentUser={currentUser} />
+            return (
+                <SuperAdminDashboardPage
+                    currentUser={currentUser}
+                    onNavigate={handleNavigate}
+                    onSelectAccount={handleSelectAccount}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                />
+            )
         }
         if (path === "/admin/compliance-and-documents") {
             return <ComplianceAndDocumentsPage onNavigate={handleNavigate} />
@@ -325,15 +386,49 @@ function App() {
                 enabledDocumentTypeIds={asg?.enabledDocumentTypeIds}
             />
         }
-        if (path === "/admin/carrier-compliance-setup" || path === "/admin/carrier-profile-configuration") {
-            // Carrier-level configuration (per-carrier overrides). Surfaced under
-            // both Admin and Super Admin. `key` forces a fresh mount so scope/state
-            // don't carry over from the service-profile route (same component type).
+        if (path === "/admin/carrier-compliance-setup") {
+            // Admin ▸ Carrier Profile Configuration — per-carrier compliance overrides.
+            // `key` forces a fresh mount so scope/state don't carry over from the
+            // service-profile route (same component type).
             return <CarrierComplianceSetupPage key="carrier-config" />
         }
+        if (path === "/admin/carrier-profile-configuration") {
+            // Super Admin — how many users each carrier profile can add.
+            return (
+                <CarrierProfileLimitsPage
+                    onOpenCarrier={handleSelectAccount}
+                    onOpenDetail={(id) => handleNavigate(`/admin/carrier-profile-configuration/${id}`)}
+                />
+            )
+        }
+        if (path.startsWith("/admin/carrier-profile-configuration/")) {
+            const id = path.slice("/admin/carrier-profile-configuration/".length)
+            return (
+                <ProfileInsightsPage key={`carrier-${id}`} kind="carrier" id={id}
+                    onNavigate={handleNavigate}
+                    onOpenCarrier={handleSelectAccount}
+                    onOpenServiceProfile={(spId) => { setSelectedServiceProfileId(spId); handleNavigate("/service-profile") }}
+                />
+            )
+        }
+        if (path.startsWith("/admin/service-profile-compliance/")) {
+            const id = path.slice("/admin/service-profile-compliance/".length)
+            return (
+                <ProfileInsightsPage key={`service-${id}`} kind="service" id={id}
+                    onNavigate={handleNavigate}
+                    onOpenCarrier={handleSelectAccount}
+                    onOpenServiceProfile={(spId) => { setSelectedServiceProfileId(spId); handleNavigate("/service-profile") }}
+                />
+            )
+        }
         if (path === "/admin/service-profile-compliance") {
-            // Super Admin — service-profile-level authoring (the source bundle).
-            return <CarrierComplianceSetupPage key="service-profile-root" mode="serviceProfile" />
+            // Super Admin — how many carrier profiles and users each service profile can have.
+            return (
+                <ServiceProfileLimitsPage
+                    onOpenProfile={(id) => { setSelectedServiceProfileId(id); handleNavigate("/service-profile") }}
+                    onOpenDetail={(id) => handleNavigate(`/admin/service-profile-compliance/${id}`)}
+                />
+            )
         }
         if (path === "/service-profile/compliance-setup") {
             // Service Profile admin view — Carrier Profile only, drilling into this profile's carriers.
@@ -343,27 +438,38 @@ function App() {
             return <ComplianceTemplatesPage />
         }
         if (path === "/admin/users" && currentUser) {
-            return <UsersListPage currentUser={currentUser} onNavigate={handleNavigate} />
+            // Admin is the carrier's: the same team page Settings ▸ Users & Roles opens.
+            const account = selectedAccount ?? getDefaultCarrierForUser(currentUser)
+            return <CarrierUsersRolesPage key={account?.id ?? 'none'} currentUser={currentUser} accountId={account?.id} onNavigate={handleNavigate} />
+        }
+        if (path === "/admin/roles" && currentUser) {
+            // The roles at platform level: the menu table for all six, and the test accounts.
+            return (
+                <AdminRolesPage
+                    currentUser={currentUser}
+                    onNavigate={handleNavigate}
+                    onSwitchUser={handleSignIn}
+                    onSelectAccount={handleSelectAccount}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                />
+            )
         }
         if (path === "/admin/users/new" && currentUser) {
             return <AddUserPage currentUser={currentUser} onNavigate={handleNavigate} />
         }
-        if (path === "/dashboard") {
-            // Dashboard placeholder - empty for now
+        if (path === "/dashboard" && currentUser) {
+            // The carrier in the top bar, and — for an Admin — their service profile, for the two views.
+            const account = selectedAccount ?? getDefaultCarrierForUser(currentUser)
+            const profile = resolveServiceProfile(currentUser)
             return (
-                <div className="flex-1 p-8 bg-slate-50 min-h-screen">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Dashboard</h1>
-                    <p className="text-slate-500 mb-8">Overview and analytics coming soon...</p>
-                    <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                        </div>
-                        <h3 className="text-lg font-semibold text-slate-700 mb-2">Dashboard Coming Soon</h3>
-                        <p className="text-sm text-slate-500">This area will display fleet analytics, compliance status, and key performance indicators.</p>
-                    </div>
-                </div>
+                <DashboardPage
+                    currentUser={currentUser}
+                    accountId={account?.id}
+                    serviceProfileId={profile?.id}
+                    onNavigate={handleNavigate}
+                    onSelectAccount={handleSelectAccount}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                />
             )
         }
         if (path === "/messages") {
@@ -387,15 +493,44 @@ function App() {
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <NewComplianceDocumentsPage accountId={account?.id} />
         }
-        if (path === "/compliance-monitoring" || path === "/admin/monitoring-notifications") {
+        if (path === "/admin/audit-log" && currentUser) {
+            // One carrier's log — the one picked in the top bar.
+            const account = selectedAccount ?? getDefaultCarrierForUser(currentUser)
+            return <AuditLogPage key={account?.id ?? 'none'} scope="carrier" currentUser={currentUser} accountId={account?.id} onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+        }
+        if (path === "/service-profile/audit-log" && currentUser) {
+            const profile = resolveServiceProfile(currentUser)
+            return <AuditLogPage key={profile?.id ?? 'default'} scope="profile" currentUser={currentUser} serviceProfileId={profile?.id}
+                onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)} onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+        }
+        if (path === "/admin/platform-audit-log" && currentUser) {
+            return <AuditLogPage scope="platform" currentUser={currentUser} onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+        }
+        if (path === "/admin/monitoring-notifications") {
+            // Admin is the carrier's: the same notification roles Settings ▸ Monitoring & Notifications opens.
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SettingsDefaultMonitoringPage accountId={account?.id} currentUser={currentUser} onNavigate={handleNavigate} />
+        }
+        if (path === "/service-profile/monitoring-notifications" && currentUser) {
+            // The service profile's overview — who is told on each of its carriers, and which
+            // escalate to its Admins. Same scope as Service Profile ▸ Users & Roles.
+            const profile = resolveServiceProfile(currentUser)
             return (
-                <ComplianceMonitoringPage
-                    accountId={account?.id}
-                    scopesOnly={path === "/admin/monitoring-notifications"}
+                <ServiceMonitoringPage
+                    key={profile?.id ?? 'default'}
+                    currentUser={currentUser}
+                    serviceProfileId={profile?.id}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                    onNavigate={handleNavigate}
+                    onSelectAccount={handleSelectAccount}
                 />
             )
+        }
+        if (path === "/compliance-monitoring") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <ComplianceMonitoringPage accountId={account?.id} />
         }
         if (path === "/account/profile") {
             // Fall back to the user's default carrier if none has been picked yet
@@ -424,11 +559,7 @@ function App() {
             // Resolve in the same order as /account/profile: explicit selection → user's
             // default → empty state. Super-admins always get svc-001 so they don't see
             // the empty state.
-            const explicit = selectedServiceProfileId
-                ? SERVICE_PROFILES_DB.find((x) => x.id === selectedServiceProfileId)
-                : null
-            const profile = explicit
-                ?? (currentUser ? getDefaultServiceProfileForUser(currentUser) : null)
+            const profile = currentUser ? resolveServiceProfile(currentUser) : null
             if (currentUser && !profile) {
                 return <EmptyServiceProfile user={currentUser} onNavigate={handleNavigate} />
             }
@@ -446,11 +577,7 @@ function App() {
         if (path === "/service-profile/users-roles") {
             // The service profile's: every role, its Admins, its carrier profiles. Resolved the
             // same way as the profile page above.
-            const explicit = selectedServiceProfileId
-                ? SERVICE_PROFILES_DB.find((x) => x.id === selectedServiceProfileId)
-                : null
-            const profile = explicit
-                ?? (currentUser ? getDefaultServiceProfileForUser(currentUser) : null)
+            const profile = currentUser ? resolveServiceProfile(currentUser) : null
             return (
                 <ServiceUsersRolesPage
                     key={profile?.id ?? 'default'}
@@ -593,7 +720,39 @@ function App() {
             )
         }
         if (path === "/inventory/vendors/new") {
-            return <AddVendorPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <AddVendorPage onNavigate={handleNavigate} accountId={account?.id} />
+        }
+        // Vendors' own menu — the same list, without the Inventory section tabs.
+        if (path === "/vendors") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <VendorsListPage
+                    standalone
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
+        }
+        // One vendor's profile from the Vendors menu — the same page Maintenance renders.
+        if (path.startsWith("/vendors/") && path !== "/vendors/new") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <AssetMaintenancePage
+                    account={account ?? undefined}
+                    openVendor={path.slice("/vendors/".length)}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
+        if (path === "/vendors/new") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <AddVendorPage onNavigate={handleNavigate} accountId={account?.id} backPath="/vendors" />
         }
         if (path === "/settings/general") {
             return <GeneralSettingsPage />
@@ -628,7 +787,7 @@ function App() {
         if (path === "/settings/default-compliance-monitoring") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <SettingsDefaultMonitoringPage accountId={account?.id} onNavigate={handleNavigate} />
+            return <SettingsDefaultMonitoringPage accountId={account?.id} currentUser={currentUser} onNavigate={handleNavigate} />
         }
         if (path === "/default-compliance-documents") {
             const account = selectedAccount
@@ -652,7 +811,7 @@ function App() {
         if (path === "/settings/maintenance") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <MaintenancePage account={account ?? undefined} />
+            return <MaintenancePage account={account ?? undefined} onNavigate={handleNavigate} />
         }
         if (path === "/settings/expenses") {
             return <ExpenseTypesPage />
@@ -724,11 +883,6 @@ function App() {
         }
         if (path === "/settings/inspections") {
             return <InspectionsSettingsPage />
-        }
-        if (path === "/settings/fuel") {
-            const account = selectedAccount
-                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <FuelPage accountId={account?.id} />
         }
 
         if (path === "/settings/trainings") {
@@ -960,7 +1114,7 @@ function App() {
         if (path === "/fuel") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <FuelPage accountId={account?.id} />
+            return <FuelPage accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/compliance") {
             return (
@@ -992,12 +1146,21 @@ function App() {
         return <LoginPage onSignIn={handleSignIn} />
     }
 
+    // The role this person holds on the carrier being looked at — what the sidebar, the top
+    // bar and the gate below all go by. The Sidebar menus by role table is enforced here on
+    // the way in (see AccessGate): a Hidden menu's page is replaced, a Light one gets a
+    // view-only line above it. A driver has their own allowlist in renderPage.
+    const effectiveRole = roleOn(currentUser, selectedAccount?.id)
+    const pageMenu = menuKeyForPath(path)
+    const pageAccess = pageMenu ? menuAccess(roleAccess, pageMenu, effectiveRole) : 'full'
+    const gated = !!pageMenu && !isDriverUser(currentUser)
+
     return (
         <div className="flex h-screen w-full bg-slate-50">
             <AppSidebar
                 currentPath={path}
                 onNavigate={handleNavigate}
-                role={currentUser.role}
+                role={effectiveRole}
                 driver={isDriverUser(currentUser)}
                 mobileOpen={mobileNavOpen}
                 onMobileClose={() => setMobileNavOpen(false)}
@@ -1011,14 +1174,23 @@ function App() {
                     onOpenMobileNav={() => setMobileNavOpen(true)}
                     selectedAccountId={selectedAccount?.id}
                     onSelectAccount={handleSelectAccount}
-                    selectedServiceProfileId={
-                        selectedServiceProfileId
-                        ?? getDefaultServiceProfileForUser(currentUser)?.id
-                    }
+                    selectedServiceProfileId={resolveServiceProfile(currentUser)?.id}
                     onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
                 />
                 <main className="flex-1 overflow-auto">
-                    {renderPage()}
+                    {gated && pageAccess === 'hidden' ? (
+                        <NoAccessPage
+                            role={effectiveRole}
+                            menuLabel={menuLabelOf(pageMenu!)}
+                            carrier={selectedAccount ? (selectedAccount.dbaName || selectedAccount.legalName) : undefined}
+                            onNavigate={handleNavigate}
+                        />
+                    ) : (
+                        <>
+                            {gated && pageAccess === 'light' && <ViewOnlyBanner role={effectiveRole} menuLabel={menuLabelOf(pageMenu!)} />}
+                            {renderPage()}
+                        </>
+                    )}
                 </main>
             </div>
         </div>

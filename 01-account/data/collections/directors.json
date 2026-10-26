@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/directors.json",
+  "title": "directors",
+  "description": "People with ownership or an officer role at the carrier. Personal data.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "name": {
+      "type": "string",
+      "description": "Full name."
+    },
+    "roleTitle": {
+      "type": "string",
+      "description": "\"Director of Operations\".",
+      "default": ""
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "stockClass": {
+      "type": "string",
+      "description": "\"Class A Common Stock\".",
+      "default": ""
+    },
+    "ownershipPct": {
+      "type": "number",
+      "description": "0–100.",
+      "default": 0
+    },
+    "dateAppointed": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD."
+    },
+    "dateResigned": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD; null while serving."
+    },
+    "responsibility": {
+      "type": "string",
+      "description": "Primary responsibility, free text.",
+      "default": ""
+    },
+    "isPrimary": {
+      "type": "boolean",
+      "description": "Shown first.",
+      "default": false
+    },
+    "officeLocationId": {
+      "type": "string",
+      "description": "→ `office_locations._id` (the office they sit in)."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "name",
+    "email",
+    "phone",
+    "ownershipPct",
+    "createdAt",
+    "updatedAt"
+  ]
+}

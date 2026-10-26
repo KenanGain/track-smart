@@ -1,5 +1,20 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart, Pencil, Upload } from 'lucide-react';
+import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart, Pencil, Upload, History, ExternalLink } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { ListScrollFrame } from '@/components/ui/ListScrollFrame';
+import { KpiStatRow, type KpiStat } from '@/components/ui/KpiStatCard';
+import { ListHeaderBridge, chipsFromStats, useHeaderChips } from '@/components/ui/list-header-bridge';
+import { ScrollBody, usePageChrome } from '@/components/ui/PageChrome';
+import {
+  ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, TablePager, ViewSwitch,
+  useTableSort, type PickerColumn,
+} from '@/components/ui/ListChrome';
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from '@/components/ui/list-chrome';
+import { RowActions } from '@/components/ui/RowActions';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { activityMeta, type ActivityKind } from '@/components/ui/activity-kinds';
+import { currentUserName } from '@/data/users.data';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import {
@@ -316,13 +331,446 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500";
 
 // ── Tab type ───────────────────────────────────────────────────────────────────
-type TabId = 'overview' | 'vehicles' | 'ifta' | 'trips' | 'purchases' | 'idling';
+type TabId = 'overview' | 'vehicles' | 'ifta' | 'trips' | 'purchases' | 'idling' | 'activity';
 const TABS: { id: TabId; label: string; icon: typeof LayoutGrid }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid },
   { id: 'vehicles', label: 'Vehicles', icon: Truck },
   { id: 'ifta', label: 'IFTA Summary', icon: Globe },
   { id: 'purchases', label: 'Fuel Purchases', icon: ShoppingCart },
+  { id: 'activity', label: 'Activity', icon: History },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VEHICLES TAB — the fleet's mileage, as the app's standard list
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type VehCol = 'vehicle' | 'fuelType' | 'efficiency' | 'distance' | 'months';
+const VEH_COLUMNS: PickerColumn<VehCol>[] = [
+  { id: 'vehicle', label: 'Vehicle', locked: true },
+  { id: 'fuelType', label: 'Fuel type' },
+  { id: 'efficiency', label: 'Efficiency' },
+  { id: 'distance', label: 'Distance' },
+  { id: 'months', label: 'Months' },
+];
+type VehGroup = 'none' | 'fuelType' | 'make';
+const VEH_GROUPS: { id: VehGroup; label: string }[] = [
+  { id: 'none', label: 'No grouping' },
+  { id: 'fuelType', label: 'Group: Fuel type' },
+  { id: 'make', label: 'Group: Make' },
+];
+const MONTH_NAMES_V = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const fmtMonthFullV = (m: string) => { const [yr, mm] = m.split('-').map(Number); return `${MONTH_NAMES_V[mm-1]} ${yr}`; };
+
+interface VMthJur { code: string; name: string; region: string; distKm: number }
+interface VMth { month: string; distKm: number; jurisdictions: Map<string, VMthJur> }
+interface VAgg { name: string; make: string; model: string; year: number; fuelType: string; fuelEfficiency: number | null; fuelTankCapacity: number | null; totalKm: number; months: Map<string, VMth> }
+export interface VehicleRow extends VAgg {
+  totalMi: number;
+  monthBreakdown: { month: string; distKm: number; distMi: number; label: string; jurBreakdown: (VMthJur & { distMi: number })[] }[];
+}
+
+const ListTD = ({ children, className, onClick, colSpan }: { children?: React.ReactNode; className?: string; onClick?: (e: React.MouseEvent) => void; colSpan?: number }) => (
+  <td onClick={onClick} colSpan={colSpan} className={cn('px-4 py-2.5 text-sm align-middle whitespace-nowrap', className)}>{children}</td>
+);
+
+function FuelVehiclesTab({ year, setYear, quarter, setQuarter, month, setMonth, region, setRegion, fuelType, setFuelType, distanceUnit, setDistanceUnit, scrollRef, onScroll, onShare, onLogPurchase, onOpenAssets }: {
+  year: number; setYear: (y: number) => void;
+  quarter: string; setQuarter: (q: string) => void;
+  month: string; setMonth: (m: string) => void;
+  region: string; setRegion: (r: string) => void;
+  fuelType: string; setFuelType: (f: string) => void;
+  distanceUnit: 'mi' | 'km'; setDistanceUnit: (u: 'mi' | 'km') => void;
+  scrollRef?: React.Ref<HTMLDivElement>;
+  onScroll?: React.UIEventHandler<HTMLDivElement>;
+  onShare: (v: VehicleRow) => void;
+  onLogPurchase: (v: VehicleRow) => void;
+  onOpenAssets?: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [groupBy, setGroupBy] = useState<VehGroup>('none');
+  const [visible, setVisible] = useState<Set<VehCol>>(() => new Set(VEH_COLUMNS.map(c => c.id)));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedMonth, setExpandedMonth] = useState<Set<string>>(new Set());
+
+  const displayFromKm = (km: number) => distanceUnit === 'mi' ? kmToMiles(km) : km;
+  const formatDistance = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const effLabel = distanceUnit === 'mi' ? 'MPG' : 'km/L';
+  const toEff = (mpg: number) => distanceUnit === 'mi' ? mpg : mpg * 0.425144;
+
+  // ── Build vehicle-centric aggregation from IFTA data ──
+  const vehFiltered = useMemo(() => IFTA_SUMMARY_RESULTS.filter(r => {
+    const [y, m] = r.month.split('-').map(Number);
+    if (y !== year) return false;
+    if (quarter && getQuarter(r.month) !== Number(quarter)) return false;
+    if (month && m !== Number(month)) return false;
+    const reg = JURISDICTION_REGION[r.jurisdiction];
+    if (region !== 'All' && reg !== region) return false;
+    if (fuelType !== 'All' && normalizeFuelType(r.vehicle.fuelType) !== fuelType) return false;
+    return true;
+  }), [year, quarter, month, region, fuelType]);
+
+  const rows = useMemo<VehicleRow[]>(() => {
+    const vehMap = new Map<string, VAgg>();
+    for (const r of vehFiltered) {
+      const key = r.vehicle.name;
+      const cur = vehMap.get(key) || { name: r.vehicle.name, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, fuelType: normalizeFuelType(r.vehicle.fuelType), fuelEfficiency: r.vehicle.fuelEfficiency, fuelTankCapacity: r.vehicle.fuelTankCapacity, totalKm: 0, months: new Map<string, VMth>() };
+      cur.totalKm += r.distance;
+      const mCur = cur.months.get(r.month) || { month: r.month, distKm: 0, jurisdictions: new Map<string, VMthJur>() };
+      mCur.distKm += r.distance;
+      const jCur = mCur.jurisdictions.get(r.jurisdiction) || { code: r.jurisdiction, name: JURISDICTION_LABELS[r.jurisdiction] || r.jurisdiction, region: JURISDICTION_REGION[r.jurisdiction] || 'US', distKm: 0 };
+      jCur.distKm += r.distance;
+      mCur.jurisdictions.set(r.jurisdiction, jCur);
+      cur.months.set(r.month, mCur);
+      vehMap.set(key, cur);
+    }
+    return [...vehMap.values()].map(v => ({
+      ...v,
+      totalMi: Math.round(kmToMiles(v.totalKm)),
+      monthBreakdown: [...v.months.values()]
+        .sort((a, b) => a.month.localeCompare(b.month))
+        .map(m => ({ ...m, distMi: Math.round(kmToMiles(m.distKm)), label: fmtMonthFullV(m.month),
+          jurBreakdown: [...m.jurisdictions.values()].map(j => ({ ...j, distMi: Math.round(kmToMiles(j.distKm)) })).sort((a, b) => b.distMi - a.distMi) })),
+    })).sort((a, b) => b.totalMi - a.totalMi);
+  }, [vehFiltered]);
+
+  const totalVehKm = rows.reduce((s, v) => s + v.totalKm, 0);
+  const withEff = rows.filter(v => v.fuelEfficiency);
+  const avgMpg = withEff.length ? withEff.reduce((s, v) => s + (v.fuelEfficiency || 0), 0) / withEff.length : 0;
+  const uniqueJurCount = new Set(vehFiltered.map(r => r.jurisdiction)).size;
+  const stats: KpiStat[] = [
+    { id: 'vehicles', label: 'Fleet vehicles', value: rows.length, Icon: Truck, accent: 'blue' },
+    { id: 'distance', label: `Total distance (${distanceUnit})`, value: formatDistance(displayFromKm(totalVehKm)), Icon: Route, accent: 'emerald' },
+    { id: 'eff', label: `Avg. efficiency (${effLabel})`, value: toEff(avgMpg).toFixed(1), Icon: Gauge, accent: 'amber' },
+    { id: 'jur', label: 'Jurisdictions', value: uniqueJurCount, Icon: Globe, accent: 'violet' },
+  ];
+  useHeaderChips(chipsFromStats(stats));
+
+  const q = search.trim().toLowerCase();
+  const searched = rows.filter(v => !q || [v.name, v.make, v.model, String(v.year), v.fuelType].some(x => x.toLowerCase().includes(q)));
+  const readers = useMemo(() => ({
+    vehicle: (v: VehicleRow) => v.name,
+    fuelType: (v: VehicleRow) => v.fuelType,
+    efficiency: (v: VehicleRow) => v.fuelEfficiency ?? 0,
+    distance: (v: VehicleRow) => v.totalKm,
+    months: (v: VehicleRow) => v.monthBreakdown.length,
+  }), []);
+  const { sort, onSort, sorted } = useTableSort<VehCol, VehicleRow>(searched, readers, { col: 'distance', dir: 'desc' });
+  const groupOf = (v: VehicleRow): string | null => groupBy === 'fuelType' ? (v.fuelType || 'Unknown') : groupBy === 'make' ? v.make : null;
+  const grouped = groupBy === 'none' ? sorted : [...sorted].map((v, i) => ({ v, i })).sort((x, y) => (groupOf(x.v)!).localeCompare(groupOf(y.v)!) || x.i - y.i).map(x => x.v);
+  const groupCounts = new Map<string, number>();
+  if (groupBy !== 'none') grouped.forEach(v => { const l = groupOf(v)!; groupCounts.set(l, (groupCounts.get(l) ?? 0) + 1); });
+  const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
+  const safePage = Math.min(page, pages);
+  const slice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const show = (c: VehCol) => visible.has(c);
+  const colCount = VEH_COLUMNS.filter(c => c.locked || visible.has(c.id)).length + 2;
+  const filterCount = [year !== 2026, !!quarter, !!month, region !== 'All', fuelType !== 'All', groupBy !== 'none'].filter(Boolean).length;
+  const touched = filterCount > 0 || !!q;
+  const reset = () => { setSearch(''); setYear(2026); setQuarter(''); setMonth(''); setRegion('All'); setFuelType('All'); setGroupBy('none'); setPage(1); };
+  const toggle = (key: string) => setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleMonth = (key: string) => setExpandedMonth(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const monthOptions = (quarter ? [((Number(quarter)-1)*3)+1, ((Number(quarter)-1)*3)+2, ((Number(quarter)-1)*3)+3] : [1,2,3,4,5,6,7,8,9,10,11,12]).map(m => MONTH_NAMES_V[m-1]);
+  const fuelTone = (ft: string) => ft?.toLowerCase() === 'diesel' ? 'bg-amber-50 text-amber-700 border-amber-200' : ft?.toLowerCase() === 'gasoline' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-purple-50 text-purple-700 border-purple-200';
+
+  return (
+    <ListScrollFrame
+      above={<KpiStatRow stats={stats} />}
+      title="Vehicle mileage breakdown"
+      count={grouped.length}
+      total={rows.length}
+      description={<>Distance by vehicle for the period, with each month and jurisdiction underneath — click a row to open its breakdown. Showing {year}{quarter ? ` Q${quarter}` : ''}{month ? ` · ${MONTH_NAMES_V[Number(month) - 1]}` : ''} · {region === 'All' ? 'all regions' : region} · {fuelType === 'All' ? 'all fuel types' : fuelType}.</>}
+      actions={<>
+        <ViewSwitch value={distanceUnit} onChange={setDistanceUnit} options={[{ id: 'mi', label: 'mi' }, { id: 'km', label: 'km' }]} />
+        <ColumnPicker columns={VEH_COLUMNS} visible={visible} onToggle={(id) => setVisible(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} />
+      </>}
+      scrollRef={scrollRef} onScroll={onScroll} contentKey={`${filtersOpen}|${slice.length}|${expanded.size}|${expandedMonth.size}`}
+      toolbar={
+        <ListToolbar search={search} onSearch={(v) => { setSearch(v); setPage(1); }} placeholder="Search unit, make, model…"
+          filters={<div className={mobileFold(filtersOpen)}>
+            <FilterSelect value={String(year)} onChange={(v) => { setYear(Number(v) || 2026); setPage(1); }} title="Year" allLabel="2026" options={IFTA_AVAILABLE_YEARS.filter(y => y !== 2026).map(String)} />
+            <FilterSelect value={quarter ? `Q${quarter}` : ''} onChange={(v) => { setQuarter(v ? v.slice(1) : ''); setMonth(''); setPage(1); }} title="Quarter" allLabel="All quarters" options={['Q1', 'Q2', 'Q3', 'Q4']} />
+            <FilterSelect value={month ? MONTH_NAMES_V[Number(month) - 1] : ''} onChange={(v) => { setMonth(v ? String(MONTH_NAMES_V.indexOf(v) + 1) : ''); setPage(1); }} title="Month" allLabel="All months" options={monthOptions} />
+            <FilterSelect value={region === 'All' ? '' : region === 'US' ? 'United States' : 'Canada'} onChange={(v) => { setRegion(v === 'United States' ? 'US' : v === 'Canada' ? 'Canada' : 'All'); setPage(1); }} title="Region" allLabel="All regions" options={['United States', 'Canada']} />
+            <FilterSelect value={fuelType === 'All' ? '' : fuelType} onChange={(v) => { setFuelType(v || 'All'); setPage(1); }} title="Fuel type" allLabel="All fuel types" options={[...FUEL_TYPE_OPTIONS]} />
+          </div>}
+          filtersExtra={<>
+            <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen(o => !o)} count={filterCount} />
+            <div className={mobileFold(filtersOpen)}>
+              <GroupBySelect value={groupBy} onChange={(g) => { setGroupBy(g); setPage(1); }} options={VEH_GROUPS} />
+              <ResetFilters on={touched} onReset={reset} />
+            </div>
+          </>} />
+      }
+      footer={<TablePager page={safePage} pageSize={pageSize} total={grouped.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
+    >
+      <table className="w-full">
+        <thead>
+          <tr>
+            <th className={cn(PIN_TH, 'w-8 px-2')} />
+            <SortTh col="vehicle" label="Vehicle" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+            {show('fuelType') && <SortTh col="fuelType" label="Fuel type" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            {show('efficiency') && <SortTh col="efficiency" label={`Efficiency (${effLabel})`} sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            {show('distance') && <SortTh col="distance" label={`Distance (${distanceUnit})`} sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            {show('months') && <SortTh col="months" label="Months" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {slice.length === 0 && (
+            <tr><td colSpan={colCount} className="px-6 py-14 text-center">
+              <Truck className="mx-auto h-7 w-7 text-slate-300" />
+              <p className="mt-3 text-sm font-semibold text-slate-700">No vehicle records for the selected filters</p>
+              <p className="mt-1 text-xs text-slate-500">Try another year, quarter, month, region or fuel type.</p>
+              {touched && <button type="button" onClick={reset} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Clear filters</button>}
+            </td></tr>
+          )}
+          {slice.map((row, i) => {
+            const g = groupOf(row);
+            const prev = i === 0 || !g ? null : groupOf(slice[i - 1]);
+            const isExpanded = expanded.has(row.name);
+            return (
+              <React.Fragment key={row.name}>
+                {g && prev !== g && <TableGroupBand label={g} count={groupCounts.get(g) ?? 0} colSpan={colCount} />}
+                <tr className={cn('group cursor-pointer transition-colors hover:bg-slate-50', isExpanded && 'bg-blue-50/30')} onClick={() => toggle(row.name)}>
+                  <ListTD className="px-2 text-center"><ChevronRight size={14} className={cn('inline-block text-slate-400 transition-transform duration-200', isExpanded && 'rotate-90')} /></ListTD>
+                  <ListTD>
+                    <div className="flex items-center gap-2.5" title={`${row.name} · ${row.make} ${row.model} ${row.year}`}>
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><Truck size={14} /></span>
+                      <span className="font-semibold text-slate-900">{row.name}</span>
+                      <span className="text-xs text-slate-500">· {row.make} {row.model} · {row.year}</span>
+                    </div>
+                  </ListTD>
+                  {show('fuelType') && <ListTD><span className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-bold', fuelTone(row.fuelType))}><Fuel size={10} /> {row.fuelType || '—'}</span></ListTD>}
+                  {show('efficiency') && <ListTD className="font-mono text-[13px] text-slate-600">{row.fuelEfficiency ? `${toEff(row.fuelEfficiency).toFixed(1)} ${effLabel}` : '—'}</ListTD>}
+                  {show('distance') && <ListTD className="font-mono text-[13px] font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</ListTD>}
+                  {show('months') && <ListTD className="font-mono text-[13px] font-semibold text-slate-700">{row.monthBreakdown.length}</ListTD>}
+                  <ListTD className={PIN_TD_ACTIONS} onClick={(e) => e.stopPropagation()}>
+                    <RowActions noun="vehicle" name={row.name} openLabel={isExpanded ? 'Hide breakdown' : 'View breakdown'} onOpen={() => toggle(row.name)}
+                      onShare={() => onShare(row)}
+                      extra={[
+                        { label: 'Log fuel purchase', icon: Plus, onClick: () => onLogPurchase(row) },
+                        ...(onOpenAssets ? [{ label: 'Open in Assets', icon: ExternalLink, onClick: onOpenAssets }] : []),
+                      ]} />
+                  </ListTD>
+                </tr>
+                {isExpanded && row.monthBreakdown.map((m) => {
+                  const mKey = `${row.name}|||${m.month}`;
+                  const isM = expandedMonth.has(mKey);
+                  return (
+                    <React.Fragment key={mKey}>
+                      <tr className={cn('cursor-pointer select-none transition-colors', isM ? 'bg-blue-50/30' : 'bg-slate-50/50 hover:bg-slate-100/40')} style={{ borderLeft: '4px solid #93c5fd' }} onClick={(e) => { e.stopPropagation(); toggleMonth(mKey); }}>
+                        <ListTD className="px-2 text-center"><ChevronRight size={12} className={cn('inline-block text-slate-400 transition-transform duration-200', isM && 'rotate-90')} /></ListTD>
+                        <ListTD colSpan={colCount - 3}>
+                          <span className="inline-flex items-center gap-2 pl-3"><Calendar size={13} className="text-blue-400" /><span className="text-[13px] font-semibold text-slate-700">{m.label}</span><span className="text-[11px] text-slate-400">· {m.jurBreakdown.length} jurisdiction{m.jurBreakdown.length !== 1 ? 's' : ''}</span></span>
+                        </ListTD>
+                        <ListTD className="font-mono text-[13px] font-semibold text-slate-700">{formatDistance(displayFromKm(m.distKm))}</ListTD>
+                        <ListTD className={PIN_TD_ACTIONS} />
+                      </tr>
+                      {isM && m.jurBreakdown.map((j) => (
+                        <tr key={`${mKey}-${j.code}`} className="bg-white hover:bg-slate-50/60" style={{ borderLeft: '8px solid #bfdbfe' }}>
+                          <ListTD className="px-2" />
+                          <ListTD colSpan={colCount - 3}>
+                            <span className="inline-flex items-center gap-2 pl-6">
+                              <span className={cn('inline-flex h-5 w-7 items-center justify-center rounded border text-[10px] font-bold leading-none', j.region === 'Canada' ? 'border-red-200 bg-red-50 text-red-600' : 'border-blue-200 bg-blue-50 text-blue-600')}>{j.code}</span>
+                              <span className="text-[12px] font-medium text-slate-700">{j.name}</span>
+                              <span className="text-[11px] text-slate-400">{j.region === 'Canada' ? '· Canada' : '· United States'}</span>
+                            </span>
+                          </ListTD>
+                          <ListTD className="font-mono text-[12px] font-semibold text-slate-700">{formatDistance(displayFromKm(j.distKm))}</ListTD>
+                          <ListTD className={PIN_TD_ACTIONS} />
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+        {slice.length > 0 && (
+          <tfoot className="border-t-2 border-slate-200 bg-slate-50">
+            <tr>
+              <td className="px-2 py-2.5" />
+              <td className="px-4 py-2.5 text-[13px] font-bold text-slate-900" colSpan={colCount - 3}>Total ({rows.length} vehicles)</td>
+              <td className="px-4 py-2.5 font-mono text-[13px] font-bold text-slate-900">{formatDistance(displayFromKm(totalVehKm))}</td>
+              <td className={cn('px-4 py-2.5', PIN_TD_ACTIONS)} />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </ListScrollFrame>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACTIVITY TAB — what happened on this page, and what the data records
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Something done on this page — kept per carrier so the tab survives a reload. */
+export interface FuelLogEntry { id: string; at: string; kind: ActivityKind; title: string; detail?: string; vehicle?: string; by: string }
+const FUEL_LOG_KEY = 'fuel-activity-log-v1';
+function readFuelLog(accountId?: string): FuelLogEntry[] {
+  try { const all = JSON.parse(localStorage.getItem(FUEL_LOG_KEY) || '{}') as Record<string, FuelLogEntry[]>; return all[accountId ?? '_'] ?? []; } catch { return []; }
+}
+function writeFuelLog(accountId: string | undefined, entries: FuelLogEntry[]): void {
+  try { const all = JSON.parse(localStorage.getItem(FUEL_LOG_KEY) || '{}') as Record<string, FuelLogEntry[]>; all[accountId ?? '_'] = entries.slice(0, 500); localStorage.setItem(FUEL_LOG_KEY, JSON.stringify(all)); } catch { /* private window */ }
+}
+
+type ActType = 'Fuel purchase' | 'Trip' | 'Idling event' | 'Page action';
+interface ActRow { id: string; at: string; type: ActType; kind: ActivityKind; title: string; detail?: string; vehicle: string; driver: string }
+type ActCol = 'when' | 'activity' | 'vehicle' | 'driver' | 'details';
+const ACT_COLUMNS: PickerColumn<ActCol>[] = [
+  { id: 'when', label: 'When', locked: true },
+  { id: 'activity', label: 'Activity', locked: true },
+  { id: 'vehicle', label: 'Vehicle' },
+  { id: 'driver', label: 'Driver' },
+  { id: 'details', label: 'Details' },
+];
+type ActGroup = 'none' | 'type' | 'vehicle' | 'day';
+const ACT_GROUPS: { id: ActGroup; label: string }[] = [
+  { id: 'none', label: 'No grouping' },
+  { id: 'type', label: 'Group: Type' },
+  { id: 'vehicle', label: 'Group: Vehicle' },
+  { id: 'day', label: 'Group: Day' },
+];
+const ACT_TYPES: ActType[] = ['Fuel purchase', 'Trip', 'Idling event', 'Page action'];
+const fmtWhenAct = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + (iso.length > 10 ? ` · ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : ''); };
+
+function FuelActivityTab({ log, purchases, trips, idling, scrollRef, onScroll }: {
+  log: FuelLogEntry[]; purchases: FuelPurchase[]; trips: TripRecord[]; idling: IdlingEvent[];
+  scrollRef?: React.Ref<HTMLDivElement>; onScroll?: React.UIEventHandler<HTMLDivElement>;
+}) {
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [groupBy, setGroupBy] = useState<ActGroup>('none');
+  const [visible, setVisible] = useState<Set<ActCol>>(() => new Set(ACT_COLUMNS.map(c => c.id)));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const all = useMemo<ActRow[]>(() => [
+    ...log.map(e => ({ id: e.id, at: e.at, type: 'Page action' as ActType, kind: e.kind, title: e.title, detail: e.detail, vehicle: e.vehicle ?? '', driver: e.by })),
+    ...purchases.map(p => ({ id: `p-${p.id}`, at: p.date, type: 'Fuel purchase' as ActType, kind: 'recorded' as ActivityKind, title: `Fuel purchase · ${p.gallons.toFixed(1)} gal ${p.fuelType}`, detail: `$${p.totalCost.toFixed(2)} at ${p.location}`, vehicle: p.unitNumber, driver: p.driverName })),
+    ...trips.map(t => ({ id: `t-${t.id}`, at: t.date, type: 'Trip' as ActType, kind: 'recorded' as ActivityKind, title: `Trip · ${t.jurisdiction}`, detail: `${Math.round(t.totalDistance).toLocaleString()} mi`, vehicle: t.unitNumber, driver: t.driverName })),
+    ...idling.map(e => ({ id: `i-${e.id}`, at: e.date, type: 'Idling event' as ActType, kind: 'warning' as ActivityKind, title: `Idling · ${fmtDuration(e.durationMinutes)}`, detail: `${e.fuelWastedGal.toFixed(1)} gal wasted · ${e.reason || e.location}`, vehicle: e.unitNumber, driver: e.driverName })),
+  ].sort((a, b) => b.at.localeCompare(a.at)), [log, purchases, trips, idling]);
+
+  const stats: KpiStat[] = [
+    { id: 'all', label: 'Activity', value: all.length, Icon: History, accent: 'blue' },
+    { id: 'Fuel purchase', label: 'Fuel purchases', value: purchases.length, Icon: ShoppingCart, accent: 'emerald' },
+    { id: 'Trip', label: 'Trips', value: trips.length, Icon: Route, accent: 'violet' },
+    { id: 'Idling event', label: 'Idling events', value: idling.length, Icon: Gauge, accent: 'amber' },
+  ];
+  const pickKpi = (id: string) => { setPage(1); setType(id === 'all' || type === id ? '' : id); };
+  useHeaderChips(chipsFromStats(stats, type || 'all', pickKpi));
+
+  const vehicles = useMemo(() => [...new Set(all.map(a => a.vehicle).filter(Boolean))].sort(), [all]);
+  const q = search.trim().toLowerCase();
+  const rows = all.filter(a => {
+    if (type && a.type !== type) return false;
+    if (vehicle && a.vehicle !== vehicle) return false;
+    return !q || [a.title, a.detail, a.vehicle, a.driver].some(x => x?.toLowerCase().includes(q));
+  });
+  const readers = useMemo(() => ({
+    when: (a: ActRow) => a.at, activity: (a: ActRow) => a.title, vehicle: (a: ActRow) => a.vehicle, driver: (a: ActRow) => a.driver, details: (a: ActRow) => a.detail ?? '',
+  }), []);
+  const { sort, onSort, sorted } = useTableSort<ActCol, ActRow>(rows, readers, { col: 'when', dir: 'desc' });
+  const groupOf = (a: ActRow): string | null => groupBy === 'type' ? a.type : groupBy === 'vehicle' ? (a.vehicle || 'No vehicle') : groupBy === 'day' ? a.at.slice(0, 10) : null;
+  const grouped = groupBy === 'none' ? sorted : [...sorted].map((a, i) => ({ a, i })).sort((x, y) => (groupBy === 'day' ? groupOf(y.a)!.localeCompare(groupOf(x.a)!) : groupOf(x.a)!.localeCompare(groupOf(y.a)!)) || x.i - y.i).map(x => x.a);
+  const groupCounts = new Map<string, number>();
+  if (groupBy !== 'none') grouped.forEach(a => { const l = groupOf(a)!; groupCounts.set(l, (groupCounts.get(l) ?? 0) + 1); });
+  const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
+  const safePage = Math.min(page, pages);
+  const slice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const show = (c: ActCol) => visible.has(c);
+  const colCount = ACT_COLUMNS.filter(c => c.locked || visible.has(c.id)).length;
+  const filterCount = [!!type, !!vehicle, groupBy !== 'none'].filter(Boolean).length;
+  const touched = filterCount > 0 || !!q;
+  const reset = () => { setSearch(''); setType(''); setVehicle(''); setGroupBy('none'); setPage(1); };
+
+  return (
+    <ListScrollFrame
+      above={<KpiStatRow stats={stats} activeId={type || 'all'} onPick={pickKpi} />}
+      title="Activity log"
+      count={grouped.length}
+      total={all.length}
+      description="Everything recorded for this carrier's fuel — purchases, trips and idling events as they were logged, and what was done on this page."
+      actions={<ColumnPicker columns={ACT_COLUMNS} visible={visible} onToggle={(id) => setVisible(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} />}
+      scrollRef={scrollRef} onScroll={onScroll} contentKey={`${filtersOpen}|${slice.length}`}
+      toolbar={
+        <ListToolbar search={search} onSearch={(v) => { setSearch(v); setPage(1); }} placeholder="Search activity, vehicle, driver…"
+          filters={<div className={mobileFold(filtersOpen)}>
+            <FilterSelect value={type} onChange={(v) => { setType(v); setPage(1); }} title="Type" allLabel="All types" options={ACT_TYPES} />
+            <FilterSelect value={vehicle} onChange={(v) => { setVehicle(v); setPage(1); }} title="Vehicle" allLabel="All vehicles" options={vehicles} />
+          </div>}
+          filtersExtra={<>
+            <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen(o => !o)} count={filterCount} />
+            <div className={mobileFold(filtersOpen)}>
+              <GroupBySelect value={groupBy} onChange={(g) => { setGroupBy(g); setPage(1); }} options={ACT_GROUPS} />
+              <ResetFilters on={touched} onReset={reset} />
+            </div>
+          </>} />
+      }
+      footer={<TablePager page={safePage} pageSize={pageSize} total={grouped.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
+    >
+      <table className="w-full">
+        <thead>
+          <tr>
+            <SortTh col="when" label="When" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+            <SortTh col="activity" label="Activity" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+            {show('vehicle') && <SortTh col="vehicle" label="Vehicle" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            {show('driver') && <SortTh col="driver" label="Driver / by" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+            {show('details') && <SortTh col="details" label="Details" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {slice.length === 0 && (
+            <tr><td colSpan={colCount} className="px-6 py-14 text-center">
+              <History className="mx-auto h-7 w-7 text-slate-300" />
+              <p className="mt-3 text-sm font-semibold text-slate-700">{all.length ? 'Nothing matches' : 'No activity yet'}</p>
+              {touched && <button type="button" onClick={reset} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Clear filters</button>}
+            </td></tr>
+          )}
+          {slice.map((a, i) => {
+            const g = groupOf(a);
+            const prev = i === 0 || !g ? null : groupOf(slice[i - 1]);
+            const meta = activityMeta(a.kind);
+            const KIcon = meta.icon;
+            return (
+              <React.Fragment key={a.id}>
+                {g && prev !== g && <TableGroupBand label={groupBy === 'day' ? fmtWhenAct(g) : g} count={groupCounts.get(g) ?? 0} colSpan={colCount} />}
+                <tr className="transition-colors hover:bg-slate-50">
+                  <ListTD className="text-[13px] text-slate-600">{fmtWhenAct(a.at)}</ListTD>
+                  <ListTD>
+                    <span className="inline-flex items-center gap-2">
+                      <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white', meta.dot)}><KIcon size={12} /></span>
+                      <span className="font-medium text-slate-900">{a.title}</span>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{a.type}</span>
+                    </span>
+                  </ListTD>
+                  {show('vehicle') && <ListTD className="text-[13px] text-slate-700">{a.vehicle ? <span className="inline-flex items-center gap-1.5"><Truck size={13} className="text-slate-400" /> {a.vehicle}</span> : <span className="text-slate-300">—</span>}</ListTD>}
+                  {show('driver') && <ListTD className="text-[13px] text-slate-700">{a.driver || <span className="text-slate-300">—</span>}</ListTD>}
+                  {show('details') && <ListTD className="max-w-[24rem] truncate text-[13px] text-slate-500"><span title={a.detail}>{a.detail || '—'}</span></ListTD>}
+                </tr>
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </ListScrollFrame>
+  );
+}
+
+/** CSV download of whatever the tab is showing. */
+function downloadCsv(name: string, rows: (string | number)[][]): void {
+  const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT
@@ -332,9 +780,10 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutGrid }[] = [
 // demo data so the page never renders empty.
 interface FuelPageProps {
   accountId?: string;
+  onNavigate?: (path: string) => void;
 }
 
-export function FuelPage({ accountId }: FuelPageProps = {}) {
+export function FuelPage({ accountId, onNavigate }: FuelPageProps = {}) {
   // Per-carrier seed — driver/asset assignments, trips, purchases, idling
   // events all key off CARRIER_DRIVERS + CARRIER_ASSETS. If the carrier
   // has no synthesised data yet, we fall back to the demo dataset.
@@ -352,6 +801,16 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
   const seedAssignments = carrierSeed?.assignments ?? DRIVER_VEHICLE_ASSIGNMENTS;
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  // The header shrinks as the body scrolls; a list below says when its cards are out of view.
+  const { scrollRef, onScroll, condensed, bridge } = usePageChrome(activeTab);
+  const [sharingVehicle, setSharingVehicle] = useState<VehicleRow | null>(null);
+  // What was done on this page, per carrier — the Activity tab shows it with the records.
+  const [log, setLog] = useState<FuelLogEntry[]>(() => readFuelLog(accountId));
+  useEffect(() => { setLog(readFuelLog(accountId)); }, [accountId]);
+  const note = (kind: ActivityKind, title: string, detail?: string, vehicle?: string) => {
+    const entry: FuelLogEntry = { id: `fl-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), kind, title, detail, vehicle, by: currentUserName() };
+    setLog(prev => { const next = [entry, ...prev]; writeFuelLog(accountId, next); return next; });
+  };
 
   // Filters
   const [tripJurisdiction, setTripJurisdiction] = useState('All');
@@ -380,8 +839,6 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
   const [vehFuelType, setVehFuelType] = useState('All');
   const [expandedJur, setExpandedJur] = useState<Set<string>>(new Set());
   const [expandedVehicle, setExpandedVehicle] = useState<Set<string>>(new Set());
-  const [expandedVeh, setExpandedVeh] = useState<Set<string>>(new Set());
-  const [expandedVehJur, setExpandedVehJur] = useState<Set<string>>(new Set());
 
   // ── Detail view modals ──
   const [selectedTrip, setSelectedTrip] = useState<TripRecord | null>(null);
@@ -606,6 +1063,7 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
       fuelType: asset?.vehicleType === 'Reefer' ? 'Diesel/Electric' : 'Diesel',
     };
     setLocalTrips(prev => [newTrip, ...prev]);
+    note('created', `Added a trip · ${newTrip.jurisdiction}`, `${Math.round(newTrip.totalDistance).toLocaleString()} mi`, newTrip.unitNumber);
     setShowAddTrip(false);
     setAddTripDate(''); setAddTripJurisdiction(''); setAddTripVehicle('');
     setAddTripDist(''); setAddTripOdoStart(''); setAddTripOdoEnd('');
@@ -639,8 +1097,10 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
     };
     if (editingPurchase) {
       setLocalPurchases(prev => prev.map(p => p.id === editingPurchase.id ? newPurchase : p));
+      note('updated', `Edited a fuel purchase · ${newPurchase.gallons.toFixed(1)} gal`, `${newPurchase.totalCost.toFixed(2)} at ${newPurchase.location}`, newPurchase.unitNumber);
     } else {
       setLocalPurchases(prev => [newPurchase, ...prev]);
+      note('created', `Logged a fuel purchase · ${newPurchase.gallons.toFixed(1)} gal`, `${newPurchase.totalCost.toFixed(2)} at ${newPurchase.location}`, newPurchase.unitNumber);
     }
     setShowAddPurchase(false);
     setEditingPurchase(null);
@@ -689,6 +1149,7 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
       reason: addIdleReason,
     };
     setLocalIdling(prev => [newIdling, ...prev]);
+    note('created', `Added an idling event · ${fmtDuration(newIdling.durationMinutes)}`, newIdling.location, newIdling.unitNumber);
     setShowAddIdling(false);
     setAddIdleDate(''); setAddIdleVehicle(''); setAddIdleDuration('');
     setAddIdleLocation(''); setAddIdleReason('');
@@ -703,65 +1164,65 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
   const thClass = "px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider";
   const tdClass = "px-4 py-3";
 
+  // Export whatever the tab is about.
+  const exportCsv = () => {
+    if (activeTab === 'trips') downloadCsv('fuel-trips.csv', [['Date', 'Jurisdiction', 'Vehicle', 'Driver', 'Distance (mi)', 'Odometer start', 'Odometer end', 'Fuel type'], ...localTrips.map(t => [t.date, t.jurisdiction, t.unitNumber, t.driverName, t.totalDistance, t.odoStart, t.odoEnd, t.fuelType])]);
+    else if (activeTab === 'idling') downloadCsv('fuel-idling.csv', [['Date', 'Vehicle', 'Driver', 'Duration (min)', 'Fuel wasted (gal)', 'Location', 'Reason'], ...localIdling.map(e => [e.date, e.unitNumber, e.driverName, e.durationMinutes, e.fuelWastedGal, e.location, e.reason])]);
+    else if (activeTab === 'activity') downloadCsv('fuel-activity.csv', [['When', 'Activity', 'Detail', 'Vehicle', 'By'], ...log.map(e => [e.at, e.title, e.detail ?? '', e.vehicle ?? '', e.by])]);
+    else downloadCsv('fuel-purchases.csv', [['Date', 'Location', 'Jurisdiction', 'Vehicle', 'Driver', 'Gallons', 'Price / gal', 'Total', 'Fuel type', 'Payment'], ...localPurchases.map(p => [p.date, p.location, p.jurisdiction, p.unitNumber, p.driverName, p.gallons, p.pricePerGallon, p.totalCost, p.fuelType, p.paymentMethod])]);
+    note('shared', `Exported ${activeTab === 'trips' ? 'trips' : activeTab === 'idling' ? 'idling events' : activeTab === 'activity' ? 'the activity log' : 'fuel purchases'} to CSV`);
+  };
+  const headerBtn = (cls: string) => `inline-flex items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold shadow-sm ${condensed ? 'h-8' : 'h-9'} ${cls}`;
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 md:p-6 pb-20 relative">
-      <div className="w-full space-y-6">
+    <ListHeaderBridge value={bridge.value}>
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-900">
+      <ListPageHeader
+        Icon={Fuel}
+        title="Fuel Management"
+        description="Fuel economy, idling, emissions and purchases across the fleet."
+        condensed={condensed}
+        chips={bridge.chips ?? undefined}
+        tabs={TABS.map(t => ({ id: t.id, label: t.label, icon: t.icon }))}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as TabId)}
+        tabsLabel="Fuel sections"
+        actions={<>
+          <button type="button" onClick={exportCsv} className={headerBtn('border border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
+            <Download size={15} /> Export
+          </button>
+          {activeTab === 'trips' && (
+            <button type="button" onClick={() => setShowAddTrip(true)} className={headerBtn('bg-blue-600 text-white hover:bg-blue-700')}><Plus size={15} /> Add trip</button>
+          )}
+          {activeTab === 'purchases' && (
+            <>
+              <button type="button" onClick={() => { resetPurchForm(); setShowAddPurchase(true); }} className={headerBtn('bg-blue-600 text-white hover:bg-blue-700')}><Plus size={15} /> Add purchase</button>
+              <button type="button" onClick={() => setShowBulkUpload(true)} className={headerBtn('bg-violet-600 text-white hover:bg-violet-700')}><Upload size={15} /> Bulk upload</button>
+            </>
+          )}
+          {activeTab === 'idling' && (
+            <button type="button" onClick={() => setShowAddIdling(true)} className={headerBtn('bg-blue-600 text-white hover:bg-blue-700')}><Plus size={15} /> Add event</button>
+          )}
+        </>}
+      />
 
-        {/* ===== TOP HEADER ===== */}
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Fuel Management</h1>
-            <p className="text-sm text-gray-500">Track fuel economy, idling, emissions, and purchases across your fleet.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
-              <Download size={16} /> Export
-            </button>
-            {activeTab === 'trips' && (
-              <button onClick={() => setShowAddTrip(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
-                <Plus size={15} /> Add Trip
-              </button>
-            )}
-            {activeTab === 'purchases' && (
-              <>
-                <button onClick={() => { resetPurchForm(); setShowAddPurchase(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
-                  <Plus size={15} /> Add Purchase
-                </button>
-                <button onClick={() => setShowBulkUpload(true)} className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 shadow-sm">
-                  <Upload size={15} /> Bulk Upload
-                </button>
-              </>
-            )}
-            {activeTab === 'idling' && (
-              <button onClick={() => setShowAddIdling(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
-                <Plus size={15} /> Add Event
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ===== TAB NAVIGATION ===== */}
-        <div className="border-b border-slate-200 mb-6">
-          <nav className="-mb-px flex space-x-6">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`${activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2`}
-                >
-                  <Icon size={18} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* ═══════════════════════════════════════════════════════════════════ */}
-        {/* TAB: OVERVIEW                                                     */}
-        {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* The list tabs own their scroll; everything else scrolls as one body. */}
+      {activeTab === 'vehicles' && (
+        <FuelVehiclesTab
+          year={iftaYear} setYear={setIftaYear} quarter={iftaQuarter} setQuarter={setIftaQuarter} month={iftaMonth} setMonth={setIftaMonth}
+          region={iftaRegion} setRegion={setIftaRegion} fuelType={vehFuelType} setFuelType={setVehFuelType}
+          distanceUnit={distanceUnit} setDistanceUnit={setDistanceUnit}
+          scrollRef={scrollRef} onScroll={onScroll}
+          onShare={(v) => setSharingVehicle(v)}
+          onLogPurchase={(v) => { resetPurchForm(); setAddPurchVehicle(v.name); setShowAddPurchase(true); setActiveTab('purchases'); }}
+          onOpenAssets={onNavigate ? () => onNavigate('/assets/directory') : undefined}
+        />
+      )}
+      {activeTab === 'activity' && (
+        <FuelActivityTab log={log} purchases={localPurchases} trips={localTrips} idling={localIdling} scrollRef={scrollRef} onScroll={onScroll} />
+      )}
+      {activeTab !== 'vehicles' && activeTab !== 'activity' && (
+      <ScrollBody scrollRef={scrollRef} onScroll={onScroll}>
         {activeTab === 'overview' && (() => {
           // ── Compute KPIs from real data ──
           const totalTripDist = localTrips.reduce((s, t) => s + t.totalDistance, 0); // miles
@@ -1018,288 +1479,6 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* TAB: VEHICLES  (IFTA-style expandable rows)                       */}
-        {/* ═══════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'vehicles' && (() => {
-          // ── Build vehicle-centric aggregation from IFTA data ──
-          const vehFilterYear = iftaYear;
-          const vehFilterQuarter = iftaQuarter;
-          const vehFilterMonth = iftaMonth;
-          const vehFilterRegion = iftaRegion;
-          const vehFilterFuelType = vehFuelType;
-          const vehicleFuelTypeOptions = FUEL_TYPE_OPTIONS;
-
-          const vehFiltered = IFTA_SUMMARY_RESULTS.filter(r => {
-            const [y, m] = r.month.split('-').map(Number);
-            if (y !== vehFilterYear) return false;
-            if (vehFilterQuarter && getQuarter(r.month) !== Number(vehFilterQuarter)) return false;
-            if (vehFilterMonth && m !== Number(vehFilterMonth)) return false;
-            const region = JURISDICTION_REGION[r.jurisdiction];
-            if (vehFilterRegion !== 'All' && region !== vehFilterRegion) return false;
-            if (vehFilterFuelType !== 'All' && normalizeFuelType(r.vehicle.fuelType) !== vehFilterFuelType) return false;
-            return true;
-          });
-
-          // Aggregate by vehicle → month → jurisdiction
-          interface VMthJur { code: string; name: string; region: string; distKm: number }
-          interface VMth { month: string; distKm: number; jurisdictions: Map<string, VMthJur> }
-          interface VAgg { name: string; make: string; model: string; year: number; fuelType: string; fuelEfficiency: number | null; fuelTankCapacity: number | null; totalKm: number; months: Map<string, VMth> }
-          const vehMap = new Map<string, VAgg>();
-          for (const r of vehFiltered) {
-            const key = r.vehicle.name;
-            const cur = vehMap.get(key) || { name: r.vehicle.name, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, fuelType: normalizeFuelType(r.vehicle.fuelType), fuelEfficiency: r.vehicle.fuelEfficiency, fuelTankCapacity: r.vehicle.fuelTankCapacity, totalKm: 0, months: new Map<string, VMth>() };
-            cur.totalKm += r.distance;
-            const mKey = r.month;
-            const mCur = cur.months.get(mKey) || { month: mKey, distKm: 0, jurisdictions: new Map<string, VMthJur>() };
-            mCur.distKm += r.distance;
-            const jKey = r.jurisdiction;
-            const jCur = mCur.jurisdictions.get(jKey) || { code: jKey, name: JURISDICTION_LABELS[jKey] || jKey, region: JURISDICTION_REGION[jKey] || 'US', distKm: 0 };
-            jCur.distKm += r.distance;
-            mCur.jurisdictions.set(jKey, jCur);
-            cur.months.set(mKey, mCur);
-            vehMap.set(key, cur);
-          }
-
-          const MONTH_NAMES_V = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-          const fmtMonthFullV = (m: string) => { const [yr, mm] = m.split('-').map(Number); return `${MONTH_NAMES_V[mm-1]} ${yr}`; };
-
-          const vehRows = [...vehMap.values()].map(v => ({
-            ...v,
-            totalMi: Math.round(kmToMiles(v.totalKm)),
-            monthBreakdown: [...v.months.values()]
-              .sort((a, b) => a.month.localeCompare(b.month))
-              .map(m => ({
-                ...m,
-                distMi: Math.round(kmToMiles(m.distKm)),
-                label: fmtMonthFullV(m.month),
-                jurBreakdown: [...m.jurisdictions.values()]
-                  .map(j => ({ ...j, distMi: Math.round(kmToMiles(j.distKm)) }))
-                  .sort((a, b) => b.distMi - a.distMi),
-              })),
-          })).sort((a, b) => b.totalMi - a.totalMi);
-
-          const toggleVehExpand = (key: string) => setExpandedVeh(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-
-          // KPI stats
-          const totalVehKm = vehRows.reduce((s, v) => s + v.totalKm, 0);
-          const avgMpg = vehRows.length > 0 ? vehRows.reduce((s, v) => s + (v.fuelEfficiency || 0), 0) / vehRows.filter(v => v.fuelEfficiency).length : 0;
-          const effLabel = distanceUnit === 'mi' ? 'MPG' : 'km/L';
-          const toEff = (mpg: number) => distanceUnit === 'mi' ? mpg : mpg * 0.425144;
-          const uniqueJurCount = new Set(vehFiltered.map(r => r.jurisdiction)).size;
-          const monthLabelV = vehFilterMonth ? ['','January','February','March','April','May','June','July','August','September','October','November','December'][Number(vehFilterMonth)] : 'All Months';
-          const regionLabelV = vehFilterRegion === 'All' ? 'All Regions' : vehFilterRegion;
-          const fuelTypeLabelV = vehFilterFuelType === 'All' ? 'All Fuel Types' : vehFilterFuelType;
-
-          return (
-          <div className="space-y-4">
-            {/* ── KPI Cards ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Total Vehicles */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 relative overflow-hidden">
-                <div className="absolute top-3 right-3 w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                  <Truck size={18} className="text-blue-600" />
-                </div>
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fleet Vehicles</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">Active in period</div>
-                <div className="text-3xl font-bold text-slate-900 mt-2">{vehRows.length}</div>
-                <div className="text-xs text-slate-400 mt-1">{uniqueJurCount} jurisdictions covered</div>
-              </div>
-
-              {/* Total Distance */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 relative overflow-hidden">
-                <div className="absolute top-3 right-3 w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center">
-                  <Route size={18} className="text-emerald-600" />
-                </div>
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Distance</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">All vehicles combined</div>
-                <div className="text-3xl font-bold text-slate-900 mt-2">{formatDistance(displayFromKm(totalVehKm))} <span className="text-base font-medium text-slate-400">{distanceUnitLabel}</span></div>
-                <div className="text-xs text-slate-400 mt-1">{formatDistance(altDisplayFromKm(totalVehKm))} {altDistanceUnitLabel}</div>
-              </div>
-
-              {/* Average MPG */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 relative overflow-hidden">
-                <div className="absolute top-3 right-3 w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
-                  <Gauge size={18} className="text-amber-600" />
-                </div>
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Avg. Fuel Efficiency</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">Fleet average</div>
-                <div className="text-3xl font-bold text-slate-900 mt-2">{toEff(avgMpg).toFixed(1)} <span className="text-base font-medium text-slate-400">{effLabel}</span></div>
-                <div className="text-xs text-slate-400 mt-1">Based on {vehRows.filter(v => v.fuelEfficiency).length} vehicles</div>
-              </div>
-            </div>
-
-            {/* ── Table Card ── */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              {/* ── Filters ── */}
-              <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap bg-white">
-                <select value={vehFilterYear} onChange={e => { setIftaYear(Number(e.target.value)); }} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <select value={vehFilterQuarter} onChange={e => { setIftaQuarter(e.target.value); setIftaMonth(''); }} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">All Quarters</option>
-                  {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
-                </select>
-                <select value={vehFilterMonth} onChange={e => setIftaMonth(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">All Months</option>
-                  {(vehFilterQuarter ? [((Number(vehFilterQuarter)-1)*3)+1,((Number(vehFilterQuarter)-1)*3)+2,((Number(vehFilterQuarter)-1)*3)+3] : [1,2,3,4,5,6,7,8,9,10,11,12]).map(m => (
-                    <option key={m} value={m}>{MONTH_NAMES_V[m-1]}</option>
-                  ))}
-                </select>
-                <select value={vehFilterRegion} onChange={e => setIftaRegion(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="All">All Regions</option>
-                  <option value="US">United States</option>
-                  <option value="Canada">Canada</option>
-                </select>
-                <select value={vehFilterFuelType} onChange={e => setVehFuelType(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="All">All Fuel Types</option>
-                  {vehicleFuelTypeOptions.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                </select>
-                <button onClick={() => { setIftaYear(2026); setIftaQuarter(''); setIftaMonth(''); setIftaRegion('All'); setVehFuelType('All'); }}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                  Reset filters
-                </button>
-
-                <div className="ml-auto flex items-center gap-3">
-                  {/* mi / km toggle */}
-                  <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                    <button onClick={() => setDistanceUnit('mi')}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'mi' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      mi
-                    </button>
-                    <button onClick={() => setDistanceUnit('km')}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'km' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      km
-                    </button>
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    <span className="font-bold text-gray-900">{vehRows.length}</span> Vehicles Found
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Table Header ── */}
-              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h3 className="text-sm font-bold text-slate-900">Vehicle Mileage Breakdown</h3>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                  {vehFilterYear} {vehFilterQuarter ? `Q${vehFilterQuarter}` : ''} {monthLabelV !== 'All Months' ? monthLabelV : ''} · {regionLabelV} · {fuelTypeLabelV}
-                </span>
-              </div>
-
-              {/* ── Table ── */}
-              {vehRows.length === 0 ? (
-                <div className="px-5 py-12 text-center text-slate-400">
-                  <p className="text-sm font-medium">No vehicle records found for the selected filters.</p>
-                  <p className="text-xs mt-1">Try adjusting the year, quarter, month, region, or fuel type.</p>
-                </div>
-              ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className={`${thClass} text-left`} style={{ width: '36px' }}></th>
-                      <th className={`${thClass} text-left`}>Vehicle</th>
-                      <th className={`${thClass} text-left`}>Fuel Type</th>
-                      <th className={`${thClass} text-right`}>Efficiency ({effLabel})</th>
-                      <th className={`${thClass} text-right`}>Distance ({distanceUnitLabel})</th>
-                      <th className={`${thClass} text-right`}>Months</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vehRows.map((row) => {
-                      const isExpanded = expandedVeh.has(row.name);
-                      return (
-                        <React.Fragment key={row.name}>
-                          {/* ── Vehicle Row ── */}
-                          <tr className={`border-b border-slate-100 hover:bg-blue-50/30 transition-colors cursor-pointer select-none ${isExpanded ? 'bg-blue-50/20' : ''}`} onClick={() => toggleVehExpand(row.name)}>
-                            <td className="px-3 py-3 text-center">
-                              <ChevronRight size={14} className={`text-slate-400 transition-transform duration-200 inline-block ${isExpanded ? 'rotate-90' : ''}`} />
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                                  <Truck size={16} />
-                                </div>
-                                <div>
-                                  <div className="text-[13px] font-semibold text-slate-800">{row.name}</div>
-                                  <div className="text-[11px] text-slate-400">{row.make} {row.model} · {row.year}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${row.fuelType?.toLowerCase() === 'diesel' ? 'bg-amber-50 text-amber-700 border border-amber-200' : row.fuelType?.toLowerCase() === 'gasoline' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-purple-50 text-purple-700 border border-purple-200'}`}>
-                                <Fuel size={10} /> {row.fuelType || '—'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">{row.fuelEfficiency ? `${toEff(row.fuelEfficiency).toFixed(1)} ${effLabel}` : '—'}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono font-semibold text-slate-700">{row.monthBreakdown.length}</td>
-                          </tr>
-
-                          {/* ── Level 2: Month Sub-Rows ── */}
-                          {isExpanded && row.monthBreakdown.map((m) => {
-                            const mKey = `${row.name}|||${m.month}`;
-                            const isMExpanded = expandedVehJur.has(mKey);
-                            return (
-                              <React.Fragment key={mKey}>
-                                {/* Month row */}
-                                <tr className={`border-b border-slate-100/60 cursor-pointer select-none transition-colors ${isMExpanded ? 'bg-blue-50/30' : 'bg-slate-50/50 hover:bg-slate-100/40'}`}
-                                    onClick={(e) => { e.stopPropagation(); setExpandedVehJur(prev => { const n = new Set(prev); n.has(mKey) ? n.delete(mKey) : n.add(mKey); return n; }); }}
-                                    style={{ borderLeft: '4px solid #93c5fd' }}>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <ChevronRight size={12} className={`text-slate-400 transition-transform duration-200 inline-block ${isMExpanded ? 'rotate-90' : ''}`} />
-                                  </td>
-                                  <td className="px-4 py-2.5" colSpan={3}>
-                                    <div className="flex items-center gap-2 pl-3">
-                                      <Calendar size={13} className="text-blue-400 flex-shrink-0" />
-                                      <span className="text-[13px] font-semibold text-slate-700">{m.label}</span>
-                                      <span className="text-[11px] text-slate-400">· {m.jurBreakdown.length} jurisdiction{m.jurBreakdown.length !== 1 ? 's' : ''}</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(m.distKm))}</td>
-                                  <td className="px-4 py-2.5"></td>
-                                </tr>
-
-                                {/* ── Level 3: Jurisdiction rows under each month ── */}
-                                {isMExpanded && m.jurBreakdown.map((j) => (
-                                  <tr key={`${mKey}-${j.code}`}
-                                      className="border-b border-slate-100/40 bg-white hover:bg-slate-50/60"
-                                      style={{ borderLeft: '8px solid #bfdbfe' }}>
-                                    <td className="px-3 py-2 text-center"></td>
-                                    <td className="px-4 py-2" colSpan={3}>
-                                      <div className="flex items-center gap-2 pl-6">
-                                        <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold leading-none flex-shrink-0 ${j.region === 'Canada' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>{j.code}</span>
-                                        <span className="text-[12px] font-medium text-slate-700">{j.name}</span>
-                                        <span className="text-[11px] text-slate-400">{j.region === 'Canada' ? '· Canada' : '· United States'}</span>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-2 text-right text-[12px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(j.distKm))}</td>
-                                    <td className="px-4 py-2"></td>
-                                  </tr>
-                                ))}
-                              </React.Fragment>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                    <tr>
-                      <td className="px-3 py-3"></td>
-                      <td className="px-4 py-3 text-[13px] font-bold text-slate-900" colSpan={3}>Total ({vehRows.length} vehicles)</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(totalVehKm))}</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-700">{uniqueJurCount}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-              )}
-            </div>
-          </div>
-          );
-        })()}
-
-        {/* ═══════════════════════════════════════════════════════════════════ */}
-        {/* TAB: IFTA SUMMARY                                                 */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'ifta' && (() => {
           // ── Filter IFTA records by year/quarter/month/region ──
@@ -2356,7 +2535,26 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
           );
         })()}
 
-      </div>
+      </ScrollBody>
+      )}
+
+      {sharingVehicle && (
+        <ShareToChat
+          open
+          onClose={() => setSharingVehicle(null)}
+          title={`Share ${sharingVehicle.name}`}
+          subtitle="Mileage and fuel figures for one vehicle, in a chat or by email"
+          source={{ type: 'manual', id: sharingVehicle.name, label: sharingVehicle.name }}
+          items={[
+            { name: `${sharingVehicle.make} ${sharingVehicle.model} · ${sharingVehicle.year}`, group: 'Vehicle' },
+            { name: sharingVehicle.fuelType || '—', group: 'Fuel type' },
+            { name: `${sharingVehicle.totalMi.toLocaleString()} mi in the period`, group: 'Distance' },
+            ...(sharingVehicle.fuelEfficiency ? [{ name: `${sharingVehicle.fuelEfficiency.toFixed(1)} MPG`, group: 'Efficiency' }] : []),
+          ]}
+          defaultChannel="in-app"
+          defaultSubject={`${sharingVehicle.name} — fuel & mileage`}
+        />
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       {/* MODALS                                                                */}
@@ -2883,5 +3081,6 @@ export function FuelPage({ accountId }: FuelPageProps = {}) {
       )}
 
     </div>
+    </ListHeaderBridge>
   );
 }

@@ -796,6 +796,18 @@ function migrateStore(): void {
 }
 migrateStore();
 
+/** The whole store, read outside a component — every carrier's entries, keyed `${acct}::${subject}::${record}`. */
+export function readComplianceAll(): Record<string, RecordDataEntry> {
+    return loadAll();
+}
+
+/** Re-run `cb` whenever any compliance entry changes (this tab or another). */
+export function subscribeComplianceData(cb: () => void): () => void {
+    window.addEventListener(EVENT, cb);
+    window.addEventListener('storage', cb);
+    return () => { window.removeEventListener(EVENT, cb); window.removeEventListener('storage', cb); };
+}
+
 export function useComplianceData(accountId?: string) {
     const acct = accountId ?? 'acct-001';
     const [all, setAll] = useState<Store>(loadAll);

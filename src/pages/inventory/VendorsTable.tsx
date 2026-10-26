@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// VendorsTable — the vendor list itself: figures, categories, search, rows, paging.
+// VendorsTable — the vendor list itself: figures, filters, search, rows, paging.
 //
 // Lifted out of VendorsListPage so Maintenance can show the same list. A fleet has
 // one set of vendors — the shop that does the brake job is the same record the
@@ -7,16 +7,23 @@
 // must not be two tables that drift. The page around it (header, title, actions)
 // stays with each host; this is only the list.
 //
-// It is built from the same pieces as the Inventory list (`CatalogTable`): KPI tiles,
-// a search row, ruled columns, one pager.
+// It is built from the shared list furniture (`ListChrome`): KPI cards, the toolbar with
+// its filters, grouping and column picker, pinned headings, one pager. Given a `frame`, it
+// fills its host's body the way every full-page list does — the cards scroll up and away,
+// then the rows scroll under their headings (`ListScrollFrame`).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type Ref, type UIEventHandler } from "react";
 import {
-    ColumnPicker, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+    ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, useTableSort,
+    type PickerColumn,
 } from "@/components/ui/ListChrome";
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from "@/components/ui/list-chrome";
+import { ListScrollFrame } from "@/components/ui/ListScrollFrame";
+import { KpiStatRow, type KpiStat } from "@/components/ui/KpiStatCard";
+import { chipsFromStats, useHeaderChips } from "@/components/ui/list-header-bridge";
 import {
-    Mail, Phone, MapPin, Store, CircleCheck, CircleSlash, Search, Share2, Pencil, Trash2,
+    Mail, Phone, MapPin, Store, CircleCheck, CircleSlash, Share2, Pencil, Trash2,
 } from "lucide-react";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
@@ -26,9 +33,8 @@ import {
 } from "@/components/ui/dialog";
 import { VendorFormDialog } from "./VendorFormDialog";
 import { vendorsStore } from "@/data/vendorsStore";
-import { KpiTile } from "./InventoryKpi";
 import { TablePager } from "./TablePager";
-import { TH, TD, COL_RULE, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
+import { TD, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
 import { formatVendorAddress, type Vendor } from "./inventory.data";
 import { cn } from "@/lib/utils";
 
@@ -48,15 +54,18 @@ const VENDOR_COLUMNS: PickerColumn<VendorCol>[] = [
     { id: 'actions', label: 'Actions', locked: true },
 ];
 
-/** What this list can be banded by — the two facts a vendor row actually carries. */
-type VendorGroup = 'none' | 'status' | 'jurisdiction';
+/** What this list can be banded by — the facts a vendor row actually carries. */
+type VendorGroup = 'none' | 'status' | 'jurisdiction' | 'country';
 const VENDOR_GROUPS: { id: VendorGroup; label: string }[] = [
-    { id: 'none', label: 'Group by' },
-    { id: 'status', label: 'Status' },
-    { id: 'jurisdiction', label: 'Jurisdiction' },
+    { id: 'none', label: 'No grouping' },
+    { id: 'status', label: 'Group: Status' },
+    { id: 'jurisdiction', label: 'Group: State / province' },
+    { id: 'country', label: 'Group: Country' },
 ];
+const CONTACT_OPTIONS = ['Email on file', 'Phone only', 'No contact'];
+const contactOf = (v: Vendor) => (v.email ? 'Email on file' : v.phone ? 'Phone only' : 'No contact');
 
-export function VendorsTable({ vendors, accountId, onOpen, className }: {
+export function VendorsTable({ vendors, accountId, onOpen, className, frame }: {
     /** Already scoped to the carrier by whoever is showing it. */
     vendors: Vendor[];
     /** Tags a vendor added from here, so it lands in this carrier’s list. */
@@ -71,11 +80,19 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
      */
     onOpen?: (vendor: Vendor) => void;
     className?: string;
+    /**
+     * Fill the host's body: the KPI cards scroll up and away, then the rows scroll in their
+     * own box under pinned headings. `scrollRef` / `onScroll` are for a condensing header.
+     */
+    frame?: { scrollRef?: Ref<HTMLDivElement>; onScroll?: UIEventHandler<HTMLDivElement> };
 }) {
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState<"all" | "Active" | "Inactive">("all");
+    const [jurisdiction, setJurisdiction] = useState("");
+    const [contact, setContact] = useState("");
     const [page, setPage] = useState(0);
     const [perPage, setPerPage] = useState(15);
+    const [filtersOpen, setFiltersOpen] = useState(false);
     /*
      * The name and the row's own menu are locked on.
      *
@@ -105,11 +122,23 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
         active: vendors.filter((v) => v.status === "Active").length,
         inactive: vendors.filter((v) => v.status !== "Active").length,
     }), [vendors]);
+    const stats: KpiStat[] = [
+        { id: "all", label: "Total vendors", value: counts.total, Icon: Store, accent: "blue" },
+        { id: "Active", label: "Active", value: counts.active, Icon: CircleCheck, accent: "emerald" },
+        { id: "Inactive", label: "Inactive", value: counts.inactive, Icon: CircleSlash, accent: "slate" },
+    ];
+    const jurisdictionOf = (v: Vendor) => v.address?.state || '';
+    const jurisdictionOptions = useMemo(
+        () => [...new Set(vendors.map(jurisdictionOf).filter(Boolean))].sort(),
+        [vendors],
+    );
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         return vendors.filter((v) => {
             if (status !== "all" && (v.status === "Active" ? "Active" : "Inactive") !== status) return false;
+            if (jurisdiction && jurisdictionOf(v) !== jurisdiction) return false;
+            if (contact && contactOf(v) !== contact) return false;
             if (!q) return true;
             return (
                 v.name.toLowerCase().includes(q) ||
@@ -119,7 +148,7 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                 formatVendorAddress(v.address).toLowerCase().includes(q)
             );
         });
-    }, [vendors, search, status]);
+    }, [vendors, search, status, jurisdiction, contact]);
 
     /*
      * What each column sorts by — the value, not the markup.
@@ -138,7 +167,8 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
     const bandOf = (v: Vendor) =>
         groupBy === 'status' ? (v.status === 'Active' ? 'Active' : 'Inactive')
             : groupBy === 'jurisdiction' ? (v.address?.state || v.address?.country || 'No address')
-                : '';
+                : groupBy === 'country' ? (v.address?.country || 'No address')
+                    : '';
     const banded = useMemo(() => {
         if (groupBy === 'none') return sorted;
         return [...sorted].sort((a, b) => bandOf(a).localeCompare(bandOf(b)));
@@ -152,200 +182,170 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
     }, [banded, groupBy]);
 
     // A different carrier, a narrower filter — either way page 7 is nowhere.
-    useEffect(() => { setPage(0); }, [vendors, search, status, groupBy]);
+    useEffect(() => { setPage(0); }, [vendors, search, status, jurisdiction, contact, groupBy]);
 
     const pageCount = Math.max(1, Math.ceil(banded.length / perPage));
     const safePage = Math.min(page, pageCount - 1);
     const paged = banded.slice(safePage * perPage, safePage * perPage + perPage);
 
-    const filtering = search.trim() !== "" || status !== "all" || groupBy !== 'none';
-    const clear = () => { setSearch(""); setStatus("all"); setGroupBy('none'); };
+    const filterCount = [status !== "all", !!jurisdiction, !!contact, groupBy !== 'none'].filter(Boolean).length;
+    const filtering = search.trim() !== "" || filterCount > 0;
+    const clear = () => { setSearch(""); setStatus("all"); setJurisdiction(""); setContact(""); setGroupBy('none'); };
 
-    return (
-        <div className={cn("space-y-5", className)}>
-            {/* The figures, and the filter for each of them. */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <KpiTile label="Total Vendors" value={counts.total} Icon={Store} accent="blue"
-                    onClick={() => setStatus("all")} active={status === "all"} />
-                <KpiTile label="Active" value={counts.active} Icon={CircleCheck} accent="emerald"
-                    onClick={() => setStatus("Active")} active={status === "Active"} />
-                <KpiTile label="Inactive" value={counts.inactive} Icon={CircleSlash} accent="slate"
-                    onClick={() => setStatus("Inactive")} active={status === "Inactive"} />
-            </div>
+    const pickStatus = (id: string) => setStatus(id as "all" | "Active" | "Inactive");
+    const kpis = <KpiStatRow stats={stats} activeId={status} onPick={pickStatus} />;
+    // The same figures, for the page header to show once the cards have scrolled away.
+    useHeaderChips(chipsFromStats(stats, status, pickStatus));
+    const columnPicker = <ColumnPicker columns={VENDOR_COLUMNS} visible={visibleCols} onToggle={toggleCol} />;
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                {/* No category strip: a vendor's category is an inventory concept — it is what
-                    an ITEM filed against the vendor is, not what the vendor is — and tabbing
-                    this list by it put "Keys & Access" on a company that issues keys. */}
-                <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-                    <div className="relative min-w-[190px] max-w-xs flex-1">
-                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search vendor, contact or address…"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                    </div>
-                    <select
-                        value={groupBy}
-                        onChange={(e) => setGroupBy(e.target.value as VendorGroup)}
-                        title="Band the list"
+    // No category filter: a vendor's category is an inventory concept — it is what an ITEM
+    // filed against the vendor is, not what the vendor is — and filtering this list by it put
+    // "Keys & Access" on a company that issues keys.
+    const toolbar = (
+        <ListToolbar
+            search={search}
+            onSearch={setSearch}
+            placeholder="Search vendor, contact or address…"
+            filters={<div className={mobileFold(filtersOpen)}>
+                <FilterSelect value={status === "all" ? "" : status} onChange={(v) => setStatus((v || "all") as "all" | "Active" | "Inactive")} title="Status" allLabel="All statuses" options={["Active", "Inactive"]} />
+                {jurisdictionOptions.length > 0 && (
+                    <FilterSelect value={jurisdiction} onChange={setJurisdiction} title="State / province" allLabel="All states" options={jurisdictionOptions} />
+                )}
+                <FilterSelect value={contact} onChange={setContact} title="Contact on file" allLabel="Any contact" options={CONTACT_OPTIONS} />
+            </div>}
+            filtersExtra={<>
+                <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen((o) => !o)} count={filterCount} />
+                <div className={mobileFold(filtersOpen)}>
+                    <GroupBySelect value={groupBy} onChange={setGroupBy} options={VENDOR_GROUPS} />
+                    <ResetFilters on={filtering} onReset={clear} />
+                </div>
+            </>}
+            // In the frame the picker sits on the list line above, so this row stays one row.
+            columns={frame ? undefined : columnPicker}
+        />
+    );
+
+    const table = (
+        <table className="w-full min-w-[920px] table-fixed">
+            <thead>
+                <tr>
+                    <SortTh col="vendor" label="Vendor" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+                    {showCol('address') && <SortTh col="address" label="Address" sortable sort={sort} onSort={onSort} className={cn("w-[236px]", PIN_TH)} />}
+                    {showCol('contact') && <SortTh col="contact" label="Contact" sortable sort={sort} onSort={onSort} className={cn("w-[236px]", PIN_TH)} />}
+                    {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={cn("w-[118px]", PIN_TH)} />}
+                    <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+                {paged.length === 0 && (
+                    <EmptyRow
+                        colSpan={colCount}
+                        Icon={Store}
+                        title="No vendors match your filters"
+                        hint={search.trim()
+                            ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
+                            : "Try another status, or show them all."}
+                        onClear={filtering ? clear : undefined}
+                    />
+                )}
+                {paged.map((v, i) => (
+                    <Fragment key={v.id}>
+                    {groupBy !== 'none' && (i === 0 || bandOf(paged[i - 1]) !== bandOf(v)) && (
+                        <TableGroupBand label={bandOf(v)} count={bandCounts.get(bandOf(v)) ?? 0} colSpan={colCount} />
+                    )}
+                    <tr
+                        onClick={onOpen ? () => onOpen(v) : undefined}
+                        onKeyDown={onOpen ? (e) => { if (e.key === "Enter") onOpen(v); } : undefined}
+                        tabIndex={onOpen ? 0 : undefined}
+                        role={onOpen ? "link" : undefined}
                         className={cn(
-                            'h-9 shrink-0 rounded-lg border px-2.5 text-[13px] font-semibold outline-none focus:border-blue-500',
-                            groupBy === 'none'
-                                ? 'border-slate-200 bg-white text-slate-600'
-                                : 'border-blue-300 bg-blue-50/60 text-blue-700',
+                            "group transition-colors hover:bg-slate-50",
+                            onOpen && "cursor-pointer focus:bg-slate-50 focus:outline-none",
                         )}
                     >
-                        {VENDOR_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
-                    </select>
-                    <ColumnPicker columns={VENDOR_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
-                    {filtering && (
-                        <button
-                            type="button"
-                            onClick={clear}
-                            className="ml-auto inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-                        >
-                            Reset
-                        </button>
-                    )}
-                </div>
+                        <TD className="py-2.5">
+                            <div className="flex min-w-0 items-center gap-3" title={[v.name, v.companyName].filter(Boolean).join(" — ")}>
+                                <RowIcon Icon={Store} tone="blue" />
+                                <span className="min-w-0 truncate">
+                                    <span className="font-semibold text-slate-900">{v.name}</span>
+                                    {v.companyName && v.companyName !== v.name && <span className="text-xs text-slate-500"> · {v.companyName}</span>}
+                                </span>
+                            </div>
+                        </TD>
+                        {showCol('address') && (
+                        <TD className="py-2.5">
+                            {v.address && formatVendorAddress(v.address) ? (
+                                <div className="flex min-w-0 items-center gap-1.5 text-sm text-slate-600" title={formatVendorAddress(v.address)}>
+                                    <MapPin size={13} className="shrink-0 text-slate-400" />
+                                    <span className="truncate">{formatVendorAddress(v.address)}</span>
+                                </div>
+                            ) : (
+                                <span className="text-sm text-slate-400">—</span>
+                            )}
+                        </TD>
+                        )}
+                        {showCol('contact') && (
+                        <TD className="py-2.5">
+                            {v.email || v.phone ? (
+                                <div className="flex min-w-0 items-center gap-1.5 text-sm text-slate-600" title={[v.email, v.phone].filter(Boolean).join(" · ")}>
+                                    {v.email ? <Mail size={12} className="shrink-0 text-slate-400" /> : <Phone size={12} className="shrink-0 text-slate-400" />}
+                                    <span className="truncate">{v.email ?? v.phone}{v.email && v.phone && <span className="text-slate-400"> · {v.phone}</span>}</span>
+                                </div>
+                            ) : <span className="text-sm text-slate-400">—</span>}
+                        </TD>
+                        )}
+                        {showCol('status') && (
+                        <TD className="py-2.5">
+                            <span className={cn(
+                                "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                v.status === "Active"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-slate-200 bg-slate-100 text-slate-500",
+                            )}>
+                                <span className={cn(
+                                    "mr-1.5 h-1.5 w-1.5 rounded-full",
+                                    v.status === "Active" ? "bg-emerald-500" : "bg-slate-400",
+                                )} />
+                                {v.status}
+                            </span>
+                        </TD>
+                        )}
+                        {/* The menu does its own thing without opening the page
+                            behind it — a row that is a link still has cells that
+                            are not. */}
+                        <TD className={cn("py-2.5", PIN_TD_ACTIONS)} onClick={(e) => e.stopPropagation()}>
+                            {/* The same three verbs the service-type list offers. */}
+                            <div className="flex items-center justify-end">
+                                <KebabMenu
+                                    title={`Actions for ${v.name}`}
+                                    items={[
+                                        { label: "Share to chat", icon: Share2, onClick: () => setSharing(v) },
+                                        { label: "Edit", icon: Pencil, onClick: () => setEditing(v) },
+                                        { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(v) },
+                                    ]}
+                                />
+                            </div>
+                        </TD>
+                    </tr>
+                    </Fragment>
+                ))}
+            </tbody>
+        </table>
+    );
 
-                <div className="border-t border-slate-100">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr>
-                                    <SortTh col="vendor" label="Vendor" sortable sort={sort} onSort={onSort} />
-                                    {showCol('address') && <SortTh col="address" label="Address" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
-                                    {showCol('contact') && <SortTh col="contact" label="Contact" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
-                                    {showCol('status') && <SortTh col="status" label="Status" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
-                                    <TH className={cn("sticky right-0 z-20 w-[92px] border-l border-slate-200 bg-slate-50 pl-4 pr-5 text-right", COL_RULE)}>Actions</TH>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {paged.length === 0 && (
-                                    <EmptyRow
-                                        colSpan={colCount}
-                                        Icon={Store}
-                                        title="No vendors match your filters"
-                                        hint={search.trim()
-                                            ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
-                                            : "Try another status, or show them all."}
-                                        onClear={filtering ? clear : undefined}
-                                    />
-                                )}
-                                {paged.map((v, i) => (
-                                    <Fragment key={v.id}>
-                                    {groupBy !== 'none' && (i === 0 || bandOf(paged[i - 1]) !== bandOf(v)) && (
-                                        <TableGroupBand label={bandOf(v)} count={bandCounts.get(bandOf(v)) ?? 0} colSpan={colCount} />
-                                    )}
-                                    <tr
-                                        onClick={onOpen ? () => onOpen(v) : undefined}
-                                        onKeyDown={onOpen ? (e) => { if (e.key === "Enter") onOpen(v); } : undefined}
-                                        tabIndex={onOpen ? 0 : undefined}
-                                        role={onOpen ? "link" : undefined}
-                                        className={cn(
-                                            "transition-colors hover:bg-slate-50/60",
-                                            onOpen && "cursor-pointer focus:bg-slate-50 focus:outline-none",
-                                        )}
-                                    >
-                                        <TD>
-                                            <div className="flex items-center gap-3">
-                                                <RowIcon Icon={Store} tone="blue" />
-                                                <div className="min-w-0">
-                                                    <div className="truncate font-semibold text-slate-900">{v.name}</div>
-                                                    {v.companyName && <div className="truncate text-xs text-slate-500">{v.companyName}</div>}
-                                                </div>
-                                            </div>
-                                        </TD>
-                                        {showCol('address') && (
-                                        <TD className={COL_RULE}>
-                                            {v.address && formatVendorAddress(v.address) ? (
-                                                <div className="flex max-w-xs items-start gap-1.5 text-sm text-slate-600">
-                                                    <MapPin size={13} className="mt-0.5 shrink-0 text-slate-400" />
-                                                    <span className="leading-snug">
-                                                        {[v.address.street, v.address.apt].filter(Boolean).join(", ")}
-                                                        {(v.address.city || v.address.state) && (
-                                                            <>
-                                                                <br />
-                                                                {[v.address.city, v.address.state].filter(Boolean).join(", ")} {v.address.zip ?? ""}
-                                                            </>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-sm text-slate-400">—</span>
-                                            )}
-                                        </TD>
-                                        )}
-                                        {showCol('contact') && (
-                                        <TD className={COL_RULE}>
-                                            {v.email && (
-                                                <div className="inline-flex items-center gap-1.5 text-sm text-slate-600">
-                                                    <Mail size={12} className="text-slate-400" /> {v.email}
-                                                </div>
-                                            )}
-                                            {v.phone && (
-                                                <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-slate-500">
-                                                    <Phone size={12} className="text-slate-400" /> {v.phone}
-                                                </div>
-                                            )}
-                                            {!v.email && !v.phone && <span className="text-sm text-slate-400">—</span>}
-                                        </TD>
-                                        )}
-                                        {showCol('status') && (
-                                        <TD className={COL_RULE}>
-                                            <span className={cn(
-                                                "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                v.status === "Active"
-                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                    : "border-slate-200 bg-slate-100 text-slate-500",
-                                            )}>
-                                                <span className={cn(
-                                                    "mr-1.5 h-1.5 w-1.5 rounded-full",
-                                                    v.status === "Active" ? "bg-emerald-500" : "bg-slate-400",
-                                                )} />
-                                                {v.status}
-                                            </span>
-                                        </TD>
-                                        )}
-                                        {/* The menu does its own thing without opening the page
-                                            behind it — a row that is a link still has cells that
-                                            are not. */}
-                                        <TD className={cn("sticky right-0 z-10 w-[92px] border-l border-slate-200 bg-white pl-4 pr-5 text-right group-hover:bg-slate-50/60", COL_RULE)} onClick={(e) => e.stopPropagation()}>
-                                            {/* The same three verbs the service-type list offers. */}
-                                            <div className="flex items-center justify-end">
-                                                <KebabMenu
-                                                    title={`Actions for ${v.name}`}
-                                                    items={[
-                                                        { label: "Share to chat", icon: Share2, onClick: () => setSharing(v) },
-                                                        { label: "Edit", icon: Pencil, onClick: () => setEditing(v) },
-                                                        { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(v) },
-                                                    ]}
-                                                />
-                                            </div>
-                                        </TD>
-                                    </tr>
-                                    </Fragment>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+    const pager = (
+        <TablePager
+            page={safePage}
+            perPage={perPage}
+            total={filtered.length}
+            label="vendors"
+            onPage={setPage}
+            onPerPage={(n) => { setPerPage(n); setPage(0); }}
+        />
+    );
 
-                    <TablePager
-                        page={safePage}
-                        perPage={perPage}
-                        total={filtered.length}
-                        label="vendors"
-                        onPage={setPage}
-                        onPerPage={(n) => { setPerPage(n); setPage(0); }}
-                    />
-                </div>
-            </div>
-
+    const dialogs = (
+        <>
             {/* Edit opens the one vendor form the app has — the same one Settings uses. */}
             <VendorFormDialog
                 open={!!editing}
@@ -395,6 +395,34 @@ export function VendorsTable({ vendors, accountId, onOpen, className }: {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+        </>
+    );
+
+    if (frame) {
+        return (
+            <>
+                <ListScrollFrame above={kpis} toolbar={toolbar} footer={pager}
+                    title="Vendor list" count={filtered.length} total={vendors.length}
+                    description="Every shop and supplier this carrier buys from — click a row to open its profile."
+                    actions={columnPicker}
+                    scrollRef={frame.scrollRef} onScroll={frame.onScroll}
+                    contentKey={`${filtersOpen}|${paged.length}`}>
+                    {table}
+                </ListScrollFrame>
+                {dialogs}
+            </>
+        );
+    }
+
+    return (
+        <div className={cn("space-y-5", className)}>
+            {kpis}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                {toolbar}
+                <div className="overflow-x-auto">{table}</div>
+                {pager}
+            </div>
+            {dialogs}
         </div>
     );
 }

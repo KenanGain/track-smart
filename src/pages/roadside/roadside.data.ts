@@ -120,6 +120,8 @@ export interface RoadsideDoc {
     documentDate?: string;
     /** Remediation reports only — whether a mechanic or the driver did it. */
     performedBy?: RemediationBy;
+    /** Post-inspection DVIR only — whether the re-inspection still found a defect. */
+    defectFound?: boolean;
     /**
      * Remediation reports only — the PERSON, by name.
      *
@@ -205,9 +207,25 @@ export interface RoadsideParty {
      * recorded it, which is not the same as "no".
      */
     logbookInspected?: boolean;
+    /**
+     * The unit as it stood that day — copied off the fleet record when it is picked, so
+     * the inspection still reads right after the plate is renewed or the unit is sold.
+     */
+    unitNumber?: string;
+    plateNumber?: string;
+    plateJurisdiction?: string;
+    make?: string;
+    model?: string;
+    year?: number;
+    vin?: string;
 }
 
 export const emptyParty = (): RoadsideParty => ({ hasViolation: false, violations: [] });
+
+/** A party for a unit off the roster: the id and label, plus the vehicle facts it carries. */
+export const partyFromUnit = (o: UnitOption): RoadsideParty => ({
+    ...emptyParty(), id: o.id, label: o.label, ...(o.snapshot ?? {}),
+});
 
 // ── What an inspector actually writes ───────────────────────────────────────
 
@@ -285,6 +303,13 @@ export interface RoadsideInspection {
     citationIssued: boolean;
     /** Required when a citation was issued; the number printed on it. */
     citationNumber?: string;
+    /** The ticket on the Tickets page this citation was filed as, when it was. */
+    citationTicketId?: string;
+
+    /** Who inspected, for which agency, and the number on their report. */
+    inspectorName?: string;
+    agency?: string;
+    reportNumber?: string;
 
     // What was inspected
     truck: RoadsideParty;
@@ -296,6 +321,13 @@ export interface RoadsideInspection {
     truckOdometerUnit?: DistanceUnit;
 
     notes?: string;
+
+    /**
+     * A stage set by hand, when the office knows better than the paperwork — a bill
+     * that will never come, a unit that was sold. Absent, the stage is worked out from
+     * the record (see `inspectionStage`).
+     */
+    stageOverride?: InspectionStage;
 
     /** Handed over at the roadside by the inspector. */
     reports: RoadsideDoc[];
@@ -315,7 +347,7 @@ export type InspectionStage = "clean" | "awaiting-report" | "awaiting-repair" | 
 
 export const STAGE_LABEL: Record<InspectionStage, string> = {
     clean: "Clean",
-    "awaiting-report": "Awaiting remediation",
+    "awaiting-report": "Awaiting DVIR",
     "awaiting-repair": "Awaiting repair bill",
     closed: "Closed",
 };
@@ -370,6 +402,8 @@ export const isMaintenanceRelated = (i: RoadsideInspection): boolean =>
 export const remediationRequired = (i: RoadsideInspection): boolean => i.result === "Fail" || i.oos;
 
 export function inspectionStage(i: RoadsideInspection): InspectionStage {
+    // A person's say-so beats the paperwork, for as long as they keep saying it.
+    if (i.stageOverride) return i.stageOverride;
     if (!remediationRequired(i)) {
         // Passed, and nothing ordered off the road. A violation noted on a pass is
         // recorded and done — there is nothing outstanding to chase.
@@ -561,7 +595,25 @@ export const newDoc = (file: File, by: string, source: DocSource = "portal"): Ro
 // The pickers list the carrier's real fleet, so an inspection is bound to the
 // unit it happened to rather than to a unit number somebody typed.
 
-export interface UnitOption { id: string; label: string; detail: string }
+export interface UnitOption {
+    id: string; label: string; detail: string;
+    /** The vehicle facts the party keeps a copy of (units only). */
+    snapshot?: Pick<RoadsideParty, "unitNumber" | "plateNumber" | "plateJurisdiction" | "make" | "model" | "year" | "vin">;
+    /** The fleet record's current reading, offered as the roadside reading. */
+    odometer?: number;
+    odometerUnit?: DistanceUnit;
+}
+
+type FleetAsset = ReturnType<typeof getAssetsForAccount>[number];
+const unitSnapshot = (a: FleetAsset): UnitOption["snapshot"] => ({
+    unitNumber: a.unitNumber,
+    plateNumber: a.plateNumber || undefined,
+    plateJurisdiction: a.plateJurisdiction || undefined,
+    make: a.make || undefined,
+    model: a.model || undefined,
+    year: a.year || undefined,
+    vin: a.vin || undefined,
+});
 
 const TRAILER_RE = /trailer/i;
 
@@ -573,6 +625,9 @@ export function truckOptions(accountId?: string): UnitOption[] {
             id: a.id,
             label: a.unitNumber,
             detail: [a.year, a.make, a.model].filter(Boolean).join(" ") || a.assetType,
+            snapshot: unitSnapshot(a),
+            odometer: a.odometer,
+            odometerUnit: a.odometerUnit,
         }));
 }
 
@@ -584,6 +639,9 @@ export function trailerOptions(accountId?: string): UnitOption[] {
             id: a.id,
             label: a.unitNumber,
             detail: [a.year, a.make, a.model].filter(Boolean).join(" ") || a.assetType,
+            snapshot: unitSnapshot(a),
+            odometer: a.odometer,
+            odometerUnit: a.odometerUnit,
         }));
 }
 
@@ -611,7 +669,7 @@ export function unitOptionsFor(i: RoadsideInspection): UnitOption[] {
 // filed. Seeded once — after that the store is whatever the user has done.
 
 // Bumped when the seeded demo changes, so a carrier already seeded picks it up.
-const SEEDED_KEY = "tracksmart_roadside_seeded_v2";
+const SEEDED_KEY = "tracksmart_roadside_seeded_v3";
 
 function seedViolation(label: string, code: string, category: string, group: string, oos: boolean): TicketViolation {
     return { label, subtype: label, code, category, group, isOos: oos, source: "sms" };
@@ -673,11 +731,14 @@ export function seedInspections(accountId: string): void {
     const tr0 = trailers.length ? unit(trailers, 0) : undefined;
     const tr1 = trailers.length ? unit(trailers, 1) : undefined;
     const d0 = unit(drivers, 0), d1 = unit(drivers, 1), d2 = unit(drivers, 2);
+    const t3 = unit(trucks, 3), t4 = unit(trucks, 4);
+    const d3 = unit(drivers, 3), d4 = unit(drivers, 4);
 
     const seeded: RoadsideInspection[] = [
         {
             id: `RSI-SEED-${accountId}-1`,
             accountId,
+            inspectorName: "Ofc. D. Whitaker", agency: "Indiana State Police — CVED", reportNumber: "IN-2026-00418827",
             date: dayBefore(4),
             startTime: "08:40",
             endTime: "09:25",
@@ -714,6 +775,7 @@ export function seedInspections(accountId: string): void {
         {
             id: `RSI-SEED-${accountId}-2`,
             accountId,
+            inspectorName: "Tpr. L. Ramos", agency: "Pennsylvania State Police", reportNumber: "PA-2026-00277104",
             date: dayBefore(12),
             startTime: "14:05",
             endTime: "14:50",
@@ -772,6 +834,7 @@ export function seedInspections(accountId: string): void {
         {
             id: `RSI-SEED-${accountId}-3`,
             accountId,
+            inspectorName: "Sgt. K. Nolan", agency: "Nebraska State Patrol — Carrier Enforcement", reportNumber: "NE-2026-00093311",
             date: dayBefore(21),
             startTime: "11:20",
             endTime: "11:35",
@@ -806,6 +869,7 @@ export function seedInspections(accountId: string): void {
         {
             id: `RSI-SEED-${accountId}-4`,
             accountId,
+            inspectorName: "Tpr. A. Brandt", agency: "Kansas Highway Patrol", reportNumber: "KS-2026-00156620",
             date: dayBefore(34),
             startTime: "06:15",
             endTime: "07:05",
@@ -861,7 +925,155 @@ export function seedInspections(accountId: string): void {
             createdAt: now,
             createdBy: "Safety Manager",
         },
+        /*
+         * Four more, so the list reads like a quarter rather than a week: a clean Level I
+         * in Ontario, a driver-only fail with a citation (owing a DVIR though nothing on the
+         * truck was wrong), a clean port-of-entry Level III, and a lamp fixed and
+         * re-inspected but not yet billed — the one stage the first four never showed.
+         */
+        {
+            id: `RSI-SEED-${accountId}-5`,
+            accountId,
+            inspectorName: "Insp. R. Patel", agency: "Ontario MTO — Commercial Vehicle Enforcement", reportNumber: "ON-2026-04471029",
+            date: dayBefore(2),
+            startTime: "10:10",
+            endTime: "10:55",
+            level: INSPECTION_LEVELS[0],
+            location: "Hwy 401 EB — Cambridge, ON",
+            locationCity: "Cambridge", locationState: "ON", locationCountry: "Canada",
+            result: "Pass",
+            oos: false,
+            citationIssued: false,
+            truck: { id: t3.id, label: t3.label, hasViolation: false, violations: [] },
+            trailer: tr1 ? { id: tr1.id, label: tr1.label, hasViolation: false, violations: [] } : emptyParty(),
+            driver: { id: d3.id, label: d3.label, hasViolation: false, violations: [], logbookInspected: true },
+            notes: "Full Level I at the Cambridge scale. ELD reviewed; no defects.",
+            reports: [{
+                id: "seed-rep-5", name: "ON-inspection-report.pdf", size: 176_128,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
+            }],
+            remediation: [],
+            repairBills: [],
+            createdAt: now,
+            createdBy: "Safety Manager",
+        },
+        {
+            id: `RSI-SEED-${accountId}-6`,
+            accountId,
+            inspectorName: "Tpr. M. Gutierrez", agency: "Texas DPS — Commercial Vehicle Enforcement", reportNumber: "TX-2026-00911742",
+            date: dayBefore(7),
+            startTime: "15:20",
+            endTime: "16:05",
+            level: INSPECTION_LEVELS[1],
+            location: "I-40 EB, Mile 286 — Amarillo, TX",
+            locationCity: "Amarillo", locationState: "TX", locationCountry: "USA",
+            result: "Fail",
+            oos: false,
+            citationIssued: true,
+            citationNumber: "TX-2026-117204",
+            truck: { id: t4.id, label: t4.label, hasViolation: false, violations: [] },
+            trailer: emptyParty(),
+            driver: {
+                id: d4.id, label: d4.label, hasViolation: true, logbookInspected: true,
+                violations: [seedViolation("No record of duty status", "395.8(a)", "Hours-of-Service Compliance", "Logbook", false)],
+            },
+            notes: "Driver could not produce the previous seven days. Cited; truck released.",
+            reports: [{
+                id: "seed-rep-6", name: "TX-inspection-report.pdf", size: 158_720,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
+            }],
+            remediation: [],
+            repairBills: [],
+            createdAt: now,
+            createdBy: "Safety Manager",
+        },
+        {
+            id: `RSI-SEED-${accountId}-7`,
+            accountId,
+            inspectorName: "CBP Ofc. S. Lindqvist", agency: "U.S. Customs and Border Protection — Blaine", reportNumber: "WA-2026-00034410",
+            date: dayBefore(16),
+            startTime: "03:45",
+            endTime: "04:00",
+            level: INSPECTION_LEVELS[2],
+            location: "Port of entry — Blaine, WA",
+            locationCity: "Blaine", locationState: "WA", locationCountry: "USA",
+            result: "Pass",
+            oos: false,
+            citationIssued: false,
+            truck: { id: t0.id, label: t0.label, hasViolation: false, violations: [] },
+            trailer: tr0 ? { id: tr0.id, label: tr0.label, hasViolation: false, violations: [] } : emptyParty(),
+            driver: { id: d0.id, label: d0.label, hasViolation: false, violations: [], logbookInspected: true },
+            notes: "Credentials and logbook at the crossing. Clean.",
+            reports: [{
+                id: "seed-rep-7", name: "WA-inspection-report.pdf", size: 101_376,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
+            }],
+            remediation: [],
+            repairBills: [],
+            createdAt: now,
+            createdBy: "Safety Manager",
+        },
+        {
+            id: `RSI-SEED-${accountId}-8`,
+            accountId,
+            inspectorName: "Ofc. J. Kowalski", agency: "Michigan State Police — Commercial Vehicle Enforcement", reportNumber: "MI-2026-00502218",
+            date: dayBefore(9),
+            startTime: "12:30",
+            endTime: "13:20",
+            level: INSPECTION_LEVELS[0],
+            location: "I-94 WB — Battle Creek, MI",
+            locationCity: "Battle Creek", locationState: "MI", locationCountry: "USA",
+            result: "Fail",
+            oos: false,
+            citationIssued: false,
+            truck: {
+                id: t1.id, label: t1.label, hasViolation: true,
+                violations: [seedViolation("Inoperative required lamp", "393.9", "Vehicle Maintenance", "Lighting", false)],
+            },
+            trailer: emptyParty(),
+            driver: { id: d2.id, label: d2.label, hasViolation: false, violations: [], logbookInspected: true },
+            notes: "Left marker lamp out. Replaced at the Battle Creek shop the same afternoon; invoice still to come.",
+            reports: [{
+                id: "seed-rep-8", name: "MI-inspection-report.pdf", size: 166_912,
+                url: "/demo-docs/annual-inspection.pdf",
+                uploadedAt: now, uploadedBy: "Inspector copy", source: "portal",
+            }],
+            remediation: [{
+                id: "seed-rem-8", name: "post-inspection-dvir.pdf", size: 71_680,
+                url: "/demo-docs/compliance-document.pdf",
+                uploadedAt: now, uploadedBy: d2.label, source: "driver-app",
+                performedBy: "driver", performedByName: d2.label, performedOn: dayBefore(9), defectFound: false,
+            }],
+            repairBills: [],
+            createdAt: now,
+            createdBy: "Safety Manager",
+        },
     ];
 
-    commit([...seeded, ...records.filter((r) => !r.id.startsWith(SEED_PREFIX))]);
+    /*
+     * Each party carries its unit's plate, make and VIN, and the truck its reading, the
+     * way a record made on the form would — the seed names units, the form copies them.
+     * A DVIR on file answered "no defect"; the seed rows above were written before the
+     * question existed.
+     */
+    const withUnit = (party: RoadsideParty, list: UnitOption[]): RoadsideParty => {
+        const o = party.id ? list.find((u) => u.id === party.id) : undefined;
+        return o ? { ...party, ...(o.snapshot ?? {}) } : party;
+    };
+    const filled = seeded.map((r) => {
+        const t = r.truck.id ? trucks.find((u) => u.id === r.truck.id) : undefined;
+        return {
+            ...r,
+            truck: withUnit(r.truck, trucks),
+            trailer: withUnit(r.trailer, trailers),
+            truckOdometer: r.truckOdometer ?? (t?.odometer != null ? String(t.odometer) : undefined),
+            truckOdometerUnit: r.truckOdometerUnit ?? t?.odometerUnit,
+            remediation: r.remediation.map((d) => ({ defectFound: false, ...d })),
+        };
+    });
+
+    commit([...filled, ...records.filter((r) => !r.id.startsWith(SEED_PREFIX))]);
 }

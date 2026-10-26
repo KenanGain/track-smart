@@ -1,0 +1,244 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/inventory/inventory_items.json",
+  "title": "inventory_items",
+  "description": "Every fuel card, transponder, ELD, key, PPE item, device or document the carrier owns, with where it may go (handling), where it is (unit and / or driver) and its alert. The List tab, item page, holder pages, Manage inventory and the Monitoring feed all read this collection.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "Item id, e.g. \"inv-001-001\" (seed) or \"inv-<ObjectId>\" (new)."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id` (Account). Every query starts with it. (The prototype has no carrier field on the item; it is implied by the seed bucket.)"
+    },
+    "vendorId": {
+      "type": "string",
+      "description": "→ `vendors._id`; must belong to the same carrier."
+    },
+    "categoryId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `inventory_categories._id`. Empty = falls back to the vendor's category."
+    },
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Record name. Empty = shown as \"<Vendor> — <Category>\"."
+    },
+    "handling": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "driver-returnable",
+          "asset-removable"
+        ]
+      },
+      "description": "Where the item MAY go. At least one value.",
+      "default": [
+        "asset-removable"
+      ]
+    },
+    "serial": {
+      "type": "string",
+      "description": "The number printed on it (\"FC-415483\"). Labelled \"Number\" in the UI. Unique per carrier (TO CONFIRM)."
+    },
+    "pin": {
+      "type": "string",
+      "description": "PIN / access code. Treat as a secret: returned only to full-access roles (TO CONFIRM).",
+      "default": ""
+    },
+    "issueDate": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD."
+    },
+    "expiryDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "description": "YYYY-MM-DD; null = never runs out. Must be ≥ issueDate."
+    },
+    "status": {
+      "type": "string",
+      "description": "Derived from expiryDate on every write and nightly: < 0 days Expired, ≤ 30 days Expiring Soon, else Active (TO CONFIRM — the prototype lets the user pick it).",
+      "enum": [
+        "Active",
+        "Expiring Soon",
+        "Expired"
+      ]
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Alert on / off.",
+          "default": false
+        },
+        "basis": {
+          "type": "string",
+          "description": "Which date the alert counts back from.",
+          "enum": [
+            "issue",
+            "expiry",
+            "custom"
+          ],
+          "default": "expiry"
+        },
+        "customDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date",
+          "description": "YYYY-MM-DD, when basis = custom."
+        },
+        "recurrence": {
+          "type": "string",
+          "description": "Renewal cycle (display only today).",
+          "enum": [
+            "none",
+            "monthly",
+            "quarterly",
+            "semiannually",
+            "annually",
+            "biennially",
+            "triennially",
+            "fiveyearly"
+          ],
+          "default": "annually"
+        },
+        "reminders": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Subset of 90, 60, 45, 30, 15, 7, 0 (0 = on the date).",
+          "default": [
+            30
+          ]
+        },
+        "channels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "inApp": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "required": [
+            "email",
+            "inApp"
+          ]
+        },
+        "assigneeUserId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ `users._id`; who acts on the alert (not settable in the UI yet)."
+        }
+      },
+      "required": [
+        "enabled",
+        "basis",
+        "recurrence",
+        "reminders"
+      ]
+    },
+    "assignedAssetId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The UNIT it is on → `assets._id`. Only when handling includes asset-removable."
+    },
+    "assignedAssetKind": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Copied from the asset on assignment.",
+      "enum": [
+        "cmv",
+        "non-cmv",
+        null
+      ]
+    },
+    "assignedDriverId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The PERSON answerable for it → `drivers._id`. Only when handling includes driver-returnable."
+    },
+    "assignedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When the current assignment was made."
+    },
+    "contactName": {
+      "type": "string",
+      "description": "Vendor contact copied at creation (kept for the item page).",
+      "default": ""
+    },
+    "contactInfo": {
+      "type": "string",
+      "description": "Vendor email / phone copied at creation.",
+      "default": ""
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free text.",
+      "default": ""
+    },
+    "deletedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Soft delete (no delete exists today — TO CONFIRM)."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "vendorId",
+    "handling",
+    "serial",
+    "issueDate",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ]
+}

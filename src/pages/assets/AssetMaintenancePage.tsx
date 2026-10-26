@@ -13,6 +13,7 @@ import { KebabMenu } from "@/components/ui/KebabMenu";
 import { RowButton } from "@/components/ui/CatalogTable";
 import { CreateScheduleForm } from "./CreateScheduleForm";
 import { VENDORS as INVENTORY_VENDORS, isCompanyIssuedVendor } from "@/pages/inventory/inventory.data";
+import { vendorsStore } from "@/data/vendorsStore";
 // The page band every list in the app wears — title, count, figures, tabs — and the
 // scroll behaviour that keeps it in reach. See `ListPageHeader`.
 import { ListPageHeader, ListPageBody, PAGE_PAD } from "@/components/ui/ListPageHeader";
@@ -3292,7 +3293,13 @@ export function AssetMaintenancePage({ account, onNavigate, openVendor }: {
      * Rendered up here with the other pages for the same reason they are: these are places
      * you go, not drawers over something else. Back uncovers the Vendors tab underneath.
      */
-    const openVendorRecord = openVendorId ? vendors.find((v) => v.id === openVendorId) : undefined;
+    // This module's list is shops only — company-issued kit is left out of its pickers, and a
+    // vendor added from the Vendors menu lives in the live store, not the seed this list is
+    // cut from. Opening one is still opening a vendor, so the page falls back to the store:
+    // every row on the Vendors list has a page, not just the repair shops.
+    const openVendorRecord = openVendorId
+        ? (vendors.find((v) => v.id === openVendorId) ?? vendorsStore.getAll().find((v) => v.id === openVendorId))
+        : undefined;
     if (openVendorRecord) {
         return (
             <VendorPage

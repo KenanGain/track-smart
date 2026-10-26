@@ -136,7 +136,12 @@ export function KpiStatRow({
         <div className={cn("@container", className)}>
             <div
                 className={cn(
-                    "grid grid-cols-2 gap-2.5 @xl:grid-cols-3",
+                    // Four never go three-across: 3 + 1 strands the last card alone on its own
+                    // line. Two-by-two, then all four in one row once that row has the width.
+                    // Three stay three-across at every width — 2 + 1 strands the last one the same way.
+                    stats.length === 4 ? "grid grid-cols-2 gap-2.5 @xl:grid-cols-4"
+                        : stats.length === 3 ? "grid grid-cols-3 gap-2.5"
+                        : "grid grid-cols-2 gap-2.5 @xl:grid-cols-3",
                     // Six go across where five do. They were held back to @4xl (896px) while
                     // the five-card roster went single-row at @3xl (768px), so at the same
                     // 870px column the roster showed one compact line and the asset list
@@ -152,7 +157,7 @@ export function KpiStatRow({
                     // "Rejected" stranded alone on the last line.
                     stats.length === 7 ? "@xl:grid-cols-4 @5xl:grid-cols-7"
                         : stats.length > 7 ? "@3xl:grid-cols-4 @4xl:grid-cols-7"
-                        : stats.length >= 6 ? "@3xl:grid-cols-6" : "@3xl:grid-cols-5",
+                        : stats.length >= 6 ? "@3xl:grid-cols-6" : stats.length <= 4 ? "" : "@3xl:grid-cols-5",
                     // Animated with the same curve as every other fold in the product.
                     "overflow-hidden transition-[max-height,opacity,margin,gap] duration-500 ease-[cubic-bezier(0.65,0,0.35,1)]",
                     condensed ? "max-h-0 gap-0 opacity-0" : "max-h-96 opacity-100",

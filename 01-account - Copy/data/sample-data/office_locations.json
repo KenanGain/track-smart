@@ -1,0 +1,62 @@
+[
+  {
+    "_id": "LOC-acct-001-1",
+    "carrierId": "acct-001",
+    "label": "Corporate HQ - Wilmington",
+    "address": "1200 North Dupont Hwy, Wilmington, DE 19801",
+    "contact": "Head Office",
+    "phone": "+1 (555) 123-4567",
+    "operatingHours": {
+      "weekdays": "08:00 - 18:00",
+      "saturday": "10:00 - 14:00",
+      "sunday": "Closed"
+    },
+    "createdAt": "2024-03-04T14:12:00Z",
+    "updatedAt": "2024-03-04T14:12:00Z"
+  },
+  {
+    "_id": "LOC-acct-001-2",
+    "carrierId": "acct-001",
+    "label": "Denver Regional Office",
+    "address": "101 Broadway, Denver, CO 80203",
+    "contact": "Regional Desk",
+    "phone": "+1 (303) 555-0199",
+    "operatingHours": {
+      "weekdays": "07:30 - 17:00",
+      "saturday": "Closed",
+      "sunday": "Closed"
+    },
+    "createdAt": "2025-01-20T15:00:00Z",
+    "updatedAt": "2025-01-20T15:00:00Z"
+  },
+  {
+    "_id": "LOC-acct-002-1",
+    "carrierId": "acct-002",
+    "label": "Head Office - Mississauga",
+    "address": "4120 Dundas Street West, Suite 300, Mississauga, ON L5B 3C2",
+    "contact": "Reception",
+    "phone": "+1 (905) 555-0140",
+    "operatingHours": {
+      "weekdays": "08:00 - 17:00",
+      "saturday": "Closed",
+      "sunday": "Closed"
+    },
+    "createdAt": "2024-06-18T10:02:00Z",
+    "updatedAt": "2026-02-11T12:00:00Z"
+  },
+  {
+    "_id": "LOC-acct-003-1",
+    "carrierId": "acct-003",
+    "label": "Dallas Office",
+    "address": "8800 Harry Hines Blvd, Dallas, TX 75235",
+    "contact": "Dispatch",
+    "phone": "+1 (214) 555-0177",
+    "operatingHours": {
+      "weekdays": "06:00 - 18:00",
+      "saturday": "08:00 - 12:00",
+      "sunday": "Closed"
+    },
+    "createdAt": "2026-08-02T18:30:00Z",
+    "updatedAt": "2026-08-02T18:30:00Z"
+  }
+]

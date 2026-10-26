@@ -1,0 +1,123 @@
+[
+  {
+    "_id": "col-mh2l0a-1",
+    "carrierId": "acct-001",
+    "direction": "collect",
+    "driverId": "DRV-001-0001",
+    "driverName": "Jason Cooper",
+    "conversationId": "conv-drv-001-0001",
+    "holderLabel": "",
+    "counterparty": {
+      "kind": "office",
+      "name": ""
+    },
+    "dueAt": "2026-10-24T09:00",
+    "lines": [
+      {
+        "itemId": "inv-acc-001-011",
+        "name": "Spare Truck Keys (set) — Keys & Access",
+        "serial": "KEY-983142",
+        "route": "assigned"
+      },
+      {
+        "itemId": "inv-acc-001-014",
+        "name": "Spare Hi-Vis Vests (box) — Safety & PPE",
+        "serial": "PPE-633478",
+        "route": "assigned"
+      }
+    ],
+    "forms": [
+      {
+        "defId": "equipment-issue",
+        "title": "Uniform & Equipment Issue Receipt",
+        "recordId": "onbform:equipment-issue",
+        "status": "signed",
+        "signedAt": "2026-10-23T19:36:40Z",
+        "signedBy": "Jason Cooper",
+        "receiptId": "6716a1f0c1a2b3c4d5e6f801"
+      }
+    ],
+    "note": "Hi Jason — you’ve been assigned 2 items. Please collect them from the office by Sat 24 Oct, 09:00.",
+    "issuedByUserId": "usr-0002",
+    "issuedByName": "Kenan Gain",
+    "status": "collected",
+    "collectedItemIds": [
+      "inv-acc-001-011",
+      "inv-acc-001-014"
+    ],
+    "collectedAt": "2026-10-23T19:36:40Z",
+    "createdAt": "2026-10-23T19:27:01Z",
+    "updatedAt": "2026-10-23T19:36:40Z"
+  },
+  {
+    "_id": "col-mh2l0a-2",
+    "carrierId": "acct-001",
+    "direction": "return",
+    "driverId": "DRV-001-0001",
+    "driverName": "Jason Cooper",
+    "conversationId": "conv-drv-001-0001",
+    "holderLabel": "",
+    "counterparty": {
+      "kind": "office",
+      "name": ""
+    },
+    "dueAt": null,
+    "lines": [
+      {
+        "itemId": "inv-acc-001-001",
+        "name": "Truck Keys — Keys & Access",
+        "serial": "KEY-129559",
+        "route": "assigned"
+      }
+    ],
+    "forms": [],
+    "note": "Hi Jason — could you drop it back to the office.",
+    "issuedByUserId": "usr-0002",
+    "issuedByName": "Kenan Gain",
+    "status": "collected",
+    "collectedItemIds": [
+      "inv-acc-001-001"
+    ],
+    "collectedAt": "2026-10-23T19:38:12Z",
+    "createdAt": "2026-10-23T19:27:01Z",
+    "updatedAt": "2026-10-23T19:38:12Z"
+  },
+  {
+    "_id": "col-mh3a77-1",
+    "carrierId": "acct-001",
+    "direction": "collect",
+    "driverId": "DRV-001-0012",
+    "driverName": "Sarah Jackson",
+    "conversationId": "conv-drv-001-0012",
+    "holderLabel": "ACM-T0107",
+    "counterparty": {
+      "kind": "person",
+      "name": "Mike Johnson, yard office"
+    },
+    "dueAt": "2026-10-26",
+    "lines": [
+      {
+        "itemId": "inv-acc-001-034",
+        "name": "Driver Tablet — Devices & Electronics",
+        "serial": "DEV-581375",
+        "route": "assigned"
+      }
+    ],
+    "forms": [
+      {
+        "defId": "equipment-issue",
+        "title": "Uniform & Equipment Issue Receipt",
+        "recordId": "onbform:equipment-issue",
+        "status": "pending"
+      }
+    ],
+    "note": "Hi Sarah — please collect it from Mike Johnson, yard office by Mon 26 Oct.",
+    "issuedByUserId": "usr-0003",
+    "issuedByName": "Anika Rao",
+    "status": "pending",
+    "collectedItemIds": [],
+    "collectedAt": null,
+    "createdAt": "2026-10-23T20:02:00Z",
+    "updatedAt": "2026-10-23T20:02:00Z"
+  }
+]

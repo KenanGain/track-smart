@@ -1,0 +1,71 @@
+[
+  {
+    "_id": "6716b5c1a2b3c4d5e6f70101",
+    "carrierId": "acct-001",
+    "subjectKind": "ticket",
+    "subjectId": "tkt-6716b0c1a2b3",
+    "status": "resolved",
+    "verified": true,
+    "verifiedByUserId": "usr-0004",
+    "disposition": "warning",
+    "trainingName": null,
+    "delivery": {
+      "via": "in-app",
+      "to": "",
+      "conversationId": "conv-drv-001-0010"
+    },
+    "warningLetterId": "wl-001-0010-01",
+    "reviewedByUserId": "usr-0004",
+    "notes": [
+      {
+        "text": "Driver disputes the speed reading; court date booked.",
+        "byUserId": "usr-0004",
+        "at": "2026-10-23T19:05:00Z"
+      }
+    ],
+    "createdAt": "2026-10-02T18:40:00Z",
+    "updatedAt": "2026-10-23T19:08:00Z"
+  },
+  {
+    "_id": "6716b5c1a2b3c4d5e6f70102",
+    "carrierId": "acct-001",
+    "subjectKind": "ticket",
+    "subjectId": "tkt-6716b0c1a2b4",
+    "status": "resolved",
+    "verified": true,
+    "verifiedByUserId": "usr-0004",
+    "disposition": "training",
+    "trainingName": "Defensive Driving",
+    "delivery": {
+      "via": "email",
+      "to": "james.sullivan@acmelogistics.example",
+      "conversationId": "conv-ext-7712"
+    },
+    "warningLetterId": null,
+    "reviewedByUserId": "usr-0004",
+    "notes": [],
+    "createdAt": "2026-08-15T15:00:00Z",
+    "updatedAt": "2026-08-20T15:00:00Z"
+  },
+  {
+    "_id": "6716b5c1a2b3c4d5e6f70103",
+    "carrierId": "acct-012",
+    "subjectKind": "ticket",
+    "subjectId": "tkt-6716b0c1a2b5",
+    "status": "review",
+    "verified": false,
+    "verifiedByUserId": null,
+    "disposition": null,
+    "trainingName": null,
+    "delivery": {
+      "via": null,
+      "to": "",
+      "conversationId": null
+    },
+    "warningLetterId": null,
+    "reviewedByUserId": null,
+    "notes": [],
+    "createdAt": "2026-06-04T15:00:00Z",
+    "updatedAt": "2026-06-04T15:00:00Z"
+  }
+]

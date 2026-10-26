@@ -1,3 +1,4 @@
+import { normalizeLicenseClass } from "@/data/license-classes.data";
 import type { ApplicationData } from "@/pages/hiring-process/ApplicationSettingsPage";
 
 // Maps a carrier "domain" Driver record ↔ the shared ApplicationData object so
@@ -45,6 +46,8 @@ export function emptyApplication(typeId = "us"): ApplicationData {
         address: { addr1: "", unit: "", addr2: "", country, city: "", state: "", zip: "" },
         resided3yr: "", residenceRows: [],
         preferredContact: "Primary Phone", bestTime: "Any",
+        emergencyContact: { name: "", relation: "", phone: "", email: "" },
+        hos: { hours: {}, note: "" },
         licenses: [], drivingExp: [],
         mvr: {},
         hadAccidents: "", accidents: [],
@@ -76,11 +79,15 @@ export function applicationFromDriver(driver: any): ApplicationData {
               medicalExp: { ...EMPTY_DMY },
               current: l.isPrimary ? "Yes" : "",
               commercial: /cdl|class a|class b|az/i.test(`${l.type ?? ""} ${l.class ?? ""}`) ? "Yes" : "No",
-              licenseClass: l.class ?? "",
+              licenseClass: normalizeLicenseClass(l.class),
               endorsements: Array.isArray(l.endorsements) ? l.endorsements : [],
+              restricted: Array.isArray(l.restrictions) && l.restrictions.length ? "Yes" : l.restrictions ? "Yes" : "No",
+              restrictions: Array.isArray(l.restrictions) ? l.restrictions.join(", ") : (l.restrictions ?? ""),
               frontImage: "", backImage: "",
           }))
         : [];
+
+    const ec = Array.isArray(d.emergencyContacts) ? d.emergencyContacts[0] : undefined;
 
     const employers = Array.isArray(d.employmentHistory)
         ? d.employmentHistory.map((e: any) => {
@@ -149,6 +156,8 @@ export function applicationFromDriver(driver: any): ApplicationData {
         },
         resided3yr: residenceRows.length ? "No" : "Yes",
         residenceRows,
+        emergencyContact: ec ? { name: ec.name ?? "", relation: ec.relation ?? "", phone: ec.phone ?? "", email: ec.email ?? "" } : base.emergencyContact,
+        hos: d.hosHistory ?? base.hos,
         licenses,
         employedRecently: employers.length ? "Yes" : "No",
         employers,

@@ -14,11 +14,15 @@
 // it should, so the form is as short as the inspection was.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { searchLocations, addressLine, type RoadsideLocation } from "./roadside-locations";
 import {
     CalendarClock, ClipboardCheck, FileText, MapPin, Save, Search, ShieldAlert, Truck, User, Container, StickyNote,
+    Ticket as TicketIcon, Link2, X as XIcon,
 } from "lucide-react";
+import { getTicketsForCarrierAccount } from "@/pages/tickets/tickets.store";
+import type { TicketRecord } from "@/pages/tickets/tickets.data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from "@/components/ui/WizardEditor";
@@ -26,7 +30,7 @@ import { ViolationPicker } from "@/pages/tickets/ViolationPicker";
 import { DocShelf } from "./RoadsideDocs";
 import {
     DISTANCE_UNITS, INSPECTION_LEVELS, VIOLATION_BASICS,
-    blankInspection, driverOptions, emptyParty, getInspectionById,
+    blankInspection, driverOptions, emptyParty, getInspectionById, partyFromUnit,
     saveInspection, trailerOptions, truckOptions,
     type DistanceUnit, type InspectionResult, type PartyKind, type RoadsideInspection, type RoadsideParty, type UnitOption,
 } from "./roadside.data";
@@ -107,6 +111,43 @@ function YesNo({ value, onChange, yes = "Yes", no = "No", danger }: {
 
 
 /**
+ * A list that drops under a field, drawn above everything else on the page.
+ *
+ * Positioned on the field's screen rectangle and rendered at the document root, the way
+ * the row menus are. Inside the section card it was clipped at the card's edge — the
+ * card paints over its own overflow once a later card sits below it — so a lookup with
+ * eight hits showed one. It follows the field while the page scrolls and closes when the
+ * field is gone.
+ */
+function DropLayer({ anchor, open, children }: { anchor: React.RefObject<HTMLElement | null>; open: boolean; children: React.ReactNode }) {
+    const [rect, setRect] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
+    useLayoutEffect(() => {
+        if (!open) { setRect(null); return; }
+        const place = () => {
+            const r = anchor.current?.getBoundingClientRect();
+            if (!r) return;
+            // Below the field when there is room, above it when the field sits near the
+            // bottom of the screen — a list that runs off the bottom edge is a list of one.
+            const below = window.innerHeight - r.bottom - 12;
+            const above = r.top - 12;
+            if (below >= 220 || below >= above) setRect({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: Math.min(320, Math.max(120, below)) });
+            else setRect({ bottom: window.innerHeight - r.top + 4, left: r.left, width: r.width, maxHeight: Math.min(320, Math.max(120, above)) });
+        };
+        place();
+        window.addEventListener("scroll", place, true);
+        window.addEventListener("resize", place);
+        return () => { window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+    }, [open, anchor]);
+    if (!open || !rect) return null;
+    return createPortal(
+        <div className="fixed z-[80] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg" style={rect}>
+            {children}
+        </div>,
+        document.body,
+    );
+}
+
+/**
  * Where it happened, looked up rather than typed.
  *
  * Free text here produced "I80 mm214", "I-80 WB Mile 214" and "Elkhart scale"
@@ -128,6 +169,7 @@ function LocationField({ value, onPick, onType, sub }: {
     const [busy, setBusy] = useState(false);
     const [hits, setHits] = useState<RoadsideLocation[]>([]);
     const seq = useRef(0);
+    const box = useRef<HTMLDivElement | null>(null);
 
     // Every keystroke starts a search; only the newest one is allowed to answer.
     // Without the guard a slow early request lands after a fast later one, and the
@@ -145,7 +187,7 @@ function LocationField({ value, onPick, onType, sub }: {
 
     return (
         <div className="relative">
-            <div className="relative">
+            <div ref={box} className="relative">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                     className={cn(FIELD, "pl-8")}
@@ -158,8 +200,7 @@ function LocationField({ value, onPick, onType, sub }: {
             </div>
             {sub && <p className="mt-1 text-[11px] text-slate-500">{sub}</p>}
 
-            {open && (
-                <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+            <DropLayer anchor={box} open={open}>
                     {busy && hits.length === 0 && (
                         <p className="px-3 py-2.5 text-[12px] text-slate-400">Searching…</p>
                     )}
@@ -189,8 +230,115 @@ function LocationField({ value, onPick, onType, sub }: {
                             </li>
                         ))}
                     </ul>
-                </div>
+            </DropLayer>
+        </div>
+    );
+}
+
+/**
+ * What came with the unit.
+ *
+ * Plate, jurisdiction, make and VIN are what the inspector wrote on the report, and they
+ * are on the fleet record already — so picking the unit fills them in, and the person
+ * reads them back against the paper rather than typing them a second time.
+ */
+function UnitFacts({ party }: { party: RoadsideParty }) {
+    const cell = (k: string, v?: string | number, mono?: boolean) => (
+        <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{k}</p>
+            <p className={cn("truncate text-[13px] text-slate-800", mono ? "font-mono" : "font-medium")} title={v != null ? String(v) : undefined}>
+                {v != null && v !== "" ? v : <span className="text-slate-300">—</span>}
+            </p>
+        </div>
+    );
+    return (
+        <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                {cell("Unit #", party.unitNumber ?? party.label)}
+                {cell("Plate", party.plateNumber, true)}
+                {cell("Jurisdiction", party.plateJurisdiction)}
+                {cell("Make", [party.year, party.make].filter(Boolean).join(" "))}
+                {cell("Model", party.model)}
+                {cell("VIN", party.vin, true)}
+            </div>
+            <p className="mt-2 text-[10px] text-blue-600/80">Filled in from the fleet record — check it against the report.</p>
+        </div>
+    );
+}
+
+/**
+ * The citation number, searched against the Tickets page.
+ *
+ * A citation written at the roadside is a ticket; most of the time the office has
+ * already filed it there. Typing the number finds that ticket, and picking it links the
+ * two so the inspection opens the ticket and the ticket's number is the inspection's.
+ * A number the Tickets page has never seen is kept as typed — the link is optional, the
+ * number is not.
+ */
+function CitationField({ accountId, value, ticketId, onChange }: {
+    accountId?: string;
+    value: string;
+    ticketId?: string;
+    onChange: (next: { citationNumber: string; citationTicketId?: string }) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const box = useRef<HTMLDivElement | null>(null);
+    const tickets = useMemo(() => (accountId ? getTicketsForCarrierAccount(accountId) : []), [accountId]);
+    const linked = ticketId ? tickets.find((t) => t.id === ticketId) : undefined;
+    const q = value.trim().toLowerCase();
+    const hits = useMemo(() => {
+        const pool = q
+            ? tickets.filter((t) => [t.offenseNumber, t.identifiers?.ticketNumber, t.driverName, t.violationSubtype, t.violationType]
+                .filter(Boolean).join(" ").toLowerCase().includes(q))
+            : tickets;
+        return pool.slice(0, 6);
+    }, [tickets, q]);
+    const pick = (t: TicketRecord) => { onChange({ citationNumber: t.offenseNumber, citationTicketId: t.id }); setOpen(false); };
+
+    return (
+        <div className="relative">
+            <div ref={box} className="relative">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                    className={cn(FIELD, "pl-8")}
+                    value={value}
+                    placeholder="Search a ticket, or type the number…"
+                    onFocus={() => setOpen(true)}
+                    // Typing over a linked ticket unlinks it: the number no longer matches.
+                    onChange={(e) => { onChange({ citationNumber: e.target.value, citationTicketId: undefined }); setOpen(true); }}
+                    onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+                />
+            </div>
+            {linked ? (
+                <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                    <Link2 size={11} /> Linked to ticket {linked.offenseNumber}
+                    <span className="font-normal text-blue-500">· {linked.violationSubtype || linked.violationType} · {linked.driverName}</span>
+                    <button type="button" title="Unlink the ticket" onClick={() => onChange({ citationNumber: value, citationTicketId: undefined })}
+                        className="ml-0.5 text-blue-400 hover:text-blue-700"><XIcon size={11} /></button>
+                </p>
+            ) : (
+                <p className="mt-1 text-[11px] text-slate-400">Pick the ticket it was filed as, or just write the number printed on it.</p>
             )}
+
+            <DropLayer anchor={box} open={open && hits.length > 0}>
+                    <p className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Tickets on file</p>
+                    <ul className="max-h-60 overflow-y-auto">
+                        {hits.map((t) => (
+                            <li key={t.id}>
+                                <button type="button" onMouseDown={(e) => { e.preventDefault(); pick(t); }}
+                                    className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-blue-50/60">
+                                    <TicketIcon size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                                    <span className="min-w-0">
+                                        <span className="block truncate text-[13px] font-semibold text-slate-800">{t.offenseNumber}</span>
+                                        <span className="block truncate text-[11px] text-slate-500">
+                                            {t.violationSubtype || t.violationType} &middot; {t.driverName} &middot; {t.date}
+                                        </span>
+                                    </span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+            </DropLayer>
         </div>
     );
 }
@@ -240,18 +388,23 @@ function PartyCard({ kind, party, options, isCanada, extra, onChange }: {
     return (
         <div className="space-y-5">
             <div className="grid gap-5 sm:grid-cols-2">
-                <Field label={noun} hint={kind === "trailer" ? "Leave empty if the inspection had no trailer." : undefined}>
+                <Field label={noun} hint={kind === "trailer" ? "Leave empty if the inspection had no trailer." : undefined}
+                    className={kind !== "driver" && inspected ? "sm:col-span-2" : undefined}>
                     <UnitSelect
                         options={options}
                         value={party.id}
                         placeholder={options.length ? `Select ${noun.toLowerCase()}…` : "No units on this carrier"}
                         onChange={(o) => onChange(o
-                            ? { ...party, id: o.id, label: o.label }
+                            // What was found stays; the unit's own facts are replaced wholesale, so a
+                            // plate from the previous pick never lingers under the new one.
+                            ? { ...partyFromUnit(o), hasViolation: party.hasViolation, violations: party.violations, logbookInspected: party.logbookInspected }
                             // Clearing the unit clears what was found against it: a violation
                             // filed against nobody is worse than no violation at all.
                             : { ...emptyParty() })}
                     />
-                    {picked?.detail && <p className="mt-1 text-[11px] text-slate-400">{picked.detail}</p>}
+                    {kind === "driver"
+                        ? picked?.detail && <p className="mt-1 text-[11px] text-slate-400">{picked.detail}</p>
+                        : inspected && <UnitFacts party={party} />}
                 </Field>
                 {inspected && (
                     <Field label="Violation found">
@@ -353,7 +506,7 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
      */
     const completionFor = (id: string): number => {
         switch (id) {
-            case "inspection": return [form.date, form.location.trim(), form.startTime, form.endTime].filter(Boolean).length;
+            case "inspection": return [form.date, form.location.trim(), form.startTime, form.endTime, form.inspectorName?.trim(), form.reportNumber?.trim()].filter(Boolean).length;
             case "outcome": return [form.result, form.oos ? "oos" : "", form.citationNumber?.trim()].filter(Boolean).length;
             case "truck": return form.truck.id ? 1 + form.truck.violations.length + (form.truckOdometer?.trim() ? 1 : 0) : 0;
             case "trailer": return form.trailer.id ? 1 + form.trailer.violations.length : 0;
@@ -416,8 +569,8 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
                     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
 
-                        <WizardSection id="inspection" icon={CalendarClock} title="The inspection"
-                            subtitle="When it happened, how long it took, and at what level.">
+                        <WizardSection allowOverflow id="inspection" icon={CalendarClock} title="The inspection"
+                            subtitle="When it happened, how long it took, at what level, and who inspected.">
                             <div className="grid gap-5 sm:grid-cols-2">
                                 <Field label="Inspection date" required>
                                     <input type="date" className={FIELD} value={form.date} onChange={(e) => set("date", e.target.value)} />
@@ -432,6 +585,15 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                                 </Field>
                                 <Field label="End time" hint="How long a driver was held is worth keeping — it is the part that costs the day.">
                                     <input type="time" className={FIELD} value={form.endTime ?? ""} onChange={(e) => set("endTime", e.target.value)} />
+                                </Field>
+                                <Field label="Inspector" hint="As printed on the report.">
+                                    <input className={FIELD} placeholder="Ofc. D. Whitaker" value={form.inspectorName ?? ""} onChange={(e) => set("inspectorName", e.target.value)} />
+                                </Field>
+                                <Field label="Agency">
+                                    <input className={FIELD} placeholder="Indiana State Police — CVED" value={form.agency ?? ""} onChange={(e) => set("agency", e.target.value)} />
+                                </Field>
+                                <Field label="Report #" hint="The inspector's report number — what a data-Q challenge quotes.">
+                                    <input className={FIELD} placeholder="IN-2026-00418827" value={form.reportNumber ?? ""} onChange={(e) => set("reportNumber", e.target.value)} />
                                 </Field>
                                 <Field label="Location" required className="sm:col-span-2">
                                     <LocationField
@@ -457,10 +619,21 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
 
                         <WizardSection allowOverflow id="truck" icon={Truck} title="Truck" subtitle="The power unit inspected, and what was found against it.">
                             <PartyCard kind="truck" party={form.truck} options={trucks} isCanada={!!isCanada}
-                                onChange={(truck) => set("truck", truck)}
+                                onChange={(truck) => setForm((f) => {
+                                    // A newly picked unit brings its current reading along as the
+                                    // roadside reading; the person corrects it to what the report says.
+                                    const o = trucks.find((u) => u.id === truck.id);
+                                    const fresh = !!truck.id && truck.id !== f.truck.id;
+                                    return {
+                                        ...f, truck,
+                                        ...(fresh && o?.odometer != null
+                                            ? { truckOdometer: String(o.odometer), truckOdometerUnit: o.odometerUnit ?? f.truckOdometerUnit }
+                                            : {}),
+                                    };
+                                })}
                                 extra={form.truck.id ? (
                                     <Field label="Odometer"
-                                        hint="What it had run at the roadside — the repair bill is read against this.">
+                                        hint="Filled from the fleet record — change it to the reading at the roadside; the repair bill is read against this.">
                                         <div className="flex gap-2">
                                             <input className={FIELD} inputMode="numeric" placeholder="412,860"
                                                 value={form.truckOdometer ?? ""}
@@ -500,7 +673,7 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                             />
                         </WizardSection>
 
-                        <WizardSection id="outcome" icon={ShieldAlert} title="Outcome"
+                        <WizardSection allowOverflow id="outcome" icon={ShieldAlert} title="Outcome"
                             subtitle="What the inspector concluded, and whether anything was written.">
                             <div className="grid gap-5 sm:grid-cols-2">
                                 <Field label="Inspection result" required>
@@ -517,23 +690,27 @@ export function RoadsideInspectionForm({ inspectionId, accountId, accountName, c
                                 </Field>
                                 {/* Asked only when there is one to give. */}
                                 {form.citationIssued && (
-                                    <Field label="Citation #" required>
-                                        <input className={FIELD} placeholder="IN-2026-884120"
-                                            value={form.citationNumber ?? ""} onChange={(e) => set("citationNumber", e.target.value)} />
+                                    <Field label="Citation #" required className="sm:col-span-2">
+                                        <CitationField
+                                            accountId={accountId}
+                                            value={form.citationNumber ?? ""}
+                                            ticketId={form.citationTicketId}
+                                            onChange={(next) => setForm((f) => ({ ...f, ...next }))}
+                                        />
                                     </Field>
                                 )}
                             </div>
                             {form.oos && (
                                 <p className="mt-5 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-rose-800">
                                     <ShieldAlert size={14} className="mt-0.5 shrink-0" />
-                                    Out of service. This inspection stays open until a remediation inspection is on file
+                                    Out of service. This inspection stays open until the post-inspection DVIR is on file
                                     &mdash; and, where the fault was a maintenance one, the repair bill with it.
                                 </p>
                             )}
                         </WizardSection>
 
                         <WizardSection id="documents" icon={FileText} title="Documents"
-                            subtitle="The report from the roadside now; the remediation and the bill as they arrive.">
+                            subtitle="The report from the roadside now; the post-inspection DVIR and the bill as they arrive.">
                             <DocShelf
                                 inspection={form}
                                 uploadedBy={who}

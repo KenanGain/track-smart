@@ -111,7 +111,9 @@ export interface Driver {
     
     // Employment
     hiredDate: string;
-    dateAdded: string; // usually same or close to hired
+    dateAdded: string; // when the record was entered — on or after the hire date
+    /** On-duty hours for the days before the start date, from the application (US 8 days, Canada 14). */
+    hosHistory?: { hours: Record<string, string>; note: string };
     terminal: string;
     carrierCode: string; // e.g., WEST-001
     driverType?: string; // e.g., 'Long Haul Driver'

@@ -1,0 +1,1485 @@
+{
+  "$description": "TrackSmart · 02 Inventory colour palette. Light values are what the app renders today (Tailwind CSS v4 default palette, converted from OKLCH to sRGB). Dark values are PROPOSED — the app has no dark mode.",
+  "source": "tailwindcss v4.1 theme.css (OKLCH) · usage counted across the Inventory section source files",
+  "generated": "2026-10-23",
+  "tokens": [
+    {
+      "token": "primary",
+      "tailwind": {
+        "light": "blue-600",
+        "dark": "blue-500"
+      },
+      "light": {
+        "hex": "#155dfc",
+        "rgb": "rgb(21, 93, 252)"
+      },
+      "dark": {
+        "hex": "#2b7fff",
+        "rgb": "rgb(43, 127, 255)"
+      },
+      "usedFor": "Primary buttons (Add Inventory, Save Inventory, Save assignment, Save & send, + Add Vendor, Edit), active tab and rail underline, active filter chip, switch \"on\", sorted header.",
+      "occurrences": 57
+    },
+    {
+      "token": "primary-hover",
+      "tailwind": {
+        "light": "blue-700",
+        "dark": "blue-400"
+      },
+      "light": {
+        "hex": "#1447e6",
+        "rgb": "rgb(20, 71, 230)"
+      },
+      "dark": {
+        "hex": "#51a2ff",
+        "rgb": "rgb(81, 162, 255)"
+      },
+      "usedFor": "Hover of primary buttons; text on blue chips and the \"View only\" strip.",
+      "occurrences": 47
+    },
+    {
+      "token": "primary-subtle",
+      "tailwind": {
+        "light": "blue-50",
+        "dark": "blue-950"
+      },
+      "light": {
+        "hex": "#eff6ff",
+        "rgb": "rgb(239, 246, 255)"
+      },
+      "dark": {
+        "hex": "#162456",
+        "rgb": "rgb(22, 36, 86)"
+      },
+      "usedFor": "Icon tiles in headers, ticked rows in the pick list, ticked \"Assigned to\" cards, row hover tint, info notes in the Assign dialog.",
+      "occurrences": 32
+    },
+    {
+      "token": "primary-border",
+      "tailwind": {
+        "light": "blue-200",
+        "dark": "blue-800"
+      },
+      "light": {
+        "hex": "#bedbff",
+        "rgb": "rgb(190, 219, 255)"
+      },
+      "dark": {
+        "hex": "#193cb8",
+        "rgb": "rgb(25, 60, 184)"
+      },
+      "usedFor": "Border of ticked cards, info notes and blue chips.",
+      "occurrences": 14
+    },
+    {
+      "token": "secondary",
+      "tailwind": {
+        "light": "slate-100",
+        "dark": "slate-800"
+      },
+      "light": {
+        "hex": "#f1f5f9",
+        "rgb": "rgb(241, 245, 249)"
+      },
+      "dark": {
+        "hex": "#1d293d",
+        "rgb": "rgb(29, 41, 61)"
+      },
+      "usedFor": "Count pills, KPI chip strip, segmented controls, icon tiles for empty holders.",
+      "occurrences": 78
+    },
+    {
+      "token": "secondary-foreground",
+      "tailwind": {
+        "light": "slate-700",
+        "dark": "slate-200"
+      },
+      "light": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "dark": {
+        "hex": "#e2e8f0",
+        "rgb": "rgb(226, 232, 240)"
+      },
+      "usedFor": "Text on secondary surfaces; outline-button text (Categories, Columns, Cancel).",
+      "occurrences": 63
+    },
+    {
+      "token": "background",
+      "tailwind": {
+        "light": "slate-50",
+        "dark": "slate-950"
+      },
+      "light": {
+        "hex": "#f8fafc",
+        "rgb": "rgb(248, 250, 252)"
+      },
+      "dark": {
+        "hex": "#020618",
+        "rgb": "rgb(2, 6, 24)"
+      },
+      "usedFor": "Page body, table header band, zebra rows, tinted card headers.",
+      "occurrences": 97
+    },
+    {
+      "token": "surface",
+      "tailwind": {
+        "light": "white",
+        "dark": "slate-900"
+      },
+      "light": {
+        "hex": "#ffffff",
+        "rgb": "rgb(255, 255, 255)"
+      },
+      "dark": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "usedFor": "Cards, list cards, dialogs, header bands, inputs, the collection card body.",
+      "occurrences": 146
+    },
+    {
+      "token": "text-primary",
+      "tailwind": {
+        "light": "slate-900",
+        "dark": "slate-50"
+      },
+      "light": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "dark": {
+        "hex": "#f8fafc",
+        "rgb": "rgb(248, 250, 252)"
+      },
+      "usedFor": "Page, record and dialog titles; item names; primary cell values.",
+      "occurrences": 54
+    },
+    {
+      "token": "text-body",
+      "tailwind": {
+        "light": "slate-700",
+        "dark": "slate-300"
+      },
+      "light": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "dark": {
+        "hex": "#cad5e2",
+        "rgb": "rgb(202, 213, 226)"
+      },
+      "usedFor": "Body copy, table cells, form values, draft messages.",
+      "occurrences": 63
+    },
+    {
+      "token": "text-secondary",
+      "tailwind": {
+        "light": "slate-500",
+        "dark": "slate-400"
+      },
+      "light": {
+        "hex": "#62748e",
+        "rgb": "rgb(98, 116, 142)"
+      },
+      "dark": {
+        "hex": "#90a1b9",
+        "rgb": "rgb(144, 161, 185)"
+      },
+      "usedFor": "Descriptions, field labels, table headers, vendor lines under item names, helper text.",
+      "occurrences": 120
+    },
+    {
+      "token": "text-muted",
+      "tailwind": {
+        "light": "slate-400",
+        "dark": "slate-500"
+      },
+      "light": {
+        "hex": "#90a1b9",
+        "rgb": "rgb(144, 161, 185)"
+      },
+      "dark": {
+        "hex": "#62748e",
+        "rgb": "rgb(98, 116, 142)"
+      },
+      "usedFor": "\"no expiry\", empty \"—\", idle icons, placeholders, some 10 px labels. Fails body-text contrast — see §WCAG.",
+      "occurrences": 93
+    },
+    {
+      "token": "border",
+      "tailwind": {
+        "light": "slate-200",
+        "dark": "slate-800"
+      },
+      "light": {
+        "hex": "#e2e8f0",
+        "rgb": "rgb(226, 232, 240)"
+      },
+      "dark": {
+        "hex": "#1d293d",
+        "rgb": "rgb(29, 41, 61)"
+      },
+      "usedFor": "Card, table, dialog and input borders; row dividers (slate-100 inside tables).",
+      "occurrences": 159
+    },
+    {
+      "token": "border-strong",
+      "tailwind": {
+        "light": "slate-300",
+        "dark": "slate-700"
+      },
+      "light": {
+        "hex": "#cad5e2",
+        "rgb": "rgb(202, 213, 226)"
+      },
+      "dark": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "usedFor": "Form input borders on Add Vendor and the item form; unticked checkboxes.",
+      "occurrences": 66
+    },
+    {
+      "token": "success",
+      "tailwind": {
+        "light": "emerald-600",
+        "dark": "emerald-400"
+      },
+      "light": {
+        "hex": "#009966",
+        "rgb": "rgb(0, 153, 102)"
+      },
+      "dark": {
+        "hex": "#00d492",
+        "rgb": "rgb(0, 212, 146)"
+      },
+      "usedFor": "Active status dot, \"alert set\" bell, check marks, \"Monitoring is on\".",
+      "occurrences": 5
+    },
+    {
+      "token": "success-text",
+      "tailwind": {
+        "light": "emerald-700",
+        "dark": "emerald-300"
+      },
+      "light": {
+        "hex": "#007a55",
+        "rgb": "rgb(0, 122, 85)"
+      },
+      "dark": {
+        "hex": "#5ee9b5",
+        "rgb": "rgb(94, 233, 181)"
+      },
+      "usedFor": "Text of Active pills, Driver chips, \"Collected from the office\".",
+      "occurrences": 12
+    },
+    {
+      "token": "success-subtle",
+      "tailwind": {
+        "light": "emerald-50",
+        "dark": "emerald-950"
+      },
+      "light": {
+        "hex": "#ecfdf5",
+        "rgb": "rgb(236, 253, 245)"
+      },
+      "dark": {
+        "hex": "#002c22",
+        "rgb": "rgb(0, 44, 34)"
+      },
+      "usedFor": "Background of Active pills, Driver chips, settled collection cards.",
+      "occurrences": 15
+    },
+    {
+      "token": "warning",
+      "tailwind": {
+        "light": "amber-600",
+        "dark": "amber-400"
+      },
+      "light": {
+        "hex": "#e17100",
+        "rgb": "rgb(225, 113, 0)"
+      },
+      "dark": {
+        "hex": "#ffb900",
+        "rgb": "rgb(255, 185, 0)"
+      },
+      "usedFor": "Expiring Soon dot, \"in 12d\" countdowns, hand-back card icon.",
+      "occurrences": 11
+    },
+    {
+      "token": "warning-text",
+      "tailwind": {
+        "light": "amber-700",
+        "dark": "amber-300"
+      },
+      "light": {
+        "hex": "#bb4d00",
+        "rgb": "rgb(187, 77, 0)"
+      },
+      "dark": {
+        "hex": "#ffd230",
+        "rgb": "rgb(255, 210, 48)"
+      },
+      "usedFor": "Text of Expiring Soon pills, \"1 expiring\" header note, the no-expiry warning.",
+      "occurrences": 17
+    },
+    {
+      "token": "warning-subtle",
+      "tailwind": {
+        "light": "amber-50",
+        "dark": "amber-950"
+      },
+      "light": {
+        "hex": "#fffbeb",
+        "rgb": "rgb(255, 251, 235)"
+      },
+      "dark": {
+        "hex": "#461901",
+        "rgb": "rgb(70, 25, 1)"
+      },
+      "usedFor": "Background of Expiring Soon pills, collection cards in Messages, amber notes.",
+      "occurrences": 21
+    },
+    {
+      "token": "error",
+      "tailwind": {
+        "light": "red-600",
+        "dark": "red-400"
+      },
+      "light": {
+        "hex": "#e7000b",
+        "rgb": "rgb(231, 0, 11)"
+      },
+      "dark": {
+        "hex": "#ff6467",
+        "rgb": "rgb(255, 100, 103)"
+      },
+      "usedFor": "Expired dot, \"n days overdue\", Delete category / Delete vendor buttons.",
+      "occurrences": 7
+    },
+    {
+      "token": "error-text",
+      "tailwind": {
+        "light": "red-700",
+        "dark": "red-300"
+      },
+      "light": {
+        "hex": "#c10007",
+        "rgb": "rgb(193, 0, 7)"
+      },
+      "dark": {
+        "hex": "#ffa2a2",
+        "rgb": "rgb(255, 162, 162)"
+      },
+      "usedFor": "Text of Expired pills and the \"n expired\" attention pill; inline errors in the Categories modal.",
+      "occurrences": 9
+    },
+    {
+      "token": "error-subtle",
+      "tailwind": {
+        "light": "red-50",
+        "dark": "red-950"
+      },
+      "light": {
+        "hex": "#fef2f2",
+        "rgb": "rgb(254, 242, 242)"
+      },
+      "dark": {
+        "hex": "#460809",
+        "rgb": "rgb(70, 8, 9)"
+      },
+      "usedFor": "Background of Expired pills and error boxes.",
+      "occurrences": 10
+    },
+    {
+      "token": "danger",
+      "tailwind": {
+        "light": "rose-600",
+        "dark": "rose-500"
+      },
+      "light": {
+        "hex": "#ec003f",
+        "rgb": "rgb(236, 0, 63)"
+      },
+      "dark": {
+        "hex": "#ff2056",
+        "rgb": "rgb(255, 32, 86)"
+      },
+      "usedFor": "Items marked to come off on the Manage page, Delete items in ⋮ menus, Terminated status.",
+      "occurrences": 6
+    },
+    {
+      "token": "danger-subtle",
+      "tailwind": {
+        "light": "rose-50",
+        "dark": "rose-950"
+      },
+      "light": {
+        "hex": "#fff1f2",
+        "rgb": "rgb(255, 241, 242)"
+      },
+      "dark": {
+        "hex": "#4d0218",
+        "rgb": "rgb(77, 2, 24)"
+      },
+      "usedFor": "Background of rows coming off and of the delete confirmation icon tile.",
+      "occurrences": 5
+    },
+    {
+      "token": "accent",
+      "tailwind": {
+        "light": "violet-600",
+        "dark": "violet-400"
+      },
+      "light": {
+        "hex": "#7f22fe",
+        "rgb": "rgb(127, 34, 254)"
+      },
+      "dark": {
+        "hex": "#a684ff",
+        "rgb": "rgb(166, 132, 255)"
+      },
+      "usedFor": "Forms to sign: Sign & confirm button, the receipt block, the form tile; \"Both\" chips; Cross Border badge.",
+      "occurrences": 11
+    },
+    {
+      "token": "accent-text",
+      "tailwind": {
+        "light": "violet-700",
+        "dark": "violet-300"
+      },
+      "light": {
+        "hex": "#7008e7",
+        "rgb": "rgb(112, 8, 231)"
+      },
+      "dark": {
+        "hex": "#c4b4ff",
+        "rgb": "rgb(196, 180, 255)"
+      },
+      "usedFor": "Text on violet chips and the \"Receipt to sign\" label.",
+      "occurrences": 11
+    },
+    {
+      "token": "accent-subtle",
+      "tailwind": {
+        "light": "violet-50",
+        "dark": "violet-950"
+      },
+      "light": {
+        "hex": "#f5f3ff",
+        "rgb": "rgb(245, 243, 255)"
+      },
+      "dark": {
+        "hex": "#2f0d68",
+        "rgb": "rgb(47, 13, 104)"
+      },
+      "usedFor": "Background of the forms block, the sign-form card header and violet chips.",
+      "occurrences": 12
+    },
+    {
+      "token": "info",
+      "tailwind": {
+        "light": "blue-700",
+        "dark": "blue-300"
+      },
+      "light": {
+        "hex": "#1447e6",
+        "rgb": "rgb(20, 71, 230)"
+      },
+      "dark": {
+        "hex": "#8ec5ff",
+        "rgb": "rgb(142, 197, 255)"
+      },
+      "usedFor": "Text of the \"View only\" strip and informational notes (shares the primary hue on purpose).",
+      "occurrences": 47
+    },
+    {
+      "token": "info-subtle",
+      "tailwind": {
+        "light": "blue-50",
+        "dark": "blue-950"
+      },
+      "light": {
+        "hex": "#eff6ff",
+        "rgb": "rgb(239, 246, 255)"
+      },
+      "dark": {
+        "hex": "#162456",
+        "rgb": "rgb(22, 36, 86)"
+      },
+      "usedFor": "Background of the \"View only\" strip and info notes.",
+      "occurrences": 32
+    },
+    {
+      "token": "neutral-inverse",
+      "tailwind": {
+        "light": "slate-900",
+        "dark": "slate-100"
+      },
+      "light": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "dark": {
+        "hex": "#f1f5f9",
+        "rgb": "rgb(241, 245, 249)"
+      },
+      "usedFor": "The dark \"Driver Notification ›\" button.",
+      "occurrences": 54
+    }
+  ],
+  "contrast": [
+    {
+      "foreground": "text-primary",
+      "background": "surface",
+      "where": "Titles, item names and primary values on cards",
+      "light": {
+        "ratio": 17.83,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 17.04,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-primary",
+      "background": "background",
+      "where": "Titles on the page body",
+      "light": {
+        "ratio": 17.04,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 19.27,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-body",
+      "background": "surface",
+      "where": "Body copy, table cells, draft messages",
+      "light": {
+        "ratio": 10.36,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 12,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-secondary",
+      "background": "surface",
+      "where": "Descriptions, field labels, table headers",
+      "light": {
+        "ratio": 4.76,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 6.78,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "text-secondary",
+      "background": "background",
+      "where": "Labels on zebra rows and tinted header bands",
+      "light": {
+        "ratio": 4.55,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 7.66,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-muted",
+      "background": "surface",
+      "where": "\"no expiry\", empty dashes, placeholders",
+      "light": {
+        "ratio": 2.63,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 3.74,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "text-muted",
+      "background": "background",
+      "where": "Muted text on zebra rows",
+      "light": {
+        "ratio": 2.51,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 4.23,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "primary",
+      "where": "Primary button label (white on blue)",
+      "light": {
+        "ratio": 5.25,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.74,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "primary",
+      "background": "surface",
+      "where": "Active tab, sorted header, links",
+      "light": {
+        "ratio": 5.25,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.74,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "primary-hover",
+      "background": "primary-subtle",
+      "where": "Blue chips, ticked rows, info notes",
+      "light": {
+        "ratio": 6.28,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 5.6,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "secondary-foreground",
+      "background": "secondary",
+      "where": "Count pills, chip strip",
+      "light": {
+        "ratio": 9.45,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 11.86,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "secondary-foreground",
+      "background": "surface",
+      "where": "Outline button label",
+      "light": {
+        "ratio": 10.36,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 14.46,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "success-text",
+      "background": "success-subtle",
+      "where": "Active pill, Driver chip",
+      "light": {
+        "ratio": 5.09,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 9.97,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "warning-text",
+      "background": "warning-subtle",
+      "where": "Expiring Soon pill, no-expiry warning",
+      "light": {
+        "ratio": 4.85,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 10.37,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "error-text",
+      "background": "error-subtle",
+      "where": "Expired pill, \"n expired\" pill, category errors",
+      "light": {
+        "ratio": 5.87,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 8.42,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "danger",
+      "background": "surface",
+      "where": "Delete item in ⋮ menu",
+      "light": {
+        "ratio": 4.53,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.75,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "danger",
+      "background": "danger-subtle",
+      "where": "Row coming off on the Manage page",
+      "light": {
+        "ratio": 4.12,
+        "result": "AA large only — FAIL for body text"
+      },
+      "dark": {
+        "ratio": 4.18,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "error",
+      "where": "Delete category / Delete vendor button",
+      "light": {
+        "ratio": 4.77,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 6.17,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "accent",
+      "where": "Sign & confirm button",
+      "light": {
+        "ratio": 5.89,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 6.25,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "accent-text",
+      "background": "accent-subtle",
+      "where": "Receipt to sign label, Both chip",
+      "light": {
+        "ratio": 6.65,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 8.21,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "info",
+      "background": "info-subtle",
+      "where": "\"View only\" strip",
+      "light": {
+        "ratio": 6.28,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 8.15,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "neutral-inverse",
+      "where": "\"Driver Notification ›\" button",
+      "light": {
+        "ratio": 17.83,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 16.28,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "border",
+      "background": "surface",
+      "where": "Card / table border against the card (non-text; 3:1 only for essential UI)",
+      "light": {
+        "ratio": 1.23,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 1.22,
+        "result": "FAIL"
+      }
+    },
+    {
+      "foreground": "border-strong",
+      "background": "surface",
+      "where": "Form input border (non-text UI component, WCAG 1.4.11 asks 3:1)",
+      "light": {
+        "ratio": 1.49,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 1.72,
+        "result": "FAIL"
+      }
+    }
+  ],
+  "rawPaletteUsed": [
+    {
+      "tailwind": "slate-200",
+      "hex": "#e2e8f0",
+      "rgb": "rgb(226, 232, 240)",
+      "occurrences": 159
+    },
+    {
+      "tailwind": "white",
+      "hex": "#ffffff",
+      "rgb": "rgb(255, 255, 255)",
+      "occurrences": 146
+    },
+    {
+      "tailwind": "slate-500",
+      "hex": "#62748e",
+      "rgb": "rgb(98, 116, 142)",
+      "occurrences": 120
+    },
+    {
+      "tailwind": "slate-50",
+      "hex": "#f8fafc",
+      "rgb": "rgb(248, 250, 252)",
+      "occurrences": 97
+    },
+    {
+      "tailwind": "slate-400",
+      "hex": "#90a1b9",
+      "rgb": "rgb(144, 161, 185)",
+      "occurrences": 93
+    },
+    {
+      "tailwind": "slate-600",
+      "hex": "#45556c",
+      "rgb": "rgb(69, 85, 108)",
+      "occurrences": 78
+    },
+    {
+      "tailwind": "slate-100",
+      "hex": "#f1f5f9",
+      "rgb": "rgb(241, 245, 249)",
+      "occurrences": 78
+    },
+    {
+      "tailwind": "slate-300",
+      "hex": "#cad5e2",
+      "rgb": "rgb(202, 213, 226)",
+      "occurrences": 66
+    },
+    {
+      "tailwind": "slate-700",
+      "hex": "#314158",
+      "rgb": "rgb(49, 65, 88)",
+      "occurrences": 63
+    },
+    {
+      "tailwind": "blue-600",
+      "hex": "#155dfc",
+      "rgb": "rgb(21, 93, 252)",
+      "occurrences": 57
+    },
+    {
+      "tailwind": "slate-900",
+      "hex": "#0f172b",
+      "rgb": "rgb(15, 23, 43)",
+      "occurrences": 54
+    },
+    {
+      "tailwind": "blue-700",
+      "hex": "#1447e6",
+      "rgb": "rgb(20, 71, 230)",
+      "occurrences": 47
+    },
+    {
+      "tailwind": "blue-500",
+      "hex": "#2b7fff",
+      "rgb": "rgb(43, 127, 255)",
+      "occurrences": 41
+    },
+    {
+      "tailwind": "slate-800",
+      "hex": "#1d293d",
+      "rgb": "rgb(29, 41, 61)",
+      "occurrences": 35
+    },
+    {
+      "tailwind": "blue-50",
+      "hex": "#eff6ff",
+      "rgb": "rgb(239, 246, 255)",
+      "occurrences": 32
+    },
+    {
+      "tailwind": "amber-50",
+      "hex": "#fffbeb",
+      "rgb": "rgb(255, 251, 235)",
+      "occurrences": 21
+    },
+    {
+      "tailwind": "amber-700",
+      "hex": "#bb4d00",
+      "rgb": "rgb(187, 77, 0)",
+      "occurrences": 17
+    },
+    {
+      "tailwind": "amber-200",
+      "hex": "#fee685",
+      "rgb": "rgb(254, 230, 133)",
+      "occurrences": 17
+    },
+    {
+      "tailwind": "emerald-50",
+      "hex": "#ecfdf5",
+      "rgb": "rgb(236, 253, 245)",
+      "occurrences": 15
+    },
+    {
+      "tailwind": "blue-200",
+      "hex": "#bedbff",
+      "rgb": "rgb(190, 219, 255)",
+      "occurrences": 14
+    },
+    {
+      "tailwind": "violet-50",
+      "hex": "#f5f3ff",
+      "rgb": "rgb(245, 243, 255)",
+      "occurrences": 12
+    },
+    {
+      "tailwind": "emerald-700",
+      "hex": "#007a55",
+      "rgb": "rgb(0, 122, 85)",
+      "occurrences": 12
+    },
+    {
+      "tailwind": "violet-700",
+      "hex": "#7008e7",
+      "rgb": "rgb(112, 8, 231)",
+      "occurrences": 11
+    },
+    {
+      "tailwind": "violet-600",
+      "hex": "#7f22fe",
+      "rgb": "rgb(127, 34, 254)",
+      "occurrences": 11
+    },
+    {
+      "tailwind": "emerald-200",
+      "hex": "#a4f4cf",
+      "rgb": "rgb(164, 244, 207)",
+      "occurrences": 11
+    },
+    {
+      "tailwind": "amber-600",
+      "hex": "#e17100",
+      "rgb": "rgb(225, 113, 0)",
+      "occurrences": 11
+    },
+    {
+      "tailwind": "red-50",
+      "hex": "#fef2f2",
+      "rgb": "rgb(254, 242, 242)",
+      "occurrences": 10
+    },
+    {
+      "tailwind": "emerald-500",
+      "hex": "#00bc7d",
+      "rgb": "rgb(0, 188, 125)",
+      "occurrences": 10
+    },
+    {
+      "tailwind": "violet-500",
+      "hex": "#8e51ff",
+      "rgb": "rgb(142, 81, 255)",
+      "occurrences": 9
+    },
+    {
+      "tailwind": "red-700",
+      "hex": "#c10007",
+      "rgb": "rgb(193, 0, 7)",
+      "occurrences": 9
+    },
+    {
+      "tailwind": "blue-100",
+      "hex": "#dbeafe",
+      "rgb": "rgb(219, 234, 254)",
+      "occurrences": 9
+    },
+    {
+      "tailwind": "red-500",
+      "hex": "#fb2c36",
+      "rgb": "rgb(251, 44, 54)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "blue-300",
+      "hex": "#8ec5ff",
+      "rgb": "rgb(142, 197, 255)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "amber-500",
+      "hex": "#fe9a00",
+      "rgb": "rgb(254, 154, 0)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "red-600",
+      "hex": "#e7000b",
+      "rgb": "rgb(231, 0, 11)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "red-200",
+      "hex": "#ffc9c9",
+      "rgb": "rgb(255, 201, 201)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "amber-800",
+      "hex": "#973c00",
+      "rgb": "rgb(151, 60, 0)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "violet-100",
+      "hex": "#ede9fe",
+      "rgb": "rgb(237, 233, 254)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "rose-600",
+      "hex": "#ec003f",
+      "rgb": "rgb(236, 0, 63)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "rose-700",
+      "hex": "#c70036",
+      "rgb": "rgb(199, 0, 54)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "rose-50",
+      "hex": "#fff1f2",
+      "rgb": "rgb(255, 241, 242)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "emerald-600",
+      "hex": "#009966",
+      "rgb": "rgb(0, 153, 102)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "violet-200",
+      "hex": "#ddd6ff",
+      "rgb": "rgb(221, 214, 255)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "amber-100",
+      "hex": "#fef3c6",
+      "rgb": "rgb(254, 243, 198)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "violet-300",
+      "hex": "#c4b4ff",
+      "rgb": "rgb(196, 180, 255)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "emerald-800",
+      "hex": "#006045",
+      "rgb": "rgb(0, 96, 69)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "emerald-100",
+      "hex": "#d0fae5",
+      "rgb": "rgb(208, 250, 229)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "blue-800",
+      "hex": "#193cb8",
+      "rgb": "rgb(25, 60, 184)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "violet-800",
+      "hex": "#5d0ec0",
+      "rgb": "rgb(93, 14, 192)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "rose-500",
+      "hex": "#ff2056",
+      "rgb": "rgb(255, 32, 86)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "rose-200",
+      "hex": "#ffccd3",
+      "rgb": "rgb(255, 204, 211)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "orange-700",
+      "hex": "#ca3500",
+      "rgb": "rgb(202, 53, 0)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "orange-50",
+      "hex": "#fff7ed",
+      "rgb": "rgb(255, 247, 237)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "indigo-700",
+      "hex": "#432dd7",
+      "rgb": "rgb(67, 45, 215)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "indigo-50",
+      "hex": "#eef2ff",
+      "rgb": "rgb(238, 242, 255)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "[#F8FAFC]",
+      "hex": "#f8fafc",
+      "rgb": "rgb(248, 250, 252)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "teal-800",
+      "hex": "#005f5a",
+      "rgb": "rgb(0, 95, 90)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "teal-700",
+      "hex": "#00786f",
+      "rgb": "rgb(0, 120, 111)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "teal-500",
+      "hex": "#00bba7",
+      "rgb": "rgb(0, 187, 167)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "teal-50",
+      "hex": "#f0fdfa",
+      "rgb": "rgb(240, 253, 250)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "teal-100",
+      "hex": "#cbfbf1",
+      "rgb": "rgb(203, 251, 241)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-800",
+      "hex": "#00598a",
+      "rgb": "rgb(0, 89, 138)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-700",
+      "hex": "#0069a8",
+      "rgb": "rgb(0, 105, 168)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-500",
+      "hex": "#00a6f4",
+      "rgb": "rgb(0, 166, 244)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-50",
+      "hex": "#f0f9ff",
+      "rgb": "rgb(240, 249, 255)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-100",
+      "hex": "#dff2fe",
+      "rgb": "rgb(223, 242, 254)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "rose-800",
+      "hex": "#a50036",
+      "rgb": "rgb(165, 0, 54)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "rose-100",
+      "hex": "#ffe4e6",
+      "rgb": "rgb(255, 228, 230)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "orange-200",
+      "hex": "#ffd6a7",
+      "rgb": "rgb(255, 214, 167)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "indigo-200",
+      "hex": "#c6d2ff",
+      "rgb": "rgb(198, 210, 255)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "cyan-800",
+      "hex": "#005f78",
+      "rgb": "rgb(0, 95, 120)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "cyan-700",
+      "hex": "#007595",
+      "rgb": "rgb(0, 117, 149)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "cyan-500",
+      "hex": "#00b8db",
+      "rgb": "rgb(0, 184, 219)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "cyan-50",
+      "hex": "#ecfeff",
+      "rgb": "rgb(236, 254, 255)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "cyan-100",
+      "hex": "#cefafe",
+      "rgb": "rgb(206, 250, 254)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "black",
+      "hex": "#000000",
+      "rgb": "rgb(0, 0, 0)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "[#2563EB]",
+      "hex": "#2563eb",
+      "rgb": "rgb(37, 99, 235)",
+      "occurrences": 1
+    }
+  ],
+  "notes": [
+    "A hard-coded #2563EB (Tailwind v3 blue-600) appears 1 time(s) in the section (AddVendorPage) and #F8FAFC (v3 slate-50) 2 times; the v4 tokens are #155dfc and #f8fafc. TO CONFIRM: replace with bg-blue-600 / bg-slate-50.",
+    "text-muted (slate-400) fails 4.5:1 on white and slate-50; it is used for \"no expiry\", empty dashes and some 10 px labels. Recommended fix: use slate-500 for any text.",
+    "The section adds a violet accent family for everything to do with signing (forms block, sign-form, Sign & confirm, Both chips); it is not used elsewhere in the app.",
+    "Some components mix the red and rose families for errors/danger, and green with emerald for success; the tokens above pick one family per role."
+  ],
+  "typography": {
+    "page-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "24px",
+        "fontWeight": 700,
+        "lineHeight": "30px",
+        "letterSpacing": "-0.4px",
+        "textTransform": "none"
+      }
+    },
+    "page-title-condensed": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "16px",
+        "fontWeight": 700,
+        "lineHeight": "22px",
+        "letterSpacing": "-0.2px",
+        "textTransform": "none"
+      }
+    },
+    "modal-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "20px",
+        "fontWeight": 700,
+        "lineHeight": "28px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "card-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "18px",
+        "fontWeight": 700,
+        "lineHeight": "26px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "section-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "16px",
+        "fontWeight": 700,
+        "lineHeight": "24px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 400,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "body-medium": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 500,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "cell": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "secondary-line": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "12px",
+        "fontWeight": 400,
+        "lineHeight": "16px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "button": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 600,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "toolbar-button": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "13px",
+        "fontWeight": 600,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "field-label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "11px",
+        "fontWeight": 700,
+        "lineHeight": "14px",
+        "letterSpacing": "0.6px",
+        "textTransform": "uppercase"
+      }
+    },
+    "micro-label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "10px",
+        "fontWeight": 700,
+        "lineHeight": "12px",
+        "letterSpacing": "0.5px",
+        "textTransform": "uppercase"
+      }
+    },
+    "pill": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "10px",
+        "fontWeight": 700,
+        "lineHeight": "12px",
+        "letterSpacing": "0.5px",
+        "textTransform": "uppercase"
+      }
+    },
+    "mono-id": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    }
+  }
+}

@@ -1,0 +1,432 @@
+[
+  {
+    "_id": "acct-001-a-0100",
+    "carrierId": "acct-001",
+    "unitNumber": "ACM-T0100",
+    "assetCategory": "CMV",
+    "assetType": "Truck",
+    "vehicleType": "Power Unit",
+    "operationalStatus": "Active",
+    "vin": "R7LKD9HLYSP238495",
+    "year": 2023,
+    "make": "Freightliner",
+    "model": "Cascadia 126",
+    "color": "Gray",
+    "weights": {
+      "gross": 71238,
+      "grossUnit": "lbs",
+      "unloaded": 21416,
+      "unloadedUnit": "lbs"
+    },
+    "odometer": {
+      "value": 120519,
+      "unit": "mi"
+    },
+    "plate": {
+      "number": "ACE 1000",
+      "jurisdiction": "DE",
+      "type": "IRP",
+      "country": "USA",
+      "issueDate": "2025-06-07",
+      "expiryDate": "2026-06-07",
+      "monitoring": {
+        "enabled": true,
+        "basedOn": "expiry_date",
+        "recurrence": "annually",
+        "reminderDays": [
+          90,
+          60,
+          30
+        ],
+        "channels": [
+          "email",
+          "in-app"
+        ]
+      }
+    },
+    "yardId": "66f1a2b3c4d5e6f708091b01",
+    "driverAssignments": [
+      {
+        "driverId": "DRV-001-0010",
+        "startDate": "2024-02-01",
+        "endDate": null
+      }
+    ],
+    "annualSafety": {
+      "performedOn": "2026-03-14",
+      "odometer": 108764,
+      "hours": 6110,
+      "vendorName": "Wilmington Truck Service",
+      "performedBy": "vendor",
+      "driverId": null,
+      "mechanicName": "Dale Foster",
+      "labour": 280,
+      "parts": 132.6,
+      "currency": "USD",
+      "notes": "Brake adjustment and lamp replacement.",
+      "remarks": "Linings at 30% — quote before the next PM."
+    },
+    "ownership": {
+      "structure": "Owned",
+      "marketValue": 142000,
+      "currency": "USD",
+      "ownerName": "Acme Trucking Inc.",
+      "leasingName": "",
+      "lienHolderBusiness": "",
+      "rentalAgencyName": "",
+      "agreementStartDate": null,
+      "agreementEndDate": null,
+      "monthlyPayment": null
+    },
+    "billOfSale": {
+      "recordName": "Bill of Sale",
+      "purchasePrice": 162500,
+      "seller": "Freightliner of Wilmington",
+      "street": "220 Centerpoint Blvd",
+      "city": "New Castle",
+      "zip": "19720",
+      "documentId": "doc-0001"
+    },
+    "insurance": {
+      "liabilityPolicyNumber": "CAL-55012-A",
+      "pinkSlipExpiry": "2027-01-31",
+      "pinkSlipDocumentId": "doc-0002",
+      "addedDate": "2021-05-09",
+      "removedDate": null
+    },
+    "dateAdded": "2021-05-09",
+    "dateRemoved": null,
+    "address": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "zip": "",
+      "country": "United States"
+    },
+    "notes": "",
+    "complianceMissing": 1,
+    "createdAt": "2024-03-04T14:30:00Z",
+    "updatedAt": "2026-10-21T11:00:00Z"
+  },
+  {
+    "_id": "acct-001-a-0101",
+    "carrierId": "acct-001",
+    "unitNumber": "ACM-T0101",
+    "assetCategory": "CMV",
+    "assetType": "Truck",
+    "vehicleType": "Straight Truck",
+    "operationalStatus": "Maintenance",
+    "vin": "HAEYXFA0BYSC47171",
+    "year": 2025,
+    "make": "Peterbilt",
+    "model": "520",
+    "color": "Blue",
+    "weights": {
+      "gross": 52000,
+      "grossUnit": "lbs",
+      "unloaded": 18900,
+      "unloadedUnit": "lbs"
+    },
+    "odometer": {
+      "value": 24110,
+      "unit": "mi"
+    },
+    "plate": {
+      "number": "BDF 1001",
+      "jurisdiction": "DE",
+      "type": "Local",
+      "country": "USA",
+      "issueDate": "2025-05-09",
+      "expiryDate": "2026-05-09",
+      "monitoring": {
+        "enabled": true,
+        "basedOn": "expiry_date",
+        "recurrence": "annually",
+        "reminderDays": [
+          90,
+          60,
+          30,
+          7
+        ],
+        "channels": [
+          "email",
+          "in-app",
+          "sms"
+        ]
+      }
+    },
+    "yardId": "66f1a2b3c4d5e6f708091b01",
+    "driverAssignments": [],
+    "annualSafety": null,
+    "ownership": {
+      "structure": "Leased",
+      "marketValue": 98000,
+      "currency": "USD",
+      "ownerName": "",
+      "leasingName": "Ryder",
+      "lienHolderBusiness": "",
+      "rentalAgencyName": "",
+      "agreementStartDate": "2025-05-01",
+      "agreementEndDate": "2029-04-30",
+      "monthlyPayment": 2150
+    },
+    "billOfSale": null,
+    "insurance": {
+      "liabilityPolicyNumber": "CAL-55012-A",
+      "pinkSlipExpiry": "2027-01-31",
+      "pinkSlipDocumentId": "doc-0002",
+      "addedDate": "2025-05-09",
+      "removedDate": null
+    },
+    "dateAdded": "2025-05-09",
+    "dateRemoved": null,
+    "address": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "zip": "",
+      "country": "United States"
+    },
+    "notes": "In the shop for a wheel seal.",
+    "complianceMissing": 2,
+    "createdAt": "2025-05-09T09:00:00Z",
+    "updatedAt": "2026-10-22T13:10:00Z"
+  },
+  {
+    "_id": "acct-001-a-0112",
+    "carrierId": "acct-001",
+    "unitNumber": "ACM-TR0112",
+    "assetCategory": "CMV",
+    "assetType": "Trailer",
+    "vehicleType": "Dry Van",
+    "operationalStatus": "Active",
+    "vin": "1JJV532W8NL338901",
+    "year": 2022,
+    "make": "Wabash",
+    "model": "DuraPlate",
+    "color": "White",
+    "weights": {
+      "gross": 65000,
+      "grossUnit": "lbs",
+      "unloaded": 14200,
+      "unloadedUnit": "lbs"
+    },
+    "odometer": {
+      "value": null,
+      "unit": "mi"
+    },
+    "plate": {
+      "number": "TR 4412",
+      "jurisdiction": "DE",
+      "type": "IRP",
+      "country": "USA",
+      "issueDate": "2026-01-15",
+      "expiryDate": "2027-01-15",
+      "monitoring": {
+        "enabled": true,
+        "basedOn": "expiry_date",
+        "recurrence": "annually",
+        "reminderDays": [
+          90,
+          30
+        ],
+        "channels": [
+          "email"
+        ]
+      }
+    },
+    "yardId": "66f1a2b3c4d5e6f708091b02",
+    "driverAssignments": [],
+    "annualSafety": null,
+    "ownership": {
+      "structure": "Financed",
+      "marketValue": 38000,
+      "currency": "USD",
+      "ownerName": "",
+      "leasingName": "",
+      "lienHolderBusiness": "Fleet Finance LLC",
+      "rentalAgencyName": "",
+      "agreementStartDate": "2022-04-01",
+      "agreementEndDate": "2027-03-31",
+      "monthlyPayment": 640
+    },
+    "billOfSale": null,
+    "insurance": {
+      "liabilityPolicyNumber": "CAL-55012-A",
+      "pinkSlipExpiry": "2027-01-31",
+      "pinkSlipDocumentId": null,
+      "addedDate": "2022-04-02",
+      "removedDate": null
+    },
+    "dateAdded": "2022-04-02",
+    "dateRemoved": null,
+    "address": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "zip": "",
+      "country": "United States"
+    },
+    "notes": "",
+    "complianceMissing": 0,
+    "createdAt": "2024-03-04T14:30:00Z",
+    "updatedAt": "2026-01-15T10:00:00Z"
+  },
+  {
+    "_id": "acct-001-a-0130",
+    "carrierId": "acct-001",
+    "unitNumber": "ACM-P0130",
+    "assetCategory": "Non-CMV",
+    "assetType": "Non-CMV Vehicle",
+    "vehicleType": "Pickup",
+    "operationalStatus": "Deactivated",
+    "vin": "3GCPWCEK5LG192837",
+    "year": 2020,
+    "make": "Chevrolet",
+    "model": "Silverado 1500",
+    "color": "Black",
+    "weights": {
+      "gross": 7100,
+      "grossUnit": "lbs",
+      "unloaded": 4900,
+      "unloadedUnit": "lbs"
+    },
+    "odometer": {
+      "value": 88420,
+      "unit": "mi"
+    },
+    "plate": {
+      "number": "PK 7730",
+      "jurisdiction": "DE",
+      "type": "Local",
+      "country": "USA",
+      "issueDate": "2024-11-01",
+      "expiryDate": "2025-11-01",
+      "monitoring": {
+        "enabled": false,
+        "basedOn": "expiry_date",
+        "recurrence": "annually",
+        "reminderDays": [],
+        "channels": []
+      }
+    },
+    "yardId": null,
+    "driverAssignments": [],
+    "annualSafety": null,
+    "ownership": {
+      "structure": "Owned",
+      "marketValue": 21000,
+      "currency": "USD",
+      "ownerName": "Acme Trucking Inc.",
+      "leasingName": "",
+      "lienHolderBusiness": "",
+      "rentalAgencyName": "",
+      "agreementStartDate": null,
+      "agreementEndDate": null,
+      "monthlyPayment": null
+    },
+    "billOfSale": null,
+    "insurance": {
+      "liabilityPolicyNumber": "CAL-55012-A",
+      "pinkSlipExpiry": "2027-01-31",
+      "pinkSlipDocumentId": null,
+      "addedDate": "2020-02-10",
+      "removedDate": "2026-09-30"
+    },
+    "dateAdded": "2020-02-10",
+    "dateRemoved": "2026-09-30",
+    "address": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "zip": "",
+      "country": "United States"
+    },
+    "notes": "Sold at auction.",
+    "complianceMissing": 0,
+    "createdAt": "2024-03-04T14:30:00Z",
+    "updatedAt": "2026-09-30T17:00:00Z"
+  },
+  {
+    "_id": "acct-002-a-0201",
+    "carrierId": "acct-002",
+    "unitNumber": "GL-R0201",
+    "assetCategory": "CMV",
+    "assetType": "Trailer",
+    "vehicleType": "Reefer",
+    "operationalStatus": "Active",
+    "vin": "1GRAA0626MB712045",
+    "year": 2021,
+    "make": "Great Dane",
+    "model": "Everest",
+    "color": "White",
+    "weights": {
+      "gross": 29000,
+      "grossUnit": "kg",
+      "unloaded": 7200,
+      "unloadedUnit": "kg"
+    },
+    "odometer": {
+      "value": null,
+      "unit": "km"
+    },
+    "plate": {
+      "number": "PB 22 318",
+      "jurisdiction": "ON",
+      "type": "IRP",
+      "country": "Canada",
+      "issueDate": "2026-03-01",
+      "expiryDate": "2027-02-28",
+      "monitoring": {
+        "enabled": true,
+        "basedOn": "expiry_date",
+        "recurrence": "annually",
+        "reminderDays": [
+          90,
+          60,
+          30
+        ],
+        "channels": [
+          "email",
+          "in-app"
+        ]
+      }
+    },
+    "yardId": "66f1a2b3c4d5e6f708091b04",
+    "driverAssignments": [],
+    "annualSafety": null,
+    "ownership": {
+      "structure": "Rented",
+      "marketValue": null,
+      "currency": "CAD",
+      "ownerName": "",
+      "leasingName": "",
+      "lienHolderBusiness": "",
+      "rentalAgencyName": "Enterprise",
+      "agreementStartDate": null,
+      "agreementEndDate": null,
+      "monthlyPayment": 1900
+    },
+    "billOfSale": null,
+    "insurance": {
+      "liabilityPolicyNumber": "ON-77120-C",
+      "pinkSlipExpiry": "2027-06-30",
+      "pinkSlipDocumentId": null,
+      "addedDate": "2024-07-01",
+      "removedDate": null
+    },
+    "dateAdded": "2024-07-01",
+    "dateRemoved": null,
+    "address": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "zip": "",
+      "country": "Canada"
+    },
+    "notes": "",
+    "complianceMissing": 1,
+    "createdAt": "2024-07-01T12:00:00Z",
+    "updatedAt": "2026-03-01T12:00:00Z"
+  }
+]

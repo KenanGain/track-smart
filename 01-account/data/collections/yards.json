@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/yards.json",
+  "title": "yards",
+  "description": "Yards / terminals with their physical-security profile. The Yard Terminals tab.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "locationId": {
+      "type": "string",
+      "description": "Display code \"LOC-1001\"; unique per carrier."
+    },
+    "name": {
+      "type": "string"
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street line, as written on the record.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "description": "City.",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province code (DE, ON).",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "description": "ZIP or postal code.",
+          "default": ""
+        }
+      }
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA zone (\"America/New_York\").",
+      "default": ""
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Maintenance",
+        "Deactivated"
+      ],
+      "default": "Active"
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fenced": {
+          "type": "boolean",
+          "description": "Fenced perimeter.",
+          "default": false
+        },
+        "gated": {
+          "type": "boolean",
+          "description": "Gated entry.",
+          "default": false
+        },
+        "cctv": {
+          "type": "boolean",
+          "description": "CCTV surveillance.",
+          "default": false
+        },
+        "guard": {
+          "type": "boolean",
+          "description": "Security guard on site.",
+          "default": false
+        },
+        "restricted": {
+          "type": "boolean",
+          "description": "Restricted areas defined.",
+          "default": false
+        }
+      },
+      "required": [
+        "fenced",
+        "gated",
+        "cctv",
+        "guard",
+        "restricted"
+      ]
+    },
+    "score": {
+      "type": "integer",
+      "description": "0–100, computed on write from `security` (20 points per feature; the app shows ≥90 Excellent, ≥75 Good, ≥60 Fair, else Low). TO CONFIRM the weighting.",
+      "default": 0
+    },
+    "group": {
+      "type": "string",
+      "description": "Band the row is grouped under.",
+      "default": "Yard / Terminal Locations"
+    },
+    "assignedAssetIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "→ `assets._id` based here (mirror of `assets.yardId`).",
+      "default": []
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "locationId",
+    "name",
+    "status",
+    "score",
+    "createdAt",
+    "updatedAt"
+  ]
+}

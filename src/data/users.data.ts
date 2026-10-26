@@ -3,6 +3,7 @@
 
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import { INDEPENDENT_DRIVERS } from "@/data/independent-drivers.data";
+import { ROLE_TEST_USERS } from "@/data/role-test-users.data";
 
 /**
  * Six roles on three levels.
@@ -37,6 +38,9 @@ export const ROLE_ORDER: UserRole[] = ["super-admin", "admin", "fleet-admin", "s
 
 export const roleRank = (r: UserRole): number => ROLE_ORDER.indexOf(r);
 
+/** The office roles a person can hold on a carrier — a driver login is a seat of its own. */
+export const OFFICE_ROLES: UserRole[] = ["fleet-admin", "safety-manager", "user"];
+
 export type AppUser = {
     id: string;
     name: string;
@@ -62,6 +66,13 @@ export type AppUser = {
      * none. Useful when a user works across multiple service organizations.
      */
     serviceProfileIds?: string[];
+    /**
+     * The role on each carrier profile they can access — a carrier role is given per carrier,
+     * so somebody can be Fleet Admin on one carrier and User on another. `role` is the role on
+     * their primary carrier (`accountId`); a carrier missing here falls back to it. Platform and
+     * service roles (super-admin, admin) hold everywhere and never appear in this map.
+     */
+    carrierRoles?: Record<string, UserRole>;
     /** Invited = added and sent an invitation, not signed in yet. */
     status: "Active" | "Inactive" | "Invited";
     phone?: string;
@@ -622,6 +633,10 @@ export const INDEPENDENT_DRIVER_USERS: AppUser[] = INDEPENDENT_DRIVERS.map((d, i
 });
 APP_USERS.push(...INDEPENDENT_DRIVER_USERS);
 
+// The role test accounts (role-test-users.data.ts) — one login per access shape the roles
+// system has to get right, so each can be signed in as and checked.
+for (const u of ROLE_TEST_USERS) if (!APP_USERS.some((x) => x.id === u.id)) APP_USERS.push(u);
+
 // ── What Settings ▸ Users & Roles has changed ─────────────────────────────────
 //
 // The roster above is the seed; people added, re-roled, moved between carriers or removed
@@ -632,6 +647,10 @@ APP_USERS.push(...INDEPENDENT_DRIVER_USERS);
 
 const USER_STORE_KEY = "app-users-store-v1";
 export const USERS_CHANGED_EVENT = "app-users-changed";
+/** What changed, for the audit log — which listens rather than being imported here (that would be a cycle). */
+const announce = (type: "added" | "updated" | "removed", user: AppUser, patch?: Partial<AppUser>) => {
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("app-users-mutation", { detail: { type, user: { ...user }, patch } }));
+};
 
 type UserStore = { added: AppUser[]; patches: Record<string, Partial<AppUser>>; removed: string[] };
 
@@ -670,6 +689,7 @@ export function addAppUser(u: AppUser): void {
     s.removed = s.removed.filter((id) => id !== u.id);
     if (!APP_USERS.some((x) => x.id === u.id)) APP_USERS.push(u);
     writeUserStore(s);
+    announce("added", u);
 }
 
 /** Change a user — role, carriers, details, status. */
@@ -679,8 +699,10 @@ export function updateAppUser(id: string, patch: Partial<AppUser>): void {
     if (added) Object.assign(added, patch);
     else s.patches[id] = { ...(s.patches[id] ?? {}), ...patch };
     const live = APP_USERS.find((x) => x.id === id);
+    const before = live ? { ...live } : undefined;
     if (live) Object.assign(live, patch);
     writeUserStore(s);
+    if (before) announce("updated", before, patch);
 }
 
 /** Take a user off the platform. A driver's roster record is untouched — only the login goes. */
@@ -690,8 +712,10 @@ export function removeAppUser(id: string): void {
     else if (!s.removed.includes(id)) s.removed.push(id);
     delete s.patches[id];
     const i = APP_USERS.findIndex((x) => x.id === id);
+    const gone = i >= 0 ? APP_USERS[i] : undefined;
     if (i >= 0) APP_USERS.splice(i, 1);
     writeUserStore(s);
+    if (gone) announce("removed", gone);
 }
 
 export const newUserId = (): string => `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -707,6 +731,17 @@ export const initialsOf = (name: string): string => {
     const parts = name.trim().split(/\s+/).filter(Boolean);
     return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
 };
+
+/** The role someone holds on one carrier. Platform and service roles hold everywhere. */
+export function roleOn(u: AppUser, carrierId?: string): UserRole {
+    if (u.role === "super-admin" || u.role === "admin") return u.role;
+    return (carrierId && u.carrierRoles?.[carrierId]) || u.role;
+}
+
+/** Holds this role anywhere — on any of their carriers, or at their own level. */
+export function hasRole(u: AppUser, r: UserRole): boolean {
+    return u.role === r || Object.values(u.carrierRoles ?? {}).includes(r);
+}
 
 /** A driver login with no carrier behind it. */
 export const isIndependentDriverUser = (u: AppUser | undefined): boolean =>
@@ -770,6 +805,20 @@ export function findUserByEmail(email: string): AppUser | undefined {
 // Demo password for prototype only — every account uses this string. No real
 // authentication is performed.
 export const DEMO_PASSWORD = "demo1234";
+
+// Somebody who signed up chose their own password; everybody seeded uses the demo one. Kept in
+// plain text in localStorage because this is a prototype with no server — never do this for real.
+const PASSWORD_KEY = "app-passwords-v1";
+function readPasswords(): Record<string, string> {
+    try { return JSON.parse(localStorage.getItem(PASSWORD_KEY) || "{}") as Record<string, string>; } catch { return {}; }
+}
+export function setUserPassword(userId: string, password: string): void {
+    try { const p = readPasswords(); p[userId] = password; localStorage.setItem(PASSWORD_KEY, JSON.stringify(p)); } catch { /* private window */ }
+}
+/** The demo password opens every account; a sign-up password opens its own. */
+export function checkPassword(u: AppUser, password: string): boolean {
+    return password === DEMO_PASSWORD || (readPasswords()[u.id] !== undefined && readPasswords()[u.id] === password);
+}
 
 // ── Role-aware visibility helpers ──────────────────────────────────────────
 

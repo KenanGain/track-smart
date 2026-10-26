@@ -1,0 +1,67 @@
+[
+  {
+    "_id": "cat-fuel-card",
+    "carrierId": null,
+    "name": "Fuel Card",
+    "nameLower": "fuel card",
+    "description": "Vendors issuing fuel cards.",
+    "builtIn": true,
+    "icon": "Fuel",
+    "palette": "amber",
+    "sortOrder": 1,
+    "createdAt": "2024-01-01T15:00:00Z",
+    "updatedAt": "2024-01-01T15:00:00Z"
+  },
+  {
+    "_id": "cat-keys",
+    "carrierId": null,
+    "name": "Keys & Access",
+    "nameLower": "keys & access",
+    "description": "Keys, fobs and yard / gate access cards issued for the truck.",
+    "builtIn": true,
+    "icon": "KeyRound",
+    "palette": "amber",
+    "sortOrder": 7,
+    "createdAt": "2024-01-01T15:00:00Z",
+    "updatedAt": "2024-01-01T15:00:00Z"
+  },
+  {
+    "_id": "cat-safety-ppe",
+    "carrierId": null,
+    "name": "Safety & PPE",
+    "nameLower": "safety & ppe",
+    "description": "Personal protective equipment.",
+    "builtIn": true,
+    "icon": "ShieldCheck",
+    "palette": "rose",
+    "sortOrder": 8,
+    "createdAt": "2024-01-01T15:00:00Z",
+    "updatedAt": "2024-01-01T15:00:00Z"
+  },
+  {
+    "_id": "cat-other",
+    "carrierId": null,
+    "name": "Others",
+    "nameLower": "others",
+    "description": "Anything that fits no other category.",
+    "builtIn": true,
+    "icon": "Layers",
+    "palette": "slate",
+    "sortOrder": 12,
+    "createdAt": "2024-01-01T15:00:00Z",
+    "updatedAt": "2024-01-01T15:00:00Z"
+  },
+  {
+    "_id": "cat-6531f0a4c2",
+    "carrierId": "acct-001",
+    "name": "Telematics",
+    "nameLower": "telematics",
+    "description": "Tablets and in-cab telematics bundles.",
+    "builtIn": false,
+    "icon": "Layers",
+    "palette": "slate",
+    "sortOrder": 13,
+    "createdAt": "2026-10-20T15:00:00Z",
+    "updatedAt": "2026-10-20T15:00:00Z"
+  }
+]

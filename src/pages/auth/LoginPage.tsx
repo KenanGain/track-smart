@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Truck, Mail, Lock, Eye, EyeOff, LogIn, ChevronDown, AlertCircle, Search, Check, X } from "lucide-react";
+import { Truck, Mail, Lock, Eye, EyeOff, LogIn, ChevronDown, AlertCircle, Search, Check, X, ShieldCheck, ArrowRight } from "lucide-react";
 import {
     APP_USERS,
     isDriverUser,
     isIndependentDriverUser,
     DEMO_PASSWORD,
+    checkPassword,
+    ROLE_BADGE,
     ROLE_LABELS,
     findUserByEmail,
+    findUserById,
     type AppUser,
 } from "@/data/users.data";
+import { ROLE_TEST_ACCOUNTS, type RoleTestAccount } from "@/data/role-test-users.data";
 import { SERVICE_PROFILES_DB } from "@/pages/accounts/service-profiles.data";
 import { cn } from "@/lib/utils";
+import { SignUpPage } from "./SignUpPage";
+import { UserPlus } from "lucide-react";
 
 type Props = {
     onSignIn: (user: AppUser) => void;
@@ -29,6 +35,7 @@ export function LoginPage({ onSignIn }: Props) {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [signingUp, setSigningUp] = useState(false);
 
     // Close dropdown on outside click / escape.
     useEffect(() => {
@@ -128,6 +135,21 @@ export function LoginPage({ onSignIn }: Props) {
         setSearch("");
     };
 
+    /**
+     * Sign somebody in, status permitting. A deactivated account stays out. (An invited one is
+     * accepting its invitation by signing in — App's sign-in funnel makes it Active.)
+     */
+    const signIn = (u: AppUser) => {
+        if (u.status === "Inactive") {
+            setSelectedUserId(u.id);
+            setEmail(u.email);
+            setError(`${u.name}'s account is deactivated. An Admin can reactivate it from Users & Roles.`);
+            return;
+        }
+        setError(null);
+        onSignIn(u);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const u = findUserByEmail(email);
@@ -135,17 +157,25 @@ export function LoginPage({ onSignIn }: Props) {
             setError("No account found with that email.");
             return;
         }
-        if (password !== DEMO_PASSWORD) {
-            setError("Incorrect password. (Demo password is 'demo1234'.)");
+        if (!checkPassword(u, password)) {
+            setError("Incorrect password. (Seed accounts use 'demo1234'; a signed-up account uses the password it chose.)");
             return;
         }
-        setError(null);
-        onSignIn(u);
+        signIn(u);
     };
+
+    // One login per access shape (role-test-users.data.ts) — a real account each.
+    const testRows = useMemo(
+        () => ROLE_TEST_ACCOUNTS.map((t) => ({ t, u: findUserById(t.userId) })).filter((r): r is { t: RoleTestAccount; u: AppUser } => !!r.u),
+        [],
+    );
+
+    if (signingUp) return <SignUpPage onBack={() => setSigningUp(false)} onSignedUp={(u) => onSignIn(u)} />;
 
     return (
         <div className="min-h-screen w-full flex items-center justify-center bg-slate-50 p-4">
-            <div className="w-full max-w-md">
+            <div className="w-full max-w-md lg:max-w-[900px] lg:flex lg:items-start lg:justify-center lg:gap-6">
+                <div className="w-full lg:max-w-md lg:shrink-0">
                 {/* Brand — minimal, monochrome */}
                 <div className="flex flex-col items-center mb-8">
                     <div className="h-12 w-12 rounded-xl bg-slate-900 flex items-center justify-center mb-3">
@@ -348,11 +378,63 @@ export function LoginPage({ onSignIn }: Props) {
                             <LogIn size={15} /> Sign In
                         </button>
                     </form>
+                    {/* New here — a driver, an office user, a carrier or a service profile. */}
+                    <div className="border-t border-slate-100 bg-slate-50/70 px-6 py-3 flex items-center justify-between gap-3">
+                        <span className="text-xs text-slate-500">New to TrackSmart?</span>
+                        <button type="button" onClick={() => setSigningUp(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                            <UserPlus size={13} /> Create an account
+                        </button>
+                    </div>
                 </div>
 
                 <p className="text-center text-xs text-slate-400 mt-5">
                     Prototype build · No real authentication is performed.
                 </p>
+                </div>
+
+                {/* ── Sign in as a role — the test accounts, one per access shape ── */}
+                <aside className="mt-6 w-full lg:mt-[7.25rem] lg:w-[420px] lg:shrink-0">
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-start gap-2.5">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><ShieldCheck size={16} /></span>
+                            <div className="min-w-0">
+                                <h2 className="text-sm font-semibold text-slate-900">Sign in as a role</h2>
+                                <p className="text-xs text-slate-500 mt-0.5">One real login per access shape. Pick one to see its menus, carriers and alerts.</p>
+                            </div>
+                        </div>
+                        <ul className="max-h-[480px] overflow-y-auto divide-y divide-slate-100" aria-label="Test accounts">
+                            {testRows.map(({ t, u }) => (
+                                <li key={t.userId}>
+                                    <button
+                                        type="button"
+                                        onClick={() => signIn(u)}
+                                        title={`Menus: ${t.menus}\n\nData: ${t.data}\n\nAlerts: ${t.alerts}`}
+                                        className="w-full px-4 py-2.5 flex items-center gap-3 text-left hover:bg-slate-50 transition-colors"
+                                    >
+                                        <span className={cn("inline-flex h-6 w-[7.5rem] shrink-0 items-center justify-center rounded-full border text-[10px] font-bold uppercase tracking-wider", ROLE_BADGE[u.role])}>
+                                            {ROLE_LABELS[u.role]}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex min-w-0 items-center gap-1.5">
+                                                <span className="text-sm font-medium text-slate-900 truncate">{u.name}</span>
+                                                {u.status !== "Active" && (
+                                                    <span className={cn("shrink-0 rounded-full px-1.5 text-[10px] font-bold", u.status === "Invited" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500")}>
+                                                        {u.status === "Invited" ? "Invited" : "Deactivated"}
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="block text-[11px] text-slate-500 truncate">{t.scenario} · {t.where}</span>
+                                        </span>
+                                        <ArrowRight size={14} className="shrink-0 text-slate-300" />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/70 text-[11px] text-slate-500">
+                            Hover a row for what to check · defined in <code className="font-mono bg-white px-1 py-0.5 rounded text-slate-600">src/data/role-test-users.data.ts</code>
+                        </div>
+                    </div>
+                </aside>
             </div>
         </div>
     );

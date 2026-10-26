@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/users.json",
+  "title": "users",
+  "description": "App users. Account visibility is the role's menu access (full / light / hidden) and the carriers the user can open. Owned by Settings ▸ Users & Roles; listed here because the section cannot be rendered without it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "description": "Unique; the login."
+    },
+    "passwordHash": {
+      "type": "string",
+      "description": "argon2id; null for invited users."
+    },
+    "role": {
+      "type": "string",
+      "description": "Role on the primary carrier.",
+      "enum": [
+        "super-admin",
+        "admin",
+        "fleet-admin",
+        "safety-manager",
+        "user",
+        "driver"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Invited",
+        "Deactivated"
+      ],
+      "default": "Invited"
+    },
+    "accountId": {
+      "type": "string",
+      "description": "Primary carrier → `carriers._id`."
+    },
+    "managedAccountIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Carriers the user can open (empty for super-admin = all).",
+      "default": []
+    },
+    "carrierRoles": {
+      "type": "object",
+      "description": "`{ carrierId: role }` — a different role per carrier.",
+      "default": {}
+    },
+    "serviceProfileId": {
+      "type": "string",
+      "description": "Primary service profile (admins)."
+    },
+    "serviceProfileIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "driverId": {
+      "type": "string",
+      "description": "For role `driver`: → `drivers._id`."
+    },
+    "lastSignInAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "name",
+    "email",
+    "role",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ]
+}

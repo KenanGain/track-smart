@@ -99,10 +99,28 @@ const driverAssignmentSchema = z.object({
     endDate: z.string().optional(),
 });
 
+/**
+ * The vehicle types each asset type offers. "Other" is on every list: the fleet has lowboys,
+ * car haulers and sweepers that none of the named ones cover, and the name they are given
+ * under Other is what the asset is called from then on.
+ */
+const VEHICLE_TYPES: Record<string, string[]> = {
+    Truck: ['Power Unit', 'Straight Truck', 'Tanker', 'Other'],
+    Trailer: ['Dry Van', 'Flatbed', 'Reefer', 'Other'],
+    'Non-CMV Vehicle': ['Pickup', 'Van', 'SUV', 'Other'],
+};
+/** A stored type that is not one of the listed ones was typed in under Other — reopen it that way. */
+function otherVehicleType(asset: { assetType?: string; vehicleType?: string }): { vehicleType?: string; vehicleTypeOther?: string } {
+    const listed = VEHICLE_TYPES[asset.assetType ?? ''] ?? [];
+    return asset.vehicleType && !listed.includes(asset.vehicleType) ? { vehicleType: 'Other', vehicleTypeOther: asset.vehicleType } : {};
+}
+
 const assetSchema = z.object({
     assetCategory: z.enum(['CMV', 'Non-CMV']),
     assetType: z.string().min(1, 'Required'),
     vehicleType: z.string().optional(),
+    /** What they typed when the vehicle type is "Other" — saved as the vehicle type itself. */
+    vehicleTypeOther: z.string().optional(),
     unitNumber: z.string().min(1, 'Required').trim(),
     vin: z.string().length(17, 'Must be 17 characters'),
     make: z.string().min(1, 'Required'),
@@ -808,7 +826,7 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
          */
         defaultValues: {
             ...pmFormDefaults(pmEnrolmentFor(accountId, asset?.id ?? '')),
-            ...(asset || {
+            ...(asset ? { ...asset, ...otherVehicleType(asset) } : {
             assetCategory: 'CMV', assetType: 'Truck', vehicleType: 'Power Unit', operationalStatus: 'Active', unitNumber: '', vin: '', year: new Date().getFullYear(),
             make: 'Freightliner', model: '', color: '', financialStructure: 'Owned',
             plateCountry: 'USA', plateJurisdiction: 'Alabama',
@@ -946,12 +964,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
         setOwnershipFiles([]);
     }, [financial]);
 
-    const vehicleTypeOptions = useMemo(() => {
-        if (assetType === 'Truck') return ['Power Unit', 'Straight Truck', 'Tanker'];
-        if (assetType === 'Trailer') return ['Dry Van', 'Flatbed', 'Reefer'];
-        if (assetType === 'Non-CMV Vehicle') return ['Pickup', 'Van', 'SUV'];
-        return [];
-    }, [assetType]);
+    const vehicleTypeOptions = useMemo(() => VEHICLE_TYPES[assetType] ?? [], [assetType]);
+    const vehicleType = watch('vehicleType');
 
     // ── Section navigator ── the form scrolls inside `scrollRef` (fixed header +
     // rail, like the Add Accident page). Scroll-spy via IntersectionObserver.
@@ -1066,7 +1080,12 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                 <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
                     {/* The ownership document rides along with the asset: the record can only be
                         filed once the asset has an id, which is assigned by whoever saves it. */}
-                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({ ...data, ownershipDoc, billDoc: showBill ? billDoc : undefined }))} className="@container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+                    <form id="asset-form" onSubmit={handleSubmit(data => onSave({
+                        ...data,
+                        // "Other" saves the name they typed — the asset is called that from then on.
+                        vehicleType: data.vehicleType === 'Other' ? ((data as { vehicleTypeOther?: string }).vehicleTypeOther?.trim() || 'Other') : data.vehicleType,
+                        ownershipDoc, billDoc: showBill ? billDoc : undefined,
+                    }))} className="@container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
 
                         {/* 1. Asset Class */}
                         <AssetSection id="class" title="Asset Class & Status" subtitle="Classification and vehicle type." icon={IdCard}>
@@ -1088,6 +1107,12 @@ export function AssetModal({ asset, onClose, onSave, isSaving, accountId }: Asse
                                     {vehicleTypeOptions.length > 0 ? vehicleTypeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>) : <option value="">N/A</option>}
                                 </select>
                             </FormInput>
+                            {vehicleType === 'Other' && (
+                                <FormInput label="Vehicle type — other">
+                                    <input {...register('vehicleTypeOther')} placeholder={assetType === 'Trailer' ? 'e.g. Lowboy, Car hauler, Tanker trailer' : 'e.g. Dump truck, Sweeper, Tow truck'}
+                                        className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </FormInput>
+                            )}
                         </AssetSection>
 
                         {/* 2. Vehicle Information */}

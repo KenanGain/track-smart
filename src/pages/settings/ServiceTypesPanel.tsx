@@ -15,8 +15,8 @@
 // rather than inside the table. It opens this panel’s dialog through the ref handle.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import { Pencil, Trash2, Truck, Car, Layers, Wrench, Search, Share2 } from "lucide-react";
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useState, type Ref, type UIEventHandler } from "react";
+import { Pencil, Trash2, Truck, Car, Layers, Wrench, Share2 } from "lucide-react";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ShareToChat } from "@/components/share/ShareToChat";
 import { Button } from "@/components/ui/button";
@@ -29,10 +29,15 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TH, TD, COL_RULE, CatalogTabs, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
+import { TD, CatalogTabs, RowIcon, EmptyRow } from "@/components/ui/CatalogTable";
 import {
-    ColumnPicker, SortTh, TableGroupBand, useTableSort, type PickerColumn,
+    ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, useTableSort,
+    type PickerColumn,
 } from "@/components/ui/ListChrome";
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from "@/components/ui/list-chrome";
+import { ListScrollFrame } from "@/components/ui/ListScrollFrame";
+import { KpiStatRow, type KpiStat } from "@/components/ui/KpiStatCard";
+import { chipsFromStats, useHeaderChips } from "@/components/ui/list-header-bridge";
 
 /**
  * The columns a reader can turn off, and the two they cannot: the name identifies the row
@@ -49,11 +54,10 @@ const TYPE_COLUMNS: PickerColumn<TypeCol>[] = [
 /** What this list can be banded by — the two facts a service type carries. */
 type TypeGroup = "none" | "class" | "related";
 const TYPE_GROUPS: { id: TypeGroup; label: string }[] = [
-    { id: "none", label: "Group by" },
-    { id: "class", label: "Maintenance class" },
-    { id: "related", label: "Related to" },
+    { id: "none", label: "No grouping" },
+    { id: "class", label: "Group: Maintenance class" },
+    { id: "related", label: "Group: Related to" },
 ];
-import { KpiTile } from "@/pages/inventory/InventoryKpi";
 import { TablePager } from "@/pages/inventory/TablePager";
 import { useServiceTypes, serviceTypesStore } from "@/data/serviceTypesStore";
 import { SERVICE_GROUPS } from "@/pages/assets/maintenance.data";
@@ -104,7 +108,13 @@ function RelatedTo({ category }: { category: ServiceCategory }) {
     );
 }
 
-export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function ServiceTypesPanel(_props, ref) {
+export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle, {
+    /**
+     * Fill the host's body: the KPI cards scroll up and away, then the rows scroll in their
+     * own box under pinned headings. `scrollRef` / `onScroll` are for a condensing header.
+     */
+    frame?: { scrollRef?: Ref<HTMLDivElement>; onScroll?: UIEventHandler<HTMLDivElement> };
+}>(function ServiceTypesPanel({ frame }, ref) {
     // Service Types — live store. Add/update/delete dispatch through serviceTypesStore so
     // CreateScheduleForm, CreateOrderModal and AssetMaintenancePage all see the change
     // immediately.
@@ -122,6 +132,7 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
     const showCol = (id: TypeCol) => visibleCols.has(id);
     const colCount = TYPE_COLUMNS.filter((c) => c.locked || visibleCols.has(c.id)).length;
     const [groupBy, setGroupBy] = useState<TypeGroup>("none");
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingService, setEditingService] = useState<ServiceType | null>(null);
@@ -195,8 +206,9 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
     const safePage = Math.min(page, pageCount - 1);
     const paged = banded.slice(safePage * perPage, safePage * perPage + perPage);
 
-    const filtering = search.trim() !== "" || activeClass !== "All" || related !== "all";
-    const clear = () => { setSearch(""); setActiveClass("All"); setRelated("all"); };
+    const filterCount = [activeClass !== "All", related !== "all", groupBy !== "none"].filter(Boolean).length;
+    const filtering = search.trim() !== "" || filterCount > 0;
+    const clear = () => { setSearch(""); setActiveClass("All"); setRelated("all"); setGroupBy("none"); };
 
     const openDialog = (service?: ServiceType) => {
         setEditingService(service ?? null);
@@ -229,138 +241,146 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
         ? applicabilityTicks(formData.category as ServiceCategory)
         : { truck: false, trailer: false };
 
-    return (
-        <div className="space-y-5">
-            {/* The figures, and the filter for each of them. */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <KpiTile label="Total Types" value={counts.total} Icon={Wrench} accent="blue"
-                    onClick={() => setRelated("all")} active={related === "all"} />
-                <KpiTile label="Trucks" value={counts.truck} Icon={Truck} accent="violet"
-                    onClick={() => setRelated("cmv_only")} active={related === "cmv_only"} />
-                <KpiTile label="Trailers" value={counts.trailer} Icon={Car} accent="amber"
-                    onClick={() => setRelated("non_cmv_only")} active={related === "non_cmv_only"} />
-                <KpiTile label="Both" value={counts.both} Icon={Layers} accent="emerald"
-                    onClick={() => setRelated("both_cmv_and_non_cmv")} active={related === "both_cmv_and_non_cmv"} />
-            </div>
+    const stats: KpiStat[] = [
+        { id: "all", label: "Total types", value: counts.total, Icon: Wrench, accent: "blue" },
+        { id: "cmv_only", label: "Trucks", value: counts.truck, Icon: Truck, accent: "violet" },
+        { id: "non_cmv_only", label: "Trailers", value: counts.trailer, Icon: Car, accent: "amber" },
+        { id: "both_cmv_and_non_cmv", label: "Both", value: counts.both, Icon: Layers, accent: "emerald" },
+    ];
+    const pickRelated = (id: string) => setRelated(id as ServiceCategory | "all");
+    // The same figures, for the page header to show once the cards have scrolled away.
+    useHeaderChips(chipsFromStats(stats, related, pickRelated));
+    const relatedOptions = (["cmv_only", "non_cmv_only", "both_cmv_and_non_cmv"] as ServiceCategory[]).map((c) => CATEGORY_LABELS[c]);
+    const columnPicker = <ColumnPicker columns={TYPE_COLUMNS} visible={visibleCols} onToggle={toggleCol} />;
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <CatalogTabs ariaLabel="Maintenance classes" tabs={tabs} active={activeClass} onChange={setActiveClass} />
+    const kpis = <KpiStatRow stats={stats} activeId={related} onPick={pickRelated} />;
 
-                <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-                    <div className="relative min-w-[190px] max-w-xs flex-1">
-                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search service, class or description…"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
+    const toolbar = (
+        <>
+            <CatalogTabs ariaLabel="Maintenance classes" tabs={tabs} active={activeClass} onChange={setActiveClass} />
+            <ListToolbar
+                search={search}
+                onSearch={setSearch}
+                placeholder="Search service, class or description…"
+                filters={<div className={mobileFold(filtersOpen)}>
+                    <FilterSelect value={related === "all" ? "" : CATEGORY_LABELS[related]} title="Related to" allLabel="Trucks, trailers and both"
+                        options={relatedOptions}
+                        onChange={(v) => setRelated((Object.keys(CATEGORY_LABELS) as ServiceCategory[]).find((c) => CATEGORY_LABELS[c] === v) ?? "all")} />
+                </div>}
+                filtersExtra={<>
+                    <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen((o) => !o)} count={filterCount} />
+                    <div className={mobileFold(filtersOpen)}>
+                        <GroupBySelect value={groupBy} onChange={setGroupBy} options={TYPE_GROUPS} />
+                        <ResetFilters on={filtering} onReset={clear} />
                     </div>
-                    <select
-                        value={groupBy}
-                        onChange={(e) => setGroupBy(e.target.value as TypeGroup)}
-                        title="Band the list"
-                        className={cn(
-                            "h-9 shrink-0 rounded-lg border px-2.5 text-[13px] font-semibold outline-none focus:border-blue-500",
-                            groupBy === "none"
-                                ? "border-slate-200 bg-white text-slate-600"
-                                : "border-blue-300 bg-blue-50/60 text-blue-700",
-                        )}
-                    >
-                        {TYPE_GROUPS.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
-                    </select>
-                    <ColumnPicker columns={TYPE_COLUMNS} visible={visibleCols} onToggle={toggleCol} />
-                    {filtering && (
-                        <button
-                            type="button"
-                            onClick={clear}
-                            className="ml-auto inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-                        >
-                            Reset
-                        </button>
-                    )}
-                </div>
+                </>}
+                columns={frame ? undefined : columnPicker}
+            />
+        </>
+    );
 
-                <div className="border-t border-slate-100">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr>
-                                    <SortTh col="name" label="Maintenance Type" sortable sort={sort} onSort={onSort} />
-                                    {showCol("class") && <SortTh col="class" label="Maintenance Class" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
-                                    {showCol("related") && <SortTh col="related" label="Related To" sortable sort={sort} onSort={onSort} className={COL_RULE} />}
-                                    <TH className={cn("w-px text-right", COL_RULE)}>Actions</TH>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {paged.length === 0 && (
-                                    <EmptyRow
-                                        colSpan={colCount}
-                                        Icon={Wrench}
-                                        title="No service types match your filters"
-                                        hint={search.trim()
-                                            ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
-                                            : "Try another class, or show them all."}
-                                        onClear={filtering ? clear : undefined}
-                                    />
-                                )}
-                                {paged.map((service, i) => (
-                                    <Fragment key={service.id}>
-                                    {groupBy !== "none" && (i === 0 || bandOf(paged[i - 1]) !== bandOf(service)) && (
-                                        <TableGroupBand label={bandOf(service)} count={bandCounts.get(bandOf(service)) ?? 0} colSpan={colCount} />
-                                    )}
-                                    <tr className="transition-colors hover:bg-slate-50/60">
-                                        <TD>
-                                            <div className="flex items-center gap-3">
-                                                <RowIcon Icon={iconFor(service.category)} tone="blue" />
-                                                <div className="min-w-0">
-                                                    <div className="font-semibold text-slate-900">{service.name}</div>
-                                                    {service.description && (
-                                                        <p className="line-clamp-1 max-w-xl text-xs text-slate-500">{service.description}</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </TD>
-                                        {showCol("class") && (
-                                        <TD className={COL_RULE}>
-                                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                                                {service.group}
-                                            </span>
-                                        </TD>
-                                        )}
-                                        {showCol("related") && <TD className={COL_RULE}><RelatedTo category={service.category} /></TD>}
-                                        <TD className={COL_RULE}>
-                                            {/* One menu, the same three verbs every record in the app
-                                                offers: pass it on, change it, remove it. */}
-                                            <div className="flex items-center justify-end">
-                                                <KebabMenu
-                                                    title={`Actions for ${service.name}`}
-                                                    items={[
-                                                        { label: "Share to chat", icon: Share2, onClick: () => setSharing(service) },
-                                                        { label: "Edit", icon: Pencil, onClick: () => openDialog(service) },
-                                                        { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(service) },
-                                                    ]}
-                                                />
-                                            </div>
-                                        </TD>
-                                    </tr>
-                                    </Fragment>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <TablePager
-                        page={safePage}
-                        perPage={perPage}
-                        total={filtered.length}
-                        label="service types"
-                        onPage={setPage}
-                        onPerPage={(n) => { setPerPage(n); setPage(0); }}
+    const table = (
+        <table className="w-full">
+            <thead>
+                <tr>
+                    <SortTh col="name" label="Maintenance Type" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+                    {showCol("class") && <SortTh col="class" label="Maintenance Class" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                    {showCol("related") && <SortTh col="related" label="Related To" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                    <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+                {paged.length === 0 && (
+                    <EmptyRow
+                        colSpan={colCount}
+                        Icon={Wrench}
+                        title="No service types match your filters"
+                        hint={search.trim()
+                            ? <>Nothing matches <span className="font-semibold text-slate-600">{search.trim()}</span> in this view.</>
+                            : "Try another class, or show them all."}
+                        onClear={filtering ? clear : undefined}
                     />
-                </div>
+                )}
+                {paged.map((service, i) => (
+                    <Fragment key={service.id}>
+                    {groupBy !== "none" && (i === 0 || bandOf(paged[i - 1]) !== bandOf(service)) && (
+                        <TableGroupBand label={bandOf(service)} count={bandCounts.get(bandOf(service)) ?? 0} colSpan={colCount} />
+                    )}
+                    <tr className="group cursor-pointer transition-colors hover:bg-slate-50" onClick={() => openDialog(service)}>
+                        <TD className="py-2.5">
+                            <div className="flex min-w-0 items-center gap-3" title={[service.name, service.description].filter(Boolean).join(" — ")}>
+                                <RowIcon Icon={iconFor(service.category)} tone="blue" />
+                                <span className="min-w-0 truncate">
+                                    <span className="font-semibold text-slate-900">{service.name}</span>
+                                    {service.description && <span className="text-xs text-slate-500"> · {service.description}</span>}
+                                </span>
+                            </div>
+                        </TD>
+                        {showCol("class") && (
+                        <TD className="whitespace-nowrap py-2.5">
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                {service.group}
+                            </span>
+                        </TD>
+                        )}
+                        {showCol("related") && <TD className="whitespace-nowrap py-2.5"><RelatedTo category={service.category} /></TD>}
+                        <TD className={cn("py-2.5", PIN_TD_ACTIONS)} onClick={(e) => e.stopPropagation()}>
+                            {/* One menu, the same three verbs every record in the app
+                                offers: pass it on, change it, remove it. */}
+                            <div className="flex items-center justify-end">
+                                <KebabMenu
+                                    title={`Actions for ${service.name}`}
+                                    items={[
+                                        { label: "Share to chat", icon: Share2, onClick: () => setSharing(service) },
+                                        { label: "Edit", icon: Pencil, onClick: () => openDialog(service) },
+                                        { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(service) },
+                                    ]}
+                                />
+                            </div>
+                        </TD>
+                    </tr>
+                    </Fragment>
+                ))}
+            </tbody>
+        </table>
+    );
+
+    const pager = (
+        <TablePager
+            page={safePage}
+            perPage={perPage}
+            total={filtered.length}
+            label="service types"
+            onPage={setPage}
+            onPerPage={(n) => { setPerPage(n); setPage(0); }}
+        />
+    );
+
+    const body = frame ? (
+        <ListScrollFrame above={kpis} toolbar={toolbar} footer={pager}
+            title="Service types"
+            count={filtered.length}
+            total={serviceTypes.length}
+            description="The catalog every service interval and work order picks from — click a row to edit it."
+            actions={columnPicker}
+            scrollRef={frame.scrollRef} onScroll={frame.onScroll}
+            contentKey={`${filtersOpen}|${paged.length}`}>
+            {table}
+        </ListScrollFrame>
+    ) : (
+        <div className="space-y-5">
+            {kpis}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                {toolbar}
+                <div className="overflow-x-auto border-t border-slate-100">{table}</div>
+                {pager}
             </div>
+        </div>
+    );
+
+    return (
+        <>
+            {body}
 
             {sharing && (
                 <ShareToChat
@@ -493,6 +513,6 @@ export const ServiceTypesPanel = forwardRef<ServiceTypesPanelHandle>(function Se
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </>
     );
 });

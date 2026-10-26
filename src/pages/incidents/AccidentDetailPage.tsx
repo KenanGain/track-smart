@@ -23,6 +23,7 @@ import {
 } from '@/data/accident-records.data';
 
 import { ActivityTimeline, type ActivityEntry } from '@/components/ui/ActivityTimeline';
+import { ShareButton } from '@/components/share/ShareButton';
 import { ReviewResolutionTab } from '@/components/ui/ReviewResolution';
 import { TrainingAssignDialog } from '@/components/ui/TrainingAssignDialog';
 import { useRecordReview } from '@/components/ui/record-review';
@@ -710,9 +711,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
                         </div>
                         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                             {onUpdate && (
-                                <Button size="sm" onClick={() => { setTab('case'); setPendingCompose(true); }} className="h-8 gap-1.5 px-2.5 text-[13px] bg-blue-600 text-white shadow-sm hover:bg-blue-700">
-                                    <Share2 className="h-3.5 w-3.5" /> Share
-                                </Button>
+                                <ShareButton compact onClick={() => { setTab('case'); setPendingCompose(true); }} />
                             )}
                             {record.status !== 'verified' && (
                                 <Button size="sm" onClick={onEdit} className="h-8 gap-1.5 px-2.5 text-[13px] bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">

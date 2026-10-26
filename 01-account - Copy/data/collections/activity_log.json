@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/activity_log.json",
+  "title": "activity_log",
+  "description": "Append-only audit trail. The asset and driver Activity tabs read it; so does the review of who changed a status.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "subjectType": {
+      "type": "string",
+      "enum": [
+        "carrier",
+        "office_location",
+        "director",
+        "yard",
+        "asset",
+        "driver"
+      ]
+    },
+    "subjectId": {
+      "type": "string",
+      "description": "The document changed."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "status_changed",
+        "deleted",
+        "imported",
+        "shared",
+        "document_filed"
+      ]
+    },
+    "by": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "→ `users._id`."
+        },
+        "name": {
+          "type": "string",
+          "description": "Snapshot of the user's name at the time."
+        }
+      },
+      "required": [
+        "userId",
+        "name"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "detail": {
+      "type": "string",
+      "description": "One sentence (\"Status changed Active → On Leave\").",
+      "default": ""
+    },
+    "before": {
+      "type": "object",
+      "description": "Changed fields, previous values."
+    },
+    "after": {
+      "type": "object",
+      "description": "Changed fields, new values."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "subjectType",
+    "subjectId",
+    "action",
+    "at"
+  ]
+}

@@ -16,7 +16,8 @@ import { ACCOUNTS_DB, type AccountRecord } from '@/pages/accounts/accounts.data'
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { hash, mulberry32, pick } from '@/pages/accounts/carrier-fleet-shared.data';
-import { MOCK_TICKETS, type TicketRecord, type TicketKind, type ViolationType } from './tickets.data';
+import { MOCK_TICKETS, defaultTicketMonitoring, type TicketRecord, type TicketKind, type ViolationType } from './tickets.data';
+import { vehicleFromAsset } from './ticket-vehicles';
 import {
     CARRIER_VIOLATIONS_BY_CARRIER,
     type CarrierViolationRecord,
@@ -121,15 +122,24 @@ function ticketFromViolation(
         driverName: viol.driverName,
         location: [viol.locationCity, viol.locationState].filter(Boolean).join(', '),
         description: `${viol.locationStreet ?? ''}`.trim(),
-        assetId: viol.assetName ?? viol.assetId ?? '',
+        assetId: viol.assetId ?? viol.assetName ?? '',
+        // The unit the ticket names, copied off the fleet record so the list and the page can
+        // show its plate and VIN without a lookup.
+        vehicle: (() => { const a = CARRIER_ASSETS[account.id]?.find(x => x.id === viol.assetId || x.unitNumber === viol.assetName); return a ? vehicleFromAsset(a) : undefined; })(),
         violationType: narrow,
         violationSubtype: subtype,
         violationCategory: basicCategory,
         violationGroup: viol.violationGroup,
         isOos: viol.isOos,
-        fineAmount: Math.max(0, Math.round(viol.fineAmount + (viol.expenseAmount ?? 0))),
+        fineAmount: Math.max(0, Math.round(viol.fineAmount)),
+        legalExpense: viol.expenseAmount ? Math.round(viol.expenseAmount) : undefined,
         currency: viol.currency,
         status,
+        // Pay or answer within a month; the court date is the end of the road.
+        dueDate: dateAfter(viol.date, 30),
+        finalDate: viol.convictionDate ?? dateAfter(viol.date, 60 + Math.floor(r() * 30)),
+        dueMonitoring: defaultTicketMonitoring(),
+        finalMonitoring: defaultTicketMonitoring(),
         hasTicketFile:  ticketKind === 'Paper'      && r() < 0.85,
         hasReceiptFile: status === 'Paid'           && r() < 0.9,
         hasNoticeFile:  ticketKind === 'Electronic' && r() < 0.8,

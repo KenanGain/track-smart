@@ -70,6 +70,10 @@ import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data'
 import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
 import { AssetComplianceMaintenance } from './AssetComplianceMaintenance';
 import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
+import { ShareButton } from '@/components/share/ShareButton';
+import { ShareToChat } from '@/components/share/ShareToChat';
+import { assetSharePayload } from '@/components/share/share-payloads';
+import { setMessagesFocus } from '@/pages/messages/messages-store';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 
 // Banner shown above the Schedule / Work Order forms when launched from an
@@ -539,6 +543,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
     // 1. Compliance & Documents
     { name: 'Compliance Monitoring', label: 'Monitoring',   count: 0,       group: 'compliance', icon: ShieldCheck },
     { name: 'Documents',             label: 'Compliances',  count: 0,       group: 'compliance', icon: FileText },
+    { name: 'Activity',              count: 0,                              group: 'compliance', icon: Activity },
     // 2. Operations
     { name: 'Maintenance',           count: _maintenanceTaskCountForTab,    group: 'operations', icon: Wrench },
     { name: 'Inventory',             count: inventoryRecords.length,        group: 'operations', icon: Boxes },
@@ -552,6 +557,8 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
   ];
 
   const [currentVehicle, setCurrentVehicle] = useState(asset);
+  /** The Share to chat dialog — the same one every other record page opens. */
+  const [shareOpen, setShareOpen] = useState(false);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   useEffect(() => { setCurrentVehicle(asset); }, [asset]);
 
@@ -1633,8 +1640,27 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                   </div>
                 </div>
 
-                {/* Edit Vehicle CTA — top-right of the header, like MyProfilePage. */}
-                <div className="shrink-0">
+                {/* Share and Edit — top-right of the header, like the driver page. */}
+                <div className="flex shrink-0 items-center gap-2">
+                  <ShareButton onClick={() => setShareOpen(true)} />
+                  {shareOpen && (() => {
+                    const p = assetSharePayload(currentVehicle as Parameters<typeof assetSharePayload>[0]);
+                    return (
+                      <ShareToChat
+                        open={shareOpen}
+                        onClose={() => setShareOpen(false)}
+                        title={p.title}
+                        subtitle={p.subtitle}
+                        source={p.source}
+                        items={p.items}
+                        record={p.record}
+                        defaultChannel="in-app"
+                        defaultSubject={p.defaultSubject}
+                        defaultMessage={p.defaultMessage}
+                        onOpenInMessages={onNavigate ? (id) => { setMessagesFocus(id); onNavigate('/messages'); } : undefined}
+                      />
+                    );
+                  })()}
                   <Button
                     onClick={onEdit}
                     className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 shadow-sm shadow-blue-500/30 transition-all flex items-center gap-2"
@@ -2163,12 +2189,23 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId, onNavigate }
                 );
             })()}
 
-            {/* Compliance Monitoring Content - NOW IN LIST VIEW */}
+            {/* Monitoring = this unit's monitored list; Activity = what was done about it. Two
+                top-level tabs, so there is no tab row inside a tab. */}
             {activeTab === 'Compliance Monitoring' && (
               <div className="animate-in fade-in">
                 <DefaultComplianceMonitoringPage
                   accountId={accountId}
                   embedded
+                  lockSubject={{ entity: 'Asset', subjectId: currentVehicle.id, label: currentVehicle.unitNumber }}
+                />
+              </div>
+            )}
+            {activeTab === 'Activity' && (
+              <div className="animate-in fade-in">
+                <DefaultComplianceMonitoringPage
+                  accountId={accountId}
+                  embedded
+                  view="activity"
                   lockSubject={{ entity: 'Asset', subjectId: currentVehicle.id, label: currentVehicle.unitNumber }}
                 />
               </div>

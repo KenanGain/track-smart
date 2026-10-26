@@ -380,3 +380,24 @@ export const formatUsd = (n: number, opts?: { compact?: boolean }): string => {
         maximumFractionDigits: 0,
     });
 };
+
+// ── Sign-up ───────────────────────────────────────────────────────────────────
+/** The subscription a service profile starts on when it signs up, and the demo payment that opened it. */
+export function recordSignupSubscription(sp: { id: string; legalName: string }, tier: SubscriptionTier, method: PaymentMethod = "Card"): { subscription: Subscription; transaction: Transaction } {
+    const cfg = TIER_CONFIG[tier];
+    const today = new Date();
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    const subscription: Subscription = {
+        id: `sub-${sp.id}`, serviceProfileId: sp.id, serviceProfileName: sp.legalName, tier, status: "Active",
+        startDate: today.toISOString().slice(0, 10), nextBillingDate: next.toISOString().slice(0, 10), monthlyAmount: cfg.monthlyPrice,
+        seats: cfg.carrierLimit === Infinity ? 999 : cfg.carrierLimit,
+    };
+    const transaction: Transaction = {
+        id: `tx-${sp.id}-1`, invoiceNumber: `INV-${today.getFullYear()}-${sp.id.slice(-4).toUpperCase()}`, subscriptionId: subscription.id,
+        serviceProfileId: sp.id, serviceProfileName: sp.legalName, date: today.toISOString().slice(0, 10), amount: cfg.monthlyPrice,
+        status: "Paid", type: "Subscription", method, tier,
+    };
+    if (!SUBSCRIPTIONS.some((x) => x.id === subscription.id)) SUBSCRIPTIONS.unshift(subscription);
+    if (!TRANSACTIONS.some((x) => x.id === transaction.id)) TRANSACTIONS.unshift(transaction);
+    return { subscription, transaction };
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/office_locations.json",
+  "title": "office_locations",
+  "description": "The carrier's offices (HQ, regional offices). Not yards — those are `yards`.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"LOC-acct-001-1\" style id."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "label": {
+      "type": "string",
+      "description": "Display label (\"Corporate HQ - Wilmington\")."
+    },
+    "address": {
+      "type": "string",
+      "description": "Full address on one line."
+    },
+    "contact": {
+      "type": "string",
+      "description": "Contact person or desk (\"Head Office\")."
+    },
+    "phone": {
+      "type": "string",
+      "description": "E.164 or formatted phone."
+    },
+    "operatingHours": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weekdays": {
+          "type": "string",
+          "description": "e.g. \"08:00 - 18:00\".",
+          "default": ""
+        },
+        "saturday": {
+          "type": "string",
+          "default": ""
+        },
+        "sunday": {
+          "type": "string",
+          "default": "Closed"
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "label",
+    "address",
+    "contact",
+    "phone",
+    "createdAt",
+    "updatedAt"
+  ]
+}

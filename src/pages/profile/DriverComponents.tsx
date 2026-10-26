@@ -48,6 +48,44 @@ export const calculateExperience = (history: any[]) => {
 };
 
 // --- Shared Components ---
+
+/** The statuses a driver can be set to, in the order the dropdown offers them. */
+export const DRIVER_STATUSES = ['Active', 'On Leave', 'Inactive', 'Terminated'] as const;
+export type DriverStatus = (typeof DRIVER_STATUSES)[number];
+const DRIVER_STATUS_LABEL: Record<DriverStatus, string> = { Active: 'Active', 'On Leave': 'On Leave (break)', Inactive: 'Inactive', Terminated: 'Terminated' };
+const DRIVER_STATUS_PILL: Record<DriverStatus, string> = {
+  Active: 'bg-green-100 text-green-700 border-green-200',
+  'On Leave': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  Inactive: 'bg-gray-100 text-gray-700 border-gray-200',
+  Terminated: 'bg-red-100 text-red-700 border-red-200',
+};
+
+/**
+ * A driver's status as a pill that is also the control that changes it — in the list and on
+ * the profile header, so a driver going on a break is one click where their name is, not a
+ * trip into an edit form. Stops the click so a row it sits in does not open.
+ */
+export const DriverStatusSelect = ({ value, onChange, disabled, className }: {
+  value: string; onChange: (next: DriverStatus) => void; disabled?: boolean; className?: string;
+}) => {
+  const status = (DRIVER_STATUSES as readonly string[]).includes(value) ? (value as DriverStatus) : 'Inactive';
+  return (
+    <span className={`relative inline-flex items-center ${className ?? ''}`} onClick={(e) => e.stopPropagation()}>
+      <select
+        value={status}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as DriverStatus)}
+        title="Change status"
+        aria-label="Driver status"
+        className={`h-6 cursor-pointer appearance-none rounded-full border pl-2.5 pr-6 text-[10px] font-bold uppercase tracking-wide outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-default ${DRIVER_STATUS_PILL[status]}`}
+      >
+        {DRIVER_STATUSES.map((s) => <option key={s} value={s}>{DRIVER_STATUS_LABEL[s]}</option>)}
+      </select>
+      <svg aria-hidden viewBox="0 0 16 16" className="pointer-events-none absolute right-1.5 h-3 w-3 opacity-60"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </span>
+  );
+};
+
 export const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
     Active: 'bg-green-100 text-green-700 border border-green-200',

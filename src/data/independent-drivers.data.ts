@@ -64,6 +64,18 @@ export const INDEPENDENT_DRIVERS: Driver[] = [
     } as Driver,
 ];
 
+// Drivers who signed up themselves — kept on top of the seed, replayed at load so the
+// driver app finds them after a reload.
+const SIGNED_UP_KEY = "independent-drivers-signed-up-v1";
+function readSignedUp(): Driver[] {
+    try { const raw = typeof localStorage !== "undefined" ? localStorage.getItem(SIGNED_UP_KEY) : null; return raw ? (JSON.parse(raw) as Driver[]) : []; } catch { return []; }
+}
+for (const d of readSignedUp()) if (!INDEPENDENT_DRIVERS.some((x) => x.id === d.id)) INDEPENDENT_DRIVERS.push(d);
+export function addIndependentDriver(d: Driver): void {
+    if (!INDEPENDENT_DRIVERS.some((x) => x.id === d.id)) INDEPENDENT_DRIVERS.push(d);
+    try { localStorage.setItem(SIGNED_UP_KEY, JSON.stringify([...readSignedUp().filter((x) => x.id !== d.id), d])); } catch { /* private window */ }
+}
+
 /** The driver behind an unaffiliated login, if there is one. */
 export const findIndependentDriver = (id: string | undefined): Driver | undefined =>
     id ? INDEPENDENT_DRIVERS.find((d) => d.id === id) : undefined;

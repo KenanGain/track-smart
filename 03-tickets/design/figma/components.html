@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03 – Tickets · Components</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens — light values from ../color-palette.json (Tailwind v4 default palette). */
+:root{
+  --primary:#155dfc; --primary-hover:#1447e6; --primary-subtle:#eff6ff; --primary-border:#bedbff;
+  --secondary:#f1f5f9; --secondary-fg:#314158; --background:#f8fafc; --surface:#ffffff;
+  --text-primary:#0f172b; --text-body:#314158; --text-secondary:#62748e; --text-muted:#90a1b9;
+  --border:#e2e8f0; --border-strong:#cad5e2;
+  --success:#009966; --success-text:#007a55; --success-subtle:#ecfdf5; --success-border:#a4f4cf;
+  --warning:#e17100; --warning-text:#bb4d00; --warning-subtle:#fffbeb; --warning-border:#fee685;
+  --error:#e7000b; --error-text:#c10007; --error-subtle:#fef2f2; --error-border:#ffc9c9;
+  --danger:#ec003f; --danger-subtle:#fff1f2;
+  --accent:#7f22fe; --accent-text:#7008e7; --accent-subtle:#f5f3ff; --accent-border:#ddd6ff;
+  --indigo-text:#432dd7; --indigo-subtle:#eef2ff; --orange-text:#ca3500; --orange-subtle:#fff7ed;
+  --inverse:#0f172b;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--background);color:var(--text-body);font:400 14px/1.4 Inter,system-ui,sans-serif}
+.sheet{width:1440px;padding:48px;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+h1{grid-column:1/-1;margin:0 0 4px;font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--text-primary)}
+.sub{grid-column:1/-1;margin:-20px 0 8px;color:var(--text-secondary);font-size:14px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 24px;box-shadow:0 1px 2px rgba(15,23,43,.05)}
+.frame.wide{grid-column:1/-1}
+.ft{margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
+.fd{margin:0 0 16px;font-size:12px;color:var(--text-muted)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.col{display:flex;flex-direction:column;gap:10px}
+.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin-top:6px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;font:600 14px Inter,sans-serif;border:1px solid transparent;white-space:nowrap}
+.btn.primary{background:var(--primary);color:#fff} .btn.primary.hover{background:var(--primary-hover)}
+.btn.disabled{background:#cad5e2;color:#fff}
+.btn.dark{background:var(--inverse);color:#fff}
+.btn.violet{background:var(--accent);color:#fff}
+.btn.outline{background:#fff;color:var(--secondary-fg);border-color:var(--border)}
+.btn.danger{background:var(--error);color:#fff}
+.btn.sm{height:32px;font-size:13px;padding:0 12px}
+.kebab{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-muted);font-weight:700}
+.kebab.open{background:var(--secondary);color:var(--text-body)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--success-text);background:var(--success-subtle);border-color:var(--success-border)}
+.pill.warn{color:var(--warning-text);background:var(--warning-subtle);border-color:var(--warning-border)}
+.pill.err{color:var(--error-text);background:var(--error-subtle);border-color:var(--error-border)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid}
+.chip.cmv{color:var(--indigo-text);background:var(--indigo-subtle);border-color:#c6d2ff}
+.chip.noncmv{color:var(--orange-text);background:var(--orange-subtle);border-color:#ffd6a7}
+.chip.driver{color:var(--success-text);background:var(--success-subtle);border-color:var(--success-border)}
+.chip.both{color:var(--accent-text);background:var(--accent-subtle);border-color:var(--accent-border)}
+.chip.asset{color:var(--secondary-fg);background:var(--secondary);border-color:var(--border)}
+.chip.none{color:var(--text-secondary);background:#fff;border-color:var(--border)}
+.chip.blue{color:var(--primary);background:var(--primary-subtle);border-color:var(--primary-border)}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 6px;border-radius:999px;background:var(--secondary);color:var(--secondary-fg);font-size:10px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px;min-width:220px}
+.flabel{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)} .flabel b{color:var(--error)}
+.input{height:36px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-primary)}
+.input.ph{color:var(--text-muted)} .input.focus{border-color:#51a2ff;box-shadow:0 0 0 3px rgba(43,127,255,.2)}
+.input.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.hint{font-size:11px;color:var(--text-secondary)}
+.select{justify-content:space-between} .select::after{content:"▾";color:var(--text-muted)}
+.select.on{background:var(--primary-subtle);border-color:var(--primary-border);color:var(--primary)}
+.tick{border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;gap:10px;width:300px}
+.tick.on{border-color:var(--primary-border);background:var(--primary-subtle)}
+.tick b{display:block;color:var(--primary);font-size:14px} .tick small{display:block;color:var(--text-secondary);font-size:12px}
+.check{width:16px;height:16px;border-radius:4px;border:1px solid var(--border-strong);display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:11px}
+.check.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.check.green{background:#00bc7d;border-color:#00bc7d;color:#fff}
+.switch{width:36px;height:20px;border-radius:999px;background:#cad5e2;position:relative;display:inline-block;flex:none}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch.on{background:var(--primary)} .switch.on::after{left:18px} .switch.violet.on{background:var(--accent)}
+.radio{display:inline-flex;align-items:center;gap:8px;font-size:13px} .radio i{width:14px;height:14px;border-radius:50%;border:1px solid var(--border-strong);display:inline-block} .radio.on i{border:4px solid var(--primary)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border)}
+.tab{padding:10px 14px;font-size:14px;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.tab.on{color:var(--primary);border-color:var(--primary)} .tab.on .count{background:var(--primary-subtle);color:var(--primary)}
+.steps{display:flex;gap:10px;align-items:center}
+.step{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:6px 14px 6px 6px;font-size:14px;font-weight:600;color:var(--text-secondary)}
+.step i{width:24px;height:24px;border-radius:50%;background:var(--secondary);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.step.on{border-color:var(--primary-border);background:var(--primary-subtle);color:var(--primary)} .step.on i{background:var(--primary);color:#fff}
+.step.done i{background:var(--success-subtle);color:var(--success)}
+.kpi{border:1px solid var(--border);border-radius:12px;padding:12px 14px;width:200px;background:#fff}
+.kpi small{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary)}
+.kpi b{display:block;font-size:24px;color:var(--text-primary);margin-top:2px}
+.kpi.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.fchip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;font-size:13px;font-weight:600;color:var(--secondary-fg)}
+.fchip span{font-size:11px;color:var(--text-muted)} .fchip.on{background:var(--primary);color:#fff} .fchip.on span{color:#dbeafe} .fchip.off{color:#cad5e2}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--background);text-align:left;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);padding:9px 12px;border-bottom:1px solid var(--border)}
+th.sorted{color:var(--primary)}
+td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr.zebra td{background:#fbfcfe} tr.hover td{background:#f5f9ff} tr.band td{background:#fff1f2;color:#c70036;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+tr.ticked td{background:var(--primary-subtle)} tr.off td{background:var(--danger-subtle)} tr.off .nm{text-decoration:line-through;color:#c70036}
+.nm{font-weight:600;color:var(--text-primary)} .sm2{font-size:11px;color:var(--text-secondary)} .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.tile{width:34px;height:34px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.menu{width:200px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 10px 30px rgba(15,23,43,.12);padding:6px}
+.menu div{padding:8px 10px;border-radius:6px;font-size:13px;color:var(--text-body)} .menu div.hl{background:var(--background)} .menu div.red{color:var(--danger)}
+.dialog{width:460px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 20px 50px rgba(15,23,43,.2);overflow:hidden}
+.dh{padding:16px 18px;border-bottom:1px solid var(--border)} .dh b{display:block;color:var(--text-primary);font-size:16px} .dh small{color:var(--text-secondary);font-size:12px}
+.db{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.df{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+.note{border:1px solid var(--primary-border);background:var(--primary-subtle);color:var(--primary-hover);border-radius:8px;padding:10px 12px;font-size:12px}
+.note.amber{border-color:var(--warning-border);background:var(--warning-subtle);color:var(--warning-text)}
+.card{width:520px;border:1px solid var(--warning-border);background:var(--warning-subtle);border-radius:14px;padding:12px}
+.ci{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cr{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.cf{background:var(--accent-subtle);padding:10px 12px;font-size:12px;color:var(--accent-text)}
+.sig{width:520px;border:1px solid var(--accent-border);border-radius:14px;overflow:hidden;background:#fff}
+.sigh{background:var(--accent-subtle);padding:12px 14px;display:flex;gap:10px;align-items:center}
+.pad{height:90px;border:1px solid var(--border);border-radius:8px;margin:0 14px 12px;display:flex;align-items:center;padding-left:20px;font:italic 28px Georgia,serif;color:var(--text-primary)}
+.type{display:grid;grid-template-columns:200px 1fr;gap:10px 20px;align-items:baseline}
+.type code{font-size:11px;color:var(--text-secondary)}
+</style>
+</head>
+<body>
+<style>
+.kcard{position:relative;border:1px solid var(--border);border-radius:12px;padding:12px 14px 12px 18px;width:210px;background:#fff;overflow:hidden}
+.kcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--bar)}
+.kcard small{display:block;font-size:12px;color:var(--text-secondary)} .kcard b{display:block;font-size:24px;color:var(--val);margin-top:2px} .kcard i{font-style:normal;font-size:11px;color:var(--text-muted)}
+.subc{border:1px solid var(--border);border-radius:10px;padding:10px 12px;width:170px;background:#fff;position:relative;overflow:hidden}
+.subc::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--bar)}
+.subc b{display:block;font-size:22px;color:var(--bar)} .subc.on{border-color:#0f172b;box-shadow:0 0 0 1px #0f172b} .subc.on b{color:#0f172b}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid}
+.tile2{border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;background:#fff;width:300px}
+.tile2 small{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted)}
+.mon{border:1px solid var(--border);border-radius:10px;padding:12px 14px;width:330px;background:#fff}
+.mon.edit{border-color:var(--primary);box-shadow:0 0 0 2px rgba(21,93,252,.2)}
+.chipT{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border-strong);font-size:12px;color:var(--secondary-fg);background:#fff}
+.chipT.on{border-color:var(--primary-border);background:var(--primary-subtle);color:var(--primary)}
+.yn{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:2px;background:var(--background)} .yn span{padding:5px 14px;border-radius:6px;font-size:13px;font-weight:600;color:var(--text-secondary)} .yn .on{background:var(--primary);color:#fff} .yn .red{background:var(--error);color:#fff}
+.res{border:1px solid;border-radius:8px;padding:9px 12px;font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center;background:#fff}
+</style>
+<div class="sheet" id="sheet">
+  <h1>03 – Tickets · Components</h1>
+  <p class="sub">Reusable parts of the Tickets section with their variants and states. Import with the html.to.design plugin; colours and type match <code>tokens.json</code>.</p>
+
+  <section class="frame" data-frame="Buttons">
+    <p class="ft">Buttons</p><p class="fd">Primary · outline · danger · icon-only on phones · link</p>
+    <div class="row"><span class="btn primary">+ Add Ticket</span><span class="btn primary">✎ Edit Ticket</span><span class="btn primary">💾 Save Ticket</span><span class="btn primary">⟳ Sync feeds</span></div>
+    <div class="row" style="margin-top:12px"><span class="btn outline">⤓ Export</span><span class="btn outline">↗ Share to chat</span><span class="btn outline">Show missing ⌄</span><span class="btn danger">🗑 Remove ticket</span><span class="btn outline sm">⤓</span><span class="kebab">⋮</span></div>
+    <div class="row" style="margin-top:12px"><span style="color:var(--primary);font-size:13px;font-weight:600">Clear sub-filter ✕</span><span class="btn outline sm" style="color:var(--primary);border-color:var(--primary-border)">✕ Reset filters</span><span style="color:#bb4d00;font-size:12px;font-weight:700">+ Add</span></div>
+  </section>
+
+  <section class="frame" data-frame="Status pills and badges">
+    <p class="ft">Status pills, kind and violation badges</p><p class="fd">Status pill = an editable select · kind · type · OOS · severity · source</p>
+    <div class="row"><span class="pill warn">Due ⌄</span><span class="pill" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">In Court ⌄</span><span class="pill ok">Paid ⌄</span><span class="pill" style="color:#45556c;background:#f1f5f9;border-color:#e2e8f0">Closed ⌄</span></div>
+    <div class="row" style="margin-top:12px"><span class="badge" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">Paper</span><span class="badge" style="color:#7008e7;background:#f5f3ff;border-color:#ddd6ff;text-transform:none">eTicket</span><span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9">OOS</span><span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9;text-transform:none">Speeding</span><span class="badge" style="color:#ca3500;background:#fff7ed;border-color:#ffd6a7;text-transform:none">Overweight</span><span class="badge" style="color:#8200db;background:#faf5ff;border-color:#e9d4ff;text-transform:none">Logbook violation</span><span class="badge" style="color:#45556c;background:#f1f5f9;border-color:#e2e8f0;text-transform:none">Equipment defect</span><span class="badge" style="color:#c6005c;background:#fdf2f8;border-color:#fccee8;text-transform:none">Insurance lapse</span></div>
+    <div class="row" style="margin-top:12px"><span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9">OOS</span><span class="badge" style="color:#c70036;background:#fff1f2;border-color:#ffccd3">Critical</span><span class="badge" style="color:#bb4d00;background:#fffbeb;border-color:#fee685">Serious</span><span class="badge" style="color:#45556c;background:#f1f5f9;border-color:#e2e8f0">Minor</span><span class="badge" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">SMS</span><span class="badge" style="color:#c70036;background:#fff1f2;border-color:#ffccd3">CVOR Conv.</span></div>
+  </section>
+
+  <section class="frame" data-frame="Inputs">
+    <p class="ft">Inputs</p><p class="fd">Search · date range · filter selects · form field · read-only total</p>
+    <div class="row"><span class="input" style="width:330px">🔍 <span style="color:var(--text-muted)">Search ticket citation #, driver, vehicle, location…</span></span></div>
+    <div class="row" style="margin-top:10px"><span class="input" style="width:150px">📅 2024-01-01</span>–<span class="input" style="width:150px">📅 2024-12-31</span><span class="input select" style="width:140px">All Statuses</span><span class="input select" style="width:150px">All Sources</span></div>
+    <div class="row" style="margin-top:10px"><div class="field"><span class="flabel">Ticket citation number</span><span class="input mono">OFF-84729</span></div><div class="field"><span class="flabel">Total</span><span class="input" style="background:var(--background)">$800.00 <span class="sm2">USD</span></span></div></div>
+  </section>
+
+  <section class="frame" data-frame="Choice controls">
+    <p class="ft">Choice controls</p><p class="fd">Charge chips · Yes / No · penalty chips · document switch</p>
+    <div class="row"><span class="chipT on">✓ Speeding</span><span class="chipT">Improper Lane Change</span><span class="chipT on">✓ Following Too Closely</span><span class="chipT">Distracted Driving</span></div>
+    <div class="row" style="margin-top:12px"><span class="flabel">Commercial vehicle?</span><span class="yn"><span class="on">Yes</span><span>No</span></span><span class="flabel">Out of Service?</span><span class="yn"><span class="red">Yes</span><span>No</span></span></div>
+    <div class="row" style="margin-top:12px"><span class="chipT on">Fine</span><span class="chipT on">Suspension</span><span class="chipT">Revocation</span><span class="chipT">Community Service</span><span class="chipT">Other</span></div>
+    <div class="row" style="margin-top:12px"><span class="switch on"></span> Violation Ticket / Citation <span class="switch"></span> Fine Payment Receipt</div>
+  </section>
+
+  <section class="frame wide" data-frame="Header and tabs">
+    <p class="ft">List header and category tabs</p><p class="fd">Expanded header · category tabs with counts (zero shown)</p>
+    <div class="row" style="justify-content:space-between;border:1px solid var(--border);border-radius:12px;padding:14px 18px"><div class="row"><span class="tile" style="background:var(--primary-subtle);color:var(--primary)">🎫</span><div><div style="font-size:24px;font-weight:700;color:var(--text-primary)">Tickets &amp; Offenses <span class="count">305</span></div><div class="sm2"><b style="color:var(--text-body)">Acme Trucking Inc.</b> · Paper &amp; electronic citations</div></div></div><div class="row"><span class="btn outline">⤓ Export</span><span class="btn primary">+ Add Ticket</span></div></div>
+    <div class="tabs" style="margin-top:12px"><span class="tab on">All Tickets <span class="count">305</span></span><span class="tab">Unsafe Driving <span class="count">9</span></span><span class="tab">Vehicle Maintenance <span class="count">268</span></span><span class="tab">Hours-of-Service <span class="count">59</span></span><span class="tab">Driver Fitness <span class="count">35</span></span><span class="tab">Controlled Substances <span class="count">4</span></span><span class="tab">Other <span class="count">0</span></span></div>
+  </section>
+
+  <section class="frame wide" data-frame="KPI cards">
+    <p class="ft">KPI cards</p><p class="fd">Coloured bar + coloured value; not clickable</p>
+    <div class="row">
+      <div class="kcard" style="--bar:#2b7fff;--val:#155dfc"><small>Total Tickets</small><b>305</b></div>
+      <div class="kcard" style="--bar:#ff2056;--val:#e7000b"><small>Outstanding</small><b>$8,124</b><i>Due + In Court</i></div>
+      <div class="kcard" style="--bar:#fe9a00;--val:#e17100"><small>Open Offenses</small><b>7</b><i>Status: Due</i></div>
+      <div class="kcard" style="--bar:#615fff;--val:#4f39f6"><small>In Court</small><b>13</b><i>Awaiting hearing</i></div>
+      <div class="kcard" style="--bar:#00bc7d;--val:#009966"><small>Paid This Month</small><b>6</b><i>Recent closures</i></div>
+      <div class="kcard" style="--bar:#8e51ff;--val:#7f22fe"><small>Electronic</small><b>67</b><i>22% eTickets</i></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Missing banner">
+    <p class="ft">Missing-references banner</p><p class="fd">Work to do (amber) · reconciled (emerald)</p>
+    <div style="border:1px solid var(--border);border-left:4px solid #fe9a00;border-radius:12px;padding:12px 14px"><div class="row" style="justify-content:space-between"><div><b style="color:var(--text-primary)">🔔 294 ticket references missing</b><div class="sm2"><b>291</b> on file · Cross-checked against Violation Log (297), SMS (270), Contrav. (8)…</div></div><div class="row"><span class="btn primary sm">⟳ Sync feeds</span><span class="btn outline sm">Show missing ⌄</span></div></div></div>
+    <div style="border:1px solid var(--border);border-left:4px solid #00bc7d;border-radius:12px;padding:12px 14px;margin-top:10px"><b style="color:var(--text-primary)">🛡 All ticket references reconciled</b></div>
+  </section>
+
+  <section class="frame" data-frame="Sub-category cards">
+    <p class="ft">Sub-category cards</p><p class="fd">Default · selected (filters the table)</p>
+    <div class="row"><div class="subc" style="--bar:#00a6f4"><div class="sm2" style="color:var(--text-primary);font-weight:600">Vehicle Maintenance</div><b>91</b><span class="count">30%</span></div><div class="subc on" style="--bar:#8e51ff"><div class="sm2" style="color:var(--text-primary);font-weight:600">Drugs</div><b>3</b><span class="count">75%</span></div></div>
+  </section>
+
+  <section class="frame wide" data-frame="Ticket table">
+    <p class="ft">Ticket table</p><p class="fd">Pinned citation and actions columns; editable status pill; doc icons</p>
+    <table>
+      <tr><th>Ticket citation #</th><th>Date</th><th>Driver</th><th>Vehicle</th><th>Location</th><th>Violation</th><th style="text-align:right">Fine</th><th>Status</th><th>Docs</th><th>Actions</th></tr>
+      <tr><td><b style="color:var(--primary)">OFF-84729</b> <span class="badge" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">Paper</span></td><td>2026-10-02 <span class="sm2">14:30</span></td><td>Anjali Bhatia</td><td>ACM-T0108 · IKM 1008 (DE) <span class="count">+ ACM-TR0112</span></td><td>Dover, DE</td><td><span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9;text-transform:none">Speeding</span> Speeding 11-14 mph <span class="count">+1</span> <span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9">OOS</span></td><td style="text-align:right"><b>$350.00</b></td><td><span class="pill" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">In Court ⌄</span></td><td><span style="color:#009966">▤</span> <span style="color:#cad5e2">▤</span> <span style="color:#45556c">⚖</span></td><td><span class="kebab">⋮</span></td></tr>
+      <tr class="hover"><td><b style="color:var(--primary)">OFF-84838</b> <span class="badge" style="color:#7008e7;background:#f5f3ff;border-color:#ddd6ff;text-transform:none">eTicket</span></td><td>2026-08-14</td><td>James Sullivan</td><td>ACM-T0103</td><td>Seattle, WA</td><td><span class="badge" style="color:#45556c;background:#f1f5f9;border-color:#e2e8f0;text-transform:none">Equipment defect</span> Brake out of adjustment</td><td style="text-align:right"><b>$285.00</b></td><td><span class="pill ok">Paid ⌄</span></td><td><span style="color:#cad5e2">▤</span> <span style="color:#009966">▤</span> <span style="color:#cad5e2">⚖</span></td><td><span class="kebab open">⋮</span></td></tr>
+    </table>
+  </section>
+
+  <section class="frame" data-frame="Phone card">
+    <p class="ft">Phone card</p><p class="fd">Below 768 px the table becomes one card per ticket</p>
+    <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;width:340px">
+      <div class="row" style="justify-content:space-between"><span><b style="color:var(--primary);font-size:15px">OFF-84729</b> <span class="badge" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">Paper</span></span><span class="kebab">⋮</span></div>
+      <div style="margin:6px 0"><span class="badge" style="color:#c10007;background:#fef2f2;border-color:#ffc9c9;text-transform:none">Speeding</span> <span class="sm2">Speeding 11-14 mph</span></div>
+      <div class="row" style="gap:18px"><div><span class="flabel">Driver</span><div>Anjali Bhatia</div></div><div><span class="flabel">Date</span><div>2026-10-02 · 14:30</div></div></div>
+      <div class="row" style="justify-content:space-between;margin-top:8px"><b style="font-size:15px">$350.00</b><span class="pill" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">In Court ⌄</span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Row menu">
+    <p class="ft">Row menu</p><p class="fd">Open · Edit · Share · Delete (red, last)</p>
+    <div class="menu"><div>👁 Open ticket</div><div class="hl">✎ Edit ticket</div><div>↗ Share to chat</div><div class="red">🗑 Delete ticket</div></div>
+  </section>
+
+  <section class="frame wide" data-frame="Detail tiles">
+    <p class="ft">Detail tiles and monitored date</p><p class="fd">Status · Fine · Ticket due date · Final date · a monitored date at rest and in edit</p>
+    <div class="row">
+      <div class="tile2"><span class="tile" style="background:#eff6ff;color:#155dfc">◎</span><div><small>Status</small><span class="pill" style="color:#1447e6;background:#eff6ff;border-color:#bedbff">In Court ⌄</span><div class="sm2">Awaiting hearing</div></div></div>
+      <div class="tile2"><span class="tile" style="background:#fff1f2;color:#ec003f">$</span><div><small>Fine</small><b>$350.00 USD</b><div class="sm2">+ $450.00 legal expense · total $800.00</div></div></div>
+      <div class="tile2"><span class="tile" style="background:#fffbeb;color:#e17100">📅</span><div><small>Ticket due date</small><b>2026-11-01</b><div class="sm2">Due in 9 days · monitored</div></div></div>
+    </div>
+    <div class="row" style="margin-top:14px;align-items:flex-start">
+      <div class="mon"><div class="row" style="justify-content:space-between"><span class="flabel">Ticket due date</span><span class="chip driver">🔔 Monitoring on</span></div><b style="font-size:16px">2026-11-01</b> <span class="sm2">in 9 days</span><div class="sm2">Reminders 30, 15, 7 days before + on the date · via email, in-app</div></div>
+      <div class="mon edit"><div class="row" style="justify-content:space-between"><span class="flabel">Final date</span><span class="chip blue">Editing</span></div><span class="input" style="margin:6px 0">12/15/2026</span><div class="row" style="justify-content:flex-end"><span class="btn outline sm">Cancel</span><span class="btn primary sm">Save</span></div></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Review and resolution">
+    <p class="ft">Review &amp; resolution</p><p class="fd">In review: verify, then one of six resolutions</p>
+    <div class="row" style="justify-content:space-between"><b style="color:var(--text-primary)">Review &amp; resolution</b><span class="pill warn">In Review</span></div>
+    <div class="flabel" style="margin-top:10px">1 · Verify</div><span class="btn outline sm" style="margin-top:6px">✓ Mark as verified</span>
+    <div class="flabel" style="margin-top:12px">2 · Resolution — action to take</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+      <span class="res" style="color:#7008e7;border-color:#ddd6ff">🎓 Assign training</span><span class="res" style="color:#bb4d00;border-color:#fee685">⚠ Issue warning letter</span>
+      <span class="res" style="color:#ca3500;border-color:#ffd6a7">⚑ Send safety alert</span><span class="res" style="color:#1447e6;border-color:#bedbff">✉ Send driver notice</span>
+      <span class="res" style="color:#c10007;border-color:#ffc9c9">✖ Terminate driver</span><span class="res" style="color:#45556c;border-color:#e2e8f0">⊘ Dismiss as false</span>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Resolution dialog">
+    <p class="ft">Resolution dialog</p><p class="fd">Fixed header and footer, middle scrolls</p>
+    <div class="dialog">
+      <div class="dh"><b>Issue warning letter</b><small>To Anjali Bhatia · Ticket OFF-84729 · Speeding 11-14 mph over the limit</small></div>
+      <div class="db"><span class="flabel">Send via</span><div class="row"><span class="chipT on">In-app chat</span><span class="chipT">External chat</span><span class="chipT">Email</span></div><span class="flabel">Subject</span><span class="input">Warning letter — Ticket OFF-84729 · Speeding…</span><div class="note amber">The warning letter is filed to the driver’s compliance record with this citation’s details, and a copy goes with this message.</div></div>
+      <div class="df"><span class="sm2">Delivered through Messages · closes the review.</span><span><span class="btn outline sm">Cancel</span> <span class="btn primary sm">Send &amp; close review</span></span></div>
+    </div>
+  </section>
+
+  <section class="frame wide" data-frame="Typography">
+    <p class="ft">Typography</p><p class="fd">Inter; mono for codes, licence, VIN, identifiers</p>
+    <div class="type">
+      <code>page-title · 24/30 700</code><div style="font-size:24px;font-weight:700;letter-spacing:-.4px;color:var(--text-primary)">Tickets &amp; Offenses</div>
+      <code>detail-title · 24/30 700</code><div style="font-size:24px;font-weight:700;color:var(--text-primary)">Ticket OFF-84729</div>
+      <code>kpi-value · 24/30 700</code><div style="font-size:24px;font-weight:700;color:#e7000b">$8,124</div>
+      <code>card-title · 14/20 600</code><div style="font-weight:600;color:var(--text-primary)">Driver &amp; Vehicles</div>
+      <code>cell · 13/18 400</code><div style="font-size:13px">Hwy 401 Westbound near Exit 312</div>
+      <code>citation · 14/20 600 blue</code><div style="font-weight:600;color:var(--primary)">OFF-84729</div>
+      <code>table-header · 11/14 700 caps</code><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary)">Ticket citation #</div>
+      <code>field-label · 10/12 700 caps</code><div class="flabel">Driver licence</div>
+      <code>mono-id · 13/18 500</code><div class="mono" style="font-size:13px">392.2S · BHA00010 · 02WJ951912N743360</div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

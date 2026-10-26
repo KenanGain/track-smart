@@ -50,10 +50,11 @@ const INSP_COLUMNS: PickerColumn<InspCol>[] = [
     { id: "actions", label: "Actions", locked: true },
 ];
 import { ShareToChat, type ShareItem } from "@/components/share/ShareToChat";
+import { StageSelect } from "./roadside-stage";
 import { setMessagesFocus } from "@/pages/messages/messages-store";
 import { currentUserName } from "@/data/users.data";
 import {
-    INSPECTION_LEVELS, STAGE_LABEL, STAGE_TONE, allViolations, deleteInspection, durationLabel,
+    INSPECTION_LEVELS, STAGE_LABEL, allViolations, deleteInspection, durationLabel,
     inspectionStage, isMaintenanceRelated, hasVehicleViolation, seedInspections, shortLevel,
     unitsLabel, useInspections,
     type InspectionStage, type RoadsideInspection,
@@ -109,7 +110,7 @@ function DocMarks({ i, size = 5 }: { i: RoadsideInspection; size?: number }) {
     const wantsBill = isMaintenanceRelated(i);
     const marks: { Icon: React.ElementType; title: string; have: boolean; wanted: boolean }[] = [
         { Icon: FileText, title: "Inspection report", have: i.reports.length > 0, wanted: true },
-        { Icon: ShieldCheck, title: "Remediation report", have: i.remediation.length > 0, wanted: wantsRemediation },
+        { Icon: ShieldCheck, title: "Post-inspection DVIR", have: i.remediation.length > 0, wanted: wantsRemediation },
         { Icon: Receipt, title: "Repair bill", have: i.repairBills.length > 0, wanted: wantsBill },
     ];
     return (
@@ -183,8 +184,8 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
             if (oosOnly && !i.oos) return false;
             if (!q) return true;
             const haystack = [
-                i.id, i.location, i.level, i.citationNumber, i.notes,
-                i.truck.label, i.trailer.label, i.driver.label,
+                i.id, i.location, i.level, i.citationNumber, i.notes, i.inspectorName, i.agency, i.reportNumber,
+                i.truck.label, i.trailer.label, i.driver.label, i.truck.plateNumber, i.trailer.plateNumber,
                 ...allViolations(i).map((v) => `${v.code ?? ""} ${v.label}`),
             ].filter(Boolean).join(" ").toLowerCase();
             return haystack.includes(q);
@@ -258,7 +259,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
 
     const kpis: { id: StageFilter; label: string; value: number; Icon: React.ElementType; accent: string }[] = [
         { id: "all", label: "Inspections", value: all.length, Icon: ClipboardCheck, accent: "slate" },
-        { id: "awaiting-report", label: "Awaiting remediation", value: counts["awaiting-report"], Icon: ShieldAlert, accent: "rose" },
+        { id: "awaiting-report", label: "Awaiting DVIR", value: counts["awaiting-report"], Icon: ShieldAlert, accent: "rose" },
         { id: "awaiting-repair", label: "Awaiting repair bill", value: counts["awaiting-repair"], Icon: Wrench, accent: "amber" },
         { id: "clean", label: "Clean", value: counts.clean, Icon: ShieldCheck, accent: "emerald" },
     ];
@@ -274,7 +275,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
     /** What travels with a shared inspection: every document on it, by shelf. */
     const shareItems = (i: RoadsideInspection): ShareItem[] => [
         ...i.reports.map((d) => ({ name: d.name, group: "Inspection report" })),
-        ...i.remediation.map((d) => ({ name: d.name, group: "Remediation report" })),
+        ...i.remediation.map((d) => ({ name: d.name, group: "Post-inspection DVIR" })),
         ...i.repairBills.map((d) => ({ name: d.name, group: "Repair bill" })),
     ];
 
@@ -295,7 +296,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                 chips={[
                     { id: "total", label: "total", value: all.length },
                     {
-                        id: "awaiting", label: "awaiting remediation", value: counts["awaiting-report"], tone: "text-rose-600",
+                        id: "awaiting", label: "awaiting DVIR", value: counts["awaiting-report"], tone: "text-rose-600",
                         active: stage === "awaiting-report", onClick: () => setStage((x) => (x === "awaiting-report" ? "all" : "awaiting-report")),
                     },
                     {
@@ -398,7 +399,6 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {paged.flatMap((i, idx) => {
-                                        const st = inspectionStage(i);
                                         const vios = allViolations(i);
                                         const band = groupBy === "none" ? null : groupOf(i, groupBy);
                                         const prev = idx === 0 || groupBy === "none" ? null : groupOf(paged[idx - 1], groupBy);
@@ -409,10 +409,9 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                         rows.push(
                                             <tr key={i.id} onClick={() => open(i.id)}
                                                 className="h-9 cursor-pointer transition-colors hover:bg-blue-50/40">
-                                                <td className={TD}>
-                                                    <span className={cn("inline-flex items-center rounded border px-1.5 py-px text-[11px] font-bold", STAGE_TONE[st])}>
-                                                        {STAGE_LABEL[st]}
-                                                    </span>
+                                                {/* The pill is the control: the stage changes here, not on an edit form. */}
+                                                <td className={TD} onClick={(e) => e.stopPropagation()}>
+                                                    <StageSelect inspection={i} />
                                                 </td>
                                                 {/* Date and duration on ONE line: a second line here is what made
                                                     every row in the table two rows tall. */}
@@ -482,7 +481,6 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                         {/* ── Phone: the same rows as cards ── */}
                         <div className="divide-y divide-slate-100 md:hidden">
                             {paged.map((i, idx) => {
-                                const st = inspectionStage(i);
                                 const vios = allViolations(i);
                                 const band = groupBy === "none" ? null : groupOf(i, groupBy);
                                 const prev = idx === 0 || groupBy === "none" ? null : groupOf(paged[idx - 1], groupBy);
@@ -498,9 +496,7 @@ export function RoadsideInspectionsPage({ accountId, accountName, onNavigate }: 
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0">
                                                     <div className="flex flex-wrap items-center gap-1.5">
-                                                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold", STAGE_TONE[st])}>
-                                                            {STAGE_LABEL[st]}
-                                                        </span>
+                                                        <StageSelect inspection={i} />
                                                         <ResultBadge i={i} />
                                                     </div>
                                                     <p className="mt-1.5 text-[14px] font-bold text-slate-800">{i.date} <span className="font-normal text-slate-400">&middot; {shortLevel(i.level)}</span></p>

@@ -1,0 +1,54 @@
+[
+  {
+    "_id": "doc-0001",
+    "carrierId": "acct-001",
+    "subjectType": "asset",
+    "subjectId": "acct-001-a-0100",
+    "kind": "bill_of_sale",
+    "name": "bill-of-sale-ACM-T0100.pdf",
+    "mimeType": "application/pdf",
+    "size": 184320,
+    "storageKey": "acct-001/assets/acct-001-a-0100/bill-of-sale-ACM-T0100.pdf",
+    "uploadedBy": "usr-0010",
+    "uploadedAt": "2026-10-21T11:00:00Z"
+  },
+  {
+    "_id": "doc-0002",
+    "carrierId": "acct-001",
+    "subjectType": "asset",
+    "subjectId": "acct-001-a-0100",
+    "kind": "pink_slip",
+    "name": "pink-slip-CAL-55012-A.pdf",
+    "mimeType": "application/pdf",
+    "size": 98304,
+    "storageKey": "acct-001/assets/acct-001-a-0100/pink-slip-CAL-55012-A.pdf",
+    "uploadedBy": "usr-0010",
+    "uploadedAt": "2026-02-01T10:00:00Z"
+  },
+  {
+    "_id": "doc-0101",
+    "carrierId": "acct-001",
+    "subjectType": "driver",
+    "subjectId": "DRV-001-0010",
+    "kind": "license_front",
+    "name": "license-front.jpg",
+    "mimeType": "image/jpeg",
+    "size": 412000,
+    "storageKey": "acct-001/drivers/DRV-001-0010/license-front.jpg",
+    "uploadedBy": "usr-0010",
+    "uploadedAt": "2021-07-20T15:00:00Z"
+  },
+  {
+    "_id": "doc-0103",
+    "carrierId": "acct-001",
+    "subjectType": "driver",
+    "subjectId": "DRV-001-0010",
+    "kind": "passport",
+    "name": "passport.pdf",
+    "mimeType": "application/pdf",
+    "size": 221184,
+    "storageKey": "acct-001/drivers/DRV-001-0010/passport.pdf",
+    "uploadedBy": "usr-0010",
+    "uploadedAt": "2021-07-20T15:05:00Z"
+  }
+]

@@ -64,7 +64,8 @@ import { cn } from '@/lib/utils';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
-import { addCarrierDriver, removeCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
+import { addCarrierDriver, removeCarrierDriver, updateCarrierDriver } from '@/pages/accounts/carrier-drivers.data';
+import { DriverStatusSelect, type DriverStatus } from './DriverComponents';
 import { consumePendingRecordRef } from '@/pages/messages/messages-store';
 import { RowActions } from '@/components/ui/RowActions';
 import { ShareToChat } from '@/components/share/ShareToChat';
@@ -112,7 +113,6 @@ const DriverFilterChip = ({ label, onClear }: { label: string; onClear: () => vo
 
 /** The roster's toggleable columns, in the order they appear. */
 const DRIVER_COLUMNS = [
-    { id: 'id', label: 'ID / Details' },
     /*
      * Hired, as a column of its own.
      *
@@ -121,6 +121,8 @@ const DRIVER_COLUMNS = [
      * compare; a date under a name is decoration.
      */
     { id: 'hired', label: 'Hired' },
+    /* When the record was entered — on or after the hire date, never the same question. */
+    { id: 'added', label: 'Added to fleet' },
     { id: 'status', label: 'Status' },
     { id: 'compliance', label: 'Compliance' },
     { id: 'dq', label: 'DQ File' },
@@ -1169,6 +1171,7 @@ export function CarrierProfilePage({
                 case 'status':     return (d.status || '').toLowerCase();
                 case 'license':    return (d.licenseNumber || '').toLowerCase();
                 case 'hired':      return d.hiredDate || '';
+                case 'added':      return d.dateAdded || '';
                 default:           return '';
             }
         };
@@ -1269,6 +1272,15 @@ export function CarrierProfilePage({
     const handleDriverUpdate = (updatedData: any) => {
         setSelectedDriverData(updatedData);
         setDrivers(prev => prev.map(d => d.id === updatedData.id ? updatedData : d));
+    };
+
+    // Status changed from the list's pill — kept on the roster record, so it survives a reload
+    // and every other reader of the roster sees it.
+    const updateDriverStatus = (driver: any, status: DriverStatus) => {
+        if (driver.status === status) return;
+        setDrivers(prev => prev.map(d => d.id === driver.id ? { ...d, status } : d));
+        updateCarrierDriver(accountId, driver.id, { status });
+        showToast(`${driver.name} is now ${status}`);
     };
 
     if (viewingDriverId && !isAddingDriver) {
@@ -1917,9 +1929,10 @@ export function CarrierProfilePage({
                                                                 />
                                                             </div>
                                                             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-                                                                <span className="font-mono">{driver.id}</span>
-                                                                <span className="text-slate-300">·</span>
                                                                 <span>Hired {driver.hiredDate}</span>
+                                                                {driver.dateAdded && driver.dateAdded !== driver.hiredDate && (
+                                                                    <><span className="text-slate-300">·</span><span>Added {driver.dateAdded}</span></>
+                                                                )}
                                                             </div>
                                                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                                                 {isCompliant ? (
@@ -1958,8 +1971,8 @@ export function CarrierProfilePage({
                                             <thead className="border-b border-slate-200 bg-slate-50">
                                                 <tr>
                                                     <DriverSortTH id="name" label="Driver" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-5" />
-                                                    {driverColShown('id') && <DriverSortTH id="id" label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
                                                     {driverColShown('hired') && <DriverSortTH id="hired" label="Hired" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
+                                                    {driverColShown('added') && <DriverSortTH id="added" label="Added to fleet" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
                                                     {driverColShown('status') && <DriverSortTH id="status" label="Status" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />}
                                                     {driverColShown('compliance') && <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Compliance</th>}
                                                     {driverColShown('dq') && <th className="min-w-[220px] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">DQ File</th>}
@@ -1987,22 +2000,20 @@ export function CarrierProfilePage({
                                                                     </div>
                                                                 </div>
                                                             </td>
-                                                            {driverColShown('id') && (
-                                                                <td className="whitespace-nowrap px-4 py-3">
-                                                                    <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-medium text-slate-600">{driver.id}</span>
-                                                                </td>
-                                                            )}
                                                             {driverColShown('hired') && (
                                                                 <td className="whitespace-nowrap px-4 py-3 text-[13px] tabular-nums text-slate-700">
                                                                     {driver.hiredDate || <span className="text-slate-300">—</span>}
                                                                 </td>
                                                             )}
+                                                            {driverColShown('added') && (
+                                                                <td className="whitespace-nowrap px-4 py-3 text-[13px] tabular-nums text-slate-700" title="When the driver was added to the fleet">
+                                                                    {driver.dateAdded || <span className="text-slate-300">—</span>}
+                                                                </td>
+                                                            )}
                                                             {driverColShown('status') && (
                                                                 <td className="px-4 py-3">
-                                                                    <Badge
-                                                                        text={driver.status}
-                                                                        tone={driver.status === 'Active' ? 'success' : driver.status === 'Inactive' ? 'gray' : driver.status === 'Terminated' ? 'danger' : 'warning'}
-                                                                    />
+                                                                    {/* The pill is the control: pick a status here, it is saved. */}
+                                                                    <DriverStatusSelect value={driver.status} onChange={(s) => updateDriverStatus(driver, s)} />
                                                                 </td>
                                                             )}
                                                             {driverColShown('compliance') && (

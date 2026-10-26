@@ -1,0 +1,1611 @@
+{
+  "$description": "TrackSmart · 01 Account colour palette. Light values are what the app renders today (Tailwind CSS v4 default palette, converted from OKLCH to sRGB). Dark values are PROPOSED — the app has no dark mode.",
+  "source": "tailwindcss v4.1 theme.css (OKLCH) · usage counted across the Account section source files",
+  "generated": "2026-10-23",
+  "tokens": [
+    {
+      "token": "primary",
+      "tailwind": {
+        "light": "blue-600",
+        "dark": "blue-500"
+      },
+      "light": {
+        "hex": "#155dfc",
+        "rgb": "rgb(21, 93, 252)"
+      },
+      "dark": {
+        "hex": "#2b7fff",
+        "rgb": "rgb(43, 127, 255)"
+      },
+      "usedFor": "Primary buttons (Add Asset, Add Driver, Edit Vehicle, Save), active tab text and underline, links, selected KPI ring, toggle \"on\".",
+      "occurrences": 269
+    },
+    {
+      "token": "primary-hover",
+      "tailwind": {
+        "light": "blue-700",
+        "dark": "blue-400"
+      },
+      "light": {
+        "hex": "#1447e6",
+        "rgb": "rgb(20, 71, 230)"
+      },
+      "dark": {
+        "hex": "#51a2ff",
+        "rgb": "rgb(81, 162, 255)"
+      },
+      "usedFor": "Hover state of primary buttons; text on primary-subtle chips.",
+      "occurrences": 125
+    },
+    {
+      "token": "primary-subtle",
+      "tailwind": {
+        "light": "blue-50",
+        "dark": "blue-950"
+      },
+      "light": {
+        "hex": "#eff6ff",
+        "rgb": "rgb(239, 246, 255)"
+      },
+      "dark": {
+        "hex": "#162456",
+        "rgb": "rgb(22, 36, 86)"
+      },
+      "usedFor": "Icon tiles in card and page headers, active tab count badge, filter chips, info strip background.",
+      "occurrences": 189
+    },
+    {
+      "token": "primary-border",
+      "tailwind": {
+        "light": "blue-200",
+        "dark": "blue-800"
+      },
+      "light": {
+        "hex": "#bedbff",
+        "rgb": "rgb(190, 219, 255)"
+      },
+      "dark": {
+        "hex": "#193cb8",
+        "rgb": "rgb(25, 60, 184)"
+      },
+      "usedFor": "Border of filter chips, info strip, \"Required\" pill.",
+      "occurrences": 49
+    },
+    {
+      "token": "secondary",
+      "tailwind": {
+        "light": "slate-100",
+        "dark": "slate-800"
+      },
+      "light": {
+        "hex": "#f1f5f9",
+        "rgb": "rgb(241, 245, 249)"
+      },
+      "dark": {
+        "hex": "#1d293d",
+        "rgb": "rgb(29, 41, 61)"
+      },
+      "usedFor": "Secondary surfaces: count badges, avatar circles, segmented control track, hover of icon buttons.",
+      "occurrences": 368
+    },
+    {
+      "token": "secondary-foreground",
+      "tailwind": {
+        "light": "slate-700",
+        "dark": "slate-200"
+      },
+      "light": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "dark": {
+        "hex": "#e2e8f0",
+        "rgb": "rgb(226, 232, 240)"
+      },
+      "usedFor": "Text on secondary surfaces; outline-button text.",
+      "occurrences": 180
+    },
+    {
+      "token": "background",
+      "tailwind": {
+        "light": "slate-50",
+        "dark": "slate-950"
+      },
+      "light": {
+        "hex": "#f8fafc",
+        "rgb": "rgb(248, 250, 252)"
+      },
+      "dark": {
+        "hex": "#020618",
+        "rgb": "rgb(2, 6, 24)"
+      },
+      "usedFor": "Page body behind the cards; table header band; tinted card headers.",
+      "occurrences": 354
+    },
+    {
+      "token": "surface",
+      "tailwind": {
+        "light": "white",
+        "dark": "slate-900"
+      },
+      "light": {
+        "hex": "#ffffff",
+        "rgb": "rgb(255, 255, 255)"
+      },
+      "dark": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "usedFor": "Cards, modals, page header band, top bar, sidebar, tables, inputs.",
+      "occurrences": 500
+    },
+    {
+      "token": "text-primary",
+      "tailwind": {
+        "light": "slate-900",
+        "dark": "slate-50"
+      },
+      "light": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "dark": {
+        "hex": "#f8fafc",
+        "rgb": "rgb(248, 250, 252)"
+      },
+      "usedFor": "Page and card titles, primary cell values, modal titles.",
+      "occurrences": 325
+    },
+    {
+      "token": "text-body",
+      "tailwind": {
+        "light": "slate-700",
+        "dark": "slate-300"
+      },
+      "light": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "dark": {
+        "hex": "#cad5e2",
+        "rgb": "rgb(202, 213, 226)"
+      },
+      "usedFor": "Body copy, table cells, form values.",
+      "occurrences": 180
+    },
+    {
+      "token": "text-secondary",
+      "tailwind": {
+        "light": "slate-500",
+        "dark": "slate-400"
+      },
+      "light": {
+        "hex": "#62748e",
+        "rgb": "rgb(98, 116, 142)"
+      },
+      "dark": {
+        "hex": "#90a1b9",
+        "rgb": "rgb(144, 161, 185)"
+      },
+      "usedFor": "Subtitles, field labels (11 px uppercase), table header text, helper text.",
+      "occurrences": 466
+    },
+    {
+      "token": "text-muted",
+      "tailwind": {
+        "light": "slate-400",
+        "dark": "slate-500"
+      },
+      "light": {
+        "hex": "#90a1b9",
+        "rgb": "rgb(144, 161, 185)"
+      },
+      "dark": {
+        "hex": "#62748e",
+        "rgb": "rgb(98, 116, 142)"
+      },
+      "usedFor": "Micro labels on KPI tiles, idle icons, placeholders, \"—\" for empty values. Fails body-text contrast — see §WCAG.",
+      "occurrences": 573
+    },
+    {
+      "token": "border",
+      "tailwind": {
+        "light": "slate-200",
+        "dark": "slate-800"
+      },
+      "light": {
+        "hex": "#e2e8f0",
+        "rgb": "rgb(226, 232, 240)"
+      },
+      "dark": {
+        "hex": "#1d293d",
+        "rgb": "rgb(29, 41, 61)"
+      },
+      "usedFor": "Card, table, modal and input borders; dividers (slate-100 for in-table rules).",
+      "occurrences": 445
+    },
+    {
+      "token": "border-strong",
+      "tailwind": {
+        "light": "slate-300",
+        "dark": "slate-700"
+      },
+      "light": {
+        "hex": "#cad5e2",
+        "rgb": "rgb(202, 213, 226)"
+      },
+      "dark": {
+        "hex": "#314158",
+        "rgb": "rgb(49, 65, 88)"
+      },
+      "usedFor": "Form input borders in modals and page forms; dashed upload zones.",
+      "occurrences": 223
+    },
+    {
+      "token": "success",
+      "tailwind": {
+        "light": "emerald-600",
+        "dark": "emerald-400"
+      },
+      "light": {
+        "hex": "#009966",
+        "rgb": "rgb(0, 153, 102)"
+      },
+      "dark": {
+        "hex": "#00d492",
+        "rgb": "rgb(0, 212, 146)"
+      },
+      "usedFor": "Active status dot, check icons, \"On file\" marks.",
+      "occurrences": 47
+    },
+    {
+      "token": "success-text",
+      "tailwind": {
+        "light": "emerald-700",
+        "dark": "emerald-300"
+      },
+      "light": {
+        "hex": "#007a55",
+        "rgb": "rgb(0, 122, 85)"
+      },
+      "dark": {
+        "hex": "#5ee9b5",
+        "rgb": "rgb(94, 233, 181)"
+      },
+      "usedFor": "Text of Active / Clean pills.",
+      "occurrences": 28
+    },
+    {
+      "token": "success-subtle",
+      "tailwind": {
+        "light": "emerald-50",
+        "dark": "emerald-950"
+      },
+      "light": {
+        "hex": "#ecfdf5",
+        "rgb": "rgb(236, 253, 245)"
+      },
+      "dark": {
+        "hex": "#002c22",
+        "rgb": "rgb(0, 44, 34)"
+      },
+      "usedFor": "Background of Active / Clean pills and success banners.",
+      "occurrences": 51
+    },
+    {
+      "token": "warning",
+      "tailwind": {
+        "light": "amber-600",
+        "dark": "amber-400"
+      },
+      "light": {
+        "hex": "#e17100",
+        "rgb": "rgb(225, 113, 0)"
+      },
+      "dark": {
+        "hex": "#ffb900",
+        "rgb": "rgb(255, 185, 0)"
+      },
+      "usedFor": "Maintenance / On Leave dot, \"expiring soon\" icon.",
+      "occurrences": 38
+    },
+    {
+      "token": "warning-text",
+      "tailwind": {
+        "light": "amber-700",
+        "dark": "amber-300"
+      },
+      "light": {
+        "hex": "#bb4d00",
+        "rgb": "rgb(187, 77, 0)"
+      },
+      "dark": {
+        "hex": "#ffd230",
+        "rgb": "rgb(255, 210, 48)"
+      },
+      "usedFor": "Text of Maintenance / On Leave / Awaiting pills; \"Expiring Soon\".",
+      "occurrences": 23
+    },
+    {
+      "token": "warning-subtle",
+      "tailwind": {
+        "light": "amber-50",
+        "dark": "amber-950"
+      },
+      "light": {
+        "hex": "#fffbeb",
+        "rgb": "rgb(255, 251, 235)"
+      },
+      "dark": {
+        "hex": "#461901",
+        "rgb": "rgb(70, 25, 1)"
+      },
+      "usedFor": "Background of warning pills and missing-document strips.",
+      "occurrences": 54
+    },
+    {
+      "token": "error",
+      "tailwind": {
+        "light": "red-600",
+        "dark": "red-400"
+      },
+      "light": {
+        "hex": "#e7000b",
+        "rgb": "rgb(231, 0, 11)"
+      },
+      "dark": {
+        "hex": "#ff6467",
+        "rgb": "rgb(255, 100, 103)"
+      },
+      "usedFor": "Destructive buttons, \"n missing\" icons, validation icons.",
+      "occurrences": 60
+    },
+    {
+      "token": "error-text",
+      "tailwind": {
+        "light": "red-700",
+        "dark": "red-300"
+      },
+      "light": {
+        "hex": "#c10007",
+        "rgb": "rgb(193, 0, 7)"
+      },
+      "dark": {
+        "hex": "#ffa2a2",
+        "rgb": "rgb(255, 162, 162)"
+      },
+      "usedFor": "Text of \"n missing\" chips, Terminated pill, inline validation messages (red-500 asterisks).",
+      "occurrences": 34
+    },
+    {
+      "token": "error-subtle",
+      "tailwind": {
+        "light": "red-50",
+        "dark": "red-950"
+      },
+      "light": {
+        "hex": "#fef2f2",
+        "rgb": "rgb(254, 242, 242)"
+      },
+      "dark": {
+        "hex": "#460809",
+        "rgb": "rgb(70, 8, 9)"
+      },
+      "usedFor": "Background of \"n missing\" chips and error banners.",
+      "occurrences": 60
+    },
+    {
+      "token": "danger",
+      "tailwind": {
+        "light": "rose-600",
+        "dark": "rose-500"
+      },
+      "light": {
+        "hex": "#ec003f",
+        "rgb": "rgb(236, 0, 63)"
+      },
+      "dark": {
+        "hex": "#ff2056",
+        "rgb": "rgb(255, 32, 86)"
+      },
+      "usedFor": "Delete items in ⋮ menus, Out-of-service pill text, delete confirmation buttons.",
+      "occurrences": 30
+    },
+    {
+      "token": "danger-subtle",
+      "tailwind": {
+        "light": "rose-50",
+        "dark": "rose-950"
+      },
+      "light": {
+        "hex": "#fff1f2",
+        "rgb": "rgb(255, 241, 242)"
+      },
+      "dark": {
+        "hex": "#4d0218",
+        "rgb": "rgb(77, 2, 24)"
+      },
+      "usedFor": "Out-of-service pill and OOS banner background.",
+      "occurrences": 25
+    },
+    {
+      "token": "info",
+      "tailwind": {
+        "light": "blue-700",
+        "dark": "blue-300"
+      },
+      "light": {
+        "hex": "#1447e6",
+        "rgb": "rgb(20, 71, 230)"
+      },
+      "dark": {
+        "hex": "#8ec5ff",
+        "rgb": "rgb(142, 197, 255)"
+      },
+      "usedFor": "Text of the \"View only\" strip and informational banners (shares the primary hue on purpose).",
+      "occurrences": 125
+    },
+    {
+      "token": "info-subtle",
+      "tailwind": {
+        "light": "blue-50",
+        "dark": "blue-950"
+      },
+      "light": {
+        "hex": "#eff6ff",
+        "rgb": "rgb(239, 246, 255)"
+      },
+      "dark": {
+        "hex": "#162456",
+        "rgb": "rgb(22, 36, 86)"
+      },
+      "usedFor": "Background of the \"View only\" strip and info banners.",
+      "occurrences": 189
+    },
+    {
+      "token": "neutral-inverse",
+      "tailwind": {
+        "light": "slate-900",
+        "dark": "slate-100"
+      },
+      "light": {
+        "hex": "#0f172b",
+        "rgb": "rgb(15, 23, 43)"
+      },
+      "dark": {
+        "hex": "#f1f5f9",
+        "rgb": "rgb(241, 245, 249)"
+      },
+      "usedFor": "Toast background; cargo chips (with white text).",
+      "occurrences": 325
+    }
+  ],
+  "contrast": [
+    {
+      "foreground": "text-primary",
+      "background": "surface",
+      "where": "Titles and primary values on cards",
+      "light": {
+        "ratio": 17.83,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 17.04,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-primary",
+      "background": "background",
+      "where": "Titles on the page body",
+      "light": {
+        "ratio": 17.04,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 19.27,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-body",
+      "background": "surface",
+      "where": "Body copy and table cells",
+      "light": {
+        "ratio": 10.36,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 12,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-secondary",
+      "background": "surface",
+      "where": "Subtitles, field labels, table headers",
+      "light": {
+        "ratio": 4.76,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 6.78,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "text-secondary",
+      "background": "background",
+      "where": "Labels in tinted header bands",
+      "light": {
+        "ratio": 4.55,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 7.66,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "text-muted",
+      "background": "surface",
+      "where": "KPI tile micro labels, placeholders, empty-value dashes",
+      "light": {
+        "ratio": 2.63,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 3.74,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "text-muted",
+      "background": "background",
+      "where": "Micro labels on tinted bands",
+      "light": {
+        "ratio": 2.51,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 4.23,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "primary",
+      "where": "Primary button label (white on blue)",
+      "light": {
+        "ratio": 5.25,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.74,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "primary",
+      "background": "surface",
+      "where": "Links, active tab, outline-blue text",
+      "light": {
+        "ratio": 5.25,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.74,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "primary-hover",
+      "background": "primary-subtle",
+      "where": "Chips and badges on blue-50",
+      "light": {
+        "ratio": 6.28,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 5.6,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "secondary-foreground",
+      "background": "secondary",
+      "where": "Text on count badges / segmented control",
+      "light": {
+        "ratio": 9.45,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 11.86,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "secondary-foreground",
+      "background": "surface",
+      "where": "Outline button label",
+      "light": {
+        "ratio": 10.36,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 14.46,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "success-text",
+      "background": "success-subtle",
+      "where": "Active / Clean pill",
+      "light": {
+        "ratio": 5.09,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 9.97,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "warning-text",
+      "background": "warning-subtle",
+      "where": "Maintenance / On Leave pill",
+      "light": {
+        "ratio": 4.85,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 10.37,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "error-text",
+      "background": "error-subtle",
+      "where": "\"n missing\" chip, Terminated pill",
+      "light": {
+        "ratio": 5.87,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 8.42,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "danger",
+      "background": "surface",
+      "where": "Delete item in ⋮ menu",
+      "light": {
+        "ratio": 4.53,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.75,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "danger",
+      "background": "danger-subtle",
+      "where": "Out-of-service pill",
+      "light": {
+        "ratio": 4.12,
+        "result": "AA large only — FAIL for body text"
+      },
+      "dark": {
+        "ratio": 4.18,
+        "result": "AA large only — FAIL for body text"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "danger",
+      "where": "Delete confirmation button",
+      "light": {
+        "ratio": 4.53,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 4.75,
+        "result": "AA"
+      }
+    },
+    {
+      "foreground": "info",
+      "background": "info-subtle",
+      "where": "\"View only\" strip",
+      "light": {
+        "ratio": 6.28,
+        "result": "AA"
+      },
+      "dark": {
+        "ratio": 8.15,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "surface",
+      "background": "neutral-inverse",
+      "where": "Toast, cargo chips",
+      "light": {
+        "ratio": 17.83,
+        "result": "AAA"
+      },
+      "dark": {
+        "ratio": 16.28,
+        "result": "AAA"
+      }
+    },
+    {
+      "foreground": "border",
+      "background": "surface",
+      "where": "Card / input border against the card (non-text, needs 3:1 only for essential UI)",
+      "light": {
+        "ratio": 1.23,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 1.22,
+        "result": "FAIL"
+      }
+    },
+    {
+      "foreground": "border-strong",
+      "background": "surface",
+      "where": "Form input border (non-text UI component, WCAG 1.4.11 asks 3:1)",
+      "light": {
+        "ratio": 1.49,
+        "result": "FAIL"
+      },
+      "dark": {
+        "ratio": 1.72,
+        "result": "FAIL"
+      }
+    }
+  ],
+  "rawPaletteUsed": [
+    {
+      "tailwind": "slate-400",
+      "hex": "#90a1b9",
+      "rgb": "rgb(144, 161, 185)",
+      "occurrences": 573
+    },
+    {
+      "tailwind": "white",
+      "hex": "#ffffff",
+      "rgb": "rgb(255, 255, 255)",
+      "occurrences": 500
+    },
+    {
+      "tailwind": "slate-500",
+      "hex": "#62748e",
+      "rgb": "rgb(98, 116, 142)",
+      "occurrences": 466
+    },
+    {
+      "tailwind": "slate-200",
+      "hex": "#e2e8f0",
+      "rgb": "rgb(226, 232, 240)",
+      "occurrences": 445
+    },
+    {
+      "tailwind": "slate-100",
+      "hex": "#f1f5f9",
+      "rgb": "rgb(241, 245, 249)",
+      "occurrences": 368
+    },
+    {
+      "tailwind": "slate-50",
+      "hex": "#f8fafc",
+      "rgb": "rgb(248, 250, 252)",
+      "occurrences": 354
+    },
+    {
+      "tailwind": "slate-900",
+      "hex": "#0f172b",
+      "rgb": "rgb(15, 23, 43)",
+      "occurrences": 325
+    },
+    {
+      "tailwind": "blue-600",
+      "hex": "#155dfc",
+      "rgb": "rgb(21, 93, 252)",
+      "occurrences": 269
+    },
+    {
+      "tailwind": "blue-500",
+      "hex": "#2b7fff",
+      "rgb": "rgb(43, 127, 255)",
+      "occurrences": 225
+    },
+    {
+      "tailwind": "slate-300",
+      "hex": "#cad5e2",
+      "rgb": "rgb(202, 213, 226)",
+      "occurrences": 223
+    },
+    {
+      "tailwind": "slate-600",
+      "hex": "#45556c",
+      "rgb": "rgb(69, 85, 108)",
+      "occurrences": 198
+    },
+    {
+      "tailwind": "blue-50",
+      "hex": "#eff6ff",
+      "rgb": "rgb(239, 246, 255)",
+      "occurrences": 189
+    },
+    {
+      "tailwind": "slate-700",
+      "hex": "#314158",
+      "rgb": "rgb(49, 65, 88)",
+      "occurrences": 180
+    },
+    {
+      "tailwind": "slate-800",
+      "hex": "#1d293d",
+      "rgb": "rgb(29, 41, 61)",
+      "occurrences": 144
+    },
+    {
+      "tailwind": "blue-700",
+      "hex": "#1447e6",
+      "rgb": "rgb(20, 71, 230)",
+      "occurrences": 125
+    },
+    {
+      "tailwind": "blue-100",
+      "hex": "#dbeafe",
+      "rgb": "rgb(219, 234, 254)",
+      "occurrences": 68
+    },
+    {
+      "tailwind": "red-600",
+      "hex": "#e7000b",
+      "rgb": "rgb(231, 0, 11)",
+      "occurrences": 60
+    },
+    {
+      "tailwind": "red-50",
+      "hex": "#fef2f2",
+      "rgb": "rgb(254, 242, 242)",
+      "occurrences": 60
+    },
+    {
+      "tailwind": "amber-50",
+      "hex": "#fffbeb",
+      "rgb": "rgb(255, 251, 235)",
+      "occurrences": 54
+    },
+    {
+      "tailwind": "emerald-50",
+      "hex": "#ecfdf5",
+      "rgb": "rgb(236, 253, 245)",
+      "occurrences": 51
+    },
+    {
+      "tailwind": "blue-200",
+      "hex": "#bedbff",
+      "rgb": "rgb(190, 219, 255)",
+      "occurrences": 49
+    },
+    {
+      "tailwind": "emerald-600",
+      "hex": "#009966",
+      "rgb": "rgb(0, 153, 102)",
+      "occurrences": 47
+    },
+    {
+      "tailwind": "red-500",
+      "hex": "#fb2c36",
+      "rgb": "rgb(251, 44, 54)",
+      "occurrences": 42
+    },
+    {
+      "tailwind": "amber-600",
+      "hex": "#e17100",
+      "rgb": "rgb(225, 113, 0)",
+      "occurrences": 38
+    },
+    {
+      "tailwind": "red-700",
+      "hex": "#c10007",
+      "rgb": "rgb(193, 0, 7)",
+      "occurrences": 34
+    },
+    {
+      "tailwind": "blue-400",
+      "hex": "#51a2ff",
+      "rgb": "rgb(81, 162, 255)",
+      "occurrences": 34
+    },
+    {
+      "tailwind": "black",
+      "hex": "#000000",
+      "rgb": "rgb(0, 0, 0)",
+      "occurrences": 32
+    },
+    {
+      "tailwind": "rose-500",
+      "hex": "#ff2056",
+      "rgb": "rgb(255, 32, 86)",
+      "occurrences": 31
+    },
+    {
+      "tailwind": "rose-600",
+      "hex": "#ec003f",
+      "rgb": "rgb(236, 0, 63)",
+      "occurrences": 30
+    },
+    {
+      "tailwind": "emerald-700",
+      "hex": "#007a55",
+      "rgb": "rgb(0, 122, 85)",
+      "occurrences": 28
+    },
+    {
+      "tailwind": "amber-500",
+      "hex": "#fe9a00",
+      "rgb": "rgb(254, 154, 0)",
+      "occurrences": 28
+    },
+    {
+      "tailwind": "rose-50",
+      "hex": "#fff1f2",
+      "rgb": "rgb(255, 241, 242)",
+      "occurrences": 25
+    },
+    {
+      "tailwind": "red-100",
+      "hex": "#ffe2e2",
+      "rgb": "rgb(255, 226, 226)",
+      "occurrences": 24
+    },
+    {
+      "tailwind": "amber-700",
+      "hex": "#bb4d00",
+      "rgb": "rgb(187, 77, 0)",
+      "occurrences": 23
+    },
+    {
+      "tailwind": "emerald-200",
+      "hex": "#a4f4cf",
+      "rgb": "rgb(164, 244, 207)",
+      "occurrences": 21
+    },
+    {
+      "tailwind": "red-200",
+      "hex": "#ffc9c9",
+      "rgb": "rgb(255, 201, 201)",
+      "occurrences": 20
+    },
+    {
+      "tailwind": "amber-200",
+      "hex": "#fee685",
+      "rgb": "rgb(254, 230, 133)",
+      "occurrences": 20
+    },
+    {
+      "tailwind": "emerald-500",
+      "hex": "#00bc7d",
+      "rgb": "rgb(0, 188, 125)",
+      "occurrences": 19
+    },
+    {
+      "tailwind": "emerald-100",
+      "hex": "#d0fae5",
+      "rgb": "rgb(208, 250, 229)",
+      "occurrences": 18
+    },
+    {
+      "tailwind": "green-600",
+      "hex": "#00a63e",
+      "rgb": "rgb(0, 166, 62)",
+      "occurrences": 13
+    },
+    {
+      "tailwind": "green-100",
+      "hex": "#dcfce7",
+      "rgb": "rgb(220, 252, 231)",
+      "occurrences": 13
+    },
+    {
+      "tailwind": "blue-800",
+      "hex": "#193cb8",
+      "rgb": "rgb(25, 60, 184)",
+      "occurrences": 13
+    },
+    {
+      "tailwind": "violet-50",
+      "hex": "#f5f3ff",
+      "rgb": "rgb(245, 243, 255)",
+      "occurrences": 10
+    },
+    {
+      "tailwind": "rose-200",
+      "hex": "#ffccd3",
+      "rgb": "rgb(255, 204, 211)",
+      "occurrences": 10
+    },
+    {
+      "tailwind": "green-700",
+      "hex": "#008236",
+      "rgb": "rgb(0, 130, 54)",
+      "occurrences": 10
+    },
+    {
+      "tailwind": "orange-500",
+      "hex": "#ff6900",
+      "rgb": "rgb(255, 105, 0)",
+      "occurrences": 9
+    },
+    {
+      "tailwind": "orange-50",
+      "hex": "#fff7ed",
+      "rgb": "rgb(255, 247, 237)",
+      "occurrences": 9
+    },
+    {
+      "tailwind": "yellow-100",
+      "hex": "#fef9c2",
+      "rgb": "rgb(254, 249, 194)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "rose-700",
+      "hex": "#c70036",
+      "rgb": "rgb(199, 0, 54)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "purple-700",
+      "hex": "#8200db",
+      "rgb": "rgb(130, 0, 219)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "green-200",
+      "hex": "#b9f8cf",
+      "rgb": "rgb(185, 248, 207)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "gray-100",
+      "hex": "#f3f4f6",
+      "rgb": "rgb(243, 244, 246)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "blue-300",
+      "hex": "#8ec5ff",
+      "rgb": "rgb(142, 197, 255)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "[#2563EB]",
+      "hex": "#2563eb",
+      "rgb": "rgb(37, 99, 235)",
+      "occurrences": 8
+    },
+    {
+      "tailwind": "yellow-500",
+      "hex": "#f0b100",
+      "rgb": "rgb(240, 177, 0)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "violet-600",
+      "hex": "#7f22fe",
+      "rgb": "rgb(127, 34, 254)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "purple-200",
+      "hex": "#e9d4ff",
+      "rgb": "rgb(233, 212, 255)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "orange-600",
+      "hex": "#f54900",
+      "rgb": "rgb(245, 73, 0)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "gray-200",
+      "hex": "#e5e7eb",
+      "rgb": "rgb(229, 231, 235)",
+      "occurrences": 7
+    },
+    {
+      "tailwind": "yellow-600",
+      "hex": "#d08700",
+      "rgb": "rgb(208, 135, 0)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "yellow-200",
+      "hex": "#fff085",
+      "rgb": "rgb(255, 240, 133)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "gray-700",
+      "hex": "#364153",
+      "rgb": "rgb(54, 65, 83)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "blue-900",
+      "hex": "#1c398e",
+      "rgb": "rgb(28, 57, 142)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "amber-100",
+      "hex": "#fef3c6",
+      "rgb": "rgb(254, 243, 198)",
+      "occurrences": 6
+    },
+    {
+      "tailwind": "yellow-700",
+      "hex": "#a65f00",
+      "rgb": "rgb(166, 95, 0)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "yellow-50",
+      "hex": "#fefce8",
+      "rgb": "rgb(254, 252, 232)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "purple-100",
+      "hex": "#f3e8ff",
+      "rgb": "rgb(243, 232, 255)",
+      "occurrences": 5
+    },
+    {
+      "tailwind": "violet-500",
+      "hex": "#8e51ff",
+      "rgb": "rgb(142, 81, 255)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "sky-50",
+      "hex": "#f0f9ff",
+      "rgb": "rgb(240, 249, 255)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "red-300",
+      "hex": "#ffa2a2",
+      "rgb": "rgb(255, 162, 162)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "purple-50",
+      "hex": "#faf5ff",
+      "rgb": "rgb(250, 245, 255)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "orange-700",
+      "hex": "#ca3500",
+      "rgb": "rgb(202, 53, 0)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "orange-100",
+      "hex": "#ffedd4",
+      "rgb": "rgb(255, 237, 212)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "[#F8FAFC]",
+      "hex": "#f8fafc",
+      "rgb": "rgb(248, 250, 252)",
+      "occurrences": 4
+    },
+    {
+      "tailwind": "yellow-800",
+      "hex": "#894b00",
+      "rgb": "rgb(137, 75, 0)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "violet-200",
+      "hex": "#ddd6ff",
+      "rgb": "rgb(221, 214, 255)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "sky-700",
+      "hex": "#0069a8",
+      "rgb": "rgb(0, 105, 168)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "sky-200",
+      "hex": "#b8e6fe",
+      "rgb": "rgb(184, 230, 254)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "rose-400",
+      "hex": "#ff637e",
+      "rgb": "rgb(255, 99, 126)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "indigo-600",
+      "hex": "#4f39f6",
+      "rgb": "rgb(79, 57, 246)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "indigo-50",
+      "hex": "#eef2ff",
+      "rgb": "rgb(238, 242, 255)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "indigo-200",
+      "hex": "#c6d2ff",
+      "rgb": "rgb(198, 210, 255)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "green-500",
+      "hex": "#00c950",
+      "rgb": "rgb(0, 201, 80)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "amber-800",
+      "hex": "#973c00",
+      "rgb": "rgb(151, 60, 0)",
+      "occurrences": 3
+    },
+    {
+      "tailwind": "violet-700",
+      "hex": "#7008e7",
+      "rgb": "rgb(112, 8, 231)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "orange-400",
+      "hex": "#ff8904",
+      "rgb": "rgb(255, 137, 4)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "lime-700",
+      "hex": "#497d00",
+      "rgb": "rgb(73, 125, 0)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "lime-500",
+      "hex": "#7ccf00",
+      "rgb": "rgb(124, 207, 0)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "lime-100",
+      "hex": "#ecfcca",
+      "rgb": "rgb(236, 252, 202)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "indigo-700",
+      "hex": "#432dd7",
+      "rgb": "rgb(67, 45, 215)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "indigo-100",
+      "hex": "#e0e7ff",
+      "rgb": "rgb(224, 231, 255)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "green-800",
+      "hex": "#016630",
+      "rgb": "rgb(1, 102, 48)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "green-50",
+      "hex": "#f0fdf4",
+      "rgb": "rgb(240, 253, 244)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "green-400",
+      "hex": "#05df72",
+      "rgb": "rgb(5, 223, 114)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "gray-600",
+      "hex": "#4a5565",
+      "rgb": "rgb(74, 85, 101)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "amber-900",
+      "hex": "#7b3306",
+      "rgb": "rgb(123, 51, 6)",
+      "occurrences": 2
+    },
+    {
+      "tailwind": "violet-800",
+      "hex": "#5d0ec0",
+      "rgb": "rgb(93, 14, 192)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-600",
+      "hex": "#0084d1",
+      "rgb": "rgb(0, 132, 209)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "sky-500",
+      "hex": "#00a6f4",
+      "rgb": "rgb(0, 166, 244)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "rose-300",
+      "hex": "#ffa1ad",
+      "rgb": "rgb(255, 161, 173)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "purple-600",
+      "hex": "#9810fa",
+      "rgb": "rgb(152, 16, 250)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "purple-400",
+      "hex": "#c27aff",
+      "rgb": "rgb(194, 122, 255)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "pink-700",
+      "hex": "#c6005c",
+      "rgb": "rgb(198, 0, 92)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "pink-50",
+      "hex": "#fdf2f8",
+      "rgb": "rgb(253, 242, 248)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "pink-100",
+      "hex": "#fce7f3",
+      "rgb": "rgb(252, 231, 243)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "orange-200",
+      "hex": "#ffd6a7",
+      "rgb": "rgb(255, 214, 167)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "indigo-500",
+      "hex": "#615fff",
+      "rgb": "rgb(97, 95, 255)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "green-300",
+      "hex": "#7bf1a8",
+      "rgb": "rgb(123, 241, 168)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "gray-300",
+      "hex": "#d1d5dc",
+      "rgb": "rgb(209, 213, 220)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "emerald-400",
+      "hex": "#00d492",
+      "rgb": "rgb(0, 212, 146)",
+      "occurrences": 1
+    },
+    {
+      "tailwind": "amber-400",
+      "hex": "#ffb900",
+      "rgb": "rgb(255, 185, 0)",
+      "occurrences": 1
+    }
+  ],
+  "notes": [
+    "A hard-coded #2563EB (Tailwind v3 blue-600) appears 8 times (AssetDirectoryPage, AssetModal, AssetDetailView, EmptyCarrierProfile); the v4 token is #155dfc. TO CONFIRM: replace with bg-blue-600.",
+    "text-muted (slate-400) fails 4.5:1 on white and slate-50; it is used on 10-11 px labels. Recommended fix: use slate-500 for any text.",
+    "Some components mix the red and rose families for errors/danger, and green with emerald for success; the tokens above pick one family per role."
+  ],
+  "typography": {
+    "page-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "24px",
+        "fontWeight": 700,
+        "lineHeight": "30px",
+        "letterSpacing": "-0.4px",
+        "textTransform": "none"
+      }
+    },
+    "page-title-condensed": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "16px",
+        "fontWeight": 700,
+        "lineHeight": "22px",
+        "letterSpacing": "-0.2px",
+        "textTransform": "none"
+      }
+    },
+    "modal-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "20px",
+        "fontWeight": 700,
+        "lineHeight": "28px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "card-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "18px",
+        "fontWeight": 700,
+        "lineHeight": "26px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "section-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "16px",
+        "fontWeight": 700,
+        "lineHeight": "24px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 400,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "body-medium": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 500,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "cell": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "secondary-line": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "12px",
+        "fontWeight": 400,
+        "lineHeight": "16px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "button": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "14px",
+        "fontWeight": 600,
+        "lineHeight": "20px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "toolbar-button": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "13px",
+        "fontWeight": 600,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    },
+    "field-label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "11px",
+        "fontWeight": 700,
+        "lineHeight": "14px",
+        "letterSpacing": "0.6px",
+        "textTransform": "uppercase"
+      }
+    },
+    "micro-label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "10px",
+        "fontWeight": 700,
+        "lineHeight": "12px",
+        "letterSpacing": "0.5px",
+        "textTransform": "uppercase"
+      }
+    },
+    "pill": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": "10px",
+        "fontWeight": 700,
+        "lineHeight": "12px",
+        "letterSpacing": "0.5px",
+        "textTransform": "uppercase"
+      }
+    },
+    "mono-id": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "lineHeight": "18px",
+        "letterSpacing": "0px",
+        "textTransform": "none"
+      }
+    }
+  }
+}

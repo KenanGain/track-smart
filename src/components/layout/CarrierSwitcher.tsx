@@ -182,7 +182,7 @@ export function CarrierSwitcher({
                         {initialsOf(selected.legalName)}
                     </div>
                 )}
-                <span className="text-sm font-semibold text-slate-900 truncate max-w-[260px]">
+                <span className="hidden sm:inline text-sm font-semibold text-slate-900 truncate max-w-[140px] lg:max-w-[260px]">
                     {selected?.legalName ?? "—"}
                 </span>
             </div>
@@ -195,7 +195,7 @@ export function CarrierSwitcher({
                 type="button"
                 onClick={() => { setOpen((o) => !o); setSearch(""); }}
                 className={cn(
-                    "h-9 w-[240px] pl-1.5 pr-2 rounded-lg border bg-white shadow-sm transition-colors inline-flex items-center gap-2 cursor-pointer",
+                    "h-9 w-auto max-w-[200px] lg:w-[240px] lg:max-w-none pl-1.5 pr-2 rounded-lg border bg-white shadow-sm transition-colors inline-flex items-center gap-2 cursor-pointer",
                     open ? "border-blue-500 ring-2 ring-blue-500/15" : "border-slate-200 hover:border-slate-300"
                 )}
                 aria-haspopup="listbox"
@@ -212,7 +212,7 @@ export function CarrierSwitcher({
                 ) : (
                     <Building2 size={14} className="text-slate-400 shrink-0 mx-1" />
                 )}
-                <div className="flex flex-col items-start min-w-0 leading-tight flex-1">
+                <div className="hidden sm:flex flex-col items-start min-w-0 leading-tight flex-1">
                     <span className="text-sm font-semibold text-slate-900 truncate w-full text-left">
                         {selected?.dbaName ?? selected?.legalName ?? "Select a carrier…"}
                     </span>

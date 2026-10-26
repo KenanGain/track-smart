@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/documents.json",
+  "title": "documents",
+  "description": "Owned by the Compliance & Documents section; listed here because the asset wizard (bill of sale, pink slip) and the driver form (licence images, travel documents, DD-214, signature) create records in it and Account references them by id.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string"
+    },
+    "carrierId": {
+      "type": "string"
+    },
+    "subjectType": {
+      "type": "string",
+      "enum": [
+        "asset",
+        "driver",
+        "carrier"
+      ]
+    },
+    "subjectId": {
+      "type": "string",
+      "description": "→ `assets._id` / `drivers._id` / `carriers._id`."
+    },
+    "kind": {
+      "type": "string",
+      "description": "\"bill_of_sale\", \"pink_slip\", \"license_front\", \"license_back\", \"passport\", \"visa\", \"work_permit\", \"twic\", \"fast\", \"dd214\", \"signature\", …"
+    },
+    "name": {
+      "type": "string",
+      "description": "File name."
+    },
+    "mimeType": {
+      "type": "string",
+      "description": "image/png, image/jpeg, application/pdf."
+    },
+    "size": {
+      "type": "integer",
+      "description": "Bytes (≤ 10 MB)."
+    },
+    "storageKey": {
+      "type": "string",
+      "description": "Object-store key; served through a signed URL, never public."
+    },
+    "uploadedBy": {
+      "type": "string",
+      "description": "→ `users._id`."
+    },
+    "uploadedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "subjectType",
+    "subjectId",
+    "kind",
+    "name",
+    "mimeType",
+    "size",
+    "storageKey",
+    "uploadedBy",
+    "uploadedAt"
+  ]
+}

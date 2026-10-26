@@ -1,0 +1,591 @@
+[
+  {
+    "_id": "tkt-6716b0c1a2b3",
+    "carrierId": "acct-001",
+    "offenseNumber": "OFF-84729",
+    "ticketKind": "Paper",
+    "date": "2026-10-02",
+    "time": "14:30",
+    "driverId": "DRV-001-0010",
+    "driverName": "Anjali Bhatia",
+    "vehicle": {
+      "assetId": "AST-001-0009",
+      "unitNumber": "ACM-T0108",
+      "plateNumber": "IKM 1008",
+      "plateJurisdiction": "DE",
+      "vin": "02WJ951912N743360",
+      "label": "Kenworth T800 2022",
+      "kind": "Truck · Power Unit"
+    },
+    "vehicle2": {
+      "assetId": "AST-001-0013",
+      "unitNumber": "ACM-TR0112",
+      "plateNumber": "MOQ 1012",
+      "plateJurisdiction": "DE",
+      "vin": "XL8PZR0S4RJH92087",
+      "label": "Wabash ArcticLite 2018",
+      "kind": "Trailer · Dry Van Trailer"
+    },
+    "location": {
+      "street": "I-95 Northbound Mile Marker 12",
+      "city": "Dover",
+      "state": "DE",
+      "zip": "19901",
+      "country": "USA"
+    },
+    "description": "",
+    "violations": [
+      {
+        "label": "Speeding",
+        "type": "Speeding",
+        "subtype": "Speeding 11-14 mph over the limit",
+        "category": "Unsafe Driving",
+        "group": "Speeding 11-14",
+        "code": "392.2S",
+        "source": "preset"
+      },
+      {
+        "label": "Following Too Closely",
+        "type": "Equipment defect",
+        "category": "Unsafe Driving",
+        "code": "392.2FC",
+        "isOos": true,
+        "source": "preset"
+      }
+    ],
+    "primary": {
+      "type": "Speeding",
+      "subtype": "Speeding 11-14 mph over the limit",
+      "category": "Unsafe Driving",
+      "group": "Speeding 11-14",
+      "code": "392.2S"
+    },
+    "isOos": true,
+    "outOfService": false,
+    "commercialVehicle": true,
+    "penalties": [
+      "Fine",
+      "Suspension"
+    ],
+    "demeritPoints": 3,
+    "fineAmount": 350,
+    "legalExpense": 450,
+    "currency": "USD",
+    "status": "In Court",
+    "paidAt": null,
+    "dueDate": "2026-11-01",
+    "finalDate": "2026-12-15",
+    "dueMonitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "finalMonitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "details": {
+      "officerName": "R. Hayes",
+      "officerBadge": "BADGE-4821",
+      "courtLocation": "Dover Municipal Court",
+      "courtDate": "2026-12-15",
+      "portalUrl": "",
+      "qrReference": "",
+      "issuingDevice": ""
+    },
+    "identifiers": {
+      "ticketNumber": "OFF-84729",
+      "citationNumber": "OFF-84729",
+      "violationCode": "392.2S",
+      "statuteSection": "49 CFR §392.2",
+      "driverLicenceNumber": "BHA00010",
+      "docketNumber": "DKT-2026-1002",
+      "usdotNumber": "1234567",
+      "carrierNumber": "acct-001"
+    },
+    "documents": [
+      {
+        "docTypeId": "viol_ticket",
+        "docNumber": "CIT-2026-00123",
+        "issueDate": "2026-10-02",
+        "files": [
+          {
+            "fileId": "file-a1",
+            "name": "citation-front.pdf",
+            "size": 184320,
+            "contentType": "application/pdf"
+          },
+          {
+            "fileId": "file-a2",
+            "name": "citation-back.jpg",
+            "size": 92160,
+            "contentType": "image/jpeg"
+          }
+        ]
+      },
+      {
+        "docTypeId": "viol_summons",
+        "docNumber": "",
+        "issueDate": "2026-10-10",
+        "files": [
+          {
+            "fileId": "file-a3",
+            "name": "summons.pdf",
+            "size": 65536,
+            "contentType": "application/pdf"
+          }
+        ]
+      }
+    ],
+    "flags": {
+      "ticketFile": true,
+      "receiptFile": false,
+      "noticeFile": true
+    },
+    "assignedToThirdParty": true,
+    "assigneeName": "Hale & Partners Traffic Law",
+    "accidentId": "acc-2026-0001",
+    "roadsideInspectionId": null,
+    "source": "manual",
+    "sourceRefId": null,
+    "createdByUserId": "usr-0002",
+    "deletedAt": null,
+    "createdAt": "2026-10-02T18:40:00Z",
+    "updatedAt": "2026-10-23T19:10:00Z"
+  },
+  {
+    "_id": "tkt-6716b0c1a2b4",
+    "carrierId": "acct-001",
+    "offenseNumber": "OFF-84838",
+    "ticketKind": "Electronic",
+    "date": "2026-08-14",
+    "time": "09:05",
+    "driverId": "DRV-001-0003",
+    "driverName": "James Sullivan",
+    "vehicle": {
+      "assetId": "AST-001-0004",
+      "unitNumber": "ACM-T0103",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "Kenworth T880 2017",
+      "kind": "Truck · Power Unit"
+    },
+    "vehicle2": {
+      "assetId": null,
+      "unitNumber": "",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "",
+      "kind": ""
+    },
+    "location": {
+      "street": "I-5 Southbound",
+      "city": "Seattle",
+      "state": "WA",
+      "zip": "98134",
+      "country": "USA"
+    },
+    "description": "Weigh station inspection",
+    "violations": [
+      {
+        "label": "Brake out of adjustment",
+        "type": "Equipment defect",
+        "category": "Vehicle Maintenance",
+        "group": "Brakes",
+        "code": "393.47(e)",
+        "source": "sms",
+        "dataId": "v-393-47e"
+      }
+    ],
+    "primary": {
+      "type": "Equipment defect",
+      "subtype": "Clamp or roto-chamber type brake(s) out of adjustment",
+      "category": "Vehicle Maintenance",
+      "group": "Brakes",
+      "code": "393.47(e)"
+    },
+    "isOos": false,
+    "outOfService": null,
+    "commercialVehicle": true,
+    "penalties": [
+      "Fine"
+    ],
+    "demeritPoints": null,
+    "fineAmount": 285,
+    "legalExpense": 0,
+    "currency": "USD",
+    "status": "Paid",
+    "paidAt": "2026-09-02T16:20:00Z",
+    "dueDate": "2026-09-13",
+    "finalDate": "2026-10-13",
+    "dueMonitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "finalMonitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "details": {
+      "officerName": "",
+      "officerBadge": "",
+      "courtLocation": "",
+      "courtDate": null,
+      "portalUrl": "https://eticket.example.gov/c/WA-77120",
+      "qrReference": "QR-WA-77120",
+      "issuingDevice": "WSP-HH-212"
+    },
+    "identifiers": {
+      "violationTicketNumber": "ET-WA-77120",
+      "receiptNumber": "RCPT-55120",
+      "paymentReferenceNumber": "PAY-0914-2210",
+      "usdotNumber": "1234567"
+    },
+    "documents": [
+      {
+        "docTypeId": "viol_eticket",
+        "docNumber": "ET-WA-77120",
+        "issueDate": "2026-08-14",
+        "files": [
+          {
+            "fileId": "file-b1",
+            "name": "eticket-WA-77120.pdf",
+            "size": 120400,
+            "contentType": "application/pdf"
+          }
+        ]
+      },
+      {
+        "docTypeId": "viol_fine_receipt",
+        "docNumber": "RCPT-55120",
+        "issueDate": "2026-09-02",
+        "files": [
+          {
+            "fileId": "file-b2",
+            "name": "receipt.pdf",
+            "size": 40960,
+            "contentType": "application/pdf"
+          }
+        ]
+      }
+    ],
+    "flags": {
+      "ticketFile": false,
+      "receiptFile": true,
+      "noticeFile": true
+    },
+    "assignedToThirdParty": false,
+    "assigneeName": "",
+    "accidentId": null,
+    "roadsideInspectionId": "rsi-001-0042",
+    "source": "reference",
+    "sourceRefId": "mt-ext-SMS-883120",
+    "createdByUserId": "usr-0003",
+    "deletedAt": null,
+    "createdAt": "2026-08-15T15:00:00Z",
+    "updatedAt": "2026-09-02T16:20:00Z"
+  },
+  {
+    "_id": "tkt-6716b0c1a2b5",
+    "carrierId": "acct-012",
+    "offenseNumber": "CT-ON-63241",
+    "ticketKind": "Paper",
+    "date": "2026-06-03",
+    "time": null,
+    "driverId": "DRV-012-0003",
+    "driverName": "Luc Gagnon",
+    "vehicle": {
+      "assetId": null,
+      "unitNumber": "",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "",
+      "kind": ""
+    },
+    "vehicle2": {
+      "assetId": null,
+      "unitNumber": "",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "",
+      "kind": ""
+    },
+    "location": {
+      "street": "Hwy 401 Westbound near Exit 312",
+      "city": "Windsor",
+      "state": "ON",
+      "zip": "",
+      "country": "Canada"
+    },
+    "description": "",
+    "violations": [
+      {
+        "label": "Fail to keep daily log",
+        "type": "Logbook violation",
+        "category": "Hours-of-service Compliance",
+        "code": "HTA 16(2)",
+        "source": "sms"
+      }
+    ],
+    "primary": {
+      "type": "Logbook violation",
+      "subtype": "Fail to keep daily log",
+      "category": "Hours-of-service Compliance",
+      "group": "Log Data",
+      "code": "HTA 16(2)"
+    },
+    "isOos": false,
+    "outOfService": false,
+    "commercialVehicle": true,
+    "penalties": [
+      "Fine"
+    ],
+    "demeritPoints": 2,
+    "fineAmount": 310,
+    "legalExpense": 0,
+    "currency": "CAD",
+    "status": "Due",
+    "paidAt": null,
+    "dueDate": "2026-07-03",
+    "finalDate": "2026-08-12",
+    "dueMonitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "finalMonitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "details": {
+      "officerName": "Cst. M. Tremblay",
+      "officerBadge": "OPP-3317",
+      "courtLocation": "Windsor Provincial Offences Court",
+      "courtDate": "2026-08-12",
+      "portalUrl": "",
+      "qrReference": "",
+      "issuingDevice": ""
+    },
+    "identifiers": {
+      "citationNumber": "CT-ON-63241",
+      "offenceNumber": "4471-998-26-63241",
+      "iconCourtCode": "4471",
+      "cvorNumber": "123-456-789"
+    },
+    "documents": [],
+    "flags": {
+      "ticketFile": false,
+      "receiptFile": false,
+      "noticeFile": false
+    },
+    "assignedToThirdParty": false,
+    "assigneeName": "",
+    "accidentId": null,
+    "roadsideInspectionId": null,
+    "source": "manual",
+    "sourceRefId": null,
+    "createdByUserId": "usr-0012",
+    "deletedAt": null,
+    "createdAt": "2026-06-04T15:00:00Z",
+    "updatedAt": "2026-06-04T15:00:00Z"
+  },
+  {
+    "_id": "tkt-6716b0c1a2b6",
+    "carrierId": "acct-001",
+    "offenseNumber": "OFF-APP-DRV-001-0022-0",
+    "ticketKind": "Paper",
+    "date": "2024-05-01",
+    "time": null,
+    "driverId": "DRV-001-0022",
+    "driverName": "Barbara Cox",
+    "vehicle": {
+      "assetId": null,
+      "unitNumber": "",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "",
+      "kind": ""
+    },
+    "vehicle2": {
+      "assetId": null,
+      "unitNumber": "",
+      "plateNumber": "",
+      "plateJurisdiction": "",
+      "vin": "",
+      "label": "",
+      "kind": ""
+    },
+    "location": {
+      "street": "",
+      "city": "",
+      "state": "TX",
+      "zip": "",
+      "country": "USA"
+    },
+    "description": "Reported on driver application",
+    "violations": [
+      {
+        "label": "Speeding",
+        "type": "Speeding",
+        "code": "392.2S",
+        "source": "preset"
+      }
+    ],
+    "primary": {
+      "type": "Speeding",
+      "subtype": "",
+      "category": "Unsafe Driving",
+      "group": "Speeding",
+      "code": "392.2S"
+    },
+    "isOos": false,
+    "outOfService": false,
+    "commercialVehicle": false,
+    "penalties": [
+      "Fine"
+    ],
+    "demeritPoints": 2,
+    "fineAmount": 100,
+    "legalExpense": 0,
+    "currency": "USD",
+    "status": "Closed",
+    "paidAt": null,
+    "dueDate": null,
+    "finalDate": null,
+    "dueMonitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "finalMonitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "reminders": [
+        30,
+        15,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "details": {
+      "officerName": "",
+      "officerBadge": "",
+      "courtLocation": "",
+      "courtDate": null,
+      "portalUrl": "",
+      "qrReference": "",
+      "issuingDevice": ""
+    },
+    "identifiers": {
+      "violationCode": "392.2S"
+    },
+    "documents": [],
+    "flags": {
+      "ticketFile": false,
+      "receiptFile": false,
+      "noticeFile": false
+    },
+    "assignedToThirdParty": false,
+    "assigneeName": "",
+    "accidentId": null,
+    "roadsideInspectionId": null,
+    "source": "application",
+    "sourceRefId": "app-DRV-001-0022",
+    "createdByUserId": "usr-0002",
+    "deletedAt": null,
+    "createdAt": "2026-03-10T15:00:00Z",
+    "updatedAt": "2026-03-10T15:00:00Z"
+  }
+]

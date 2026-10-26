@@ -1,0 +1,84 @@
+[
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f701",
+    "carrierId": "acct-001",
+    "itemId": "inv-001-001",
+    "kind": "updated",
+    "title": "Item updated",
+    "detail": "Alert turned on",
+    "changes": [
+      {
+        "field": "monitoring.enabled",
+        "from": false,
+        "to": true
+      }
+    ],
+    "byUserId": "usr-0002",
+    "byName": "Kenan Gain",
+    "role": "Office",
+    "collectionId": null,
+    "at": "2026-10-01T13:05:00Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f702",
+    "carrierId": "acct-001",
+    "itemId": "inv-acc-001-011",
+    "kind": "assigned",
+    "title": "Assigned to driver",
+    "detail": "Jason Cooper",
+    "changes": [],
+    "byUserId": "usr-0002",
+    "byName": "Kenan Gain",
+    "role": "Office",
+    "collectionId": null,
+    "at": "2026-10-23T19:27:00Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f703",
+    "carrierId": "acct-001",
+    "itemId": "inv-acc-001-011",
+    "kind": "message",
+    "title": "Asked to collect it",
+    "detail": "Jason Cooper was asked to collect this from the office",
+    "changes": [],
+    "byUserId": "usr-0002",
+    "byName": "Kenan Gain",
+    "role": "Office",
+    "collectionId": "col-mh2l0a-1",
+    "at": "2026-10-23T19:27:01Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f704",
+    "carrierId": "acct-001",
+    "itemId": "inv-acc-001-011",
+    "kind": "signed",
+    "title": "Receipt signed",
+    "detail": "Jason Cooper signed the Uniform & Equipment Issue Receipt",
+    "changes": [],
+    "byUserId": "usr-0101",
+    "byName": "Jason Cooper",
+    "role": "Driver",
+    "collectionId": "col-mh2l0a-1",
+    "at": "2026-10-23T19:36:40Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f705",
+    "carrierId": "acct-001",
+    "itemId": "inv-acc-001-001",
+    "kind": "updated",
+    "title": "Handed back to the office",
+    "detail": "Jason Cooper handed this back",
+    "changes": [
+      {
+        "field": "assignedDriverId",
+        "from": "DRV-001-0001",
+        "to": null
+      }
+    ],
+    "byUserId": "usr-0101",
+    "byName": "Jason Cooper",
+    "role": "Driver",
+    "collectionId": "col-mh2l0a-2",
+    "at": "2026-10-23T19:38:12Z"
+  }
+]

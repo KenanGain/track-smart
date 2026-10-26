@@ -178,16 +178,41 @@ export function ticketAlerts(tickets: TicketRecord[], drivers: DriverLite[], ass
         const court = t.ticketDetails?.courtDate?.slice(0, 10) ?? '';
         const fine = `${t.currency} ${t.fineAmount.toLocaleString(undefined, { minimumFractionDigits: 0 })}`;
         const violation = t.violationSubtype || t.violationType;
+        const where = [asset ? assetLabel(asset) : (t.vehicle?.unitNumber ?? t.assetId), t.location].filter(Boolean).join(' · ');
+        const base = {
+            source: 'ticket' as const, entity: 'Driver' as const, subjectId: t.driverId, subjectLabel: driver?.name ?? t.driverName,
+            numberLabel: 'Ticket citation #', numberValue: t.offenseNumber, file: null,
+            link: { path: '/tickets', pendingId: t.id, pendingType: 'ticket' },
+        };
+        // The two dates the ticket is monitored on, each with its own reminders and on/off.
+        // A ticket with neither falls back to its court date, as before.
+        const dated = [
+            { key: 'due', date: t.dueDate, cfg: t.dueMonitoring, label: 'Ticket due date' },
+            { key: 'final', date: t.finalDate, cfg: t.finalMonitoring, label: 'Final date' },
+        ].filter(x => x.date && (x.cfg?.enabled ?? true));
+        if (dated.length) {
+            for (const x of dated) {
+                const reminders = (x.cfg?.reminders?.length ? x.cfg.reminders : DEFAULT_REMINDERS).filter(d => d > 0);
+                out.push({
+                    ...base, id: `ticket:${t.id}:${x.key}`,
+                    title: `${x.label} — ${violation}`,
+                    description: [`Fine ${fine}`, where].filter(Boolean).join(' · '),
+                    date: x.date!, daysUntil: daysUntilYmd(x.date!), isStatus: false,
+                    status: t.status === 'In Court' ? 'In court' : `Fine due · ${fine}`,
+                    reminders: reminders.length ? reminders : DEFAULT_REMINDERS,
+                    channels: x.cfg ? { email: x.cfg.channels.email, inApp: x.cfg.channels.inApp } : ALL_CHANNELS,
+                });
+            }
+            continue;
+        }
         out.push({
-            id: `ticket:${t.id}`, source: 'ticket', entity: 'Driver', subjectId: t.driverId, subjectLabel: driver?.name ?? t.driverName,
+            ...base, id: `ticket:${t.id}`,
             title: violation,
-            description: [t.status === 'In Court' ? `In court${t.ticketDetails?.courtLocation ? ` · ${t.ticketDetails.courtLocation}` : ''}` : `Fine ${fine} due`, asset ? assetLabel(asset) : t.assetId, t.location].filter(Boolean).join(' · '),
-            numberLabel: 'Offense #', numberValue: t.offenseNumber,
+            description: [t.status === 'In Court' ? `In court${t.ticketDetails?.courtLocation ? ` · ${t.ticketDetails.courtLocation}` : ''}` : `Fine ${fine} due`, where].filter(Boolean).join(' · '),
             date: court, daysUntil: daysUntilYmd(court), isStatus: !court,
             status: t.status === 'In Court' ? 'In court' : `Fine due · ${fine}`,
             statusPriority: t.status === 'Due' ? 'high' : 'medium',
-            reminders: DEFAULT_REMINDERS, channels: ALL_CHANNELS, file: null,
-            link: { path: '/tickets', pendingId: t.id, pendingType: 'ticket' },
+            reminders: DEFAULT_REMINDERS, channels: ALL_CHANNELS,
         });
     }
     return out;

@@ -21,21 +21,25 @@
 import { useState } from "react";
 import {
     CalendarClock, ClipboardCheck, FileText, Gauge, LayoutGrid, Mail, MapPin, Pencil, Phone, Receipt,
-    Share2, ShieldAlert, ShieldCheck, StickyNote, Timer, Trash2, Truck, Upload, User, Wrench, History,
+    ShieldAlert, ShieldCheck, StickyNote, Timer, Trash2, Truck, Upload, User, Wrench, History,
+    ChevronRight, ExternalLink, BadgeCheck, type LucideIcon,
 } from "lucide-react";
+import { ShareButton } from "@/components/share/ShareButton";
+import { StageSelect } from "./roadside-stage";
 import { cn } from "@/lib/utils";
 import { BackLink } from "@/components/ui/BackLink";
 import { PAGE_PAD } from "@/components/ui/ListPageHeader";
+import { useCondensingHeader, HEADER_TRANSITION } from "@/components/ui/use-condensing-header";
 import { SubTabs, type SubTab } from "@/components/ui/SubTabs";
 import { KebabMenu } from "@/components/ui/KebabMenu";
 import { ActivityTimeline, type ActivityEntry } from "@/components/ui/ActivityTimeline";
 import { ShareToChat, type ShareItem } from "@/components/share/ShareToChat";
-import { setMessagesFocus } from "@/pages/messages/messages-store";
+import { setMessagesFocus, setPendingRecord } from "@/pages/messages/messages-store";
 import { currentUserName } from "@/data/users.data";
 import { DocTypesList, DocTypeDetail, SHELF_META, billTotal, sampleDoc, shelfWanted, type Shelf } from "./RoadsideDocRecords";
 import { ViolationList, type ViolationRow } from "./RoadsideViolations";
 import {
-    PARTY_LABEL, REMEDIATION_BY_LABEL, STAGE_LABEL, STAGE_TONE, allViolations, durationLabel, unitOptionsFor,
+    PARTY_LABEL, REMEDIATION_BY_LABEL, STAGE_LABEL, allViolations, durationLabel, unitOptionsFor,
     deleteInspection, inspectionStage, isMaintenanceRelated, remediationRequired, saveInspection,
     unitsLabel, useInspection,
     type RoadsideInspection,
@@ -68,6 +72,22 @@ function Fact({ icon: Icon, label, value, tone, wide }: {
     );
 }
 
+
+/** One of the four figures under the header — the tile the driver and asset pages carry. */
+function StatTile({ icon: Icon, label, value, sub, tone = "bg-blue-50 text-blue-600" }: {
+    icon: LucideIcon; label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: string;
+}) {
+    return (
+        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", tone)}><Icon size={16} /></span>
+            <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                <div className="min-w-0 text-[15px] font-bold text-slate-900 [&>*]:max-w-full">{value}</div>
+                {sub && <p className="truncate text-[11px] text-slate-500">{sub}</p>}
+            </div>
+        </div>
+    );
+}
 
 /**
  * Who did the repair work, and what it came to.
@@ -199,10 +219,10 @@ function NextStep({ i, onGoDocuments }: { i: RoadsideInspection; onGoDocuments: 
             <p className={cn("min-w-[220px] flex-1 text-[13px] leading-relaxed", awaitingReport ? "text-rose-900" : "text-amber-900")}>
                 {awaitingReport ? (
                     <>
-                        <span className="font-bold">Waiting on a remediation inspection.</span>{" "}
+                        <span className="font-bold">Waiting on the post-inspection DVIR.</span>{" "}
                         {i.oos ? "The unit was placed out of service. " : ""}
-                        Once the defect is fixed, upload the re-inspection report and say whether a
-                        mechanic or the driver performed it. The driver can upload it from the mobile app.
+                        Once the defect is fixed, upload the DVIR, say whether any defect was still found
+                        and who performed it. The driver can upload it from the mobile app.
                     </>
                 ) : (
                     <>
@@ -216,7 +236,7 @@ function NextStep({ i, onGoDocuments }: { i: RoadsideInspection; onGoDocuments: 
             <button type="button" onClick={onGoDocuments}
                 className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12px] font-bold text-white transition-colors",
                     awaitingReport ? "bg-rose-600 hover:bg-rose-700" : "bg-amber-600 hover:bg-amber-700")}>
-                <Upload size={13} /> {awaitingReport ? "Upload the report" : "Attach the bill"}
+                <Upload size={13} /> {awaitingReport ? "Upload the DVIR" : "Attach the bill"}
             </button>
         </div>
     );
@@ -277,13 +297,14 @@ function activityOf(i: RoadsideInspection): ActivityEntry[] {
     for (const d of i.remediation) {
         out.push({
             id: `rem-${d.id}`, sort: d.uploadedAt, icon: ShieldCheck, iconTone: "bg-emerald-500",
-            title: "Remediation inspection filed",
+            title: "Post-inspection DVIR filed",
             // Which of the two it was, said every time: it is the question an
             // auditor asks of this document and nothing else on the record answers it.
             badge: d.source === "driver-app"
                 ? { label: "Driver app", tone: "bg-blue-50 text-blue-700" }
                 : { label: "Office", tone: "bg-slate-100 text-slate-600" },
             detail: [
+                d.defectFound === undefined ? null : d.defectFound ? "Defect found" : "No defect",
                 d.performedBy ? `${REMEDIATION_BY_LABEL[d.performedBy]} performed it` : "Performer not stated",
                 d.performedOn ? `on ${d.performedOn}` : null,
                 d.name,
@@ -310,7 +331,7 @@ function activityOf(i: RoadsideInspection): ActivityEntry[] {
         out.push({
             id: "closed", sort: last, icon: ShieldCheck, iconTone: "bg-slate-400",
             title: "Closed",
-            detail: "The defect was re-inspected and the paperwork is on file.",
+            detail: "The post-inspection DVIR and the paperwork are on file.",
             at: when(last),
         } as ActivityEntry & { sort: string });
     }
@@ -344,6 +365,9 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
      */
     const [openShelf, setOpenShelf] = useState<Shelf | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    // The band folds as the body scrolls down and returns on the way up — the driver and
+    // asset pages' behaviour, from the same hook. The body is its own scroller for it.
+    const { scrollRef, condensed, onScroll } = useCondensingHeader(inspectionId);
 
     if (!i) {
         return (
@@ -385,50 +409,81 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
 
     const shareItems: ShareItem[] = [
         ...i.reports.map((d) => ({ name: d.name, group: "Inspection report" })),
-        ...i.remediation.map((d) => ({ name: d.name, group: "Remediation report" })),
+        ...i.remediation.map((d) => ({ name: d.name, group: "Post-inspection DVIR" })),
         ...i.repairBills.map((d) => ({ name: d.name, group: "Repair bill" })),
     ];
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-slate-50">
-            {/* Header — identity and actions, then the tabs. Both stay put. */}
-            <div className="shrink-0 border-b border-slate-200 bg-white">
-                <div className="px-4 pt-3 sm:px-6">
-                    <BackLink fallback={HOME} onNavigate={onNavigate} />
-                    <div className="mt-2 flex flex-wrap items-start justify-between gap-3 pb-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                                <ClipboardCheck size={20} />
-                            </span>
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">Roadside inspection</h1>
-                                    <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-bold", STAGE_TONE[stage])}>
-                                        {STAGE_LABEL[stage]}
-                                    </span>
-                                    {i.oos && (
-                                        <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                                            Out of service
-                                        </span>
-                                    )}
+            {/* Header band — the shape the driver and asset pages have: breadcrumb strip,
+                icon + title + chips + meta, the actions, four figures, then the tabs. */}
+            <div className={cn("shrink-0 border-b border-slate-200 bg-white", HEADER_TRANSITION, condensed ? "shadow-md" : "shadow-sm")}>
+                <header className={cn("flex items-center gap-3 overflow-hidden border-b border-slate-100 bg-slate-50/60 px-4 sm:px-8", HEADER_TRANSITION,
+                    condensed ? "h-0 border-b-0 opacity-0" : "h-11 opacity-100")}>
+                    <span className="min-w-0 shrink-0 truncate whitespace-nowrap"><BackLink fallback={HOME} onNavigate={onNavigate} /></span>
+                    <span aria-hidden className="hidden h-4 w-px bg-slate-200 sm:block" />
+                    <nav className="hidden min-w-0 items-center whitespace-nowrap text-xs font-medium text-slate-500 sm:flex">
+                        <span className="cursor-pointer text-slate-400 transition-colors hover:text-blue-600" onClick={() => onNavigate(HOME)}>Roadside Inspection</span>
+                        <ChevronRight size={12} className="mx-1.5 shrink-0 text-slate-300" />
+                        <span className="truncate font-semibold text-slate-700">{i.date} &middot; {unitsLabel(i)}</span>
+                    </nav>
+                </header>
+
+                <div className={cn("px-4 sm:px-8", HEADER_TRANSITION, condensed ? "py-2" : "py-4 sm:py-5")}>
+                    <div className={cn("flex min-w-0 items-start justify-between", HEADER_TRANSITION, condensed ? "gap-2" : "flex-col gap-4 lg:flex-row")}>
+                        <div className={cn("flex min-w-0 items-start", HEADER_TRANSITION, condensed ? "items-center gap-3" : "gap-3 sm:gap-4")}>
+                            <div className="relative shrink-0">
+                                <div className={cn("flex items-center justify-center rounded-2xl border-white bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 shadow-md ring-1 ring-slate-200/60", HEADER_TRANSITION,
+                                    condensed ? "h-10 w-10 border-2" : "h-14 w-14 border-[3px] sm:h-[72px] sm:w-[72px]")}>
+                                    <ClipboardCheck size={condensed ? 18 : 28} />
                                 </div>
-                                <p className="mt-0.5 truncate text-[13px] text-slate-500">
-                                    {i.date} &middot; {i.level} &middot; <span className="font-mono text-[12px]">{i.id}</span>
+                                <span className={cn("absolute bottom-0 right-0 rounded-full border-2 border-white shadow-sm", HEADER_TRANSITION, condensed ? "h-3 w-3" : "h-4 w-4",
+                                    stage === "clean" ? "bg-emerald-500" : stage === "awaiting-report" ? "bg-rose-500" : stage === "awaiting-repair" ? "bg-amber-500" : "bg-slate-400")}
+                                    title={STAGE_LABEL[stage]} />
+                            </div>
+                            <div className="min-w-0">
+                                {/* Folded, the title is one line and the stage pill beside it says the rest. */}
+                                <div className={cn("flex items-center gap-2", condensed ? "min-w-0 flex-nowrap" : "flex-wrap")}>
+                                    <h1 className={cn("font-bold tracking-tight text-slate-900", HEADER_TRANSITION, condensed ? "min-w-0 truncate text-base" : "text-lg sm:text-2xl")}>
+                                        Roadside inspection &middot; {i.date}
+                                    </h1>
+                                    {/* Condensed, the stage comes up beside the title so it is never off screen. */}
+                                    <span className={cn("hidden overflow-hidden sm:inline-flex", HEADER_TRANSITION, condensed ? "max-w-[16rem] opacity-100" : "max-w-0 opacity-0")}>
+                                        <StageSelect inspection={i} />
+                                    </span>
+                                    <span className={cn("inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", condensed && "hidden",
+                                        i.result === "Pass" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700")}>
+                                        {i.result}
+                                    </span>
+                                    {i.oos && <span className={cn("inline-flex items-center rounded border border-rose-300 bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700", condensed && "hidden")}>Out of service</span>}
+                                </div>
+                                <div className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 overflow-hidden text-xs text-slate-500", HEADER_TRANSITION,
+                                    condensed ? "mt-0 max-h-0 opacity-0" : "mt-1.5 max-h-24 opacity-100")}>
+                                    <span className="flex items-center gap-1 font-medium text-slate-700"><ClipboardCheck size={12} className="text-slate-400" /> {i.level}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="flex items-center gap-1"><Truck size={12} className="text-slate-400" /> {unitsLabel(i)}</span>
+                                    {i.driver.label && <><span className="text-slate-300">|</span><span className="flex items-center gap-1"><User size={12} className="text-slate-400" /> {i.driver.label}</span></>}
+                                    {i.location && <><span className="text-slate-300">|</span><span className="flex items-center gap-1"><MapPin size={12} className="text-slate-400" /> {i.location}</span></>}
+                                    <span className="text-slate-300">|</span>
+                                    <StageSelect inspection={i} />
+                                </div>
+                                <p className={cn("overflow-hidden text-[13px] text-slate-600", HEADER_TRANSITION, condensed ? "mt-0 max-h-0 opacity-0" : "mt-1.5 max-h-12 opacity-100")}>
+                                    {vios.length === 0 ? "No violations found" : `${vios.length} violation${vios.length === 1 ? "" : "s"} found`}
+                                    {i.citationIssued ? ` · citation ${i.citationNumber || "issued"}` : ""}
+                                    {i.inspectorName ? ` · ${i.inspectorName}${i.agency ? `, ${i.agency}` : ""}` : ""}
+                                    <span className="ml-1.5 font-mono text-[11px] text-slate-400">{i.id}</span>
                                 </p>
                             </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <button onClick={() => setSharing({
+                        <div className={cn("flex shrink-0 flex-wrap items-center gap-2", HEADER_TRANSITION, condensed ? "self-center [&>button]:h-8" : "lg:pt-1")}>
+                            <ShareButton onClick={() => setSharing({
                                 subject: `Roadside inspection ${i.date} — ${unitsLabel(i)}`,
                                 items: shareItems,
                                 sublabel: [unitsLabel(i), i.driver.label, STAGE_LABEL[stage]].filter(Boolean).join(" · "),
-                            })}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
-                                <Share2 size={14} /> <span className="hidden sm:inline">Share</span>
-                            </button>
-                            <button onClick={() => onNavigate(`${HOME}/${i.id}/edit`)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
-                                <Pencil size={14} /> <span className="hidden sm:inline">Edit</span>
+                            })} />
+                            <button type="button" onClick={() => onNavigate(`${HOME}/${i.id}/edit`)}
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700">
+                                <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit inspection</span><span className="sm:hidden">Edit</span>
                             </button>
                             <KebabMenu
                                 title="Inspection actions"
@@ -439,14 +494,31 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                             />
                         </div>
                     </div>
-                </div>
-                <div className="px-4 sm:px-6">
-                    <SubTabs tabs={tabs} activeId={tab} onChange={setTab} showZeroCounts ariaLabel="Inspection sections" />
+
+                    {/* The four figures — folded away with the band, given back on the way up. */}
+                    <div className={cn("grid grid-cols-2 gap-3 overflow-hidden lg:grid-cols-4", HEADER_TRANSITION,
+                        condensed ? "mt-0 max-h-0 opacity-0" : "mt-4 max-h-64 opacity-100 sm:mt-5")}>
+                        <StatTile icon={BadgeCheck} label="Stage"
+                            tone={stage === "clean" ? "bg-emerald-50 text-emerald-600" : stage === "awaiting-report" ? "bg-rose-50 text-rose-600" : stage === "awaiting-repair" ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-600"}
+                            value={<StageSelect inspection={i} size="md" />}
+                            sub={i.stageOverride ? "Set by hand" : "From the record"} />
+                        <StatTile icon={ClipboardCheck} label="Result" tone={i.result === "Pass" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}
+                            value={i.result} sub={i.oos ? "Placed out of service" : `${i.level}`} />
+                        <StatTile icon={ShieldAlert} label="Violations" tone={vios.length ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-600"}
+                            value={vios.length} sub={vios.length ? `across ${partiesWithFindings} part${partiesWithFindings === 1 ? "y" : "ies"}` : "Nothing found"} />
+                        <StatTile icon={FileText} label="Documents" tone={missingDocs ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"}
+                            value={`${docCount} of ${docCount + missingDocs}`} sub={missingDocs ? `${missingDocs} still owed` : "All on file"} />
+                    </div>
+
+                    {/* Tabs */}
+                    <div className={cn("border-t border-slate-100 pt-1", HEADER_TRANSITION, condensed ? "-mb-2 mt-2" : "-mb-4 mt-3 sm:-mb-5 sm:mt-4")}>
+                        <SubTabs tabs={tabs} activeId={tab} onChange={setTab} showZeroCounts bordered={false} ariaLabel="Inspection sections" />
+                    </div>
                 </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className={cn("space-y-5 py-5 sm:py-6", PAGE_PAD,
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]">
+                <div className={cn("space-y-4 py-4 sm:space-y-5 sm:py-6", PAGE_PAD,
                     // Only the overview wants a measure; a table wants the screen.
                     tab === "overview" && "mx-auto w-full max-w-5xl")}>
 
@@ -473,7 +545,14 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                                     <Fact icon={ClipboardCheck} label="Result" value={i.result}
                                         tone={i.result === "Pass" ? "text-emerald-700" : "text-rose-700"} />
                                     <Fact icon={ShieldAlert} label="Citation"
-                                        value={i.citationIssued ? (i.citationNumber || "Issued") : "None issued"}
+                                        value={!i.citationIssued ? "None issued"
+                                            : i.citationTicketId ? (
+                                                <button type="button" title="Open the ticket"
+                                                    onClick={() => { setPendingRecord("/tickets", i.citationTicketId!, "ticket"); onNavigate("/tickets"); }}
+                                                    className="inline-flex items-center gap-1 text-rose-700 hover:underline">
+                                                    {i.citationNumber || "Issued"} <ExternalLink size={12} />
+                                                </button>
+                                            ) : (i.citationNumber || "Issued")}
                                         tone={i.citationIssued ? "text-rose-700" : undefined} />
                                     <Fact icon={ClipboardCheck} label="Level" value={i.level} />
                                     <Fact icon={MapPin} label="Location" value={i.location || "—"} />
@@ -497,6 +576,9 @@ export function RoadsideInspectionDetail({ inspectionId, currentUserName: who, o
                                             : i.driver.logbookInspected ? "Yes" : "No"} />
                                     <Fact icon={FileText} label="Documents on file"
                                         value={`${docCount} of ${docCount + missingDocs}`} />
+                                    <Fact icon={User} label="Inspector" value={i.inspectorName || "—"} />
+                                    <Fact icon={BadgeCheck} label="Agency" value={i.agency || "—"} />
+                                    <Fact icon={FileText} label="Report #" value={i.reportNumber || "—"} />
                                     <Fact icon={ShieldCheck} label="Recorded by" value={i.createdBy} />
                                 </div>
                             </section>

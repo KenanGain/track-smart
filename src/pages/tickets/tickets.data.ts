@@ -1,3 +1,5 @@
+import type { MonitoringConfig } from '@/pages/compliance/compliance-data-store';
+
 export interface TicketStats {
     outstandingFines: number;
     openOffenses: number;
@@ -39,6 +41,8 @@ export interface TicketIdentifiers {
     offenceNumber?: string;
     offenceNoticeNumber?: string;
     contraventionNumber?: string;
+    /** The microfilm / archive reference some courts stamp on the citation. Optional. */
+    microfilmNumber?: string;
 
     // 2) Court / Legal
     docketNumber?: string;
@@ -108,6 +112,29 @@ export interface TicketViolation {
     dataId?: string;
 }
 
+/**
+ * The vehicle a ticket was written against, as it stood that day — unit, plate, jurisdiction
+ * and VIN copied off the asset when it is picked, so the record still reads right after the
+ * plate is renewed or the unit is sold. `assetId` links back to the fleet record.
+ */
+export interface TicketVehicle {
+    assetId?: string;
+    unitNumber?: string;
+    plateNumber?: string;
+    plateJurisdiction?: string;
+    vin?: string;
+    /** "Freightliner Cascadia 126 2023" — what the unit is. */
+    label?: string;
+    /** "Truck · Power Unit", "Trailer · Dry Van". */
+    kind?: string;
+}
+
+/** The monitoring a ticket's due date and final date start with: on, with the usual reminders. */
+export const defaultTicketMonitoring = (): MonitoringConfig => ({
+    enabled: true, basis: 'expiry', customDate: '', recurrence: 'none',
+    reminders: [30, 15, 7, 0], channels: { email: true, inApp: true },
+});
+
 export interface TicketRecord {
     id: string;
     attachedDocuments?: TicketAttachedDoc[];
@@ -119,6 +146,9 @@ export interface TicketRecord {
     description: string;
     assetId: string;
     driverName: string;
+    /** Vehicle 1 (the power unit) and vehicle 2 (the trailer) the ticket names. `assetId` mirrors vehicle 1. */
+    vehicle?: TicketVehicle;
+    vehicle2?: TicketVehicle;
     violationType: ViolationType;
     /** Specific violation description picked from the master chart
      *  (FMCSA SMS / CVOR / NSC). E.g. violationType="Speeding" with
@@ -149,8 +179,17 @@ export interface TicketRecord {
     /** Demerit / points assessed for the violation. */
     demeritPoints?: number;
     fineAmount: number;
+    /** Lawyer, paralegal, court costs — what fighting or settling the ticket cost on top of the fine. */
+    legalExpense?: number;
     currency: 'USD' | 'CAD';
     status: TicketStatus;
+    /** When the fine must be paid or the ticket answered by. */
+    dueDate?: string;
+    /** The last date anything can still be done — the court date, the final payment deadline. */
+    finalDate?: string;
+    /** Reminders for the two dates — each with its own on/off, reminder days and channels. */
+    dueMonitoring?: MonitoringConfig;
+    finalMonitoring?: MonitoringConfig;
     hasTicketFile: boolean;
     hasReceiptFile: boolean;
     hasNoticeFile: boolean;
@@ -173,7 +212,7 @@ export const TICKET_STATS: TicketStats = {
     paidThisMonth: 1
 };
 
-export const MOCK_TICKETS: TicketRecord[] = [
+const RAW_TICKETS: TicketRecord[] = [
     {
         id: '1',
         offenseNumber: 'OFF-84729',
@@ -441,3 +480,23 @@ export const MOCK_TICKETS: TicketRecord[] = [
         assignedToThirdParty: false
     },
 ];
+
+/** `ymd` plus `days`, as YYYY-MM-DD. */
+const ymdAfter = (ymd: string, days: number): string => {
+    const d = new Date(`${ymd.slice(0, 10)}T00:00:00`);
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+};
+
+/**
+ * The demo tickets, each with the two dates it is watched on: pay or answer within a month,
+ * the court date (or two to three months out) as the final date — both monitored.
+ */
+export const MOCK_TICKETS: TicketRecord[] = RAW_TICKETS.map((t, i) => ({
+    ...t,
+    dueDate: t.dueDate ?? ymdAfter(t.date, 30),
+    finalDate: t.finalDate ?? (t.ticketDetails?.courtDate?.slice(0, 10) || ymdAfter(t.date, 60 + (i % 4) * 10)),
+    dueMonitoring: t.dueMonitoring ?? defaultTicketMonitoring(),
+    finalMonitoring: t.finalMonitoring ?? defaultTicketMonitoring(),
+}));

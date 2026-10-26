@@ -460,7 +460,7 @@ function HomeScreen({ d, health, onReport, toCollect, onCollect, toFix, onFix }:
                 <button onClick={onFix} className="mx-5 mt-4 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition-colors hover:bg-amber-100">
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-600 text-white"><Wrench size={20} /></span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-bold text-amber-900">Upload a re-inspection</span>
+                        <span className="block text-sm font-bold text-amber-900">Upload the post-inspection DVIR</span>
                         <span className="block text-xs text-amber-700/80">
                             {toFix === 1 ? "1 roadside defect" : `${toFix} roadside defects`} waiting — send the signed report
                         </span>

@@ -44,7 +44,8 @@ export const vendorsStore = {
     getForAccount: (accountId: string): Vendor[] =>
         vendors.filter((v) => v.accountId === accountId),
     add(v: Vendor): void {
-        vendors = [...vendors, v];
+        // Newest first, so a vendor just added is on the first page of the list it returns to.
+        vendors = [v, ...vendors];
         notify();
     },
     update(v: Vendor): void {

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { EntityId } from '@/pages/compliance/safety-software-catalog.data';
+import { APP_USERS, ROLE_LABELS, ROLE_ORDER, roleOn, type AppUser, type UserRole } from '@/data/users.data';
+import { getAccountById } from '@/pages/accounts/accounts.data';
+import { carriersOf, profilesOfUser } from '@/pages/users-roles/scope';
+import { logAudit } from '@/data/audit-log.data';
+
+const ROLE_RECORD = (name: string) => ({ type: 'Notification role', label: name, path: '/settings/default-compliance-monitoring' });
 
 /**
  * Notification ROUTING for the Default Compliance Monitoring page.
@@ -44,16 +50,89 @@ export function severityMeetsFloor(priority: Severity, floor: Severity): boolean
 export type RecipientKind = 'user' | 'driver' | 'role' | 'contact' | 'owner';
 
 export interface RoutingRecipient {
-    id: string;        // 'user:<id>' | 'driver:<id>' | 'role:<slug>' | 'contact:<email>' | 'owner'
+    id: string;        // 'user:<id>' | 'driver:<id>' | 'role:<UserRole>' | 'contact:<email>' | 'owner'
     name: string;
     kind: RecipientKind;
     email?: string;
+    /** Set on a person reached through a role recipient — the role's label, for "via Safety Manager". */
+    via?: string;
 }
 
-/** Preset role recipients — illustrative "who" values that don't depend on the user directory. */
-export const ROLE_PRESETS = ['Safety Manager', 'Compliance Lead', 'Fleet Administrator', 'Dispatcher', 'Operations Manager'];
 export const OWNER_RECIPIENT: RoutingRecipient = { id: 'owner', name: 'Assigned owner', kind: 'owner' };
-export const roleRecipient = (name: string): RoutingRecipient => ({ id: `role:${name.toLowerCase().replace(/\s+/g, '-')}`, name, kind: 'role' });
+
+// ── role recipients ───────────────────────────────────────────────────
+// A role recipient names a REAL role from Users & Roles — `role:fleet-admin` is everyone who is
+// Fleet Admin on this carrier at the moment the alert resolves, `role:admin` the Admins of the
+// service profile the carrier is under. Nobody is copied onto the role: give a person the
+// Safety Manager role in Users & Roles and every role that notifies Safety Managers now reaches
+// them; take it away and it stops. Specific people can still be added beside a role.
+
+/** The roles a notification role can address, in the order the picker shows them. */
+export const RECIPIENT_ROLES: UserRole[] = ['fleet-admin', 'safety-manager', 'user', 'admin'];
+
+/** The recipient that stands for everyone with `role` on the carrier. */
+export const roleRecipient = (role: UserRole): RoutingRecipient =>
+    ({ id: `role:${role}`, name: `${ROLE_LABELS[role]}s`, kind: 'role' });
+
+/** The role a role recipient stands for — undefined for a legacy preset such as `role:dispatcher`. */
+export function roleOfRecipient(r: { id: string; kind?: RecipientKind }): UserRole | undefined {
+    if (!r.id.startsWith('role:')) return undefined;
+    const slug = r.id.slice(5) as UserRole;
+    return ROLE_ORDER.includes(slug) ? slug : undefined;
+}
+
+/** Does this person hold `role` on the carrier? Admins and Super Admins hold theirs everywhere they reach. */
+export function userHoldsRoleOn(u: AppUser, role: UserRole, accountId: string): boolean {
+    if (u.status === 'Inactive') return false;
+    if (role === 'super-admin') return u.role === 'super-admin';
+    if (role === 'admin') {
+        if (u.role !== 'admin') return false;
+        const sp = getAccountById(accountId)?.serviceProfileId;
+        return (!!sp && profilesOfUser(u).includes(sp)) || carriersOf(u).includes(accountId);
+    }
+    return carriersOf(u).includes(accountId) && roleOn(u, accountId) === role;
+}
+
+/** Everyone holding `role` on the carrier right now, as the directory has them. */
+export function usersWithRoleOn(accountId: string, role: UserRole): AppUser[] {
+    return APP_USERS.filter(u => userHoldsRoleOn(u, role, accountId));
+}
+
+/** The recipient id a person answers to — a driver login by their roster id as well. */
+export function recipientIdsOfUser(u: AppUser): string[] {
+    return u.id.startsWith('u-drv-') ? [`driver:${u.id.slice(6)}`, `user:${u.id}`] : [`user:${u.id}`];
+}
+
+/**
+ * Role recipients turned into the people they reach on this carrier. A person named directly
+ * AND through a role appears once, as the direct entry. Legacy preset roles that match nobody
+ * are kept as they are, so an old configuration still shows what it meant.
+ */
+export function expandRecipients(recipients: RoutingRecipient[], accountId: string): RoutingRecipient[] {
+    const out = new Map<string, RoutingRecipient>();
+    for (const r of recipients) if (roleOfRecipient(r) === undefined) out.set(r.id, r);
+    for (const r of recipients) {
+        const role = roleOfRecipient(r);
+        if (!role) continue;
+        for (const u of usersWithRoleOn(accountId, role)) {
+            const ids = recipientIdsOfUser(u);
+            if (ids.some(id => out.has(id))) continue;
+            out.set(ids[0], { id: ids[0], name: u.name, kind: ids[0].startsWith('driver:') ? 'driver' : 'user', email: u.email, via: ROLE_LABELS[role] });
+        }
+    }
+    return [...out.values()];
+}
+
+/** Does a notification role reach this person on this carrier — directly, or through a role they hold? */
+export function roleNamesUser(role: NotificationRole, u: AppUser, accountId: string): boolean {
+    const ids = recipientIdsOfUser(u);
+    return role.recipients.some(r => ids.includes(r.id) || (() => { const rr = roleOfRecipient(r); return !!rr && userHoldsRoleOn(u, rr, accountId); })());
+}
+
+/** The role recipients on a notification role that reach this person — for "via Safety Manager". */
+export function rolesReaching(role: NotificationRole, u: AppUser, accountId: string): UserRole[] {
+    return role.recipients.map(roleOfRecipient).filter((rr): rr is UserRole => !!rr && userHoldsRoleOn(u, rr, accountId));
+}
 
 // ── per-stage escalation ───────────────────────────────────────────────
 // A reminder "stage" = one lead-time from the carrier's Reminder schedule (e.g. 90 / 30 / 7 days
@@ -180,7 +259,7 @@ export function stageState(day: number, daysUntil: number | null | undefined, ac
  * the smallest rule-stage day ≥ activeDay (e.g. a 45-day-out record uses the 90-day stage, a 20-day
  * uses the 30-day, a 3-day uses the final 7-day). Falls back to the earliest stage when further out.
  */
-function recipientsAtStage(rule: RoutingRule, activeDay: number | null): RoutingRecipient[] {
+export function recipientsAtStage(rule: RoutingRule, activeDay: number | null): RoutingRecipient[] {
     if (!rule.stages || rule.stages.length === 0) return rule.recipients;
     const asc = [...rule.stages].sort((a, b) => a.days - b.days);           // [7,30,90]
     if (activeDay === null) return asc[asc.length - 1]?.recipients ?? rule.recipients; // upcoming → earliest stage
@@ -198,7 +277,7 @@ function recipientsAtStage(rule: RoutingRule, activeDay: number | null): Routing
  *   "Assigned owner" token expands to the alert's real assignee (dropped when unassigned).
  * - Channels: OR-ed across the effective rules.
  */
-export function resolveRouting(rules: RoutingRule[], alert: RoutingAlertView, reminders: number[] = DEFAULT_REMINDERS, roles: NotificationRole[] = []): ResolvedRouting {
+export function resolveRouting(rules: RoutingRule[], alert: RoutingAlertView, reminders: number[] = DEFAULT_REMINDERS, roles: NotificationRole[] = [], accountId?: string): ResolvedRouting {
     const matching = rules.filter(r => r.enabled && ruleMatches(r, alert));
     const scopedHits = matching.filter(r => ruleIsScoped(r) && r.subjectIds!.includes(alert.subjectId));
     const effective = scopedHits.length ? scopedHits : matching.filter(r => !ruleIsScoped(r));
@@ -229,7 +308,9 @@ export function resolveRouting(rules: RoutingRule[], alert: RoutingAlertView, re
         roleHit = true;
         for (const r of role.recipients) if (!seen.has(r.id)) seen.set(r.id, r);
     }
-    return { recipients: [...seen.values()], channels, ruleIds, activeDay, scoped: scopedHits.length > 0, staged: effective.some(r => !!r.stages?.length), roleHit };
+    // With the carrier known, a role recipient becomes the people who hold that role there today.
+    const recipients = accountId ? expandRecipients([...seen.values()], accountId) : [...seen.values()];
+    return { recipients, channels, ruleIds, activeDay, scoped: scopedHits.length > 0, staged: effective.some(r => !!r.stages?.length), roleHit };
 }
 
 // ── per-carrier store ─────────────────────────────────────────────────
@@ -296,8 +377,8 @@ function newRoleId(): string { rid += 1; return `role-${Date.now().toString(36)}
 
 // ── Notification roles (Simple mode) ───────────────────────────────────
 type RoleStore = Record<string, NotificationRole[]>; // accountId -> roles
-const ROLES_KEY = 'default-monitoring-roles-v2';
-const ROLES_SEEDED_KEY = 'default-monitoring-roles-seeded-v2';
+const ROLES_KEY = 'default-monitoring-roles-v3';
+const ROLES_SEEDED_KEY = 'default-monitoring-roles-seeded-v3';
 const ROLES_EVENT = 'default-monitoring-roles-change';
 function loadRoles(): RoleStore {
     try { const raw = localStorage.getItem(ROLES_KEY); if (raw) return JSON.parse(raw) as RoleStore; } catch { /* ignore */ }
@@ -352,35 +433,32 @@ export function useMonitoringResponses(accountId?: string) {
     return { responses, markResponded, clearResponse };
 }
 
+/** The notification role that escalates a carrier's alerts to its service profile's Admins. */
+export const PROFILE_ADMINS_ROLE_ID = 'role-profile-admins';
+
 /**
- * The default notification roles a carrier starts with — each ships with its checklist pre-selected
- * and a recipient auto-picked from the carrier's own users by title:
- *  • Admin — everything (carrier + drivers + assets)      → a super-admin / owner
- *  • Drivers Manager — all driver records                 → safety / compliance / driver lead
- *  • Asset Manager — all asset records                    → maintenance / fleet / equipment lead
- *  • Manager — everything (operational oversight)         → owner / GM / operations
- * Falls back to a role placeholder when no user matches, so the checklist is never left empty.
+ * The default notification roles a carrier starts with — one per real role that runs it, each
+ * addressed BY ROLE, so they follow Users & Roles without anybody being copied in:
+ *  • Fleet Admins — everything (carrier + drivers + assets)
+ *  • Safety Managers — carrier compliance + every driver
+ *  • Service profile Admins — everything, as the escalation above the carrier
+ * The seed users are no longer needed to pick anybody; the parameter stays so callers that
+ * pass them keep working.
  */
 export function defaultRolesFor(users: SeedUser[] = []): NotificationRole[] {
-    const admin = pickUser(users, /super[- ]?admin|\badmin\b|owner|president/i);
-    const driverMgr = pickUser(users, /driver|safety|compliance/i);
-    const assetMgr = pickUser(users, /maintenance|fleet|equipment|asset/i);
-    const gm = pickUser(users, /general manager|operations|owner|\bgm\b|director/i);
-    const adminR = admin ?? gm ?? roleRecipient('Operations Manager');
-    const driverR = driverMgr ?? gm ?? roleRecipient('Safety Manager');
-    const assetR = assetMgr ?? gm ?? roleRecipient('Fleet Administrator');
-    const managerR = gm ?? admin ?? roleRecipient('Operations Manager');
+    void users;
     return [
-        { id: 'role-admin', name: 'Admin', enabled: true, carrier: true, allDrivers: true, allAssets: true, driverIds: [], assetIds: [], recipients: [adminR] },
-        { id: 'role-drivers-manager', name: 'Drivers Manager', enabled: true, carrier: false, allDrivers: true, allAssets: false, driverIds: [], assetIds: [], recipients: [driverR] },
-        { id: 'role-asset-manager', name: 'Asset Manager', enabled: true, carrier: false, allDrivers: false, allAssets: true, driverIds: [], assetIds: [], recipients: [assetR] },
-        { id: 'role-manager', name: 'Manager', enabled: true, carrier: true, allDrivers: true, allAssets: true, driverIds: [], assetIds: [], recipients: [managerR] },
+        { id: 'role-fleet-admins', name: 'Fleet Admins', description: 'Everyone who runs this carrier — its compliance, every driver and every asset.', enabled: true, carrier: true, allDrivers: true, allAssets: true, driverIds: [], assetIds: [], recipients: [roleRecipient('fleet-admin')] },
+        { id: 'role-safety-managers', name: 'Safety Managers', description: 'Carrier compliance and every driver\'s records.', enabled: true, carrier: true, allDrivers: true, allAssets: false, driverIds: [], assetIds: [], recipients: [roleRecipient('safety-manager')] },
+        { id: PROFILE_ADMINS_ROLE_ID, name: 'Service profile Admins', description: 'Escalation — the Admins of the service profile this carrier is under see everything.', enabled: true, carrier: true, allDrivers: true, allAssets: true, driverIds: [], assetIds: [], recipients: [roleRecipient('admin')] },
     ];
 }
 
 // ── Simple-mode assignment slots ──────────────────────────────────────
 // The four canonical rules the "Simple" setup manages (by stable id) — one per scope + overdue
 // escalation. Advanced mode can add more rules freely; these four stay in sync with Simple.
+/** The superseded canonical Simple rules — notification roles do their job now, so they are dropped on seed. */
+const CANONICAL_RULE_IDS = ['rule-carrier', 'rule-drivers', 'rule-assets', 'rule-overdue'];
 export interface SimpleSlot { key: 'carrier' | 'drivers' | 'assets' | 'overdue'; ruleId: string; label: string; sub: string; entity: RoutingEntity; severityFloor: Severity }
 export const SIMPLE_SLOTS: SimpleSlot[] = [
     { key: 'carrier', ruleId: 'rule-carrier', label: 'Carrier records', sub: 'MC/DOT, IFTA, insurance…', entity: 'Carrier', severityFloor: 'low' },
@@ -432,10 +510,10 @@ export function defaultRulesFor(users: SeedUser[] = []): RoutingRule[] {
     const safety = pickUser(users, /safety|compliance/i);
     const maint = pickUser(users, /maintenance|fleet|equipment/i);
     const owner = pickUser(users, /owner|general manager|president|director/i);
-    const carrierR = safety ?? owner ?? roleRecipient('Safety Manager');
-    const driverR = safety ?? owner ?? roleRecipient('Safety Manager');
-    const assetR = maint ?? safety ?? roleRecipient('Fleet Administrator');
-    const escalateR = owner ?? safety ?? roleRecipient('Compliance Lead');
+    const carrierR = safety ?? owner ?? roleRecipient('safety-manager');
+    const driverR = safety ?? owner ?? roleRecipient('safety-manager');
+    const assetR = maint ?? safety ?? roleRecipient('fleet-admin');
+    const escalateR = owner ?? safety ?? roleRecipient('safety-manager');
     const both = { email: true, inApp: true };
     const carrierL = escalationLadder(carrierR, escalateR);
     const driverL = escalationLadder(driverR, escalateR);
@@ -464,6 +542,100 @@ export function consumeOpenNotificationRole(): string | null {
         if (v) localStorage.removeItem(OPEN_ROLE_KEY);
         return v;
     } catch { return null; }
+}
+
+// ── Open one alert from elsewhere ─────────────────────────────────────
+// The notification bell lands on the Compliance Monitoring page with the alert it was about.
+// The page reads the request when it mounts, and listens for one while it is open (the bell
+// can be used from the page itself). A request nobody picked up within a minute is dropped —
+// it was for a page that never opened, and must not pop up for whoever opens it next.
+const FOCUS_KEY = 'default-monitoring-focus';
+const FOCUS_EVENT = 'default-monitoring-focus-change';
+const FOCUS_TTL_MS = 60_000;
+export function requestMonitoringFocus(alertId: string): void {
+    try { localStorage.setItem(FOCUS_KEY, JSON.stringify({ id: alertId, at: Date.now() })); } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent(FOCUS_EVENT));
+}
+export function consumeMonitoringFocus(): string | null {
+    try {
+        const raw = localStorage.getItem(FOCUS_KEY);
+        if (!raw) return null;
+        localStorage.removeItem(FOCUS_KEY);
+        const v = JSON.parse(raw) as { id?: string; at?: number };
+        return v.id && typeof v.at === 'number' && Date.now() - v.at < FOCUS_TTL_MS ? v.id : null;
+    } catch { return null; }
+}
+/** Re-run `cb` when a focus is requested while the page is already open. */
+export function subscribeMonitoringFocus(cb: () => void): () => void {
+    window.addEventListener(FOCUS_EVENT, cb);
+    return () => window.removeEventListener(FOCUS_EVENT, cb);
+}
+
+/**
+ * One carrier's routing, read outside a component — what `useMonitoringRouting` would hand
+ * the page, without mounting it. A carrier nobody has opened yet has no stored roles; it gets
+ * the same defaults the page would seed (not written here — the page seeds), and the
+ * superseded canonical rules are left out the same way, so the inbox and the page agree on who
+ * is notified.
+ */
+export function routingFor(accountId: string | undefined, seedUsers: SeedUser[] = []): { rules: RoutingRule[]; roles: NotificationRole[]; reminders: number[] } {
+    const acct = accountId ?? NO_ACCOUNT;
+    let seeded: Record<string, boolean> = {};
+    try { const raw = localStorage.getItem(ROLES_SEEDED_KEY); if (raw) seeded = JSON.parse(raw); } catch { /* ignore */ }
+    const storedRoles = loadRoles()[acct];
+    const roles = storedRoles ?? defaultRolesFor(seedUsers);
+    const allRules = loadStore()[acct] ?? [];
+    const rules = seeded[acct] ? allRules : allRules.filter(r => !CANONICAL_RULE_IDS.includes(r.id));
+    const reminders = (loadReminders()[acct] ?? DEFAULT_REMINDERS).slice().sort((a, b) => b - a);
+    return { rules, roles, reminders };
+}
+
+/** One carrier's notification roles, read outside a component — the stored set, or the defaults it would be seeded with. */
+export function rolesFor(accountId: string): NotificationRole[] {
+    return loadRoles()[accountId] ?? defaultRolesFor();
+}
+
+/** Replace one carrier's notification roles from outside a component (persists the defaults first when nothing is stored yet). */
+export function writeRolesFor(accountId: string, next: NotificationRole[]): void {
+    const cur = loadRoles();
+    cur[accountId] = next;
+    persistRoles(cur);
+}
+
+/** Patch one notification role on any carrier — the per-carrier overview flips Pause / "notify the Admins" from here. */
+export function patchRoleFor(accountId: string, roleId: string, patch: Partial<Omit<NotificationRole, 'id'>>): void {
+    const list = rolesFor(accountId);
+    const role = list.find(r => r.id === roleId);
+    if (!role) return;
+    writeRolesFor(accountId, list.map(r => (r.id === roleId ? { ...r, ...patch } : r)));
+    logAudit({ category: 'monitoring', kind: patch.enabled === undefined ? 'updated' : 'status', title: patch.enabled === undefined ? `Changed the ${role.name} notification role` : `${patch.enabled ? 'Resumed' : 'Paused'} the ${role.name} notification role`, accountId, record: ROLE_RECORD(role.name) });
+}
+
+/** Whether a carrier's alerts escalate to its service profile's Admins, and the switch for it. */
+export function profileAdminsNotified(accountId: string): boolean {
+    const r = rolesFor(accountId).find(x => x.id === PROFILE_ADMINS_ROLE_ID);
+    return !!r && r.enabled && r.recipients.some(x => roleOfRecipient(x) === 'admin');
+}
+export function setProfileAdminsNotified(accountId: string, on: boolean): void {
+    const list = rolesFor(accountId);
+    const seed = defaultRolesFor().find(r => r.id === PROFILE_ADMINS_ROLE_ID)!;
+    const has = list.some(r => r.id === PROFILE_ADMINS_ROLE_ID);
+    writeRolesFor(accountId, has
+        ? list.map(r => (r.id === PROFILE_ADMINS_ROLE_ID ? { ...r, enabled: on, recipients: on && !r.recipients.some(x => roleOfRecipient(x) === 'admin') ? [...r.recipients, roleRecipient('admin')] : r.recipients } : r))
+        : [...list, { ...seed, enabled: on }]);
+    logAudit({ category: 'monitoring', kind: 'status', title: on ? 'Alerts now escalate to the service profile\'s Admins' : 'Alerts no longer escalate to the service profile\'s Admins', accountId, record: ROLE_RECORD(seed.name) });
+}
+
+/** One carrier's alert responses (alert id → response), read outside a component. */
+export function responsesFor(accountId: string | undefined): Record<string, AlertResponse> {
+    return loadResponses()[accountId ?? NO_ACCOUNT] ?? {};
+}
+
+/** Re-run `cb` when any carrier's rules, roles, reminders, groups or responses change. */
+export function subscribeMonitoringRouting(cb: () => void): () => void {
+    const events = [EVENT, ROLES_EVENT, REM_EVENT, GROUPS_EVENT, RESPONSES_EVENT, 'storage'];
+    for (const e of events) window.addEventListener(e, cb);
+    return () => { for (const e of events) window.removeEventListener(e, cb); };
 }
 
 export function useMonitoringRouting(accountId?: string, seedUsers?: SeedUser[]) {
@@ -495,7 +667,6 @@ export function useMonitoringRouting(accountId?: string, seedUsers?: SeedUser[])
     // Seed this carrier's default ROLES the first time it's opened (Simple mode is now the default
     // config). Also migrate away the old canonical Simple rules (rule-carrier/…), whose job roles now
     // do, so they don't double-notify. Advanced rules the user added are left untouched.
-    const CANONICAL_RULE_IDS = ['rule-carrier', 'rule-drivers', 'rule-assets', 'rule-overdue'];
     useEffect(() => {
         let seeded: Record<string, boolean> = {};
         try { const raw = localStorage.getItem(ROLES_SEEDED_KEY); if (raw) seeded = JSON.parse(raw); } catch { /* ignore */ }
@@ -572,10 +743,25 @@ export function useMonitoringRouting(accountId?: string, seedUsers?: SeedUser[])
     // Notification roles (Simple mode).
     const roles = roleStore[acct] ?? [];
     const writeRoles = (next: NotificationRole[]) => { const cur = loadRoles(); cur[acct] = next; persistRoles(cur); };
-    const addRole = (role: Omit<NotificationRole, 'id'>) => { writeRoles([...(loadRoles()[acct] ?? []), { ...role, id: newRoleId() }]); };
-    const updateRole = (id: string, patch: Partial<Omit<NotificationRole, 'id'>>) =>
+    const addRole = (role: Omit<NotificationRole, 'id'>) => {
+        writeRoles([...(loadRoles()[acct] ?? []), { ...role, id: newRoleId() }]);
+        logAudit({ category: 'monitoring', kind: 'created', title: `Created the ${role.name} notification role`, detail: `${role.recipients.length} recipient${role.recipients.length === 1 ? '' : 's'}`, accountId, record: ROLE_RECORD(role.name) });
+    };
+    const updateRole = (id: string, patch: Partial<Omit<NotificationRole, 'id'>>) => {
+        const before = (loadRoles()[acct] ?? []).find(r => r.id === id);
         writeRoles((loadRoles()[acct] ?? []).map(r => (r.id === id ? { ...r, ...patch } : r)));
-    const removeRole = (id: string) => writeRoles((loadRoles()[acct] ?? []).filter(r => r.id !== id));
+        if (!before) return;
+        const only = Object.keys(patch);
+        const title = only.length === 1 && only[0] === 'enabled' ? `${patch.enabled ? 'Resumed' : 'Paused'} the ${before.name} notification role`
+            : only.length === 1 && only[0] === 'recipients' ? `Changed who gets ${before.name} alerts`
+                : `Changed the ${before.name} notification role`;
+        logAudit({ category: 'monitoring', kind: only.length === 1 && only[0] === 'enabled' ? 'status' : 'updated', title, detail: patch.recipients ? `${patch.recipients.length} recipient${patch.recipients.length === 1 ? '' : 's'}` : undefined, accountId, record: ROLE_RECORD(before.name) });
+    };
+    const removeRole = (id: string) => {
+        const before = (loadRoles()[acct] ?? []).find(r => r.id === id);
+        writeRoles((loadRoles()[acct] ?? []).filter(r => r.id !== id));
+        if (before) logAudit({ category: 'monitoring', kind: 'deleted', title: `Deleted the ${before.name} notification role`, accountId, record: ROLE_RECORD(before.name) });
+    };
     const resetRoles = () => writeRoles(defaultRolesFor(seedUsers ?? []));
 
     return { rules, add, update, upsertRule, remove, duplicate, resetDefaults, reminders, setReminders, groups, addGroup, updateGroup, removeGroup, roles, addRole, updateRole, removeRole, resetRoles };

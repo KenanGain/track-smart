@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import { Crown, ShieldCheck, UserCog, HardHat, IdCard, UserRound, type LucideIcon } from "lucide-react";
 import { ROLE_LABELS, ROLE_LEVEL, ROLE_ORDER, type RoleLevel, type UserRole } from "@/data/users.data";
 import { SIDEBAR_NODES } from "@/data/sidebar.data";
-import { isGroup, type SidebarNode } from "@/types/sidebar";
+import { isGroup, type SidebarGroup, type SidebarNode } from "@/types/sidebar";
+import { logAudit } from "@/data/audit-log.data";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Roles — what each of the six is for, and which sidebar menus it gets.
@@ -105,7 +106,7 @@ export const MENU_GROUPS = ["Overview", "Fleet", "Compliance", "Safety", "Hiring
 
 const MENU_GROUP: Record<string, string> = {
     dashboard: "Overview", messages: "Overview", account: "Overview",
-    inventory: "Fleet", "dq-files-menu": "Fleet", "fleet-maintenance": "Fleet", "hours-of-service": "Fleet", fuel: "Fleet",
+    inventory: "Fleet", "dq-files-menu": "Fleet", "fleet-maintenance": "Fleet", vendors: "Fleet", "hours-of-service": "Fleet", fuel: "Fleet",
     "default-compliance-documents": "Compliance", "default-compliance-monitoring": "Compliance", inspections: "Compliance", "roadside-inspections": "Compliance",
     "top-violations": "Safety", "default-accidents": "Safety", tickets: "Safety", "safety-analysis-beta": "Safety", "safety-events": "Safety", "safety-event": "Safety",
     "apply-carrier": "Hiring", "hiring-process": "Hiring",
@@ -119,6 +120,47 @@ const hintOf = (n: SidebarNode): string => isGroup(n) ? n.children.map((c) => c.
 export const MENU_ROWS: MenuRow[] = SIDEBAR_NODES
     .filter((n) => !n.disabled)
     .map((n) => ({ id: n.key, group: MENU_GROUP[n.key] ?? "Other", label: n.label, hint: hintOf(n) }));
+
+/** Every path a top-level menu opens — its own, or any entry under it. */
+function pathsOf(n: SidebarNode): string[] {
+    return isGroup(n) ? n.children.flatMap(pathsOf) : n.path ? [n.path] : [];
+}
+const MENU_PATHS: { key: string; path: string }[] = SIDEBAR_NODES
+    .filter((n) => !n.disabled)
+    .flatMap((n) => pathsOf(n).map((path) => ({ key: n.key, path })));
+
+/**
+ * A group's common root — `/settings` for Settings — so a page under it that none of its
+ * entries lists (a policy editor, a form, a detail page) still belongs to it. Derived from
+ * the entries where they agree on a first segment; Admin's are split between `/accounts`
+ * and `/admin/…`, so its root is said outright.
+ */
+const GROUP_ROOTS: { key: string; root: string }[] = SIDEBAR_NODES
+    .filter((n): n is SidebarGroup => isGroup(n) && !n.disabled)
+    .flatMap((g) => {
+        const firsts = new Set(pathsOf(g).map((p) => `/${p.split("/")[1] ?? ""}`));
+        return firsts.size === 1 ? [{ key: g.key, root: [...firsts][0] }] : [];
+    })
+    .concat([{ key: "admin", root: "/admin" }, { key: "service-profile", root: "/service-profile" }]);
+
+/**
+ * The top-level sidebar menu a path belongs to — the one whose entry is the longest prefix
+ * of it, so `/hiring-process/hiring/a1` is Application Tracking System and `/settings/users-
+ * roles` is Settings; failing that, the group whose root it sits under. Undefined for a page
+ * no menu opens (a profile, a form hand-off): those are open to everyone who can reach them.
+ */
+export function menuKeyForPath(path: string): string | undefined {
+    const p = path.split(/[?#]/)[0];
+    let best: { key: string; path: string } | undefined;
+    for (const e of MENU_PATHS) {
+        const hit = p === e.path || p.startsWith(e.path.endsWith("/") ? e.path : `${e.path}/`);
+        if (hit && (!best || e.path.length > best.path.length)) best = e;
+    }
+    if (best) return best.key;
+    return GROUP_ROOTS.find((g) => p === g.root || p.startsWith(`${g.root}/`))?.key;
+}
+
+export const menuLabelOf = (key: string): string => SIDEBAR_NODES.find((n) => n.key === key)?.label ?? key;
 
 type Row = Record<UserRole, Access>;
 const row = (admin: Access, fleet: Access, safety: Access, user: Access, driver: Access): Row =>
@@ -137,6 +179,7 @@ export const DEFAULT_MENU_ACCESS: Record<string, Row> = {
     "default-compliance-documents": OFFICE,
     "default-compliance-monitoring": OFFICE,
     "fleet-maintenance": row("full", "full", "light", "full", "hidden"),
+    vendors: row("full", "full", "light", "full", "hidden"),
     "apply-carrier": row("hidden", "hidden", "hidden", "hidden", "full"),
     "hiring-process": OFFICE,
     "hours-of-service": OFFICE,
@@ -151,7 +194,7 @@ export const DEFAULT_MENU_ACCESS: Record<string, Row> = {
     "safety-event": OFFICE,
     settings: row("full", "full", "light", "hidden", "hidden"),
     "service-profile": row("full", "light", "hidden", "hidden", "hidden"),
-    admin: row("full", "hidden", "hidden", "hidden", "hidden"),
+    admin: row("full", "full", "light", "hidden", "hidden"),
     "super-admin": row("hidden", "hidden", "hidden", "hidden", "hidden"),
     "driver-mobile-app": row("light", "light", "light", "hidden", "full"),
 };
@@ -204,11 +247,13 @@ export function setRoleAccess(menuKey: string, role: UserRole, access: Access): 
     o[menuKey] = next;
     try { localStorage.setItem(ACCESS_KEY, JSON.stringify(o)); } catch { /* private window */ }
     window.dispatchEvent(new Event(ACCESS_EVENT));
+    logAudit({ category: "users", kind: "updated", title: `Set ${menuLabelOf(menuKey)} to ${access === "full" ? "Full" : access === "light" ? "Light" : "Hidden"} for ${ROLE_LABELS[role]}`, record: { type: "Menu table", label: "Roles & Access", path: "/admin/roles" } });
 }
 
 export function resetRoleAccess(): void {
     try { localStorage.removeItem(ACCESS_KEY); } catch { /* private window */ }
     window.dispatchEvent(new Event(ACCESS_EVENT));
+    logAudit({ category: "users", kind: "reopened", title: "Reset the menu table to the defaults", record: { type: "Menu table", label: "Roles & Access", path: "/admin/roles" } });
 }
 
 export const isAccessChanged = (m: Record<string, Row>, menuKey: string, role: UserRole): boolean =>

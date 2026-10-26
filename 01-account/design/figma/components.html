@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 – Account · Components</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens — light values from color-palette.json (Tailwind v4 default palette). */
+:root{
+  --primary:#155dfc; --primary-hover:#1447e6; --primary-subtle:#eff6ff; --primary-border:#bedbff;
+  --secondary:#f1f5f9; --secondary-fg:#314158; --background:#f8fafc; --surface:#ffffff;
+  --text-primary:#0f172b; --text-body:#314158; --text-secondary:#62748e; --text-muted:#90a1b9;
+  --border:#e2e8f0; --border-strong:#cad5e2;
+  --success:#009966; --success-text:#007a55; --success-subtle:#ecfdf5; --success-border:#a4f4cf;
+  --warning:#e17100; --warning-text:#bb4d00; --warning-subtle:#fffbeb; --warning-border:#fee685;
+  --error:#e7000b; --error-text:#c10007; --error-subtle:#fef2f2; --error-border:#ffc9c9;
+  --danger:#ec003f; --danger-text:#c70036; --danger-subtle:#fff1f2; --danger-border:#ffccd3;
+  --sky-text:#0069a8; --sky-subtle:#f0f9ff; --sky-border:#b8e6fe;
+  --inverse:#0f172b;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--background);color:var(--text-body);font:400 14px/1.4 Inter,system-ui,sans-serif;font-feature-settings:"cv02","cv03","cv04","cv11"}
+.sheet{width:1440px;padding:48px;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+h1{grid-column:1/-1;margin:0 0 4px;font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--text-primary)}
+.sub{grid-column:1/-1;margin:-20px 0 8px;color:var(--text-secondary);font-size:14px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 24px;box-shadow:0 1px 2px rgba(15,23,43,.05)}
+.frame.wide{grid-column:1/-1}
+.ft{margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
+.fd{margin:0 0 16px;font-size:12px;color:var(--text-muted)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin-top:6px}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;font:600 14px Inter,sans-serif;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--primary);color:#fff;box-shadow:0 1px 2px rgba(21,93,252,.25)} .btn.primary.hover{background:var(--primary-hover)}
+.btn.primary.disabled{background:#8ec5ff;cursor:not-allowed}
+.btn.outline{background:#fff;color:#45556c;border-color:var(--border);font-size:13px;height:36px;padding:0 12px}
+.btn.share{background:#fff;color:var(--text-body);border-color:var(--border);box-shadow:0 1px 2px rgba(15,23,43,.05)}
+.btn.ghost{background:none;color:var(--text-secondary);height:auto;padding:0;font-size:12px;font-weight:500}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.sm{height:32px;font-size:13px}
+.icon-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;color:var(--text-muted)}
+.icon-btn.hover{background:var(--background);color:var(--primary)}
+.kebab{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-muted)} .kebab.open{background:var(--secondary);color:var(--text-body)}
+/* inputs */
+.field{display:flex;flex-direction:column;gap:6px;min-width:220px}
+.flabel{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+.req{font-size:9px;letter-spacing:.04em;background:var(--primary-subtle);color:var(--primary);border-radius:999px;padding:2px 6px}
+.input{height:36px;border:1px solid var(--border-strong);border-radius:8px;background:#fff;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-primary)}
+.input.ph{color:var(--text-muted)} .input.focus{border-color:#51a2ff;box-shadow:0 0 0 3px rgba(43,127,255,.2)} .input.err{border-color:#ff6467}
+.msg-err{font-size:12px;color:#fb2c36}
+.input.search{background:var(--background);border-color:var(--border)}
+.textarea{height:76px;align-items:flex-start;padding-top:9px}
+.yesno{display:inline-flex;border:1px solid var(--border);background:var(--background);border-radius:8px;padding:2px}
+.yesno span{padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;color:var(--text-secondary)} .yesno .on{background:var(--primary);color:#fff} .yesno .on.red{background:var(--danger)} .yesno .on.white{background:#fff;color:var(--text-body);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.toggle{width:36px;height:20px;border-radius:999px;background:#e2e8f0;position:relative;display:inline-block} .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)} .toggle.on{background:var(--primary)} .toggle.on::after{left:18px}
+.check{width:16px;height:16px;border-radius:4px;border:1px solid var(--border-strong);display:inline-flex;align-items:center;justify-content:center} .check.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.upload{border:1.5px dashed var(--border-strong);border-radius:12px;padding:18px;text-align:center;color:var(--text-secondary);font-size:13px;width:300px}
+.upload .circle{width:36px;height:36px;margin:0 auto 8px;border-radius:50%;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center}
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 24px 0 10px;border-radius:999px;border:1px solid;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;position:relative}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill::after{content:"";position:absolute;right:9px;top:8px;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);opacity:.6}
+.pill.ro{padding-right:10px} .pill.ro::after{display:none}
+.p-active{color:var(--success-text);background:var(--success-subtle);border-color:var(--success-border)}
+.p-maint{color:var(--warning-text);background:var(--warning-subtle);border-color:var(--warning-border)}
+.p-oos{color:var(--danger-text);background:var(--danger-subtle);border-color:var(--danger-border)}
+.p-draft{color:var(--sky-text);background:var(--sky-subtle);border-color:var(--sky-border)}
+.p-off{color:#45556c;background:var(--secondary);border-color:var(--border)}
+.p-term{color:var(--error-text);background:var(--error-subtle);border-color:var(--error-border)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700}
+.chip.missing{background:var(--error-subtle);color:var(--error-text)} .chip.count{background:var(--secondary);color:#45556c;border-radius:999px;font-size:10px;padding:1px 7px}
+.chip.count.blue{background:#dbeafe;color:var(--primary-hover)}
+.chip.filter{background:var(--primary-subtle);color:var(--primary-hover);border:1px solid var(--primary-border);border-radius:999px;font-size:12px;font-weight:600;padding:4px 10px}
+.chip.cargo{background:var(--inverse);color:#fff;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600}
+.chip.type{background:var(--primary-subtle);color:var(--primary-hover);border:1px solid var(--primary-border);font-size:10px;letter-spacing:.05em;text-transform:uppercase}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--secondary);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#45556c}
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border)}
+.tab{display:flex;align-items:center;gap:8px;padding:12px 16px;font-size:14px;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--primary);border-color:var(--primary)} .tab svg{color:var(--text-muted)} .tab.on svg{color:var(--primary)}
+.seg{display:inline-flex;background:var(--secondary);border-radius:8px;padding:2px} .seg span{padding:6px 12px;font-size:13px;font-weight:600;color:var(--text-secondary);border-radius:6px} .seg .on{background:#fff;color:var(--text-primary);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.rail{width:260px;border:1px solid var(--border);border-radius:12px;padding:10px}
+.rail .it{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:var(--text-body)}
+.rail .it.on{background:var(--primary-subtle);color:var(--primary-hover);outline:1px solid var(--primary-border)}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:var(--secondary);color:var(--text-secondary)} .num.on{background:var(--primary);color:#fff} .num.done{background:var(--success-subtle);color:var(--success)}
+/* kpi + cards */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;background:#fff}
+.kpi.sel{box-shadow:0 0 0 1px var(--primary)}
+.kpi .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)} .kpi .v{font-size:24px;font-weight:700;color:var(--text-primary);margin-top:4px}
+.kpi .ic{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+.card .h{display:flex;align-items:center;gap:12px;padding:20px 24px 8px} .card .h .t{font-size:18px;font-weight:700;color:var(--text-primary);flex:1}
+.tile{width:40px;height:40px;border-radius:8px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.card .b{padding:12px 24px 22px;font-size:14px;color:var(--text-body);line-height:1.5}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.facts div{padding:12px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9} .facts .k{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted)} .facts .v{font-size:14px;font-weight:600;color:var(--text-primary);margin-top:2px}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px} th{background:var(--background);text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 14px;border-bottom:1px solid var(--border)}
+td{padding:12px 14px;border-bottom:1px solid #f1f5f9;white-space:nowrap} tr.hover td{background:var(--background)} td.pin,th.pin{border-left:1px solid var(--border);text-align:center;width:72px}
+/* menu, modal, toast */
+.menu{width:200px;border:1px solid var(--border);border-radius:12px;background:#fff;box-shadow:0 20px 25px -5px rgba(15,23,43,.1),0 8px 10px -6px rgba(15,23,43,.1);padding:4px 0}
+.menu div{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:13px;font-weight:500;color:var(--text-body)} .menu div svg{color:var(--text-muted)} .menu .hov{background:var(--background)} .menu .del{color:var(--danger)} .menu .del svg{color:var(--danger)}
+.modal{width:560px;border-radius:16px;background:#fff;box-shadow:0 25px 50px -12px rgba(15,23,43,.25);overflow:hidden;border:1px solid var(--border)}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #f1f5f9} .modal .mh b{font-size:20px;color:var(--text-primary)}
+.modal .mb{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:16px} .modal .mf{display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid #f1f5f9}
+.x{width:32px;height:32px;border-radius:50%;background:var(--secondary);display:flex;align-items:center;justify-content:center;color:var(--text-secondary)}
+.backdrop{background:rgba(0,0,0,.5);border-radius:14px;padding:28px;display:flex;justify-content:center}
+.toast{display:inline-flex;align-items:center;gap:8px;background:var(--inverse);color:#fff;border-radius:12px;padding:12px 16px;font-size:14px;font-weight:500;box-shadow:0 20px 25px -5px rgba(0,0,0,.2)}
+.banner{display:flex;gap:10px;align-items:center;border:1px solid;border-radius:12px;padding:10px 14px;font-size:13px}
+.banner.info{background:var(--primary-subtle);border-color:var(--primary-border);color:var(--primary-hover)} .banner.warn{background:var(--warning-subtle);border-color:var(--warning-border);color:var(--warning-text)} .banner.oos{background:var(--danger-subtle);border-color:var(--danger-border);color:var(--danger-text)}
+.header{border:1px solid var(--border);border-radius:12px;background:#fff;padding:16px 24px 0}
+.header .top{display:flex;align-items:center;gap:12px} .header .top b{font-size:24px;letter-spacing:-.02em;color:var(--text-primary)} .header .top small{display:block;font-size:13px;color:var(--text-secondary)}
+.type-row{display:grid;grid-template-columns:170px 1fr 160px;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.type-row code{font:500 11px ui-monospace,Menlo,monospace;color:var(--text-secondary)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="pencil" viewBox="0 0 24 24"><path d="M21.2 6.8 17.2 2.8 3 17v4h4L21.2 6.8z"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="truck" viewBox="0 0 24 24"><path d="M14 18V6H2v12h2M14 9h4l4 4v5h-2M8 18h8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-1a6 6 0 0 1 12 0v1M16 3.1a4 4 0 0 1 0 7.8M22 21v-1a6 6 0 0 0-4-5.7"/></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="building" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18zM6 12H4a2 2 0 0 0-2 2v8h4M18 9h2a2 2 0 0 1 2 2v11h-4M10 6h4M10 10h4M10 14h4M10 18h4"/></symbol>
+  <symbol id="eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+  <symbol id="upload" viewBox="0 0 24 24"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2M12 12v9M8 16l4-4 4 4"/></symbol>
+  <symbol id="list" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></symbol>
+</svg>
+
+<div class="sheet" id="sheet">
+  <h1>01 – Account · Components</h1>
+  <p class="sub">Reusable components of the Account section, drawn with the tokens in color-palette.json. Each frame below is one Figma component set; variants are laid out left to right.</p>
+
+  <section class="frame" data-frame="Buttons">
+    <p class="ft">Button</p><p class="fd">primary · hover · disabled · outline · share · danger · ghost · icon · kebab</p>
+    <div class="row">
+      <span class="btn primary"><svg class="i"><use href="#plus"/></svg>Add Asset</span>
+      <span class="btn primary hover"><svg class="i"><use href="#plus"/></svg>Hover</span>
+      <span class="btn primary disabled">Save changes</span>
+      <span class="btn outline">Export</span>
+      <span class="btn share"><svg class="i"><use href="#share"/></svg>Share to chat</span>
+      <span class="btn danger">Delete</span>
+      <span class="btn ghost">← Back to assets</span>
+      <span class="icon-btn"><svg class="i"><use href="#pencil"/></svg></span>
+      <span class="icon-btn hover"><svg class="i"><use href="#pencil"/></svg></span>
+      <span class="kebab"><svg class="i"><use href="#more"/></svg></span>
+      <span class="kebab open"><svg class="i"><use href="#more"/></svg></span>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Status pills">
+    <p class="ft">Status pill (select)</p><p class="fd">assets: Active · Maintenance · Out of Service · Draft · Deactivated — drivers: On Leave · Inactive · Terminated</p>
+    <div class="row">
+      <span class="pill p-active">Active</span><span class="pill p-maint">Maintenance</span><span class="pill p-oos">Out of service</span><span class="pill p-draft">Draft</span><span class="pill p-off">Deactivated</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="pill p-maint">On leave</span><span class="pill p-off">Inactive</span><span class="pill p-term">Terminated</span><span class="pill ro p-active">Active (read-only)</span>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Inputs">
+    <p class="ft">Input</p><p class="fd">default · placeholder · focus · error · search · select · date · textarea</p>
+    <div class="row" style="align-items:flex-start">
+      <div class="field"><span class="flabel">Unit number <span class="req">Required</span></span><span class="input">ACM-T0100</span></div>
+      <div class="field"><span class="flabel">Model</span><span class="input ph">Cascadia</span></div>
+      <div class="field"><span class="flabel">Make</span><span class="input focus">Freightliner</span></div>
+      <div class="field"><span class="flabel">VIN (17 characters)</span><span class="input err">R7LKD9HLY</span><span class="msg-err">Must be 17 characters</span></div>
+      <div class="field"><span class="input search ph"><svg class="i"><use href="#search"/></svg>Search by Unit #, VIN, make…</span></div>
+      <div class="field"><span class="flabel">Ownership structure</span><span class="input">Owned<span style="flex:1"></span><svg class="i" style="color:#90a1b9"><use href="#chev"/></svg></span></div>
+      <div class="field"><span class="flabel">Expiry date</span><span class="input ph">mm/dd/yyyy</span></div>
+      <div class="field" style="min-width:300px"><span class="flabel">Notes</span><span class="input textarea ph">Enter additional asset details...</span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Choice controls">
+    <p class="ft">Yes / No · Toggle · Checkbox · Upload zone</p><p class="fd">segmented yes/no (blue, danger) · switch off/on · checkbox off/on · upload card</p>
+    <div class="row">
+      <span class="yesno"><span class="on">Yes</span><span>No</span></span>
+      <span class="yesno"><span class="on red">Yes</span><span>No</span></span>
+      <span class="yesno"><span>Yes</span><span class="on white">No</span></span>
+      <span class="toggle"></span><span class="toggle on"></span>
+      <span class="check"></span><span class="check on"><svg class="i" style="width:12px;height:12px"><use href="#check"/></svg></span>
+    </div>
+    <div class="row" style="margin-top:14px"><div class="upload"><div class="circle"><svg class="i"><use href="#upload"/></svg></div><b style="color:#314158">Click to upload or drag &amp; drop</b><br>PNG, JPG or PDF · max 10 MB</div></div>
+  </section>
+
+  <section class="frame wide" data-frame="Tabs">
+    <p class="ft">Tabs</p><p class="fd">section tabs with icon and count (active / idle) · segmented switch · wizard rail item (active / done / idle)</p>
+    <div class="tabs">
+      <span class="tab on"><svg class="i"><use href="#building"/></svg>Fleet Overview</span>
+      <span class="tab"><svg class="i"><use href="#pin"/></svg>Yard Terminals</span>
+      <span class="tab"><svg class="i"><use href="#truck"/></svg>Assets <span class="chip count">18</span></span>
+      <span class="tab"><svg class="i"><use href="#users"/></svg>Drivers <span class="chip count">22</span></span>
+    </div>
+    <div class="row" style="margin-top:16px;align-items:flex-start;gap:28px">
+      <span class="seg"><span class="on">Records</span><span>Drivers</span></span>
+      <div class="rail">
+        <div class="it on"><span class="num on">3</span>Registration &amp; plate<span style="flex:1"></span><span class="chip count blue">1</span></div>
+        <div class="it"><span class="num done"><svg class="i" style="width:13px;height:13px"><use href="#check"/></svg></span>Vehicle info<span style="flex:1"></span><span class="chip count">4</span></div>
+        <div class="it"><span class="num">4</span>Yard / terminal</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Page header">
+    <p class="ft">Page header</p><p class="fd">expanded (condensed = 32 px icon, 16 px title, no subtitle)</p>
+    <div class="header">
+      <div class="top"><span class="tile"><svg class="i" style="width:20px;height:20px"><use href="#building"/></svg></span><div><b>Carrier Fleet Profile</b><small>Acme Trucking Inc. — 18 assets · 22 drivers</small></div></div>
+      <div class="tabs" style="border:0;margin-top:8px"><span class="tab on">Fleet Overview</span><span class="tab">Yard Terminals</span><span class="tab">Assets <span class="chip count">18</span></span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="KPI tiles">
+    <p class="ft">KPI tile</p><p class="fd">default · selected (filter on) — container-sized, icon from 240 px</p>
+    <div class="kpis">
+      <div class="kpi sel"><div><div class="k">Total assets</div><div class="v">18</div></div><span class="ic" style="background:#eff6ff;color:#155dfc"><svg class="i"><use href="#list"/></svg></span></div>
+      <div class="kpi"><div><div class="k">Active</div><div class="v">18</div></div><span class="ic" style="background:#ecfdf5;color:#009966"><svg class="i"><use href="#check"/></svg></span></div>
+      <div class="kpi"><div><div class="k">Maintenance</div><div class="v">0</div></div><span class="ic" style="background:#fff1f2;color:#ec003f"><svg class="i"><use href="#truck"/></svg></span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Cards">
+    <p class="ft">Section card · Fact block</p><p class="fd">Fleet Overview card with Edit pencil · detail-page fact grid</p>
+    <div class="card"><div class="h"><span class="tile"><svg class="i" style="width:20px;height:20px"><use href="#pin"/></svg></span><span class="t">Legal / Main Address</span><span class="icon-btn"><svg class="i"><use href="#pencil"/></svg></span></div><div class="b">1200 North Dupont Hwy<br>Wilmington, DE 19801<br><span style="color:#62748e">United States</span></div></div>
+    <div class="facts" style="margin-top:14px"><div><div class="k">Unit #</div><div class="v">ACM-T0100</div></div><div><div class="k">VIN #</div><div class="v" style="font-family:ui-monospace,monospace;font-size:13px">R7LKD9HLYSP238495</div></div><div><div class="k">Plate #</div><div class="v">ACE 1000</div></div></div>
+  </section>
+
+  <section class="frame" data-frame="Chips and badges">
+    <p class="ft">Chips · badges · avatar · banners</p><p class="fd">count · missing · filter · cargo · type · avatar · info / warning / out-of-service banners</p>
+    <div class="row"><span class="chip count">22</span><span class="chip count blue">18</span><span class="chip missing">9 MISSING</span><span class="chip filter">Status: Inactive <svg class="i" style="width:12px;height:12px"><use href="#x"/></svg></span><span class="chip type">Power unit</span><span class="avatar">AB</span></div>
+    <div class="row" style="margin-top:10px"><span class="chip cargo">General Freight</span><span class="chip cargo">Household Goods</span></div>
+    <div style="display:grid;gap:8px;margin-top:12px">
+      <div class="banner info"><svg class="i"><use href="#eye"/></svg><span><b>View only</b> · a Safety Manager can look at Account here but not change it.</span></div>
+      <div class="banner warn"><svg class="i"><use href="#upload"/></svg><span>Still needed: bill of sale.</span></div>
+      <div class="banner oos"><svg class="i"><use href="#truck"/></svg><span>Asset is marked Out of Service. No additional fleet dates required.</span></div>
+    </div>
+  </section>
+
+  <section class="frame wide" data-frame="Table">
+    <p class="ft">Table row</p><p class="fd">header with sort · default row · hover row · pinned Actions column</p>
+    <table>
+      <thead><tr><th>Driver ↑</th><th>Hired</th><th>Added to fleet</th><th>Status</th><th>Compliance</th><th>License</th><th>Contact</th><th class="pin">Actions</th></tr></thead>
+      <tbody>
+        <tr><td><span class="avatar" style="width:30px;height:30px;font-size:11px;margin-right:8px">AB</span><b style="color:#0f172b">Anjali Bhatia</b></td><td>2021-07-09</td><td>2021-07-21</td><td><span class="pill p-active">Active</span></td><td><span class="chip missing">9 MISSING</span></td><td style="font-family:ui-monospace,monospace">BHA37129 · DE · exp 2030-03-07</td><td>(302) 209-0333</td><td class="pin"><span class="kebab"><svg class="i"><use href="#more"/></svg></span></td></tr>
+        <tr class="hover"><td><span class="avatar" style="width:30px;height:30px;font-size:11px;margin-right:8px">AP</span><b style="color:#0f172b">Anjali Patel</b></td><td>2018-02-11</td><td>2018-02-12</td><td><span class="pill p-maint">On leave</span></td><td><span class="chip missing">9 MISSING</span></td><td style="font-family:ui-monospace,monospace">PAT55102 · DE · exp 2030-07-01</td><td>(302) 555-0168</td><td class="pin"><span class="kebab open"><svg class="i"><use href="#more"/></svg></span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="frame" data-frame="Row menu and toast">
+    <p class="ft">Row ⋮ menu · Toast</p><p class="fd">Open · Edit · Share to chat · Delete (last, danger) · success toast</p>
+    <div class="row" style="align-items:flex-start;gap:28px">
+      <div class="menu"><div><svg class="i"><use href="#eye"/></svg>Open driver</div><div class="hov"><svg class="i"><use href="#pencil"/></svg>Edit driver</div><div><svg class="i"><use href="#share"/></svg>Share to chat</div><div class="del"><svg class="i"><use href="#trash"/></svg>Delete driver</div></div>
+      <span class="toast"><svg class="i" style="color:#5ee9b5"><use href="#check"/></svg>Driver added successfully</span>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Modal">
+    <p class="ft">Modal</p><p class="fd">header with close · 2-column field grid · sticky footer</p>
+    <div class="backdrop"><div class="modal" style="width:100%">
+      <div class="mh"><b>Edit Director</b><span class="x"><svg class="i"><use href="#x"/></svg></span></div>
+      <div class="mb">
+        <div class="field" style="min-width:0"><span class="flabel">Full name <span class="req">Required</span></span><span class="input">Johnathan Doe</span></div>
+        <div class="field" style="min-width:0"><span class="flabel">Role title</span><span class="input">Director of Operations</span></div>
+        <div class="field" style="min-width:0"><span class="flabel">Email <span class="req">Required</span></span><span class="input">j.doe@acmetrucking.com</span></div>
+        <div class="field" style="min-width:0"><span class="flabel">Ownership %</span><span class="input">65</span></div>
+      </div>
+      <div class="mf"><span class="btn outline">Cancel</span><span class="btn primary">Save Changes</span></div>
+    </div></div>
+  </section>
+
+  <section class="frame wide" data-frame="Typography">
+    <p class="ft">Typography</p><p class="fd">Inter · the effective scale used in Account (see design.md §2)</p>
+    <div class="type-row"><code>page-title 24/700</code><span style="font-size:24px;font-weight:700;letter-spacing:-.02em;color:#0f172b">Carrier Fleet Profile</span><code>-0.4 px tracking</code></div>
+    <div class="type-row"><code>modal-title 20/700</code><span style="font-size:20px;font-weight:700;color:#0f172b">Edit Corporate Identity</span><code></code></div>
+    <div class="type-row"><code>card-title 18/700</code><span style="font-size:18px;font-weight:700;color:#0f172b">Legal / Main Address</span><code></code></div>
+    <div class="type-row"><code>section-title 16/700</code><span style="font-size:16px;font-weight:700;color:#0f172b">Registration &amp; Plate</span><code></code></div>
+    <div class="type-row"><code>body 14/400</code><span style="font-size:14px">The carrier's legal identity and operating authority as filed.</span><code></code></div>
+    <div class="type-row"><code>cell 13/500</code><span style="font-size:13px;font-weight:500">2023 Freightliner Cascadia 126 · Gray</span><code>tabular-nums</code></div>
+    <div class="type-row"><code>secondary 12/400</code><span style="font-size:12px;color:#62748e">DE · exp 2030-03-07</span><code></code></div>
+    <div class="type-row"><code>field-label 11/700</code><span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#62748e">Plate state / province</span><code>uppercase · 0.6 px</code></div>
+    <div class="type-row"><code>micro-label 10/700</code><span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#62748e">Total assets</span><code>uppercase · 0.5 px</code></div>
+    <div class="type-row"><code>mono-id 13/500</code><span style="font:500 13px ui-monospace,Menlo,monospace">R7LKD9HLYSP238495</span><code>VIN, plate, licence</code></div>
+  </section>
+</div>
+</body>
+</html>

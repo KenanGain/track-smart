@@ -1,0 +1,202 @@
+[
+  {
+    "_id": "inv-001-001",
+    "carrierId": "acct-001",
+    "vendorId": "v-001",
+    "categoryId": "cat-fuel-card",
+    "name": null,
+    "handling": [
+      "driver-returnable",
+      "asset-removable"
+    ],
+    "serial": "FC-415483",
+    "pin": "7028",
+    "issueDate": "2025-03-17",
+    "expiryDate": "2027-03-17",
+    "status": "Active",
+    "monitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "recurrence": "annually",
+      "reminders": [
+        30,
+        7,
+        0
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "assignedAssetId": "AST-001-0001",
+    "assignedAssetKind": "cmv",
+    "assignedDriverId": "DRV-001-0001",
+    "assignedAt": "2025-03-17T15:00:00Z",
+    "contactName": "Lisa Howard",
+    "contactInfo": "lisa.h@comdata.example",
+    "notes": "",
+    "deletedAt": null,
+    "createdAt": "2025-03-17T15:00:00Z",
+    "updatedAt": "2026-10-01T15:00:00Z"
+  },
+  {
+    "_id": "inv-001-002",
+    "carrierId": "acct-001",
+    "vendorId": "v-002",
+    "categoryId": "cat-transponder",
+    "name": null,
+    "handling": [
+      "driver-returnable",
+      "asset-removable"
+    ],
+    "serial": "TP-851979",
+    "pin": "5854",
+    "issueDate": "2025-01-17",
+    "expiryDate": "2027-01-17",
+    "status": "Active",
+    "monitoring": {
+      "enabled": true,
+      "basis": "expiry",
+      "customDate": null,
+      "recurrence": "annually",
+      "reminders": [
+        30
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "assignedAssetId": "AST-001-0002",
+    "assignedAssetKind": "cmv",
+    "assignedDriverId": "DRV-001-0002",
+    "assignedAt": "2025-01-17T15:00:00Z",
+    "contactName": "Mark Chen",
+    "contactInfo": "fleet@ezpass.example",
+    "notes": "",
+    "deletedAt": null,
+    "createdAt": "2025-01-17T15:00:00Z",
+    "updatedAt": "2025-01-17T15:00:00Z"
+  },
+  {
+    "_id": "inv-001-003",
+    "carrierId": "acct-001",
+    "vendorId": "v-003",
+    "categoryId": "cat-eld-provider",
+    "name": null,
+    "handling": [
+      "asset-removable"
+    ],
+    "serial": "ELD-038341",
+    "pin": "1100",
+    "issueDate": "2023-11-25",
+    "expiryDate": "2025-11-25",
+    "status": "Expired",
+    "monitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "recurrence": "annually",
+      "reminders": [
+        30
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "assignedAssetId": "AST-001-0003",
+    "assignedAssetKind": "cmv",
+    "assignedDriverId": null,
+    "assignedAt": "2023-11-25T15:00:00Z",
+    "contactName": "Priya Shah",
+    "contactInfo": "support@samsara.example",
+    "notes": "",
+    "deletedAt": null,
+    "createdAt": "2023-11-25T15:00:00Z",
+    "updatedAt": "2025-11-26T15:00:00Z"
+  },
+  {
+    "_id": "inv-acc-001-001",
+    "carrierId": "acct-001",
+    "vendorId": "v-acc-acct-001-0",
+    "categoryId": "cat-keys",
+    "name": "Truck Keys",
+    "handling": [
+      "driver-returnable",
+      "asset-removable"
+    ],
+    "serial": "KEY-129559",
+    "pin": "2426",
+    "issueDate": "2025-04-02",
+    "expiryDate": null,
+    "status": "Active",
+    "monitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "recurrence": "annually",
+      "reminders": [
+        30
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "assignedAssetId": "AST-001-0001",
+    "assignedAssetKind": "cmv",
+    "assignedDriverId": "DRV-001-0001",
+    "assignedAt": "2025-04-02T15:00:00Z",
+    "contactName": "",
+    "contactInfo": "",
+    "notes": "",
+    "deletedAt": null,
+    "createdAt": "2025-04-02T15:00:00Z",
+    "updatedAt": "2025-04-02T15:00:00Z"
+  },
+  {
+    "_id": "inv-acc-001-021",
+    "carrierId": "acct-001",
+    "vendorId": "v-acc-acct-001-20",
+    "categoryId": "cat-equipment",
+    "name": "Wheel Chocks",
+    "handling": [
+      "asset-removable"
+    ],
+    "serial": "EQP-447120",
+    "pin": "",
+    "issueDate": "2024-08-19",
+    "expiryDate": null,
+    "status": "Active",
+    "monitoring": {
+      "enabled": false,
+      "basis": "expiry",
+      "customDate": null,
+      "recurrence": "annually",
+      "reminders": [
+        30
+      ],
+      "channels": {
+        "email": true,
+        "inApp": true
+      },
+      "assigneeUserId": null
+    },
+    "assignedAssetId": null,
+    "assignedAssetKind": null,
+    "assignedDriverId": null,
+    "assignedAt": null,
+    "contactName": "",
+    "contactInfo": "",
+    "notes": "Yard stock.",
+    "deletedAt": null,
+    "createdAt": "2024-08-19T15:00:00Z",
+    "updatedAt": "2024-08-19T15:00:00Z"
+  }
+]

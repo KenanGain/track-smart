@@ -12,7 +12,8 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import { MOCK_TICKETS, type TicketRecord, type ViolationType, type TicketIdentifiers } from './tickets.data';
+import { MOCK_TICKETS, type TicketRecord, type ViolationType, type TicketIdentifiers, type TicketVehicle } from './tickets.data';
+import type { MonitoringConfig } from '@/pages/compliance/compliance-data-store';
 import { getTicketsForCarrier, getAllCarrierTickets } from './carrier-tickets.data';
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -65,7 +66,10 @@ export function getAllTickets(): TicketRecord[] {
  *  user-added entries that target the same accountId. */
 export function getTicketsForCarrierAccount(accountId: string): TicketRecord[] {
     const carrier = getTicketsForCarrier(accountId);
-    const userForCarrier = userTickets.filter(t => (t as any).accountId === accountId);
+    // A user-added ticket belongs here by its accountId; an edited copy of one of this
+    // carrier's seeded tickets belongs here by its id (the seed carries no accountId).
+    const carrierIds = new Set(carrier.map(t => t.id));
+    const userForCarrier = userTickets.filter(t => (t as any).accountId === accountId || carrierIds.has(t.id));
     const userIds = new Set(userForCarrier.map(t => t.id));
     const carrierKept = carrier.filter(t => !userIds.has(t.id));
     return [...userForCarrier, ...carrierKept];
@@ -95,7 +99,7 @@ export function updateTicket(id: string, patch: Partial<TicketRecord>): void {
     // Editing a seed ticket — store an override in userTickets so
     // getAllTickets() returns the edited version (user-added wins over
     // same-id seed via the dedup in getAllTickets).
-    const seed = MOCK_TICKETS.find(t => t.id === id);
+    const seed = MOCK_TICKETS.find(t => t.id === id) ?? getAllCarrierTickets().find(t => t.id === id);
     if (seed) {
         commit([{ ...seed, ...patch, id }, ...userTickets]);
     }
@@ -203,6 +207,14 @@ export interface ViolationLike {
     currency?: 'USD' | 'CAD';
     status?: string;
     result?: string;
+    /** Vehicle 1 / vehicle 2 as picked on the form, and the two dates with their reminders. */
+    vehicle?: TicketVehicle;
+    vehicle2?: TicketVehicle;
+    dueDate?: string;
+    finalDate?: string;
+    dueMonitoring?: MonitoringConfig;
+    finalMonitoring?: MonitoringConfig;
+    microfilmNumber?: string;
     // ── Identifiers (flat on the form, nested on the ticket record) ──
     // 1) Citation / Offence
     ticketNumber?: string;
@@ -253,6 +265,7 @@ function pickIdentifiers(v: ViolationLike): TicketIdentifiers | undefined {
         offenceNumber:           v.offenceNumber || undefined,
         offenceNoticeNumber:     v.offenceNoticeNumber || undefined,
         contraventionNumber:     v.contraventionNumber || undefined,
+        microfilmNumber:         v.microfilmNumber || undefined,
         docketNumber:            v.docketNumber || undefined,
         courtCaseNumber:         v.courtCaseNumber || undefined,
         courtLocationCode:       v.courtLocationCode || undefined,
@@ -335,8 +348,8 @@ export function buildTicketFromViolation(v: ViolationLike): TicketRecord | null 
         v.citationNumber ||
         (v.id ? `OFF-${v.id}` : '');
 
-    // Fine + expense roll up into the visible ticket total (matches the
-    // "Total (Fine + Expenses)" line in the violation form).
+    // The fine and the legal expense are kept apart: the fine is what the ticket says, the
+    // expense is what dealing with it cost. The list shows the fine; totals add the two.
     const fine    = Number(v.fineAmount ?? 0) || 0;
     const expense = Number(v.expenseAmount ?? 0) || 0;
     const total   = fine + expense;
@@ -402,7 +415,14 @@ export function buildTicketFromViolation(v: ViolationLike): TicketRecord | null 
         violationCategory: (v as any).violationCategory || undefined,
         violationGroup:    (v as any).violationGroup    || undefined,
         isOos:             !!(v as any).isOos || undefined,
-        fineAmount: total,
+        fineAmount: fine,
+        legalExpense: expense || undefined,
+        vehicle: v.vehicle,
+        vehicle2: v.vehicle2,
+        dueDate: v.dueDate || undefined,
+        finalDate: v.finalDate || undefined,
+        dueMonitoring: v.dueMonitoring,
+        finalMonitoring: v.finalMonitoring,
         currency,
         status: inferTicketStatus(v.result, v.status),
         // Paper ticket → "ticket file" indicator. eTicket → "notice file"

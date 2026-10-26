@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import {
-    Tags, Tag, Plus, Info, Search, Lock, X, Sparkles,
+    Tags, Tag, Plus, Info, Search, Lock, X, Sparkles, LayoutGrid,
     Shield, FileText, Calendar, PieChart, Award, Bookmark, Layers, Hash, BadgeCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { KpiStatRow, type KpiStat } from '@/components/ui/KpiStatCard';
+import { ListHeaderBridge } from '@/components/ui/list-header-bridge';
+import { ScrollBody, usePageChrome } from '@/components/ui/PageChrome';
 import { useSafetyTags, isDefaultTag, smartTagMatch, DEFAULT_TAG_GROUPS } from '@/pages/compliance/safety-tags.data';
 
 /**
@@ -41,9 +45,13 @@ const GROUP_META: Record<string, GroupMeta> = {
 };
 const FALLBACK_META: GroupMeta = { Icon: Tag, theme: 'slate', description: '' };
 
+type Tab = 'all' | 'custom' | 'defaults';
+
 export function SafetyTagsPage() {
     const { tags, add, remove } = useSafetyTags();
     const [search, setSearch] = useState('');
+    const [tab, setTab] = useState<Tab>('all');
+    const { scrollRef, onScroll, condensed, bridge } = usePageChrome(tab);
 
     const q = search.trim();
     const custom = tags.filter(t => !isDefaultTag(t));
@@ -52,58 +60,87 @@ export function SafetyTagsPage() {
     const shownGroups = DEFAULT_TAG_GROUPS
         .map(g => ({ ...g, shown: filterTags(g.tags) }))
         .filter(g => g.shown.length > 0);
+    const systemTagCount = DEFAULT_TAG_GROUPS.reduce((n, g) => n + g.tags.length, 0);
+    const showCustom = tab !== 'defaults' && (!q || shownCustom.length > 0);
+    const showGroups = tab !== 'custom' && shownGroups.length > 0;
+    const matches = (tab !== 'defaults' ? shownCustom.length : 0) + (tab !== 'custom' ? shownGroups.reduce((n, g) => n + g.shown.length, 0) : 0);
+
+    const stats: KpiStat[] = [
+        { id: 'all', label: 'All tags', value: tags.length, Icon: Tags, accent: 'blue' },
+        { id: 'custom', label: 'Custom tags', value: custom.length, Icon: Sparkles, accent: 'violet' },
+        { id: 'defaults', label: 'System tags', value: systemTagCount, Icon: Lock, accent: 'slate' },
+        { id: 'groups', label: 'System groups', value: DEFAULT_TAG_GROUPS.length, Icon: LayoutGrid, accent: 'emerald' },
+    ];
 
     return (
-        <div className="flex-1 bg-slate-50 min-h-screen">
-            {/* Header */}
-            <div className="bg-white border-b border-slate-200 px-8 py-5">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <Tags size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Tags</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                            Reusable document tags for New Compliance &amp; Documents, grouped by type — {tags.length} tag{tags.length === 1 ? '' : 's'}.
-                        </p>
-                    </div>
-                </div>
-            </div>
+        <ListHeaderBridge value={bridge.value}>
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            <ListPageHeader
+                Icon={Tags}
+                title="Tags"
+                description={<>Reusable document tags for New Compliance &amp; Documents, grouped by type.</>}
+                count={tags.length}
+                countTitle={`${tags.length} tags`}
+                condensed={condensed}
+                chips={stats.map(st => ({ id: st.id, label: st.label, value: st.value, active: tab === st.id, onClick: st.id === 'groups' ? undefined : () => setTab(st.id as Tab) }))}
+                tabs={[
+                    { id: 'all', label: 'All tags', icon: Tags, count: tags.length },
+                    { id: 'custom', label: 'Custom', icon: Sparkles, count: custom.length },
+                    { id: 'defaults', label: 'System defaults', icon: Lock, count: systemTagCount },
+                ]}
+                activeTab={tab}
+                onTabChange={(id) => setTab(id as Tab)}
+                tabsLabel="Tag sections"
+                showZeroCounts
+            />
 
-            <div className="px-8 py-6 space-y-5">
+            <ScrollBody scrollRef={scrollRef} onScroll={onScroll}>
+                <KpiStatRow stats={stats} activeId={tab} onPick={(id) => { if (id !== 'groups') setTab(id as Tab); }} />
+
                 <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-800">
                     <Info size={16} className="mt-0.5 shrink-0 text-blue-500" />
                     <p>
-                        The grouped sections below are <strong>system defaults</strong> — always available and not editable. Add your carrier’s
-                        own tags in the <strong>Custom Tags</strong> card; all of them appear in the <strong>“Add a saved tag…”</strong> dropdown on every document and dated version.
+                        The grouped sections are <strong>system defaults</strong> — always available and not editable. Add your carrier’s
+                        own tags in <strong>Custom Tags</strong>; all of them appear in the <strong>“Add a saved tag…”</strong> dropdown on every document and dated version.
                     </p>
                 </div>
 
-                {/* Search */}
-                <div className="relative w-full sm:max-w-sm">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Search tags across groups…"
-                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-                    />
+                {/* Search — across every group on this tab */}
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div className="relative min-w-[200px] max-w-sm flex-1">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search tags across groups…"
+                            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
+                    </div>
+                    {q && (
+                        <>
+                            <span className="text-[12px] text-slate-500"><b className="text-slate-700">{matches}</b> {matches === 1 ? 'match' : 'matches'} for “{q}”</span>
+                            <button type="button" onClick={() => setSearch('')}
+                                className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">
+                                <X size={13} /> Clear
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {/* Custom tags — the one editable card (carrier profile) */}
-                {(!q || shownCustom.length > 0) && (
+                {showCustom && (
                     <CustomTagsCard tags={shownCustom} totalCustom={custom.length} searching={!!q} onAdd={add} onRemove={remove} />
                 )}
 
                 {/* System default groups */}
-                {shownGroups.length > 0 && (
+                {showGroups && (
                     <>
                         <div className="flex items-center gap-2 pt-1">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">System default groups</span>
                             <span className="text-[11px] font-semibold text-slate-400">({shownGroups.length})</span>
-                            <div className="flex-1 h-px bg-slate-200" />
+                            <div className="h-px flex-1 bg-slate-200" />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 items-start">
+                        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                             {shownGroups.map(g => {
                                 const meta = GROUP_META[g.title] ?? FALLBACK_META;
                                 return <DefaultGroupCard key={g.title} title={g.title} description={meta.description} Icon={meta.Icon} theme={meta.theme} tags={g.shown} />;
@@ -112,13 +149,14 @@ export function SafetyTagsPage() {
                     </>
                 )}
 
-                {q && shownGroups.length === 0 && shownCustom.length === 0 && (
+                {q && !showCustom && !showGroups && (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center text-sm text-slate-500">
                         No tags match “{search}”.
                     </div>
                 )}
-            </div>
+            </ScrollBody>
         </div>
+        </ListHeaderBridge>
     );
 }
 

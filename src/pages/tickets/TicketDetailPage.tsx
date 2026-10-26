@@ -11,27 +11,140 @@
 
 import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import {
-    ChevronLeft, Pencil, FileText, User, MapPin, Ticket as TicketIcon, Hash,
-    DollarSign, Clock, FileCheck, Paperclip, List, Share2, MoreVertical, Trash2,
-    CheckCircle2, type LucideIcon,
+    ChevronLeft, ChevronRight, Pencil, FileText, User, MapPin, Ticket as TicketIcon, Hash,
+    DollarSign, Clock, FileCheck, Paperclip, List, MoreVertical, Trash2,
+    CheckCircle2, CalendarClock, Truck, Container, Bell, BellOff, Pencil as PencilSm, type LucideIcon,
 } from 'lucide-react';
+import { MonitoringToggle } from '@/pages/compliance/MonitoringToggle';
+import type { MonitoringConfig } from '@/pages/compliance/compliance-data-store';
+import { ResolutionSendDialog, isDeliveredDisposition } from '@/components/share/ResolutionSendDialog';
+import { getDriverById } from '@/pages/accounts/carrier-drivers.data';
+import { MOCK_DRIVERS } from '@/data/mock-app-data';
+import type { HosDisposition } from '@/pages/hos/hos-violations.data';
+import { defaultTicketMonitoring } from './tickets.data';
+import { updateTicket } from './tickets.store';
+import { TicketStatusSelect, TICKET_STATUS_TONE } from './ticket-status';
+import { resolveTicketVehicle, vehicleLine } from './ticket-vehicles';
 import { cn } from '@/lib/utils';
 import { useAppData } from '@/context/AppDataContext';
 import { ActivityTimeline, type ActivityEntry } from '@/components/ui/ActivityTimeline';
 import { activityMeta, ACTIVITY_BADGE_TONE } from '@/components/ui/activity-kinds';
 import { ShareToChat, type ShareItem } from '@/components/share/ShareToChat';
+import { ShareButton } from '@/components/share/ShareButton';
 import { setMessagesFocus } from '@/pages/messages/messages-store';
 import { ReviewResolutionTab, toActivityEntries } from '@/components/ui/ReviewResolution';
-import { TrainingAssignDialog } from '@/components/ui/TrainingAssignDialog';
 import { useRecordReview } from '@/components/ui/record-review';
 import type { TicketRecord } from './tickets.data';
 
-const STATUS_TONE: Record<string, { chip: string; dot: string }> = {
-    'Due':       { chip: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-    'In Court':  { chip: 'border-blue-200 bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
-    'Paid':      { chip: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-    'Closed':    { chip: 'border-slate-200 bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
-};
+const STATUS_TONE = TICKET_STATUS_TONE;
+
+/** "in 12 days", "today", "3 days ago" — how far a date is from now. */
+function daysFrom(ymd?: string): { n: number; text: string; tone: string } | null {
+    if (!ymd) return null;
+    const d = new Date(`${ymd.slice(0, 10)}T00:00:00`);
+    if (isNaN(d.getTime())) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const n = Math.round((d.getTime() - today.getTime()) / 86400000);
+    const text = n === 0 ? 'today' : n > 0 ? `in ${n} day${n === 1 ? '' : 's'}` : `${-n} day${n === -1 ? '' : 's'} ago`;
+    const tone = n < 0 ? 'text-rose-600' : n <= 7 ? 'text-amber-600' : 'text-slate-500';
+    return { n, text, tone };
+}
+
+/** One of the four figures under the header — the same tile the driver and asset pages carry. */
+function StatTile({ icon: Icon, label, value, sub, tone = 'bg-blue-50 text-blue-600' }: { icon: LucideIcon; label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {
+    return (
+        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tone)}><Icon size={16} /></span>
+            <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                <div className="truncate text-[15px] font-bold text-slate-900">{value}</div>
+                {sub && <p className="truncate text-[11px] text-slate-500">{sub}</p>}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * A monitored date on the page: the date, how far off, and whether reminders are on.
+ * Clicking it opens the same date + monitoring block the form has, in place, so the date
+ * or its reminders can be changed without opening the whole ticket for editing.
+ */
+function MonitoredDate({ label, date, cfg, recordId, issueDate, status, onSave }: {
+    label: string; date?: string; cfg?: MonitoringConfig;
+    recordId: string; issueDate: string; status: string;
+    onSave: (date: string, cfg: MonitoringConfig) => void;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draftDate, setDraftDate] = useState(date ?? '');
+    const [draftCfg, setDraftCfg] = useState<MonitoringConfig>(cfg ?? defaultTicketMonitoring());
+    const d = daysFrom(date);
+    const on = !!date && (cfg?.enabled ?? false);
+    const rem = cfg?.reminders?.filter(x => x > 0).sort((a, b) => b - a) ?? [];
+    const open = () => { setDraftDate(date ?? ''); setDraftCfg(cfg ?? defaultTicketMonitoring()); setEditing(true); };
+    if (editing) {
+        return (
+            <div className="rounded-lg border border-blue-200 bg-white px-3.5 py-3 ring-2 ring-blue-500/10">
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                    <span className="text-[10px] font-semibold text-blue-600">Editing</span>
+                </div>
+                <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)} aria-label={label}
+                    className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none sm:w-56" />
+                <div className="mt-3">
+                    <MonitoringToggle
+                        record={{ id: recordId, monitorType: label }}
+                        monitoring={draftCfg} issueDate={issueDate} expiryDate={draftDate} status={status}
+                        onChange={setDraftCfg} />
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button" onClick={() => { onSave(draftDate, draftCfg); setEditing(false); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-blue-700">Save</button>
+                </div>
+            </div>
+        );
+    }
+    return (
+        <div role="button" tabIndex={0} onClick={open} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
+            title="Click to change the date or its monitoring"
+            className="group cursor-pointer rounded-lg border border-slate-200 bg-slate-50/60 px-3.5 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50/40">
+            <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                <span className="flex items-center gap-1.5">
+                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', on ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-400')}>
+                        {on ? <Bell size={10} /> : <BellOff size={10} />} {on ? 'Monitoring on' : 'Monitoring off'}
+                    </span>
+                    <PencilSm size={12} className="text-slate-300 transition-colors group-hover:text-blue-500" />
+                </span>
+            </div>
+            <p className="mt-1 text-[15px] font-bold tabular-nums text-slate-900">{date || <span className="text-slate-300">—</span>}{d && <span className={cn('ml-2 text-[12px] font-semibold', d.tone)}>{d.text}</span>}</p>
+            {on && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                    {rem.length ? `Reminders ${rem.join(', ')} days before` : 'No reminder days'}{cfg?.reminders?.includes(0) ? ' + on the date' : ''} · via {[cfg?.channels.email && 'email', cfg?.channels.inApp && 'in-app'].filter(Boolean).join(', ') || 'no channel'}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/** Vehicle 1 or 2, as the ticket names it. */
+function VehicleCard({ title, icon: Icon, v }: { title: string; icon: LucideIcon; v?: ReturnType<typeof resolveTicketVehicle> }) {
+    return (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <p className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500"><Icon size={13} className="text-blue-500" /> {title}</p>
+            {v?.assetId || v?.unitNumber ? (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Unit #" value={v.unitNumber} />
+                    <Field label="Vehicle" value={[v.label, v.kind].filter(Boolean).join(' · ')} />
+                    <Field label="Plate" value={v.plateNumber} mono />
+                    <Field label="Jurisdiction" value={v.plateJurisdiction} />
+                    <div className="col-span-2"><Field label="VIN" value={v.vin} mono /></div>
+                </dl>
+            ) : (
+                <p className="text-[13px] text-slate-400">Not on this ticket</p>
+            )}
+        </div>
+    );
+}
 
 function Field({ label, value, mono, wide }: { label: string; value?: ReactNode; mono?: boolean; wide?: boolean }) {
     const empty = value === undefined || value === null || value === '' || value === false;
@@ -167,7 +280,8 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
     accountId?: string; currentUserName?: string;
 }) {
     const [tab, setTab] = useState<'overview' | 'documents' | 'review' | 'activity'>('overview');
-    const [trainingOpen, setTrainingOpen] = useState(false);
+    /** The resolution being sent to the driver, while its dialog is open. */
+    const [sendDisp, setSendDisp] = useState<HosDisposition | null>(null);
     const [shareOpen, setShareOpen] = useState(false);
     const overviewRef = useRef<HTMLDivElement>(null);
     const { documents: allDocTypes } = useAppData();
@@ -177,8 +291,17 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
     const details = ticket.ticketDetails ?? {};
     const isElectronic = ticket.ticketKind === 'Electronic';
     const docs = ticket.attachedDocuments ?? [];
-    const money = `${ticket.currency === 'CAD' ? 'CA$' : '$'}${ticket.fineAmount.toFixed(2)} ${ticket.currency}`;
+    const sym = ticket.currency === 'CAD' ? 'CA$' : '$';
+    const money = `${sym}${ticket.fineAmount.toFixed(2)} ${ticket.currency}`;
+    const legal = ticket.legalExpense ?? 0;
+    const totalMoney = `${sym}${(ticket.fineAmount + legal).toFixed(2)} ${ticket.currency}`;
     const st = STATUS_TONE[ticket.status] ?? STATUS_TONE['Closed'];
+    const v1 = resolveTicketVehicle(ticket, accountId);
+    const v2 = resolveTicketVehicle(ticket, accountId, 2);
+    const due = daysFrom(ticket.dueDate);
+    const fin = daysFrom(ticket.finalDate);
+    // The status is changed where it is read — the header, the tile, the card all save it.
+    const setStatus = (status: TicketRecord['status']) => updateTicket(ticket.id, { status });
 
     // File presence indicators (from the record flags + attached docs).
     const fileIndicators = [
@@ -210,7 +333,7 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
     };
     const activity: ActivityEntry[] = [
         { id: 'issued', icon: TicketIcon, iconTone: 'bg-blue-500', title: 'Ticket issued', badge: { label: 'Citation', tone: 'bg-blue-100 text-blue-700' }, by: 'Traffic Enforcement', detail: `${ticket.violationType}${ticket.location ? ` · ${ticket.location}` : ''}`, at: `${ticket.date}${ticket.time ? ` · ${ticket.time}` : ''}` },
-        A('recorded', 'recorded', 'Recorded in system', `Logged as offense ${ticket.offenseNumber}`, 'System', sysBadge),
+        A('recorded', 'recorded', 'Recorded in system', `Logged as ticket ${ticket.offenseNumber}`, 'System', sysBadge),
         A('viewed', 'viewed', 'Opened by office', 'Reviewed the citation and driver details', clerk, officeBadge),
         ...fileIndicators.filter(f => f.on).map((f, i) => A(`doc-${i}`, 'uploaded', `${f.label} uploaded`, 'Attached to the ticket record', clerk, officeBadge)),
         A('shared', 'shared', 'Shared with driver', `${driverName} notified of the citation`, clerk, officeBadge),
@@ -234,6 +357,13 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
         eventDate: ticket.date,
     }), [ticket.driverId, ticket.driverName, ticket.violationType, ticket.offenseNumber, ticket.id, ticket.date]);
     const rv = useRecordReview({ kind: 'ticket', id: ticket.id, accountId, currentUser: currentUserName, source: warningSource });
+    // The driver's email from the roster, for the external-chat and email deliveries.
+    // Falls back to the demo drivers, which the demo tickets are written against.
+    const driverEmail = useMemo(() => (accountId && ticket.driverId ? getDriverById(accountId, ticket.driverId)?.email : undefined)
+        ?? MOCK_DRIVERS.find(d => d.id === ticket.driverId)?.email ?? '', [accountId, ticket.driverId]);
+    const about = `Ticket ${ticket.offenseNumber} · ${ticket.violationSubtype || ticket.violationType}`;
+    const convSource = { type: 'ticket' as const, id: ticket.offenseNumber, label: `Ticket ${ticket.offenseNumber}` };
+    const recordRef = { type: 'ticket', id: ticket.id, label: `Ticket ${ticket.offenseNumber}`, sublabel: `${ticket.violationSubtype || ticket.violationType} · ${ticket.driverName}`, path: '/tickets' };
 
     const TABS: { id: typeof tab; label: string; count?: number }[] = [
         { id: 'overview', label: 'Overview' },
@@ -244,42 +374,76 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col bg-slate-50">
-            {/* Fixed top section — back link, summary card, tabs */}
-            <div className="shrink-0 border-b border-slate-200/70 bg-slate-50 px-4 pt-3 sm:px-8 sm:pt-4">
-                <div className="mx-auto max-w-[1200px] space-y-3">
-                    <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800">
-                        <ChevronLeft size={16} /> Back to tickets
+            {/* Header band — the same shape as the driver and asset pages: breadcrumb strip,
+                icon + title + chips + meta, the actions, four figures, then the tabs. */}
+            <div className="shrink-0 border-b border-slate-200 bg-white shadow-sm">
+                <header className="flex h-11 items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 sm:px-8">
+                    <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors hover:text-blue-600">
+                        <ChevronLeft size={13} /> Back to Tickets
                     </button>
+                    <span aria-hidden className="h-4 w-px bg-slate-200" />
+                    <nav className="flex min-w-0 items-center text-xs font-medium text-slate-500">
+                        <span className="cursor-pointer text-slate-400 transition-colors hover:text-blue-600" onClick={onBack}>Tickets</span>
+                        <ChevronRight size={12} className="mx-1.5 shrink-0 text-slate-300" />
+                        <span className="truncate font-semibold text-slate-700">{ticket.offenseNumber}</span>
+                    </nav>
+                </header>
 
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex min-w-0 items-start gap-3">
-                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><TicketIcon size={18} /></span>
-                                <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h1 className="text-base font-bold text-slate-900">{ticket.driverName || 'Ticket'}</h1>
-                                        {ticket.offenseNumber && <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600" title="Offense number"><Hash size={10} /> {ticket.offenseNumber}</span>}
-                                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold', isElectronic ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-blue-200 bg-blue-50 text-blue-700')}>{isElectronic ? 'eTicket' : 'Paper Ticket'}</span>
-                                        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.chip)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{ticket.status}</span>
-                                        {ticket.isOos && <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">OOS-qualifying</span>}
-                                    </div>
-                                    <p className="mt-1 text-sm text-slate-500">{ticket.driverId || '—'} · {ticket.assetId || '—'} · {ticket.date}{ticket.time ? ` · ${ticket.time}` : ''}</p>
+                <div className="px-4 py-5 sm:px-8">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex min-w-0 items-start gap-4">
+                            <div className="relative shrink-0">
+                                <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border-[3px] border-white bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 shadow-md ring-1 ring-slate-200/60">
+                                    <TicketIcon size={30} />
                                 </div>
+                                <span className={cn('absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-white shadow-sm', st.dot)} title={ticket.status} />
                             </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                                <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[13px] font-semibold text-white shadow-sm hover:bg-blue-700">
-                                    <Share2 className="h-3.5 w-3.5" /> Share
-                                </button>
-                                <HeaderMenu items={[
-                                    { label: 'Edit ticket', icon: Pencil, onClick: onEdit },
-                                    { label: 'Delete', icon: Trash2, onClick: () => onDelete?.(), danger: true },
-                                ]} />
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">Ticket {ticket.offenseNumber}</h1>
+                                    <span className={cn('inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isElectronic ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-blue-200 bg-blue-50 text-blue-700')}>{isElectronic ? 'eTicket' : 'Paper ticket'}</span>
+                                    {ticket.isOos && <span className="inline-flex items-center rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-700">OOS-qualifying</span>}
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-slate-500">
+                                    <span className="flex items-center gap-1 font-medium text-slate-700"><User size={12} className="text-slate-400" /> {ticket.driverName || '—'}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="flex items-center gap-1"><Truck size={12} className="text-slate-400" /> {vehicleLine(v1) || '—'}{v2?.unitNumber ? ` + ${v2.unitNumber}` : ''}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="flex items-center gap-1"><Clock size={12} className="text-slate-400" /> {ticket.date}{ticket.time && ticket.time !== '00:00' ? ` · ${ticket.time}` : ''}</span>
+                                    {ticket.location && <><span className="text-slate-300">|</span><span className="flex items-center gap-1"><MapPin size={12} className="text-slate-400" /> {ticket.location}</span></>}
+                                    <span className="text-slate-300">|</span>
+                                    <TicketStatusSelect value={ticket.status} onChange={setStatus} />
+                                </div>
+                                <p className="mt-1.5 text-[13px] text-slate-600">{ticket.violationSubtype || ticket.violationType}{ticket.violations && ticket.violations.length > 1 ? ` · +${ticket.violations.length - 1} more` : ''}</p>
                             </div>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-1">
+                            <ShareButton onClick={() => setShareOpen(true)} />
+                            <button type="button" onClick={onEdit} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700">
+                                <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit Ticket</span><span className="sm:hidden">Edit</span>
+                            </button>
+                            <HeaderMenu items={[
+                                { label: 'Edit ticket', icon: Pencil, onClick: onEdit },
+                                { label: 'Delete ticket', icon: Trash2, onClick: () => onDelete?.(), danger: true },
+                            ]} />
                         </div>
                     </div>
 
+                    {/* The four figures */}
+                    <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <StatTile icon={CheckCircle2} label="Status" tone={cn(st.chip.replace(/border-\S+/, ''), '')}
+                            value={<TicketStatusSelect value={ticket.status} onChange={setStatus} size="md" />}
+                            sub={ticket.status === 'Paid' ? 'Settled' : ticket.status === 'In Court' ? 'Awaiting hearing' : ticket.status === 'Closed' ? 'Nothing left to do' : 'Fine outstanding'} />
+                        <StatTile icon={DollarSign} label="Fine" tone="bg-rose-50 text-rose-600" value={money}
+                            sub={legal ? `+ ${sym}${legal.toFixed(2)} legal expense · total ${totalMoney}` : 'No legal expense recorded'} />
+                        <StatTile icon={CalendarClock} label="Ticket due date" tone={due && due.n < 0 ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}
+                            value={ticket.dueDate || '—'} sub={due ? <span className={due.tone}>{due.n < 0 ? `Overdue · ${due.text}` : `Due ${due.text}`}{ticket.dueMonitoring?.enabled ? ' · monitored' : ''}</span> : 'Not set'} />
+                        <StatTile icon={CalendarClock} label="Final date" tone="bg-slate-100 text-slate-600"
+                            value={ticket.finalDate || '—'} sub={fin ? <span className={fin.tone}>{fin.n < 0 ? `Passed · ${fin.text}` : fin.text}{ticket.finalMonitoring?.enabled ? ' · monitored' : ''}</span> : 'Not set'} />
+                    </div>
+
                     {/* Tabs */}
-                    <div className="-mb-px flex items-center gap-1 overflow-x-auto">
+                    <div className="-mb-5 mt-4 flex items-center gap-1 overflow-x-auto border-t border-slate-100 pt-1">
                         {TABS.map(t => {
                             const on = tab === t.id;
                             return (
@@ -302,15 +466,16 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
                     {tab === 'overview' && (
                         <div className="lg:flex lg:gap-6">
                         <div ref={overviewRef} className="min-w-0 flex-1 space-y-5">
-                            <InfoCard title="Driver & Asset" icon={User}>
+                            <InfoCard title="Driver & Vehicles" icon={User}>
                                 <Grid>
                                     <Field label="Driver" value={ticket.driverName} />
                                     <Field label="Driver ID" value={ticket.driverId} mono />
-                                    <Field label="Asset" value={ticket.assetId} mono />
                                     <Field label="Driver licence" value={ids.driverLicenceNumber} mono />
-                                    <Field label="Plate" value={ids.plateNumber} mono />
-                                    <Field label="VIN" value={ids.vinNumber} mono />
                                 </Grid>
+                                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <VehicleCard title="Vehicle 1 — power unit" icon={Truck} v={v1} />
+                                    <VehicleCard title="Vehicle 2 — trailer" icon={Container} v={v2} />
+                                </div>
                             </InfoCard>
 
                             <InfoCard title="Where & when" icon={MapPin}>
@@ -360,10 +525,9 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
 
                             <InfoCard title="Identifiers" icon={Hash}>
                                 <Grid>
-                                    <Field label="Offense #" value={ticket.offenseNumber} mono />
-                                    <Field label="Ticket #" value={ids.ticketNumber} mono />
+                                    <Field label="Ticket citation number" value={ticket.offenseNumber} mono />
+                                    <Field label="Microfilm number" value={ids.microfilmNumber} mono />
                                     <Field label="Linked accident #" value={ticket.accidentNumber} mono />
-                                    <Field label="Citation #" value={ids.citationNumber} mono />
                                     <Field label="Docket #" value={ids.docketNumber} mono />
                                     <Field label="Court case #" value={ids.courtCaseNumber} mono />
                                     <Field label="Receipt #" value={ids.receiptNumber} mono />
@@ -391,10 +555,18 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
                                 </Grid>
                             </InfoCard>
 
-                            <InfoCard title="Money & status" icon={DollarSign}>
+                            <InfoCard title="Money, dates & status" icon={DollarSign}>
+                                <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <MonitoredDate label="Ticket due date" date={ticket.dueDate} cfg={ticket.dueMonitoring} recordId="ticket-due" issueDate={ticket.date} status={ticket.status}
+                                        onSave={(dueDate, dueMonitoring) => updateTicket(ticket.id, { dueDate: dueDate || undefined, dueMonitoring })} />
+                                    <MonitoredDate label="Final date" date={ticket.finalDate} cfg={ticket.finalMonitoring} recordId="ticket-final" issueDate={ticket.date} status={ticket.status}
+                                        onSave={(finalDate, finalMonitoring) => updateTicket(ticket.id, { finalDate: finalDate || undefined, finalMonitoring })} />
+                                </div>
                                 <Grid>
                                     <Field label="Fine" value={money} />
-                                    <Field label="Status" value={<span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', st.chip)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{ticket.status}</span>} />
+                                    <Field label="Legal expense" value={legal ? `${sym}${legal.toFixed(2)} ${ticket.currency}` : undefined} />
+                                    <Field label="Total" value={<span className="font-bold">{totalMoney}</span>} />
+                                    <Field label="Status" value={<TicketStatusSelect value={ticket.status} onChange={setStatus} />} />
                                     <Field label="Currency" value={ticket.currency} />
                                     {ticket.demeritPoints !== undefined && <Field label="Demerit points" value={String(ticket.demeritPoints)} />}
                                     {ticket.outOfService !== undefined && (
@@ -515,7 +687,7 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
                                 <InfoCard title="Citation under review" icon={TicketIcon}>
                                     <Grid>
                                         <Field label="Driver" value={ticket.driverName} />
-                                        <Field label="Offense #" value={ticket.offenseNumber} mono />
+                                        <Field label="Ticket citation #" value={ticket.offenseNumber} mono />
                                         <Field label="Violation" value={ticket.violationType} />
                                         <Field label="Date" value={ticket.date} />
                                         <Field label="Location" value={ticket.location} />
@@ -540,8 +712,8 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
                                     reviewNotes={rv.review.notes}
                                     verified={rv.review.verified}
                                     verifiedBy={rv.review.verifiedBy}
-                                    onDispose={(d) => rv.dispose(d)}
-                                    onAssignTraining={() => setTrainingOpen(true)}
+                                    onDispose={(d) => (isDeliveredDisposition(d) ? setSendDisp(d) : rv.dispose(d))}
+                                    onAssignTraining={() => setSendDisp('training')}
                                     onReopen={rv.reopen}
                                     onAddNote={rv.addNote}
                                     onVerify={rv.verify}
@@ -557,11 +729,18 @@ export function TicketDetailPage({ ticket, onBack, onEdit, onDelete, onNavigate,
                 </div>
             </div>
 
-            {trainingOpen && (
-                <TrainingAssignDialog
-                    count={1}
-                    onClose={() => setTrainingOpen(false)}
-                    onAssign={(name) => { rv.assignTraining(name); setTrainingOpen(false); }}
+            {sendDisp && (
+                <ResolutionSendDialog
+                    disposition={sendDisp}
+                    driverName={ticket.driverName || 'the driver'}
+                    driverEmail={driverEmail}
+                    about={about}
+                    when={ticket.date}
+                    source={convSource}
+                    record={recordRef}
+                    onOpenInMessages={onNavigate ? (id) => { setMessagesFocus(id); onNavigate('/messages'); } : undefined}
+                    onClose={() => setSendDisp(null)}
+                    onSent={(r) => (sendDisp === 'training' ? rv.assignTraining(r.trainingName ?? '', r.via) : rv.dispose(sendDisp, undefined, r.via))}
                 />
             )}
 

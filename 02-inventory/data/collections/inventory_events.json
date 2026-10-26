@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/inventory/inventory_events.json",
+  "title": "inventory_events",
+  "description": "One row per thing that happened to an item: added, updated (with the change list), assigned, unassigned, asked to collect / hand in, receipt requested / signed, collected / not collected, handed back. \"Added\", \"Assigned\" and \"Expired\" are also derived from the item on read and never stored twice.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "itemId": {
+      "type": "string",
+      "description": "→ `inventory_items._id`."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Activity vocabulary shared with the rest of the app.",
+      "enum": [
+        "created",
+        "updated",
+        "assigned",
+        "message",
+        "requested",
+        "signed",
+        "verified",
+        "note"
+      ]
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Overrides the kind's label (\"Assigned to driver\", \"Receipt signed\")."
+    },
+    "detail": {
+      "type": "string",
+      "description": "\"Status: Active → Expiring Soon\", \"Taken back from Jason Cooper\".",
+      "default": ""
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "For updates: `{ field, from, to }` rows.",
+      "default": []
+    },
+    "byUserId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `users._id` (null for System)."
+    },
+    "byName": {
+      "type": "string",
+      "description": "Display name at the time (\"Kenan Gain\")."
+    },
+    "role": {
+      "type": "string",
+      "description": "Badge on the timeline.",
+      "enum": [
+        "Office",
+        "Driver",
+        "System"
+      ],
+      "default": "Office"
+    },
+    "collectionId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `inventory_collections._id` when the event came from a card."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "itemId",
+    "kind",
+    "byName",
+    "role",
+    "at"
+  ]
+}

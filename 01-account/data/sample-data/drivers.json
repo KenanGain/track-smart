@@ -1,0 +1,764 @@
+[
+  {
+    "_id": "DRV-001-0010",
+    "carrierId": "acct-001",
+    "driverType": "us-only",
+    "status": "Active",
+    "firstName": "Rosa",
+    "middleName": "",
+    "lastName": "Delgado",
+    "suffix": "",
+    "name": "Rosa Delgado",
+    "avatarInitials": "RD",
+    "email": "rosa.delgado@example.com",
+    "phone": "(302) 555-0133",
+    "cellPhone": "",
+    "dob": "1988-03-14",
+    "ssnEncrypted": "enc:v1:9f1c…",
+    "ssnLast4": "6129",
+    "gender": "Female",
+    "citizenship": "USA",
+    "authorizedToWork": {
+      "us": true,
+      "ca": false
+    },
+    "position": "Company Driver",
+    "operatesInUS": true,
+    "hiredDate": "2021-07-08",
+    "dateAdded": "2021-07-20",
+    "terminal": "Wilmington, DE",
+    "carrierCode": "ACM-D010",
+    "address": {
+      "street": "127 Fleet Rd",
+      "unit": "4B",
+      "addr2": "",
+      "city": "Wilmington",
+      "state": "DE",
+      "zip": "19801",
+      "country": "United States"
+    },
+    "resided3Years": true,
+    "previousResidences": [],
+    "emergencyContacts": [
+      {
+        "name": "Luis Delgado",
+        "relation": "Spouse",
+        "phone": "(302) 555-0190",
+        "email": "luis.delgado@example.com"
+      }
+    ],
+    "licenses": [
+      {
+        "number": "D1234-5678-90",
+        "country": "United States",
+        "authority": "DE",
+        "class": "Class 1 / A",
+        "issueDate": "2022-03-07",
+        "expiryDate": "2030-03-07",
+        "medicalExpiry": "2027-03-07",
+        "current": true,
+        "commercial": true,
+        "endorsements": [
+          "Tanker",
+          "HazMat"
+        ],
+        "restricted": true,
+        "restrictions": "Corrective lenses",
+        "isPrimary": true,
+        "status": "Valid",
+        "frontDocumentId": "doc-0101",
+        "backDocumentId": "doc-0102"
+      }
+    ],
+    "licensePrimary": {
+      "number": "D1234-5678-90",
+      "state": "DE",
+      "expiry": "2030-03-07"
+    },
+    "disqualification": {
+      "denied": {
+        "answer": "No"
+      },
+      "drivingWhileSuspended": {
+        "answer": "No"
+      },
+      "alcoholOffense": {
+        "answer": "No"
+      },
+      "substanceOffense": {
+        "answer": "No"
+      },
+      "reckless": {
+        "answer": "No"
+      },
+      "failedDotTest": {
+        "answer": "No"
+      }
+    },
+    "travel": {
+      "citizenshipCountry": "United States",
+      "workAuthUS": true,
+      "workAuthCA": false,
+      "passport": {
+        "number": "P1182930",
+        "country": "United States",
+        "expiry": "2031-05-20",
+        "documentId": "doc-0103"
+      },
+      "visa": {
+        "has": false
+      },
+      "workPermit": {
+        "has": false
+      },
+      "twic": {
+        "has": true,
+        "number": "TW-883201",
+        "expiry": "2029-01-10",
+        "documentId": null
+      },
+      "fast": {
+        "has": false
+      }
+    },
+    "drivingExperience": [
+      {
+        "equipmentClass": "Tractor and Semi-trailer",
+        "freightTypes": [
+          "Van",
+          "Reefer"
+        ],
+        "regions": [
+          "USA"
+        ],
+        "from": "2016-01",
+        "to": "2021-06",
+        "miles": "410000",
+        "ownerOperator": "No"
+      }
+    ],
+    "employment": [
+      {
+        "company": "Keystone Carriers",
+        "start": {
+          "m": "01",
+          "y": "2016"
+        },
+        "end": {
+          "m": "06",
+          "y": "2021"
+        },
+        "addr1": "55 Logistics Way",
+        "city": "Harrisburg",
+        "state": "PA",
+        "zip": "17101",
+        "country": "United States",
+        "telephone": "(717) 555-0150",
+        "position": "OTR Driver",
+        "reasonLeaving": "Relocation",
+        "terminated": "No",
+        "current": "No",
+        "mayContact": "Yes",
+        "operatedCMV": "Yes",
+        "subjectFMCSR": "Yes",
+        "safetySensitive": "Yes",
+        "documentIds": []
+      }
+    ],
+    "employmentGaps": [],
+    "education": [
+      {
+        "school": "Delaware Technical Community College",
+        "start": {
+          "m": "09",
+          "y": "2012"
+        },
+        "end": {
+          "m": "05",
+          "y": "2014"
+        },
+        "city": "Dover",
+        "state": "DE",
+        "country": "United States",
+        "telephone": "",
+        "study": "Diesel Technology",
+        "graduation": {
+          "m": "05",
+          "y": "2014"
+        }
+      }
+    ],
+    "accidents": [],
+    "violations": [],
+    "military": {
+      "served": false
+    },
+    "hos": {
+      "days": {
+        "2021-06-30": 0,
+        "2021-07-01": 0,
+        "2021-07-02": 0,
+        "2021-07-03": 0,
+        "2021-07-04": 0,
+        "2021-07-05": 0,
+        "2021-07-06": 0,
+        "2021-07-07": 0
+      },
+      "note": "Not driving between jobs."
+    },
+    "signature": {
+      "declarationAccepted": true,
+      "applicantName": "Rosa Delgado",
+      "signedDate": "2021-07-08",
+      "signatureDocumentId": "doc-0104",
+      "certified": true
+    },
+    "dqCompletionPct": 0,
+    "complianceMissing": 9,
+    "deletedAt": null,
+    "createdAt": "2021-07-20T15:00:00Z",
+    "updatedAt": "2026-10-22T14:00:00Z"
+  },
+  {
+    "_id": "DRV-001-0014",
+    "carrierId": "acct-001",
+    "driverType": "cross-border",
+    "status": "On Leave",
+    "firstName": "Tomasz",
+    "middleName": "J",
+    "lastName": "Nowak",
+    "suffix": "",
+    "name": "Tomasz Nowak",
+    "avatarInitials": "TN",
+    "email": "tomasz.nowak@example.com",
+    "phone": "(302) 555-0168",
+    "cellPhone": "(302) 555-0169",
+    "dob": "1979-11-02",
+    "ssnEncrypted": "enc:v1:4b7a…",
+    "ssnLast4": "2210",
+    "gender": "Male",
+    "citizenship": "Canada",
+    "authorizedToWork": {
+      "us": true,
+      "ca": true
+    },
+    "position": "Company Driver",
+    "operatesInUS": true,
+    "hiredDate": "2018-02-11",
+    "dateAdded": "2018-02-12",
+    "terminal": "Wilmington, DE",
+    "carrierCode": "ACM-D014",
+    "address": {
+      "street": "9 Harbor View Ct",
+      "unit": "",
+      "addr2": "",
+      "city": "New Castle",
+      "state": "DE",
+      "zip": "19720",
+      "country": "United States"
+    },
+    "resided3Years": false,
+    "previousResidences": [
+      {
+        "address": "300 King St W",
+        "unit": "12",
+        "country": "Canada",
+        "city": "Toronto",
+        "state": "ON",
+        "zip": "M5V 1J5",
+        "startDate": "2015-04-01",
+        "endDate": "2017-12-15"
+      }
+    ],
+    "emergencyContacts": [
+      {
+        "name": "Anna Nowak",
+        "relation": "Sister",
+        "phone": "(416) 555-0122",
+        "email": ""
+      }
+    ],
+    "licenses": [
+      {
+        "number": "N4471-22019-31",
+        "country": "Canada",
+        "authority": "ON",
+        "class": "Class 1 / A",
+        "issueDate": "2023-11-02",
+        "expiryDate": "2028-11-02",
+        "medicalExpiry": "2026-11-02",
+        "current": true,
+        "commercial": true,
+        "endorsements": [
+          "Doubles / Triples"
+        ],
+        "restricted": false,
+        "restrictions": "",
+        "isPrimary": true,
+        "status": "Valid",
+        "frontDocumentId": null,
+        "backDocumentId": null
+      }
+    ],
+    "licensePrimary": {
+      "number": "N4471-22019-31",
+      "state": "ON",
+      "expiry": "2028-11-02"
+    },
+    "disqualification": {
+      "denied": {
+        "answer": "No"
+      },
+      "drivingWhileSuspended": {
+        "answer": "No"
+      },
+      "alcoholOffense": {
+        "answer": "No"
+      },
+      "substanceOffense": {
+        "answer": "No"
+      },
+      "reckless": {
+        "answer": "Yes",
+        "when": {
+          "m": "08",
+          "y": "2014"
+        },
+        "explain": "Careless driving, Ontario; fine paid.",
+        "documentId": null
+      },
+      "failedDotTest": {
+        "answer": "No"
+      }
+    },
+    "travel": {
+      "citizenshipCountry": "Canada",
+      "workAuthUS": true,
+      "workAuthCA": true,
+      "passport": {
+        "number": "HK992110",
+        "country": "Canada",
+        "expiry": "2029-08-30",
+        "documentId": null
+      },
+      "visa": {
+        "has": false
+      },
+      "workPermit": {
+        "has": true,
+        "number": "WP-2210-7781",
+        "type": "TN",
+        "expiry": "2027-02-10",
+        "documentId": null,
+        "monitor": true,
+        "reminderDays": [
+          90,
+          30
+        ]
+      },
+      "twic": {
+        "has": false
+      },
+      "fast": {
+        "has": true,
+        "number": "FAST-66021",
+        "expiry": "2028-02-10",
+        "documentId": null
+      }
+    },
+    "drivingExperience": [
+      {
+        "equipmentClass": "Tractor-Two Trailer",
+        "freightTypes": [
+          "Van",
+          "Flat"
+        ],
+        "regions": [
+          "Border",
+          "Canada",
+          "USA"
+        ],
+        "from": "2009-05",
+        "to": "2018-01",
+        "miles": "1200000",
+        "ownerOperator": "No"
+      }
+    ],
+    "employment": [],
+    "employmentGaps": [
+      {
+        "start": {
+          "m": "01",
+          "y": "2018"
+        },
+        "end": {
+          "m": "02",
+          "y": "2018"
+        },
+        "comments": "Relocating to the US."
+      }
+    ],
+    "education": [],
+    "accidents": [
+      {
+        "date": "2019-12-03",
+        "type": "Rear-end",
+        "state": "PA",
+        "commercialVehicle": "Yes",
+        "atFault": "No",
+        "ticketed": "No",
+        "details": "Struck from behind at a weigh station exit."
+      }
+    ],
+    "violations": [],
+    "military": {
+      "served": false
+    },
+    "hos": {
+      "days": {},
+      "note": ""
+    },
+    "signature": {
+      "declarationAccepted": true,
+      "applicantName": "Tomasz Nowak",
+      "signedDate": "2018-02-11",
+      "signatureDocumentId": null,
+      "certified": true
+    },
+    "dqCompletionPct": 45,
+    "complianceMissing": 5,
+    "deletedAt": null,
+    "createdAt": "2018-02-12T09:30:00Z",
+    "updatedAt": "2026-10-19T08:15:00Z"
+  },
+  {
+    "_id": "DRV-002-0003",
+    "carrierId": "acct-002",
+    "driverType": "canada-only",
+    "status": "Active",
+    "firstName": "Harpreet",
+    "middleName": "",
+    "lastName": "Gill",
+    "suffix": "",
+    "name": "Harpreet Gill",
+    "avatarInitials": "HG",
+    "email": "harpreet.gill@example.com",
+    "phone": "(905) 555-0171",
+    "cellPhone": "",
+    "dob": "1992-06-21",
+    "ssnEncrypted": "enc:v1:c0de…",
+    "ssnLast4": "4480",
+    "gender": "Male",
+    "citizenship": "Canada",
+    "authorizedToWork": {
+      "us": false,
+      "ca": true
+    },
+    "position": "Local Driver",
+    "operatesInUS": false,
+    "hiredDate": "2024-09-16",
+    "dateAdded": "2024-09-16",
+    "terminal": "Mississauga, ON",
+    "carrierCode": "GL-D003",
+    "address": {
+      "street": "77 Bristol Rd E",
+      "unit": "",
+      "addr2": "",
+      "city": "Mississauga",
+      "state": "ON",
+      "zip": "L4Z 3K8",
+      "country": "Canada"
+    },
+    "resided3Years": true,
+    "previousResidences": [],
+    "emergencyContacts": [],
+    "licenses": [
+      {
+        "number": "G5522-80911-22",
+        "country": "Canada",
+        "authority": "ON",
+        "class": "Class 3 / C",
+        "issueDate": "2021-06-21",
+        "expiryDate": "2026-06-21",
+        "medicalExpiry": "2026-06-21",
+        "current": true,
+        "commercial": true,
+        "endorsements": [],
+        "restricted": false,
+        "restrictions": "",
+        "isPrimary": true,
+        "status": "Expiring",
+        "frontDocumentId": null,
+        "backDocumentId": null
+      }
+    ],
+    "licensePrimary": {
+      "number": "G5522-80911-22",
+      "state": "ON",
+      "expiry": "2026-06-21"
+    },
+    "disqualification": {
+      "denied": {
+        "answer": "No"
+      },
+      "drivingWhileSuspended": {
+        "answer": "No"
+      },
+      "alcoholOffense": {
+        "answer": "No"
+      },
+      "substanceOffense": {
+        "answer": "No"
+      },
+      "reckless": {
+        "answer": "No"
+      },
+      "failedDotTest": {
+        "answer": "No"
+      }
+    },
+    "travel": {
+      "citizenshipCountry": "Canada",
+      "workAuthUS": false,
+      "workAuthCA": true,
+      "passport": {
+        "number": "",
+        "country": "",
+        "expiry": null,
+        "documentId": null
+      },
+      "visa": {
+        "has": false
+      },
+      "workPermit": {
+        "has": false
+      },
+      "twic": {
+        "has": false
+      },
+      "fast": {
+        "has": false
+      }
+    },
+    "drivingExperience": [
+      {
+        "equipmentClass": "Straight",
+        "freightTypes": [
+          "Reefer"
+        ],
+        "regions": [
+          "Local"
+        ],
+        "from": "2019-03",
+        "to": "2024-08",
+        "miles": "95000",
+        "ownerOperator": "No"
+      }
+    ],
+    "employment": [],
+    "employmentGaps": [],
+    "education": [],
+    "accidents": [],
+    "violations": [
+      {
+        "date": "2023-02-10",
+        "charge": "Logbook not current",
+        "state": "ON",
+        "commercialVehicle": "Yes",
+        "penalty": "Fine",
+        "fineAmount": "$100 - $250"
+      }
+    ],
+    "military": {
+      "served": false
+    },
+    "hos": {
+      "days": {
+        "2024-09-02": 8,
+        "2024-09-03": 9,
+        "2024-09-04": 0,
+        "2024-09-05": 10,
+        "2024-09-06": 8,
+        "2024-09-07": 0,
+        "2024-09-08": 0,
+        "2024-09-09": 9,
+        "2024-09-10": 9,
+        "2024-09-11": 8,
+        "2024-09-12": 10,
+        "2024-09-13": 7,
+        "2024-09-14": 0,
+        "2024-09-15": 0
+      },
+      "note": "Last two weeks at previous employer."
+    },
+    "signature": {
+      "declarationAccepted": true,
+      "applicantName": "Harpreet Gill",
+      "signedDate": "2024-09-16",
+      "signatureDocumentId": null,
+      "certified": true
+    },
+    "dqCompletionPct": 70,
+    "complianceMissing": 2,
+    "deletedAt": null,
+    "createdAt": "2024-09-16T13:00:00Z",
+    "updatedAt": "2026-06-01T09:00:00Z"
+  },
+  {
+    "_id": "DRV-001-0022",
+    "carrierId": "acct-001",
+    "driverType": "us-only",
+    "status": "Terminated",
+    "firstName": "Keisha",
+    "middleName": "",
+    "lastName": "Bell",
+    "suffix": "",
+    "name": "Keisha Bell",
+    "avatarInitials": "KB",
+    "email": "keisha.bell@example.com",
+    "phone": "(302) 555-0144",
+    "cellPhone": "",
+    "dob": "1995-01-30",
+    "ssnEncrypted": "enc:v1:77aa…",
+    "ssnLast4": "0931",
+    "gender": "Female",
+    "citizenship": "USA",
+    "authorizedToWork": {
+      "us": true,
+      "ca": false
+    },
+    "position": "Owner Operator",
+    "operatesInUS": true,
+    "hiredDate": "2023-04-03",
+    "dateAdded": "2023-04-03",
+    "terminal": "Wilmington, DE",
+    "carrierCode": "ACM-D022",
+    "address": {
+      "street": "410 Market St",
+      "unit": "",
+      "addr2": "Floor 2",
+      "city": "Wilmington",
+      "state": "DE",
+      "zip": "19801",
+      "country": "United States"
+    },
+    "resided3Years": true,
+    "previousResidences": [],
+    "emergencyContacts": [
+      {
+        "name": "Darnell Bell",
+        "relation": "Brother",
+        "phone": "(302) 555-0145",
+        "email": ""
+      }
+    ],
+    "licenses": [
+      {
+        "number": "B7701-10022-45",
+        "country": "United States",
+        "authority": "DE",
+        "class": "Class 1 / A",
+        "issueDate": "2020-01-30",
+        "expiryDate": "2028-01-30",
+        "medicalExpiry": "2025-12-01",
+        "current": true,
+        "commercial": true,
+        "endorsements": [
+          "Tanker"
+        ],
+        "restricted": false,
+        "restrictions": "",
+        "isPrimary": true,
+        "status": "Valid",
+        "frontDocumentId": null,
+        "backDocumentId": null
+      }
+    ],
+    "licensePrimary": {
+      "number": "B7701-10022-45",
+      "state": "DE",
+      "expiry": "2028-01-30"
+    },
+    "disqualification": {
+      "denied": {
+        "answer": "No"
+      },
+      "drivingWhileSuspended": {
+        "answer": "No"
+      },
+      "alcoholOffense": {
+        "answer": "No"
+      },
+      "substanceOffense": {
+        "answer": "No"
+      },
+      "reckless": {
+        "answer": "No"
+      },
+      "failedDotTest": {
+        "answer": "No"
+      }
+    },
+    "travel": {
+      "citizenshipCountry": "United States",
+      "workAuthUS": true,
+      "workAuthCA": false,
+      "passport": {
+        "number": "",
+        "country": "",
+        "expiry": null,
+        "documentId": null
+      },
+      "visa": {
+        "has": false
+      },
+      "workPermit": {
+        "has": false
+      },
+      "twic": {
+        "has": false
+      },
+      "fast": {
+        "has": false
+      }
+    },
+    "drivingExperience": [],
+    "employment": [],
+    "employmentGaps": [],
+    "education": [],
+    "accidents": [],
+    "violations": [],
+    "military": {
+      "served": true,
+      "country": "United States",
+      "branch": "Army",
+      "start": {
+        "m": "06",
+        "y": "2013"
+      },
+      "end": {
+        "m": "06",
+        "y": "2017"
+      },
+      "rank": "Specialist",
+      "dd214": "Yes",
+      "dd214DocumentId": null
+    },
+    "hos": {
+      "days": {},
+      "note": ""
+    },
+    "signature": {
+      "declarationAccepted": true,
+      "applicantName": "Keisha Bell",
+      "signedDate": "2023-04-03",
+      "signatureDocumentId": null,
+      "certified": true
+    },
+    "dqCompletionPct": 100,
+    "complianceMissing": 0,
+    "deletedAt": null,
+    "createdAt": "2023-04-03T10:00:00Z",
+    "updatedAt": "2026-08-15T16:40:00Z"
+  }
+]

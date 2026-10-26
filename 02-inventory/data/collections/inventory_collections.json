@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/inventory/inventory_collections.json",
+  "title": "inventory_collections",
+  "description": "What Manage inventory sends: one card per driver and direction, posted into the driver's conversation (Messages) and confirmed by the driver ticking items and, for a collection with forms, signing.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"col-<base36>\" — the same id on every copy of the card."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id`."
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "collect",
+        "return"
+      ],
+      "default": "collect"
+    },
+    "driverId": {
+      "type": "string",
+      "description": "→ `drivers._id`."
+    },
+    "driverName": {
+      "type": "string",
+      "description": "At the time of sending."
+    },
+    "conversationId": {
+      "type": "string",
+      "description": "→ the driver's conversation in Messages (outside this section)."
+    },
+    "holderLabel": {
+      "type": "string",
+      "description": "Unit label when the kit is for a vehicle.",
+      "default": ""
+    },
+    "counterparty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Where to collect from / hand to.",
+          "enum": [
+            "office",
+            "person"
+          ],
+          "default": "office"
+        },
+        "name": {
+          "type": "string",
+          "description": "\"Mike Johnson, yard office\" when kind = person.",
+          "default": ""
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "dueAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "\"YYYY-MM-DD\" or \"YYYY-MM-DDTHH:mm\"."
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ itemId, name, serial, route: \"assigned\" }` — one per item on the card."
+    },
+    "forms": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Collect only: `{ defId, title, recordId, status: pending|signed, signedAt?, signedBy?, receiptId? }`.",
+      "default": []
+    },
+    "note": {
+      "type": "string",
+      "description": "The message text (drafted, or the office's own wording).",
+      "default": ""
+    },
+    "issuedByUserId": {
+      "type": "string",
+      "description": "→ `users._id`."
+    },
+    "issuedByName": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "collected"
+      ],
+      "default": "pending"
+    },
+    "collectedItemIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The lines the driver ticked.",
+      "default": []
+    },
+    "collectedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "direction",
+    "driverId",
+    "driverName",
+    "conversationId",
+    "lines",
+    "issuedByUserId",
+    "issuedByName",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ]
+}

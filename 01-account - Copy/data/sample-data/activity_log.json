@@ -1,0 +1,101 @@
+[
+  {
+    "_id": "66f1a2b3c4d5e6f708091c01",
+    "carrierId": "acct-001",
+    "subjectType": "asset",
+    "subjectId": "acct-001-a-0101",
+    "action": "status_changed",
+    "by": {
+      "userId": "usr-0010",
+      "name": "Fleet Admin One"
+    },
+    "at": "2026-10-22T13:10:00Z",
+    "detail": "Status changed Active → Maintenance",
+    "before": {
+      "operationalStatus": "Active"
+    },
+    "after": {
+      "operationalStatus": "Maintenance"
+    }
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091c02",
+    "carrierId": "acct-001",
+    "subjectType": "driver",
+    "subjectId": "DRV-001-0014",
+    "action": "status_changed",
+    "by": {
+      "userId": "usr-0010",
+      "name": "Fleet Admin One"
+    },
+    "at": "2026-10-19T08:15:00Z",
+    "detail": "Status changed Active → On Leave",
+    "before": {
+      "status": "Active"
+    },
+    "after": {
+      "status": "On Leave"
+    }
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091c03",
+    "carrierId": "acct-001",
+    "subjectType": "asset",
+    "subjectId": "acct-001-a-0100",
+    "action": "document_filed",
+    "by": {
+      "userId": "usr-0010",
+      "name": "Fleet Admin One"
+    },
+    "at": "2026-10-21T11:00:00Z",
+    "detail": "Bill of Sale filed (doc-0001)",
+    "before": null,
+    "after": {
+      "billOfSale.documentId": "doc-0001"
+    }
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091c04",
+    "carrierId": "acct-001",
+    "subjectType": "driver",
+    "subjectId": "DRV-001-0022",
+    "action": "imported",
+    "by": {
+      "userId": "usr-0002",
+      "name": "Service Admin"
+    },
+    "at": "2023-04-03T10:00:00Z",
+    "detail": "Created from drivers-april.xlsx (row 7)",
+    "before": null,
+    "after": null
+  },
+  {
+    "_id": "66f1a2b3c4d5e6f708091c05",
+    "carrierId": "acct-001",
+    "subjectType": "carrier",
+    "subjectId": "acct-001",
+    "action": "updated",
+    "by": {
+      "userId": "usr-0002",
+      "name": "Service Admin"
+    },
+    "at": "2026-10-21T09:40:00Z",
+    "detail": "Cargo types updated",
+    "before": {
+      "cargoTypes": [
+        "General Freight",
+        "Household Goods"
+      ]
+    },
+    "after": {
+      "cargoTypes": [
+        "General Freight",
+        "Household Goods",
+        "Building Materials",
+        "Fresh Produce",
+        "Refrigerated Food",
+        "Beverages"
+      ]
+    }
+  }
+]

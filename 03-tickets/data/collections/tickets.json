@@ -1,0 +1,625 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/tickets/tickets.json",
+  "title": "tickets",
+  "description": "One document per ticket. Charges, vehicles, identifiers, court / eTicket details, monitored dates and documents are embedded because they are always read and written with the ticket. The list, tabs, KPIs, detail page, form, Monitoring feed, profile insights and the driver profile all read this collection.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "\"tkt-<ObjectId>\" (legacy seed ids \"1\"…\"14\" and \"acct-001-tkt-NNN\" migrate as-is)."
+    },
+    "carrierId": {
+      "type": "string",
+      "description": "→ `carriers._id` (Account). Required — the prototype drops it for form / banner / violation-created tickets."
+    },
+    "offenseNumber": {
+      "type": "string",
+      "description": "The ticket citation # people read. Unique per carrier (partial index, deletedAt null)."
+    },
+    "ticketKind": {
+      "type": "string",
+      "enum": [
+        "Paper",
+        "Electronic"
+      ],
+      "default": "Paper"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Issue date, YYYY-MM-DD."
+    },
+    "time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "HH:MM; null = unknown (the prototype stores \"00:00\")."
+    },
+    "driverId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `drivers._id` (Account)."
+    },
+    "driverName": {
+      "type": "string",
+      "description": "Denormalised at write time."
+    },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ `assets._id` (Account) — the power unit."
+        },
+        "unitNumber": {
+          "type": "string",
+          "description": "Snapshot at the time of the ticket.",
+          "default": ""
+        },
+        "plateNumber": {
+          "type": "string",
+          "default": ""
+        },
+        "plateJurisdiction": {
+          "type": "string",
+          "description": "State / province code.",
+          "default": ""
+        },
+        "vin": {
+          "type": "string",
+          "default": ""
+        },
+        "label": {
+          "type": "string",
+          "description": "\"Kenworth T800 2022\".",
+          "default": ""
+        },
+        "kind": {
+          "type": "string",
+          "description": "\"Truck · Power Unit\", \"Trailer · Dry Van Trailer\".",
+          "default": ""
+        }
+      }
+    },
+    "vehicle2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ `assets._id` (Account) — the trailer (optional)."
+        },
+        "unitNumber": {
+          "type": "string",
+          "description": "Snapshot at the time of the ticket.",
+          "default": ""
+        },
+        "plateNumber": {
+          "type": "string",
+          "default": ""
+        },
+        "plateJurisdiction": {
+          "type": "string",
+          "description": "State / province code.",
+          "default": ""
+        },
+        "vin": {
+          "type": "string",
+          "default": ""
+        },
+        "label": {
+          "type": "string",
+          "description": "\"Kenworth T800 2022\".",
+          "default": ""
+        },
+        "kind": {
+          "type": "string",
+          "description": "\"Truck · Power Unit\", \"Trailer · Dry Van Trailer\".",
+          "default": ""
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street / highway / mile marker.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "State / province code (ON, DE).",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "default": ""
+        },
+        "country": {
+          "type": "string",
+          "description": "Also picks the code list (US SMS vs Canadian CVOR / NSC).",
+          "enum": [
+            "USA",
+            "Canada"
+          ],
+          "default": "USA"
+        }
+      },
+      "required": [
+        "country"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Free text (kept separate from the street — the prototype mixes them).",
+      "default": ""
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "≥ 1 charge: `{ label, type?, subtype?, category?, group?, code?, isOos?, source: \"preset\"|\"sms\", dataId? }`. [0] is Primary."
+    },
+    "primary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Mirror of violations[0] — the narrow bucket used by badges and filters.",
+          "enum": [
+            "Speeding",
+            "Overweight",
+            "Logbook violation",
+            "Equipment defect",
+            "Insurance lapse",
+            "Red Light",
+            "Parking"
+          ]
+        },
+        "subtype": {
+          "type": "string",
+          "description": "Full master-chart text.",
+          "default": ""
+        },
+        "category": {
+          "type": "string",
+          "description": "BASIC family (\"Unsafe Driving\").",
+          "default": ""
+        },
+        "group": {
+          "type": "string",
+          "description": "Violation group — drives the sub-category cards.",
+          "default": ""
+        },
+        "code": {
+          "type": "string",
+          "description": "SMS / CVOR / NSC code.",
+          "default": ""
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "isOos": {
+      "type": "boolean",
+      "description": "Any charge qualifies for out-of-service.",
+      "default": false
+    },
+    "outOfService": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Answer to \"Out of Service?\" (null = unanswered)."
+    },
+    "commercialVehicle": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Answer to \"Were you in a commercial vehicle?\"."
+    },
+    "penalties": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Fine",
+          "Suspension",
+          "Revocation",
+          "Community Service",
+          "Other"
+        ]
+      },
+      "default": []
+    },
+    "demeritPoints": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "≥ 0."
+    },
+    "fineAmount": {
+      "type": "number",
+      "description": "≥ 0, 2 decimals.",
+      "default": 0
+    },
+    "legalExpense": {
+      "type": "number",
+      "description": "Lawyer, paralegal and court costs on top of the fine.",
+      "default": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "Money is never summed across currencies.",
+      "enum": [
+        "USD",
+        "CAD"
+      ],
+      "default": "USD"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Due",
+        "In Court",
+        "Paid",
+        "Closed"
+      ],
+      "default": "Due"
+    },
+    "paidAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Set when status becomes Paid (new — \"Paid This Month\" uses it)."
+    },
+    "dueDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "description": "Pay or answer by. YYYY-MM-DD."
+    },
+    "finalDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "description": "Court date / last deadline. ≥ date."
+    },
+    "dueMonitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Reminders for the due date on / off.",
+          "default": true
+        },
+        "basis": {
+          "type": "string",
+          "description": "\"expiry\" = the date itself; \"custom\" = customDate.",
+          "enum": [
+            "expiry",
+            "custom"
+          ],
+          "default": "expiry"
+        },
+        "customDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date",
+          "description": "YYYY-MM-DD when basis = custom."
+        },
+        "reminders": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Subset of 90, 60, 45, 30, 15, 7, 0 (0 = on the date).",
+          "default": [
+            30,
+            15,
+            7,
+            0
+          ]
+        },
+        "channels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "inApp": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "required": [
+            "email",
+            "inApp"
+          ]
+        },
+        "assigneeUserId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ `users._id`; who acts on the reminder."
+        }
+      },
+      "required": [
+        "enabled",
+        "basis",
+        "reminders"
+      ]
+    },
+    "finalMonitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Reminders for the final date on / off.",
+          "default": true
+        },
+        "basis": {
+          "type": "string",
+          "description": "\"expiry\" = the date itself; \"custom\" = customDate.",
+          "enum": [
+            "expiry",
+            "custom"
+          ],
+          "default": "expiry"
+        },
+        "customDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date",
+          "description": "YYYY-MM-DD when basis = custom."
+        },
+        "reminders": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Subset of 90, 60, 45, 30, 15, 7, 0 (0 = on the date).",
+          "default": [
+            30,
+            15,
+            7,
+            0
+          ]
+        },
+        "channels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "inApp": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "required": [
+            "email",
+            "inApp"
+          ]
+        },
+        "assigneeUserId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "→ `users._id`; who acts on the reminder."
+        }
+      },
+      "required": [
+        "enabled",
+        "basis",
+        "reminders"
+      ]
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "officerName": {
+          "type": "string",
+          "description": "Paper.",
+          "default": ""
+        },
+        "officerBadge": {
+          "type": "string",
+          "description": "Paper.",
+          "default": ""
+        },
+        "courtLocation": {
+          "type": "string",
+          "description": "Paper.",
+          "default": ""
+        },
+        "courtDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date",
+          "description": "Paper."
+        },
+        "portalUrl": {
+          "type": "string",
+          "description": "Electronic.",
+          "default": ""
+        },
+        "qrReference": {
+          "type": "string",
+          "description": "Electronic.",
+          "default": ""
+        },
+        "issuingDevice": {
+          "type": "string",
+          "description": "Electronic.",
+          "default": ""
+        }
+      }
+    },
+    "identifiers": {
+      "type": "object",
+      "description": "Regulatory and admin numbers: ticketNumber, citationNumber, violationTicketNumber, offenceNumber, offenceNoticeNumber, contraventionNumber, microfilmNumber, docketNumber, courtCaseNumber, courtLocationCode, iconCourtCode, violationCode, statuteSection, driverLicenceNumber, plateNumber, vinNumber, inspectionReportNumber, officerBadgeNumber, usdotNumber, mcNumber, cvorNumber, nscNumber, carrierNumber, finePenaltyNumber, paymentReferenceNumber, receiptNumber.",
+      "default": {}
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ docTypeId, docNumber, issueDate, files: [{ fileId, name, size, contentType }] }` — docTypeId one of viol_ticket, viol_eticket, viol_summons, viol_officer_report, viol_fine_receipt, viol_court_disposition. Files live in object storage.",
+      "default": []
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ticketFile": {
+          "type": "boolean",
+          "description": "Derived from documents on write (drives the list icons).",
+          "default": false
+        },
+        "receiptFile": {
+          "type": "boolean",
+          "description": "True when a Fine Payment Receipt document exists.",
+          "default": false
+        },
+        "noticeFile": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "ticketFile",
+        "receiptFile",
+        "noticeFile"
+      ]
+    },
+    "assignedToThirdParty": {
+      "type": "boolean",
+      "description": "Handed to a lawyer / paralegal.",
+      "default": false
+    },
+    "assigneeName": {
+      "type": "string",
+      "default": ""
+    },
+    "accidentId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ accidents (by id, not by text)."
+    },
+    "roadsideInspectionId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ roadside inspections."
+    },
+    "source": {
+      "type": "string",
+      "description": "How the ticket came in.",
+      "enum": [
+        "manual",
+        "reference",
+        "violation",
+        "application",
+        "seed"
+      ],
+      "default": "manual"
+    },
+    "sourceRefId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `ticket_references._id` or the violation / application it came from."
+    },
+    "createdByUserId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "→ `users._id`."
+    },
+    "deletedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Soft delete."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "offenseNumber",
+    "ticketKind",
+    "date",
+    "driverName",
+    "violations",
+    "isOos",
+    "fineAmount",
+    "currency",
+    "status",
+    "source",
+    "createdAt",
+    "updatedAt"
+  ]
+}

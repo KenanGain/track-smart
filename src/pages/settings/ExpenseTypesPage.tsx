@@ -1,5 +1,17 @@
-import { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, Check, Building2, Truck, User, ArrowLeft, Save } from 'lucide-react';
+import React, { Fragment, useState, useMemo } from 'react';
+import { Plus, Check, Building2, Truck, User, ArrowLeft, Save, Receipt, Repeat, FileCheck2, TrendingUp, Lock as LockIcon, LayoutGrid } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ListPageHeader } from '@/components/ui/ListPageHeader';
+import { ListScrollFrame } from '@/components/ui/ListScrollFrame';
+import { KpiStatRow, type KpiStat } from '@/components/ui/KpiStatCard';
+import { ListHeaderBridge, chipsFromStats, useHeaderChips } from '@/components/ui/list-header-bridge';
+import { usePageChrome } from '@/components/ui/PageChrome';
+import {
+    ColumnPicker, FilterSelect, FiltersToggle, GroupBySelect, ListToolbar, ResetFilters, SortTh, TableGroupBand, TablePager,
+    useTableSort, type PickerColumn,
+} from '@/components/ui/ListChrome';
+import { PIN_TD_ACTIONS, PIN_TH, PIN_TH_ACTIONS, mobileFold } from '@/components/ui/list-chrome';
+import { RowActions } from '@/components/ui/RowActions';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import { INITIAL_EXPENSE_TYPES, type ExpenseType, type ExpenseCategory, type ExpenseSubCategory, type ExpenseEntityType, type ExpenseFrequency } from './expenses.data';
@@ -17,6 +29,37 @@ const Badge = ({ children, className = "" }: { children: React.ReactNode, classN
 );
 import { useBackAwareView } from '@/lib/use-back-aware-view';
 
+type EntityTab = 'all' | ExpenseEntityType;
+const ENTITY_TABS: { id: EntityTab; label: string; icon: React.ElementType }[] = [
+    { id: 'all', label: 'All expense types', icon: LayoutGrid },
+    { id: 'Carrier', label: 'Carrier', icon: Building2 },
+    { id: 'Asset', label: 'Asset', icon: Truck },
+    { id: 'Driver', label: 'Driver', icon: User },
+];
+type Col = 'name' | 'entity' | 'classification' | 'configuration' | 'description';
+const COLUMNS: PickerColumn<Col>[] = [
+    { id: 'name', label: 'Expense name', locked: true },
+    { id: 'entity', label: 'Entity' },
+    { id: 'classification', label: 'Classification' },
+    { id: 'configuration', label: 'Configuration' },
+    { id: 'description', label: 'Description' },
+];
+type GroupBy = 'none' | 'entity' | 'category' | 'subCategory';
+const GROUPS: { id: GroupBy; label: string }[] = [
+    { id: 'none', label: 'No grouping' },
+    { id: 'entity', label: 'Group: Entity' },
+    { id: 'category', label: 'Group: Variable / Fixed' },
+    { id: 'subCategory', label: 'Group: Sub-category' },
+];
+const CATEGORY_LABEL: Record<ExpenseCategory, string> = { variable: 'Variable', fixed: 'Fixed' };
+const SUB_LABEL: Record<ExpenseSubCategory, string> = { operational: 'Operational', compliance: 'Compliance', recurring: 'Recurring', other: 'Other' };
+const CONFIG_OPTIONS = ['Recurring', 'Document required', 'Neither'];
+const ENTITY_ICON: Record<ExpenseEntityType, React.ElementType> = { Carrier: Building2, Asset: Truck, Driver: User };
+
+const TD = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <td className={cn('px-4 py-2.5 text-sm align-middle whitespace-nowrap', className)}>{children}</td>
+);
+
 export const ExpenseTypesPage = () => {
     // --- State ---
     const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>(INITIAL_EXPENSE_TYPES);
@@ -24,14 +67,11 @@ export const ExpenseTypesPage = () => {
     // Back leaves the editor rather than the app.
     useBackAwareView(isEditing, () => setIsEditing(false), "expense-type");
     const [editingType, setEditingType] = useState<ExpenseType | null>(null);
-    const [searchQuery, setSearchQuery] = useState("");
+    const [tab, setTab] = useState<EntityTab>('all');
+    const { scrollRef, onScroll, condensed, bridge } = usePageChrome(tab);
 
     // --- Actions ---
-    const handleDelete = (id: string) => {
-        if (confirm("Are you sure you want to delete this expense type?")) {
-            setExpenseTypes(prev => prev.filter(t => t.id !== id));
-        }
-    };
+    const handleDelete = (id: string) => setExpenseTypes(prev => prev.filter(t => t.id !== id));
 
     const handleSave = (type: ExpenseType) => {
         if (editingType) {
@@ -53,134 +93,235 @@ export const ExpenseTypesPage = () => {
         setEditingType(null);
     };
 
-    // --- Filtered Data ---
-    const filteredTypes = expenseTypes.filter(t => 
-        t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.subCategory.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
     if (isEditing) {
         return (
-            <ExpenseTypeEditor 
-                initialData={editingType} 
-                onSave={handleSave} 
-                onCancel={cancelEditing} 
+            <ExpenseTypeEditor
+                initialData={editingType}
+                onSave={handleSave}
+                onCancel={cancelEditing}
             />
         );
     }
 
+    const tabCount = (t: EntityTab) => (t === 'all' ? expenseTypes.length : expenseTypes.filter(x => x.entityType === t).length);
+
     return (
-        <div className="flex flex-col h-full bg-slate-50/50">
-            {/* Header */}
-            <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-8 py-5 flex items-center justify-between">
-                <div>
-                     <nav className="flex text-sm text-slate-500 mb-1 font-medium items-center gap-2" aria-label="Breadcrumb">
-                        <span>Settings</span>
-                        <span className="text-slate-300">/</span>
-                        <span className="text-slate-900">Expenses</span>
-                    </nav>
-                    <h1 className="text-2xl font-bold text-slate-900">Expense Types</h1>
-                </div>
-                <Button onClick={() => startEditing()} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                    <Plus size={16} /> Add Expense Type
-                </Button>
-            </header>
-
-            {/* Content */}
-            <main className="flex-1 p-8 overflow-auto">
-                <div className="mb-6 flex items-center justify-between">
-                     <div className="relative w-72">
-                        <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search expense types..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-200 font-medium text-slate-500 uppercase tracking-wider text-xs">
-                            <tr>
-                                <th className="px-6 py-4">Expense Name</th>
-                                <th className="px-6 py-4">Entity</th>
-                                <th className="px-6 py-4">Classification</th>
-                                <th className="px-6 py-4">Configuration</th>
-                                <th className="px-6 py-4">Description</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {filteredTypes.map(type => (
-                                <tr key={type.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="font-semibold text-slate-900 flex items-center gap-2">
-                                            {type.name}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-1.5 text-slate-600">
-                                            {type.entityType === 'Carrier' && <Building2 size={14} />}
-                                            {type.entityType === 'Asset' && <Truck size={14} />}
-                                            {type.entityType === 'Driver' && <User size={14} />}
-                                            <span>{type.entityType}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col gap-1 items-start">
-                                            <Badge className={
-                                                type.category === 'variable' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                                'bg-purple-50 text-purple-700 border border-purple-100'
-                                            }>
-                                                {type.category.charAt(0).toUpperCase() + type.category.slice(1)}
-                                            </Badge>
-                                            <span className="text-xs text-slate-500 capitalize">{type.subCategory}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 space-y-1">
-                                        {type.isRecurring && (
-                                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                                <Check size={12} className="text-green-600" /> Recurring ({type.frequency || 'Custom'})
-                                            </div>
-                                        )}
-                                        {type.documentRequired && (
-                                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                                <Check size={12} className="text-green-600" /> Document Required
-                                            </div>
-                                        )}
-                                        {!type.isRecurring && !type.documentRequired && <span className="text-slate-400 text-xs">-</span>}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-500 truncate max-w-xs">{type.description || '-'}</td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button 
-                                                onClick={() => startEditing(type)}
-                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                title="Edit"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDelete(type.id)}
-                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </main>
-        </div>
+        <ListHeaderBridge value={bridge.value}>
+            <div className="flex h-full min-h-0 flex-col bg-slate-50">
+                <ListPageHeader
+                    Icon={Receipt}
+                    title="Expense Types"
+                    description="The expense categories drivers and the office record against a carrier, an asset or a driver — and what each one requires."
+                    condensed={condensed}
+                    chips={bridge.chips ?? undefined}
+                    tabs={ENTITY_TABS.map(t => ({ id: t.id, label: t.label, icon: t.icon, count: tabCount(t.id) }))}
+                    activeTab={tab}
+                    onTabChange={(id) => setTab(id as EntityTab)}
+                    tabsLabel="Expense entities"
+                    showZeroCounts
+                    actions={
+                        <Button onClick={() => startEditing()} className={cn('gap-2 bg-blue-600 text-white hover:bg-blue-700', condensed ? 'h-8' : 'h-9')}>
+                            <Plus size={16} /> Add expense type
+                        </Button>
+                    }
+                />
+                <ExpenseTypesList
+                    key={tab}
+                    types={tab === 'all' ? expenseTypes : expenseTypes.filter(t => t.entityType === tab)}
+                    tabLabel={ENTITY_TABS.find(t => t.id === tab)!.label}
+                    showEntity={tab === 'all'}
+                    onEdit={startEditing}
+                    onDelete={(t) => handleDelete(t.id)}
+                    scrollRef={scrollRef}
+                    onScroll={onScroll}
+                />
+            </div>
+        </ListHeaderBridge>
     );
 };
+
+function ExpenseTypesList({ types, tabLabel, showEntity, onEdit, onDelete, scrollRef, onScroll }: {
+    types: ExpenseType[];
+    tabLabel: string;
+    showEntity: boolean;
+    onEdit: (t: ExpenseType) => void;
+    onDelete: (t: ExpenseType) => void;
+    scrollRef?: React.Ref<HTMLDivElement>;
+    onScroll?: React.UIEventHandler<HTMLDivElement>;
+}) {
+    const [search, setSearch] = useState('');
+    const [category, setCategory] = useState('');
+    const [sub, setSub] = useState('');
+    const [config, setConfig] = useState('');
+    const [groupBy, setGroupBy] = useState<GroupBy>('none');
+    const [visible, setVisible] = useState<Set<Col>>(() => new Set(COLUMNS.map(c => c.id)));
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
+    const stats: KpiStat[] = [
+        { id: 'all', label: 'Expense types', value: types.length, Icon: Receipt, accent: 'blue' },
+        { id: 'variable', label: 'Variable', value: types.filter(t => t.category === 'variable').length, Icon: TrendingUp, accent: 'sky' },
+        { id: 'fixed', label: 'Fixed', value: types.filter(t => t.category === 'fixed').length, Icon: LockIcon, accent: 'violet' },
+        { id: 'recurring', label: 'Recurring', value: types.filter(t => t.isRecurring).length, Icon: Repeat, accent: 'amber' },
+        { id: 'docs', label: 'Document required', value: types.filter(t => t.documentRequired).length, Icon: FileCheck2, accent: 'emerald' },
+    ];
+    const kpiActive = category ? category : config === 'Recurring' ? 'recurring' : config === 'Document required' ? 'docs' : !sub && !config ? 'all' : '';
+    const pickKpi = (id: string) => {
+        setPage(1);
+        if (id === 'all') { setCategory(''); setConfig(''); return; }
+        if (id === 'variable' || id === 'fixed') { setConfig(''); setCategory(c => (c === id ? '' : id)); return; }
+        setCategory('');
+        const want = id === 'recurring' ? 'Recurring' : 'Document required';
+        setConfig(c => (c === want ? '' : want));
+    };
+    useHeaderChips(chipsFromStats(stats, kpiActive, pickKpi));
+
+    const q = search.trim().toLowerCase();
+    const rows = types.filter(t => {
+        if (category && t.category !== category) return false;
+        if (sub && SUB_LABEL[t.subCategory] !== sub) return false;
+        if (config === 'Recurring' && !t.isRecurring) return false;
+        if (config === 'Document required' && !t.documentRequired) return false;
+        if (config === 'Neither' && (t.isRecurring || t.documentRequired)) return false;
+        return !q || [t.name, t.category, t.subCategory, t.entityType, t.description ?? ''].some(x => x.toLowerCase().includes(q));
+    });
+    const readers = useMemo(() => ({
+        name: (t: ExpenseType) => t.name,
+        entity: (t: ExpenseType) => t.entityType,
+        classification: (t: ExpenseType) => `${t.category} ${t.subCategory}`,
+        configuration: (t: ExpenseType) => (t.isRecurring ? 0 : t.documentRequired ? 1 : 2),
+        description: (t: ExpenseType) => t.description ?? '',
+    }), []);
+    const { sort, onSort, sorted } = useTableSort<Col, ExpenseType>(rows, readers, null);
+    const groupOf = (t: ExpenseType): { rank: number | string; label: string } | null =>
+        groupBy === 'entity' ? { rank: ['Carrier', 'Asset', 'Driver'].indexOf(t.entityType), label: t.entityType }
+            : groupBy === 'category' ? { rank: t.category === 'variable' ? 0 : 1, label: CATEGORY_LABEL[t.category] }
+                : groupBy === 'subCategory' ? { rank: Object.keys(SUB_LABEL).indexOf(t.subCategory), label: SUB_LABEL[t.subCategory] }
+                    : null;
+    const grouped = groupBy === 'none' ? sorted : sorted
+        .map((t, i) => ({ t, i, g: groupOf(t)! }))
+        .sort((x, y) => (Number(x.g.rank) - Number(y.g.rank)) || x.i - y.i)
+        .map(x => x.t);
+    const groupCounts = new Map<string, number>();
+    if (groupBy !== 'none') grouped.forEach(t => { const l = groupOf(t)!.label; groupCounts.set(l, (groupCounts.get(l) ?? 0) + 1); });
+
+    const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
+    const safePage = Math.min(page, pages);
+    const slice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+    const show = (c: Col) => visible.has(c) && (c !== 'entity' || showEntity);
+    const colCount = COLUMNS.filter(c => c.locked || show(c.id)).length + 1;
+    const filterCount = [!!category, !!sub, !!config, groupBy !== 'none'].filter(Boolean).length;
+    const touched = filterCount > 0 || !!q;
+    const reset = () => { setSearch(''); setCategory(''); setSub(''); setConfig(''); setGroupBy('none'); setPage(1); };
+    const toPage1 = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(1); };
+
+    return (
+        <ListScrollFrame
+            above={<KpiStatRow stats={stats} activeId={kpiActive} onPick={pickKpi} />}
+            title={tabLabel === 'All expense types' ? 'Expense types' : `${tabLabel} expense types`}
+            count={grouped.length}
+            total={types.length}
+            description="Each type says whether it varies or is fixed, whether it repeats, and what document has to come with it — click a row to edit it."
+            actions={<ColumnPicker columns={showEntity ? COLUMNS : COLUMNS.filter(c => c.id !== 'entity')} visible={visible}
+                onToggle={(id) => setVisible(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} />}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+            contentKey={`${filtersOpen}|${slice.length}`}
+            toolbar={
+                <ListToolbar search={search} onSearch={toPage1(setSearch)} placeholder="Search expense types…"
+                    filters={<div className={mobileFold(filtersOpen)}>
+                        <FilterSelect value={category ? CATEGORY_LABEL[category as ExpenseCategory] : ''} title="Variable or fixed" allLabel="Variable and fixed"
+                            options={['Variable', 'Fixed']} onChange={toPage1((v: string) => setCategory(v === 'Variable' ? 'variable' : v === 'Fixed' ? 'fixed' : ''))} />
+                        <FilterSelect value={sub} onChange={toPage1(setSub)} title="Sub-category" allLabel="All sub-categories" options={Object.values(SUB_LABEL)} />
+                        <FilterSelect value={config} onChange={toPage1(setConfig)} title="Configuration" allLabel="Any configuration" options={CONFIG_OPTIONS} />
+                    </div>}
+                    filtersExtra={<>
+                        <FiltersToggle open={filtersOpen} onToggle={() => setFiltersOpen(o => !o)} count={filterCount} />
+                        <div className={mobileFold(filtersOpen)}>
+                            <GroupBySelect value={groupBy} onChange={toPage1(setGroupBy)} options={showEntity ? GROUPS : GROUPS.filter(g => g.id !== 'entity')} />
+                            <ResetFilters on={touched} onReset={reset} />
+                        </div>
+                    </>} />
+            }
+            footer={<TablePager page={safePage} pageSize={pageSize} total={grouped.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
+        >
+            <table className="w-full">
+                <thead>
+                    <tr>
+                        <SortTh col="name" label="Expense name" sortable sort={sort} onSort={onSort} className={PIN_TH} />
+                        {show('entity') && <SortTh col="entity" label="Entity" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show('classification') && <SortTh col="classification" label="Classification" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show('configuration') && <SortTh col="configuration" label="Configuration" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        {show('description') && <SortTh col="description" label="Description" sortable sort={sort} onSort={onSort} className={PIN_TH} />}
+                        <SortTh label="Actions" sort={sort} className={PIN_TH_ACTIONS} />
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {slice.length === 0 && (
+                        <tr>
+                            <td colSpan={colCount} className="px-6 py-14 text-center">
+                                <Receipt className="mx-auto h-7 w-7 text-slate-300" />
+                                <p className="mt-3 text-sm font-semibold text-slate-700">{types.length ? 'No expense type matches' : 'No expense types here yet'}</p>
+                                {touched && (
+                                    <button type="button" onClick={reset} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Clear filters</button>
+                                )}
+                            </td>
+                        </tr>
+                    )}
+                    {slice.map((type, i) => {
+                        const g = groupOf(type);
+                        const prev = i === 0 || !g ? null : groupOf(slice[i - 1]);
+                        const EIcon = ENTITY_ICON[type.entityType];
+                        return (
+                            <Fragment key={type.id}>
+                                {g && (!prev || prev.label !== g.label) && (
+                                    <TableGroupBand label={g.label} count={groupCounts.get(g.label) ?? 0} colSpan={colCount} />
+                                )}
+                                <tr className="group cursor-pointer transition-colors hover:bg-slate-50" onClick={() => onEdit(type)}>
+                                    <TD>
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><Receipt size={14} /></span>
+                                            <span className="font-semibold text-slate-900">{type.name}</span>
+                                        </div>
+                                    </TD>
+                                    {show('entity') && (
+                                        <TD><span className="inline-flex items-center gap-1.5 text-[13px] text-slate-600"><EIcon size={14} className="text-slate-400" /> {type.entityType}</span></TD>
+                                    )}
+                                    {show('classification') && (
+                                        <TD>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Badge className={type.category === 'variable' ? 'border border-blue-100 bg-blue-50 text-blue-700' : 'border border-purple-100 bg-purple-50 text-purple-700'}>
+                                                    {CATEGORY_LABEL[type.category]}
+                                                </Badge>
+                                                <span className="text-xs text-slate-500">· {SUB_LABEL[type.subCategory]}</span>
+                                            </span>
+                                        </TD>
+                                    )}
+                                    {show('configuration') && (
+                                        <TD>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {type.isRecurring && <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700"><Repeat size={11} /> Recurring{type.frequency ? ` · ${type.frequency}` : ''}</span>}
+                                                {type.documentRequired && <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700"><Check size={11} /> Document</span>}
+                                                {!type.isRecurring && !type.documentRequired && <span className="text-xs text-slate-300">—</span>}
+                                            </span>
+                                        </TD>
+                                    )}
+                                    {show('description') && (
+                                        <TD className="max-w-[22rem] truncate text-[13px] text-slate-500"><span title={type.description}>{type.description || '—'}</span></TD>
+                                    )}
+                                    <td className={cn('px-4 py-2.5', PIN_TD_ACTIONS)} onClick={(e) => e.stopPropagation()}>
+                                        <RowActions noun="expense type" name={type.name} onEdit={() => onEdit(type)} onDelete={() => onDelete(type)} />
+                                    </td>
+                                </tr>
+                            </Fragment>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </ListScrollFrame>
+    );
+}
 
 // --- Editor Component (Dedicated Form) ---
 
@@ -267,40 +408,31 @@ const ExpenseTypeEditor = ({ initialData, onSave, onCancel }: {
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50">
-            {/* Header */}
-            <div className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={onCancel}>
-                        <ArrowLeft className="h-5 w-5 text-slate-500" />
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            {/* Header — the same band as the list, with the way back and the save */}
+            <ListPageHeader
+                Icon={Receipt}
+                title={initialData ? `Edit expense type · ${initialData.name}` : 'New expense type'}
+                description={initialData ? 'Update its classification, requirements and documents.' : 'Configure a new expense category and what it requires.'}
+                condensed={false}
+                actions={<>
+                    <Button variant="outline" className="h-9 gap-1.5" onClick={onCancel}>
+                        <ArrowLeft className="h-4 w-4" /> Back to expense types
                     </Button>
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-900">
-                            {initialData ? 'Edit Expense Type' : 'Add Expense Type'}
-                        </h1>
-                        <p className="text-sm text-slate-500">
-                            {initialData ? 'Update configuration' : 'Configure new expense category and requirements'}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <Button variant="outline" onClick={onCancel}>
-                        Cancel
-                    </Button>
-                    <Button 
-                        onClick={() => onSave(formData as ExpenseType)} 
+                    <Button
+                        onClick={() => onSave(formData as ExpenseType)}
                         disabled={!formData.name}
-                        className="bg-blue-600 text-white hover:bg-blue-700"
+                        className="h-9 gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
                     >
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Changes
+                        <Save className="h-4 w-4" />
+                        Save changes
                     </Button>
-                </div>
-            </div>
+                </>}
+            />
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-auto p-8">
-                <div className="max-w-4xl mx-auto space-y-6">
+            <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+                <div className="max-w-4xl space-y-6">
                     
                     {/* Basic Info Card */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-8">

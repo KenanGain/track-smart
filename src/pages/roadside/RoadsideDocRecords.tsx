@@ -53,7 +53,7 @@ export function sampleDoc(inspection: RoadsideInspection, shelf: Shelf, by: stri
     const base: RoadsideDoc = {
         id: `doc-sample-${shelf}-${Date.now().toString(36)}`,
         name: shelf === "reports" ? `inspection-report-${inspection.date}.pdf`
-            : shelf === "remediation" ? `re-inspection-${inspection.date}.pdf`
+            : shelf === "remediation" ? `post-inspection-dvir-${inspection.date}.pdf`
                 : `repair-invoice-${inspection.date}.pdf`,
         size,
         url: `/demo-docs/${file}`,
@@ -61,7 +61,7 @@ export function sampleDoc(inspection: RoadsideInspection, shelf: Shelf, by: stri
         uploadedBy: by,
         source: "portal",
     };
-    if (shelf === "remediation") return { ...base, performedBy: "mechanic", performedOn: inspection.date };
+    if (shelf === "remediation") return { ...base, performedBy: "mechanic", performedOn: inspection.date, defectFound: false };
     if (shelf === "repairBills") return { ...base, assetIds: units.map((u) => u.id), amount: "412.60" };
     return base;
 }
@@ -83,9 +83,9 @@ export const SHELF_META: {
     },
     {
         key: "remediation", icon: ShieldCheck,
-        title: "Remediation inspection report",
-        blurb: "Performed after the defect was fixed. Says whether a mechanic or the driver did it.",
-        accepts: "Attach the signed re-inspection — PDF, JPG or PNG up to 10MB",
+        title: "Post-inspection DVIR",
+        blurb: "The driver vehicle inspection report done after the defect was fixed. Says whether a defect was still found, and who did it.",
+        accepts: "Attach the signed DVIR — PDF, JPG or PNG up to 10MB",
         tone: "bg-emerald-50 text-emerald-600",
     },
     {
@@ -123,7 +123,8 @@ export function docDetails(i: RoadsideInspection, shelf: Shelf, doc: RoadsideDoc
         const who = doc.performedByName?.trim()
             ? `${doc.performedByName.trim()}${doc.performedBy ? ` (${REMEDIATION_BY_LABEL[doc.performedBy]})` : ""}`
             : doc.performedBy ? `${REMEDIATION_BY_LABEL[doc.performedBy]} performed it` : "Performer not stated";
-        return [who, doc.performedOn || null].filter(Boolean).join(" · ");
+        const defect = doc.defectFound === undefined ? null : doc.defectFound ? "Defect found" : "No defect";
+        return [defect, who, doc.performedOn || null].filter(Boolean).join(" · ");
     }
     if (shelf === "repairBills") {
         const named = unitOptionsFor(i).filter((u) => doc.assetIds?.includes(u.id)).map((u) => u.label);

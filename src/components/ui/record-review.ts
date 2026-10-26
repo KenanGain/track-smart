@@ -136,7 +136,7 @@ export function useRecordReview({ kind, id, accountId, currentUser, source }: {
     ))), [apply, withAct, currentUser]);
 
     /** Close with a resolution. The warning letter is the one that leaves a document behind. */
-    const dispose = useCallback((disp: HosDisposition, trainingName?: string) => {
+    const dispose = useCallback((disp: HosDisposition, trainingName?: string, via?: string) => {
         const meta = HOS_DISPOSITION_BY_ID[disp];
         let letterNote = '';
         if (disp === 'warning') {
@@ -152,10 +152,10 @@ export function useRecordReview({ kind, id, accountId, currentUser, source }: {
             disposition: disp,
             trainingName: disp === 'training' ? trainingName : r.trainingName,
             reviewedBy: r.reviewedBy ?? currentUser,
-        }, meta.kind, `Closed — ${meta.label}${disp === 'training' && trainingName ? `: ${trainingName}` : ''}${letterNote}`));
+        }, meta.kind, `Closed — ${meta.label}${disp === 'training' && trainingName ? `: ${trainingName}` : ''}${via ? ` · ${via}` : ''}${letterNote}`));
     }, [apply, withAct, accountId, source, currentUser]);
 
-    const assignTraining = useCallback((name: string) => dispose('training', name), [dispose]);
+    const assignTraining = useCallback((name: string, via?: string) => dispose('training', name, via), [dispose]);
 
     const reopen = useCallback(() => apply(r => withAct(
         { ...r, status: 'review', disposition: undefined }, 'reopened', 'Reopened for review',

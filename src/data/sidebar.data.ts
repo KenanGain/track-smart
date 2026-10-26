@@ -20,17 +20,15 @@ import {
     Sliders,
     Users,
     ListChecks,
+    Store,
     Boxes,
     UserCog,
     ShieldAlert,
-    Lock,
     History,
     FlaskConical,
     FileSignature,
-    LayoutTemplate,
     Crown,
     Gauge,
-    Bell,
     BellRing,
     Truck,
     Layers,
@@ -93,6 +91,14 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Maintenance",
         icon: Wrench,
         path: "/maintenance",
+    },
+    {
+        // The shops and suppliers the carrier buys from — inventory and maintenance both
+        // use them, so they have a menu of their own rather than living under either.
+        key: "vendors",
+        label: "Vendors",
+        icon: Store,
+        path: "/vendors",
     },
     {
         // The driver's own way in. Sits above the app itself because a driver with no
@@ -185,10 +191,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         children: [
             { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
             { key: "settings-users-roles", label: "Users & Roles", icon: UserCog, path: "/settings/users-roles", badge: "New" },
-            { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
-            { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
-            { key: "settings-new-compliance-documents", label: "New Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
-            { key: "settings-default-compliance-monitoring", label: "Compliance & Monitoring", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
+            { key: "settings-default-compliance-monitoring", label: "Monitoring & Notifications", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
+            { key: "settings-new-compliance-documents", label: "Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
             { key: "settings-tags", label: "Tags", icon: Tags, path: "/settings/tags", badge: "New" },
             { key: "settings-chat-tags", label: "Chat Tags", icon: MessageSquare, path: "/settings/chat-tags", badge: "New" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
@@ -211,8 +215,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "accidents-settings", label: "Accidents", icon: AlertTriangle, path: "/settings/accidents" },
             { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
             { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
-            { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
-            { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
             { key: "settings-safety-events", label: "Safety Events", icon: Activity, path: "/settings/safety-events", badge: "New" },
             { key: "settings-integrations", label: "Integrations", icon: Workflow, path: "/settings/integrations", badge: "New" },
@@ -224,22 +226,25 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Briefcase,
         children: [
             { key: "service-profile-profile", label: "Profile", icon: Briefcase, path: "/service-profile" },
+            // The many-carrier level: every carrier profile under it, who works on them, who is told.
+            { key: "accounts", label: "Accounts", icon: Users, path: "/accounts" },
             { key: "service-profile-users-roles", label: "Users & Roles", icon: UserCog, path: "/service-profile/users-roles", badge: "New" },
+            { key: "service-profile-monitoring-notifications", label: "Monitoring & Notifications", icon: BellRing, path: "/service-profile/monitoring-notifications", badge: "New" },
             { key: "service-profile-compliance", label: "Compliance Setup", icon: ShieldCheck, path: "/service-profile/compliance-setup" },
+            { key: "service-profile-audit-log", label: "Audit Log", icon: History, path: "/service-profile/audit-log", badge: "New" },
         ],
     },
     {
         key: "admin",
         label: "Admin",
         icon: UserCog,
+        // One carrier — the one picked in the top bar. Its team, who gets its alerts, its
+        // compliance configuration, its log. The same two pages sit under Settings.
         children: [
-            { key: "accounts", label: "Accounts", icon: Users, path: "/accounts" },
-            { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
-            { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
-            { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },
+            { key: "admin-users", label: "Users & Roles", icon: UserCog, path: "/admin/users", badge: "New" },
+            { key: "admin-monitoring-notifications", label: "Monitoring & Notifications", icon: BellRing, path: "/admin/monitoring-notifications", badge: "New" },
             { key: "admin-compliance-setup", label: "Carrier Profile Configuration", icon: ShieldCheck, path: "/admin/carrier-compliance-setup" },
-            { key: "admin-monitoring-notifications", label: "Monitoring & Notifications", icon: Bell, path: "/admin/monitoring-notifications" },
-            { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log" },
+            { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log", badge: "New" },
         ],
     },
     {
@@ -249,17 +254,14 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         children: [
             // ── Overview ──
             { key: "super-admin-dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
-            // ── Catalog (source of truth for what the system tracks) ──
-            { key: "super-admin-compliance-documents", label: "Compliance and Documents", icon: FileText, path: "/admin/compliance-and-documents" },
-            { key: "super-admin-compliance-templates", label: "Compliance Templates", icon: LayoutTemplate, path: "/admin/compliance-templates" },
             // ── Form & pipeline authoring (built on top of the catalog) ──
             { key: "super-admin-docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/admin/docu-form" },
-            { key: "super-admin-templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/admin/templates" },
-            { key: "super-admin-hiring-forms", label: "Hiring Forms", icon: ClipboardCheck, path: "/hiring-forms", badge: "New" },
-            { key: "super-admin-hiring-form-templates", label: "Hiring Form Templates", icon: Layers, path: "/admin/hiring-form-templates", badge: "New" },
             // ── Hierarchy configuration (Super Admin defines, then cascades down) ──
             { key: "super-admin-service-profile-compliance", label: "Service Profile Configuration", icon: Building2, path: "/admin/service-profile-compliance" },
             { key: "super-admin-carrier-profile-config", label: "Carrier Profile Configuration", icon: Truck, path: "/admin/carrier-profile-configuration" },
+            // ── The six roles themselves: which menus each gets, and a login per access shape ──
+            { key: "admin-roles", label: "Roles & Access", icon: ShieldAlert, path: "/admin/roles" },
+            { key: "super-admin-audit-log", label: "Audit Log", icon: History, path: "/admin/platform-audit-log", badge: "New" },
         ],
     },
     {
@@ -281,6 +283,21 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
             { key: "dq-files", label: "Driver Qualification Files", icon: ListChecks, path: "/dq-files" },
         ],
+    },
+    // Superseded by Settings ▸ Compliance & Documents.
+    {
+        key: "compliance-setup",
+        label: "Compliance and Documents (old)",
+        icon: ShieldCheck,
+        path: "/settings/compliance-setup",
+        disabled: true,
+    },
+    {
+        key: "settings-compliance-and-documents",
+        label: "Compliance Setup (old)",
+        icon: FileText,
+        path: "/settings/compliance-and-documents",
+        disabled: true,
     },
     // Superseded by "Default Compliances & Documents".
     {

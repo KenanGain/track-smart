@@ -47,3 +47,15 @@ export const GROUP_BAND_TONE: Record<string, string> = {
     Monitored: 'text-blue-700 bg-blue-50/70',
 };
 export const bandTone = (label: string) => GROUP_BAND_TONE[label] ?? 'text-slate-600 bg-slate-50';
+
+/**
+ * A header cell pinned to the top of its table's scroll box. The rule under it is an inset
+ * shadow: a sticky cell's own border scrolls away with the rows.
+ */
+export const PIN_TH = 'sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_#e2e8f0]';
+/** The Actions heading: pinned to the top AND the right edge, with a rule on its left. */
+export const PIN_TH_ACTIONS = `${PIN_TH} right-0 z-20 w-[84px] pr-4 text-right shadow-[inset_0_-1px_0_#e2e8f0,inset_1px_0_0_#e2e8f0]`;
+/** The Actions cell on each row: pinned right, painted to match the row's hover. Needs `group` on the row. */
+export const PIN_TD_ACTIONS = 'sticky right-0 bg-white pr-4 text-right shadow-[inset_1px_0_0_#f1f5f9] group-hover:bg-slate-50';
+/** The class that hides a list's filter controls on a phone until `FiltersToggle` opens them. */
+export const mobileFold = (open: boolean) => (open ? 'contents' : 'max-md:hidden contents');

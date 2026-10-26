@@ -15,6 +15,7 @@ import {
 } from "@/pages/accounts/service-profiles.data";
 import { getAccountsByServiceProfileId, type AccountStatus, type AccountRecord } from "@/pages/accounts/accounts.data";
 import { APP_USERS, ROLE_BADGE, ROLE_LABELS, findUserById, type AppUser } from "@/data/users.data";
+import { canOpenCarrier } from "@/pages/users-roles/scope";
 import { ServiceProfileEditModal } from "@/pages/accounts/ServiceProfileEditModal";
 import { AddOfficeModal } from "./AddOfficeModal";
 import { type OfficeLocation } from "@/pages/accounts/service-profiles.data";
@@ -206,6 +207,7 @@ export function ServiceProfilePage({ serviceProfileId, currentUser, onSelectServ
                     <CarriersTab
                         carriers={linkedCarriers}
                         canAdd={canEdit}
+                        canOpen={(c) => canOpenCarrier(currentUser, c)}
                         onAddCarrier={() => onNavigate?.("/accounts/new")}
                         onOpenCarrier={(c) => {
                             onSelectAccount?.(c);
@@ -371,10 +373,12 @@ function OverviewTab({
 // ── Tab: Carrier Accounts ──────────────────────────────────────────────────
 
 function CarriersTab({
-    carriers, canAdd, onAddCarrier, onOpenCarrier, onNavigate,
+    carriers, canAdd, canOpen, onAddCarrier, onOpenCarrier, onNavigate,
 }: {
     carriers: ReturnType<typeof getAccountsByServiceProfileId>;
     canAdd: boolean;
+    /** May the viewer be re-scoped to this carrier — a carrier role only to the ones they hold. */
+    canOpen: (c: AccountRecord) => boolean;
     onAddCarrier: () => void;
     onOpenCarrier: (c: AccountRecord) => void;
     onNavigate?: (path: string) => void;
@@ -436,8 +440,9 @@ function CarriersTab({
                         return (
                             <tr
                                 key={c.id}
-                                onClick={() => onOpenCarrier(c)}
-                                className="hover:bg-slate-50/60 cursor-pointer transition-colors"
+                                onClick={canOpen(c) ? () => onOpenCarrier(c) : undefined}
+                                title={canOpen(c) ? undefined : "Not one of your carriers"}
+                                className={cn("transition-colors", canOpen(c) ? "hover:bg-slate-50/60 cursor-pointer" : "cursor-default")}
                             >
                                 <Td>
                                     <div className="flex items-center gap-3">

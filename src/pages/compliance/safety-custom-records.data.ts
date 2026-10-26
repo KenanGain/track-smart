@@ -102,6 +102,17 @@ function persistFor(acct: string, list: SafetyRecord[]) {
     window.dispatchEvent(new CustomEvent(EVENT));
 }
 
+/** This carrier's custom records, read outside a component. */
+export function customSafetyRecordsFor(accountId?: string): SafetyRecord[] {
+    return loadFor(accountId || NO_ACCOUNT);
+}
+
+/** Re-run `cb` whenever any carrier's custom records change. */
+export function subscribeCustomSafetyRecords(cb: () => void): () => void {
+    window.addEventListener(EVENT, cb);
+    return () => window.removeEventListener(EVENT, cb);
+}
+
 /** Hook: this carrier's custom records + add/update/remove. Pass the current account id. */
 export function useCustomSafetyRecords(accountId?: string) {
     const acct = accountId || NO_ACCOUNT;

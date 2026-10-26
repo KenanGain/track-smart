@@ -9,26 +9,29 @@ import {
 } from 'lucide-react';
 import { DeliveryPicker, deliverRequest, needsEmail, type Delivery } from '@/components/share/RequestDelivery';
 import { cn } from '@/lib/utils';
-import { SubTabs } from '@/components/ui/SubTabs';
 import { ListPageHeader, ListPageBody, PAGE_PAD } from '@/components/ui/ListPageHeader';
 import { useCondensingHeader } from '@/components/ui/use-condensing-header';
 import {
     SAFETY_RECORDS, type SafetyRecord, type EntityId,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
-    useComplianceData, instancesOf, CARRIER_SUBJECT, emptyEntry,
-    type DocVersion, type DataDocFile, type MonitoringConfig, type MonitorBasis, type RecordDataEntry,
+    useComplianceData, CARRIER_SUBJECT, emptyEntry,
+    type DocVersion, type DataDocFile, type MonitorBasis, type RecordDataEntry,
 } from '@/pages/compliance/compliance-data-store';
 import { buildSampleEntry } from '@/pages/compliance/DefaultComplianceDataPage';
 import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
 import { useMonitoringActions, type MonitoringAction, type MonitoringActionType } from '@/pages/compliance/monitoring-actions.data';
-import { useMonitoringRouting, useMonitoringResponses, resolveRouting, activeStageDay, stageState, DEFAULT_REMINDERS, type ResolvedRouting, type AlertResponse } from '@/pages/compliance/monitoring-routing.data';
+import { useMonitoringRouting, useMonitoringResponses, resolveRouting, activeStageDay, stageState, consumeMonitoringFocus, subscribeMonitoringFocus, type ResolvedRouting, type AlertResponse } from '@/pages/compliance/monitoring-routing.data';
+import {
+    buildComplianceAlerts, priorityFor, priorityForStatus, nextAlert, parseDate, fmtYMD, shiftDate,
+    PRIORITY_META, PRIORITY_ORDER, TYPE_ORDER, type PriorityLevel, type AlertType, type Assignee, type MonitoringAlert as Alert,
+} from '@/pages/compliance/monitoring-alerts';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { AssignRecordDialog } from '@/components/share/AssignRecordDialog';
-import { setPendingRecord, setMessagesFocus, type RecordRef } from '@/pages/messages/messages-store';
-import { APP_USERS, findUserById, getManagedAccountIds, type AppUser } from '@/data/users.data';
+import { setPendingRecord, setMessagesFocus, type RecordRef, type RoleTag } from '@/pages/messages/messages-store';
+import { APP_USERS, findUserById, getManagedAccountIds, type AppUser, type UserRole } from '@/data/users.data';
 import { KpiStatRow } from '@/components/ui/KpiStatCard';
 import { KebabMenu, type KebabItem } from '@/components/ui/KebabMenu';
 import { TablePager } from '@/components/ui/ListChrome';
@@ -48,26 +51,7 @@ import { useOnbWorkflows } from '@/pages/hiring-process/onboarding.data';
 
 const ENTITY_ICON: Record<EntityId, typeof Building2> = { Carrier: Building2, Asset: Truck, Driver: User };
 
-// ── date helpers ──────────────────────────────────────────────────────
-function todayStart(): Date { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
-function parseDate(s: string): Date | null {
-    if (!s) return null;
-    const [y, m, d] = s.split('-').map(Number);
-    if (!y || !m || !d) return null;
-    const dt = new Date(y, m - 1, d); dt.setHours(0, 0, 0, 0);
-    return isNaN(dt.getTime()) ? null : dt;
-}
-function fmtYMD(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function daysUntil(s: string): number | null {
-    const d = parseDate(s);
-    return d ? Math.round((d.getTime() - todayStart().getTime()) / 86400000) : null;
-}
-function shiftDate(s: string, delta: number): string {
-    const d = parseDate(s); if (!d) return s;
-    d.setDate(d.getDate() + delta); return fmtYMD(d);
-}
+// ── date helpers (the ones the alert builder shares live in monitoring-alerts) ──
 function fmtNice(s: string): string {
     const d = parseDate(s); if (!d) return s || '—';
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -78,32 +62,7 @@ function fmtDateTime(iso: string): string {
     return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-// ── priority ──────────────────────────────────────────────────────────
-type PriorityLevel = 'overdue' | 'critical' | 'high' | 'medium' | 'low';
-const PRIORITY_ORDER: PriorityLevel[] = ['overdue', 'critical', 'high', 'medium', 'low'];
-const PRIORITY_META: Record<PriorityLevel, { label: string; tone: string; dot: string; bar: string }> = {
-    overdue: { label: 'Overdue', tone: 'border-rose-200 bg-rose-50 text-rose-700', dot: 'bg-rose-500', bar: 'bg-rose-500' },
-    critical: { label: 'Critical', tone: 'border-orange-200 bg-orange-50 text-orange-700', dot: 'bg-orange-500', bar: 'bg-orange-500' },
-    high: { label: 'High', tone: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500', bar: 'bg-amber-500' },
-    medium: { label: 'Medium', tone: 'border-blue-200 bg-blue-50 text-blue-700', dot: 'bg-blue-500', bar: 'bg-blue-500' },
-    low: { label: 'Low', tone: 'border-slate-200 bg-slate-50 text-slate-600', dot: 'bg-slate-400', bar: 'bg-slate-400' },
-};
-/**
- * Reminder-aware priority. Instead of arbitrary global day cutoffs, severity escalates relative
- * to the record's OWN monitoring reminders (e.g. [90,60,30]): critical inside the final reminder
- * window, high while any reminder is firing, then upcoming / scheduled. Falls back to 7/30 when a
- * record has no reminders configured.
- */
-function priorityFor(d: number, reminders: number[]): PriorityLevel {
-    if (d < 0) return 'overdue';
-    const valid = reminders.filter(r => r > 0);
-    const near = valid.length ? Math.min(...valid) : 7;   // nearest reminder to the due date (smallest lead)
-    const far = valid.length ? Math.max(...valid) : 30;   // earliest reminder (largest lead)
-    if (d <= near) return 'critical';
-    if (d <= far) return 'high';
-    if (d <= far + 90) return 'medium';
-    return 'low';
-}
+// ── priority (rules in monitoring-alerts) ─────────────────────────────
 /** Human explanation of each level for the "How priority works" legend. */
 const PRIORITY_LEGEND: { level: PriorityLevel; when: string }[] = [
     { level: 'overdue', when: 'Past its due date — action needed now.' },
@@ -112,18 +71,7 @@ const PRIORITY_LEGEND: { level: PriorityLevel; when: string }[] = [
     { level: 'medium', when: 'Upcoming — due within ~90 days after the reminder window.' },
     { level: 'low', when: 'Scheduled further out — nothing to do yet.' },
 ];
-function priorityForStatus(status: string): PriorityLevel {
-    const s = status.toLowerCase();
-    if (/expired|incomplete|inactive/.test(s)) return 'high';
-    if (/pending/.test(s)) return 'medium';
-    return 'low';
-}
-
 // ── monitoring helpers (mirror DefaultComplianceDataPage) ─────────────
-function monitoredDateFor(cfg: MonitoringConfig, v: { issueDate: string; expiryDate: string }): string {
-    if (cfg.basis === 'status') return '';
-    return cfg.basis === 'issue' ? v.issueDate : cfg.basis === 'custom' ? cfg.customDate : v.expiryDate;
-}
 const BASIS_LABEL: Record<MonitorBasis, string> = { issue: 'Issue date', expiry: 'Expiry date', custom: 'Custom date', status: 'Status' };
 const reminderLabel = (d: number) => (d === 0 ? 'On date' : `${d}d`);
 const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
@@ -133,11 +81,6 @@ const RECURRENCE_DAYS: Record<string, number> = {
 };
 
 // ── Notification type (what kind of alert this is) — derived from the monitoring basis ──
-type AlertType = 'expiry' | 'review' | 'scheduled' | 'status';
-const TYPE_ORDER: AlertType[] = ['expiry', 'review', 'scheduled', 'status'];
-function typeForBasis(b: MonitorBasis): AlertType {
-    return b === 'expiry' ? 'expiry' : b === 'issue' ? 'review' : b === 'custom' ? 'scheduled' : 'status';
-}
 const TYPE_META: Record<AlertType, { label: string; Icon: typeof BellRing; tone: string }> = {
     expiry: { label: 'Expiry / Renewal', Icon: CalendarClock, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
     review: { label: 'Review', Icon: History, tone: 'border-violet-200 bg-violet-50 text-violet-700' },
@@ -200,8 +143,14 @@ type ActionMode = 'self' | RequestMode;
 /** What the Ask / notify form hands back — really sent through Messages, see `sendRequest`. */
 type SendPayload = { mode: RequestMode; recipient: Assignee; delivery: Delivery; email: string; subject: string; message: string; dueDate: string };
 
+// ── who a request goes to ─────────────────────────────────────────────
+/** The chat tag a request thread with an app user gets — their role, in the store's own words. */
+const CHAT_TAG: Record<UserRole, RoleTag> = {
+    'super-admin': 'Super Admin', admin: 'Admin', 'fleet-admin': 'Manager', 'safety-manager': 'Safety', user: 'Dispatch', driver: 'Driver',
+};
+const chatTagFor = (u: AppUser | undefined): RoleTag | undefined => (u ? CHAT_TAG[u.role] : undefined);
+
 // ── assignee ──────────────────────────────────────────────────────────
-interface Assignee { id: string; name: string }
 const GRADIENTS = ['from-blue-500 to-blue-700', 'from-emerald-500 to-emerald-700', 'from-amber-500 to-amber-700', 'from-violet-500 to-violet-700', 'from-rose-500 to-rose-700', 'from-teal-500 to-teal-700'];
 function initialsOf(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -217,57 +166,28 @@ function avatarFor(assignee: Assignee): { initials: string; gradient: string } {
 }
 
 // ── alert model ───────────────────────────────────────────────────────
-// One shape for every source. A compliance alert carries its catalog record (the actions
-// that edit a version need it); everything else carries where it came from and a link.
-interface Alert {
-    id: string;
-    source: AlertSource;
-    /** The catalog record — compliance documents only. */
-    record?: SafetyRecord;
-    title: string;
-    description: string;
-    numberLabel?: string;
-    link: { path: string; pendingId?: string; pendingType?: string };
-    entity: EntityId;
-    subjectId: string;
-    subjectLabel: string;
-    instanceName?: string;
-    instanceId?: string;
-    basis: MonitorBasis;
-    type: AlertType;
-    isStatus: boolean;
-    recurrence: string;
-    date: string;              // monitored date (YYYY-MM-DD) or ''
-    daysUntil: number | null;  // null for status watches
-    status: string;
-    numberValue: string;
-    priority: PriorityLevel;
-    reminders: number[];
-    nextAlertDate: string;     // computed next notification fire date ('' if n/a)
-    channels: { email: boolean; inApp: boolean };
-    assignee?: Assignee;       // who's responsible for this alert
-    file: DataDocFile | null;
-}
-
-function nextAlert(date: string, d: number | null, reminders: number[]): string {
-    if (d === null || d < 0) return '';
-    const future = reminders.filter(r => r < d);           // reminders that fire in the future (fire at date - r)
-    if (future.length) return shiftDate(date, -Math.max(...future));
-    return date;                                            // all reminders passed → the due date itself
-}
+// One shape for every source (`MonitoringAlert`, in monitoring-alerts — the inbox builds the
+// same thing). A compliance alert carries its catalog record (the actions that edit a version
+// need it); everything else carries where it came from and a link.
 
 type SortKey = 'date' | 'priority';
 
 // A driver / asset the roster view lists.
 interface RosterSubj { id: string; label: string; sub?: string; initials?: string }
 
-export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedded, lockSubject }: {
+export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedded, lockSubject, view = 'list' }: {
     accountId?: string;
     onNavigate?: (path: string) => void;
     /** Embedded in an entity detail tab — hides the full-page header/chrome and page background. */
     embedded?: boolean;
     /** Lock the whole page to a single subject (asset/driver) — hides entity scope tabs + the roster switch. */
     lockSubject?: { entity: EntityId; subjectId: string; label: string };
+    /**
+     * Embedded, the host page's own tabs say which half this is — the monitored list under
+     * its Monitoring tab, the action log under its Activity tab — so there is no tab row
+     * inside a tab. Ignored on the full page, which keeps Dashboard / Calendar / Activity Log.
+     */
+    view?: 'list' | 'activity';
 }) {
     const account = accountId ? getAccountById(accountId) : undefined;
     const carrierName = account ? (account.dbaName || account.legalName) : 'the selected carrier';
@@ -321,7 +241,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         setEntries(items);
     };
 
-    const [tab, setTab] = useState<'Dashboard' | 'Calendar' | 'Activity'>('Dashboard');
+    const [tab, setTab] = useState<'Dashboard' | 'Calendar' | 'Activity'>(embedded && view === 'activity' ? 'Activity' : 'Dashboard');
     const [actionAlert, setActionAlert] = useState<Alert | null>(null);
     const [assignAlert, setAssignAlert] = useState<Alert | null>(null); // Share / Assign to chat
     const [search, setSearch] = useState('');
@@ -383,53 +303,12 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
         return subjectId;
     };
 
-    const complianceAlerts = useMemo<Alert[]>(() => {
-        const out: Alert[] = [];
-        const prefix = `${acct}::`;
-        for (const [key, entry] of Object.entries(all)) {
-            if (!key.startsWith(prefix)) continue;
-            const rest = key.slice(prefix.length);
-            const sep = rest.indexOf('::');
-            if (sep < 0) continue;
-            const subjectId = rest.slice(0, sep);
-            if (lockSubject && subjectId !== lockSubject.subjectId) continue; // embedded per-subject view
-            const recordId = rest.slice(sep + 2);
-            const record = recordsById.get(recordId);
-            if (!record) continue;
-            const subjectLabel = labelForSubject(record.entity, subjectId);
-
-            const items: { v: DocVersion; instanceName?: string; instanceId?: string }[] = [];
-            const insts = instancesOf(entry);
-            if (insts.length) { for (const inst of insts) { const c = inst.versions[0]; if (c) items.push({ v: c, instanceName: inst.name, instanceId: inst.id }); } }
-            else { const c = entry.versions[0]; if (c) items.push({ v: c }); }
-
-            for (const { v, instanceName, instanceId } of items) {
-                const cfg = v.monitoring;
-                if (!cfg?.enabled) continue;
-                const isStatus = cfg.basis === 'status';
-                const date = isStatus ? '' : monitoredDateFor(cfg, v);
-                if (!isStatus && !date) continue; // enabled but no date captured → nothing to alert on yet
-                const d = date ? daysUntil(date) : null;
-                // Reminders / next-alert / priority follow THIS record's own reminder checkboxes
-                // (Monitoring & Notifications panel), falling back to the standard 90/30/7 when unset.
-                const recReminders = (cfg.reminders && cfg.reminders.length ? cfg.reminders : DEFAULT_REMINDERS).slice().sort((a, b) => b - a);
-                const priority = isStatus ? priorityForStatus(v.status) : priorityFor(d ?? 9999, recReminders);
-                out.push({
-                    id: `${key}::${instanceId ?? ''}::${v.id}`,
-                    source: 'compliance', record, title: record.recordName, description: record.description, numberLabel: record.numberName,
-                    link: { path: '/default-compliance-documents' },
-                    entity: record.entity, subjectId, subjectLabel, instanceName, instanceId,
-                    basis: cfg.basis, type: typeForBasis(cfg.basis), isStatus, recurrence: cfg.recurrence || 'annually',
-                    date, daysUntil: d, status: v.status, numberValue: v.numberValue,
-                    priority, reminders: recReminders,
-                    nextAlertDate: nextAlert(date, d, recReminders),
-                    channels: cfg.channels, assignee: cfg.assignee, file: v.files[0] ?? null,
-                });
-            }
-        }
-        return out;
+    // Built by the shared builder (monitoring-alerts) — the notification bell reads the very
+    // same thing per carrier, so what it shows a person is what this page shows for them.
+    const complianceAlerts = useMemo<Alert[]>(
+        () => buildComplianceAlerts({ acct, all, recordsById, labelForSubject, lockSubjectId: lockSubject?.subjectId }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [all, acct, assets, drivers, carrierName, lockSubject, recordsById]);
+        [all, acct, assets, drivers, carrierName, lockSubject, recordsById]);
 
     // Everything else with a date it can miss — read from each module's own store (see
     // monitoring-sources) and given the same priority rules as a compliance record.
@@ -460,6 +339,20 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
     }, [acct, assets, drivers, carrierName, tickets, inventoryAdditions, applicants, onbWorkflows, all, lockSubject]);
 
     const alerts = useMemo<Alert[]>(() => [...complianceAlerts, ...sourceAlerts], [complianceAlerts, sourceAlerts]);
+
+    // Opened from the notification bell: land with that alert's Take-action panel up. Read on
+    // mount and whenever the bell asks while this page is already open, then matched as soon
+    // as the alert list holds it (the carrier may still be switching).
+    const [focusId, setFocusId] = useState<string | null>(() => (embedded ? null : consumeMonitoringFocus()));
+    useEffect(() => {
+        if (embedded) return;
+        return subscribeMonitoringFocus(() => setFocusId(consumeMonitoringFocus()));
+    }, [embedded]);
+    useEffect(() => {
+        if (!focusId) return;
+        const a = alerts.find(x => x.id === focusId);
+        if (a) { setActionAlert(a); setFocusId(null); }
+    }, [alerts, focusId]);
 
     // Per-entity counts (drive the Carrier / Drivers / Assets scope tabs).
     const entityCounts = useMemo(() => {
@@ -564,7 +457,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
             asked: p.mode === 'request' ? [a.title] : p.mode === 'assign' ? [`Review: ${a.title}`] : [],
             source: { type: 'manual', id: a.id, label: `${SOURCE_META[a.source].label} · ${a.title}` },
             record: assignRefFor(a),
-            roleTag: drivers.some(d => d.id === p.recipient.id) ? 'Driver' : undefined,
+            // The thread's tag is the recipient's seat — a Safety Manager asked for a document
+            // is not a driver, which is what the store would otherwise call them.
+            roleTag: drivers.some(d => d.id === p.recipient.id) ? 'Driver' : chatTagFor(findUserById(p.recipient.id)),
         });
     };
 
@@ -625,6 +520,12 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
 
     const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
 
+    // On one asset's or driver's page the log is that subject's own — the carrier's whole
+    // log under one truck would be someone else's history.
+    const scopedActions = useMemo(
+        () => (lockSubject ? actions.filter(x => x.subjectId === lockSubject.subjectId) : actions),
+        [actions, lockSubject],
+    );
     const monitoringTabs = [
         { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard, count: alerts.length },
         { id: 'Calendar', label: 'Calendar', icon: CalendarDays, count: dateAlerts.length },
@@ -633,11 +534,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
 
     return (
         <div className={embedded ? '' : 'flex h-full min-h-0 flex-col bg-slate-50'}>
-            {/* The app's standard list header (see `ListPageHeader`) — replaced by a bare tab
-                row in embedded (entity-detail tab) mode, where the host page names the subject. */}
-            {embedded ? (
-                <SubTabs tabs={monitoringTabs} activeId={tab} onChange={id => setTab(id as 'Dashboard' | 'Calendar' | 'Activity')} bordered={false} />
-            ) : (
+            {/* The app's standard list header (see `ListPageHeader`). Embedded (an asset's or
+                driver's page) there is none: the host's tab already names the subject and the view. */}
+            {embedded ? null : (
                 <ListPageHeader
                     Icon={BellRing}
                     title="Compliance Monitoring"
@@ -674,7 +573,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
             )}
 
             <ListPageBody standalone={!embedded} scrollRef={scrollRef} onScroll={onScroll}>
-            <div className={embedded ? 'pt-5 space-y-5' : cn('space-y-4 py-4 sm:space-y-5 sm:py-6', PAGE_PAD)}>
+            <div className={embedded ? 'space-y-5' : cn('space-y-4 py-4 sm:space-y-5 sm:py-6', PAGE_PAD)}>
                 {tab === 'Dashboard' ? (
                 <>
                 {/* Compliance health meter */}
@@ -758,7 +657,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                         <>
                         {/* Mobile / narrow: stacked cards — column-driven, same as the table */}
                         <div className="lg:hidden divide-y divide-slate-100">
-                            {pageRows.map(a => <AlertCard key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
+                            {pageRows.map(a => <AlertCard key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles, accountId)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
                         </div>
                         {/* Desktop: full table */}
                         <div className="hidden lg:block overflow-x-auto">
@@ -785,7 +684,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pageRows.map(a => <AlertRow key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
+                                    {pageRows.map(a => <AlertRow key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles, accountId)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} onAssign={setAssignAlert} />)}
                                 </tbody>
                             </table>
                         </div>
@@ -799,10 +698,10 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedde
                     )}
                 </div>
                 </>
-                ) : tab === 'Calendar' ? (
+                ) : tab === 'Calendar' && !embedded ? (
                     <MonitoringCalendar dateAlerts={dateAlerts} />
                 ) : (
-                    <ActivityLog actions={actions} />
+                    <ActivityLog actions={scopedActions} />
                 )}
             </div>
 
@@ -1159,7 +1058,7 @@ function NotifiedRecipients({ recipients, response, routing, max = 3 }: {
     max?: number;
 }) {
     if (recipients.length === 0) return <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><BellRing size={12} /> No route</span>;
-    const names = recipients.map(r => r.name).join(', ');
+    const names = recipients.map(r => (r.via ? `${r.name} (via ${r.via})` : r.name)).join(', ');
     const stage = routing?.staged && routing.activeDay !== null ? ` · at ${reminderLabel(routing.activeDay)} stage` : '';
     const specific = routing?.scoped ? ' · specific rule' : '';
     return (

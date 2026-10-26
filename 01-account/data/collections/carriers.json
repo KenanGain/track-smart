@@ -1,0 +1,318 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/account/carriers.json",
+  "title": "carriers",
+  "description": "One document per carrier. Everything the Fleet Overview tab shows except the office-location and director tables, which are their own collections because they have their own add / edit / remove flows.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "Carrier id, e.g. \"acct-001\". Referenced by every other collection as `carrierId`."
+    },
+    "legalName": {
+      "type": "string",
+      "description": "Legal name as registered."
+    },
+    "dbaName": {
+      "type": "string",
+      "description": "Doing-business-as name.",
+      "default": ""
+    },
+    "status": {
+      "type": "string",
+      "description": "Operating status of the record.",
+      "enum": [
+        "Active",
+        "Inactive",
+        "Suspended",
+        "Pending"
+      ],
+      "default": "Active"
+    },
+    "country": {
+      "type": "string",
+      "description": "Home country.",
+      "enum": [
+        "US",
+        "CA"
+      ],
+      "default": "US"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dotNumber": {
+          "type": "string",
+          "description": "USDOT number. Unique across carriers when set.",
+          "default": ""
+        },
+        "mcNumber": {
+          "type": "string",
+          "description": "FMCSA MC number (read from the MC Certificate record in Compliance; kept here as a cache).",
+          "default": ""
+        },
+        "safetyRegType": {
+          "type": "string",
+          "description": "Which Canadian safety registration the number below is.",
+          "enum": [
+            "",
+            "CVOR",
+            "NSC"
+          ],
+          "default": ""
+        },
+        "safetyRegNumber": {
+          "type": "string",
+          "description": "CVOR or primary NSC number.",
+          "default": ""
+        },
+        "nscNumbers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra provincial NSC numbers (\"AB-99012\").",
+          "default": []
+        },
+        "rinNumber": {
+          "type": "string",
+          "description": "Registered Importer Number.",
+          "default": ""
+        },
+        "businessType": {
+          "type": "string",
+          "enum": [
+            "Corporation",
+            "LLC",
+            "Sole Proprietor",
+            "Partnership"
+          ],
+          "default": "Corporation"
+        },
+        "stateOfInc": {
+          "type": "string",
+          "description": "State / province of incorporation (code)."
+        },
+        "extraProvincial": {
+          "type": "boolean",
+          "description": "Operates commercial vehicles across provincial / federal borders.",
+          "default": false
+        }
+      },
+      "required": [
+        "businessType",
+        "stateOfInc"
+      ]
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operationClassification": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Authorized for Hire",
+              "Private Carrier",
+              "Exempt For Hire"
+            ]
+          },
+          "default": []
+        },
+        "carrierOperation": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Interstate",
+              "Intrastate",
+              "Cross-Border"
+            ]
+          },
+          "default": []
+        },
+        "hazmatOperation": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Hazmat",
+              "Non-Hazmat"
+            ]
+          },
+          "default": []
+        },
+        "fmcsaAuthorityTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Motor Carrier of Property",
+              "Motor Carrier of Household Goods",
+              "Broker of Property"
+            ]
+          },
+          "default": []
+        }
+      }
+    },
+    "legalAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street line, as written on the record.",
+          "default": ""
+        },
+        "city": {
+          "type": "string",
+          "description": "City.",
+          "default": ""
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province code (DE, ON).",
+          "default": ""
+        },
+        "zip": {
+          "type": "string",
+          "description": "ZIP or postal code.",
+          "default": ""
+        },
+        "country": {
+          "type": "string",
+          "description": "\"United States\" or \"Canada\".",
+          "enum": [
+            "United States",
+            "Canada"
+          ],
+          "default": "United States"
+        },
+        "apt": {
+          "type": "string",
+          "description": "Apartment, suite, etc.",
+          "default": ""
+        }
+      }
+    },
+    "mailingAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "streetOrPoBox": {
+          "type": "string",
+          "description": "Street address or PO box."
+        },
+        "city": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "zip": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string",
+          "enum": [
+            "United States",
+            "Canada"
+          ],
+          "default": "United States"
+        }
+      },
+      "required": [
+        "streetOrPoBox",
+        "city",
+        "state",
+        "zip",
+        "country"
+      ]
+    },
+    "fleetCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "powerUnits": {
+          "type": "integer",
+          "description": "As filed (MCS-150); the live count comes from `assets`.",
+          "default": 0
+        },
+        "drivers": {
+          "type": "integer",
+          "description": "As filed; the live count comes from `drivers`.",
+          "default": 0
+        },
+        "nonCmv": {
+          "type": "integer",
+          "description": "Vehicles under 10,001 lbs.",
+          "default": 0
+        }
+      },
+      "required": [
+        "powerUnits",
+        "drivers"
+      ]
+    },
+    "cargoTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "MCS-150 cargo classifications as labels (\"General Freight\").",
+      "default": []
+    },
+    "cargoFamilies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Derived from `cargoTypes` on write (canonical family tags).",
+      "default": []
+    },
+    "safetyRating": {
+      "type": "string",
+      "enum": [
+        "Satisfactory",
+        "Conditional",
+        "Unsatisfactory",
+        "Not Rated"
+      ],
+      "default": "Not Rated"
+    },
+    "riskScore": {
+      "type": "integer",
+      "description": "0–100, computed nightly from compliance, inspections and violations; read-only on this API."
+    },
+    "serviceProfileId": {
+      "type": "string",
+      "description": "Service profile the carrier was created under → `service_profiles._id` (outside this section)."
+    },
+    "createdByUserId": {
+      "type": "string",
+      "description": "→ `users._id`."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on insert."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by the server on every write."
+    }
+  },
+  "required": [
+    "_id",
+    "legalName",
+    "status",
+    "country",
+    "createdAt",
+    "updatedAt"
+  ]
+}

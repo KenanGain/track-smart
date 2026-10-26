@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 – Inventory · Components</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens — light values from ../color-palette.json (Tailwind v4 default palette). */
+:root{
+  --primary:#155dfc; --primary-hover:#1447e6; --primary-subtle:#eff6ff; --primary-border:#bedbff;
+  --secondary:#f1f5f9; --secondary-fg:#314158; --background:#f8fafc; --surface:#ffffff;
+  --text-primary:#0f172b; --text-body:#314158; --text-secondary:#62748e; --text-muted:#90a1b9;
+  --border:#e2e8f0; --border-strong:#cad5e2;
+  --success:#009966; --success-text:#007a55; --success-subtle:#ecfdf5; --success-border:#a4f4cf;
+  --warning:#e17100; --warning-text:#bb4d00; --warning-subtle:#fffbeb; --warning-border:#fee685;
+  --error:#e7000b; --error-text:#c10007; --error-subtle:#fef2f2; --error-border:#ffc9c9;
+  --danger:#ec003f; --danger-subtle:#fff1f2;
+  --accent:#7f22fe; --accent-text:#7008e7; --accent-subtle:#f5f3ff; --accent-border:#ddd6ff;
+  --indigo-text:#432dd7; --indigo-subtle:#eef2ff; --orange-text:#ca3500; --orange-subtle:#fff7ed;
+  --inverse:#0f172b;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--background);color:var(--text-body);font:400 14px/1.4 Inter,system-ui,sans-serif}
+.sheet{width:1440px;padding:48px;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+h1{grid-column:1/-1;margin:0 0 4px;font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--text-primary)}
+.sub{grid-column:1/-1;margin:-20px 0 8px;color:var(--text-secondary);font-size:14px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 24px;box-shadow:0 1px 2px rgba(15,23,43,.05)}
+.frame.wide{grid-column:1/-1}
+.ft{margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
+.fd{margin:0 0 16px;font-size:12px;color:var(--text-muted)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.col{display:flex;flex-direction:column;gap:10px}
+.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin-top:6px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;font:600 14px Inter,sans-serif;border:1px solid transparent;white-space:nowrap}
+.btn.primary{background:var(--primary);color:#fff} .btn.primary.hover{background:var(--primary-hover)}
+.btn.disabled{background:#cad5e2;color:#fff}
+.btn.dark{background:var(--inverse);color:#fff}
+.btn.violet{background:var(--accent);color:#fff}
+.btn.outline{background:#fff;color:var(--secondary-fg);border-color:var(--border)}
+.btn.danger{background:var(--error);color:#fff}
+.btn.sm{height:32px;font-size:13px;padding:0 12px}
+.kebab{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-muted);font-weight:700}
+.kebab.open{background:var(--secondary);color:var(--text-body)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--success-text);background:var(--success-subtle);border-color:var(--success-border)}
+.pill.warn{color:var(--warning-text);background:var(--warning-subtle);border-color:var(--warning-border)}
+.pill.err{color:var(--error-text);background:var(--error-subtle);border-color:var(--error-border)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid}
+.chip.cmv{color:var(--indigo-text);background:var(--indigo-subtle);border-color:#c6d2ff}
+.chip.noncmv{color:var(--orange-text);background:var(--orange-subtle);border-color:#ffd6a7}
+.chip.driver{color:var(--success-text);background:var(--success-subtle);border-color:var(--success-border)}
+.chip.both{color:var(--accent-text);background:var(--accent-subtle);border-color:var(--accent-border)}
+.chip.asset{color:var(--secondary-fg);background:var(--secondary);border-color:var(--border)}
+.chip.none{color:var(--text-secondary);background:#fff;border-color:var(--border)}
+.chip.blue{color:var(--primary);background:var(--primary-subtle);border-color:var(--primary-border)}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 6px;border-radius:999px;background:var(--secondary);color:var(--secondary-fg);font-size:10px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px;min-width:220px}
+.flabel{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)} .flabel b{color:var(--error)}
+.input{height:36px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-primary)}
+.input.ph{color:var(--text-muted)} .input.focus{border-color:#51a2ff;box-shadow:0 0 0 3px rgba(43,127,255,.2)}
+.input.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.hint{font-size:11px;color:var(--text-secondary)}
+.select{justify-content:space-between} .select::after{content:"▾";color:var(--text-muted)}
+.select.on{background:var(--primary-subtle);border-color:var(--primary-border);color:var(--primary)}
+.tick{border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;gap:10px;width:300px}
+.tick.on{border-color:var(--primary-border);background:var(--primary-subtle)}
+.tick b{display:block;color:var(--primary);font-size:14px} .tick small{display:block;color:var(--text-secondary);font-size:12px}
+.check{width:16px;height:16px;border-radius:4px;border:1px solid var(--border-strong);display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:11px}
+.check.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.check.green{background:#00bc7d;border-color:#00bc7d;color:#fff}
+.switch{width:36px;height:20px;border-radius:999px;background:#cad5e2;position:relative;display:inline-block;flex:none}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch.on{background:var(--primary)} .switch.on::after{left:18px} .switch.violet.on{background:var(--accent)}
+.radio{display:inline-flex;align-items:center;gap:8px;font-size:13px} .radio i{width:14px;height:14px;border-radius:50%;border:1px solid var(--border-strong);display:inline-block} .radio.on i{border:4px solid var(--primary)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border)}
+.tab{padding:10px 14px;font-size:14px;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.tab.on{color:var(--primary);border-color:var(--primary)} .tab.on .count{background:var(--primary-subtle);color:var(--primary)}
+.steps{display:flex;gap:10px;align-items:center}
+.step{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:6px 14px 6px 6px;font-size:14px;font-weight:600;color:var(--text-secondary)}
+.step i{width:24px;height:24px;border-radius:50%;background:var(--secondary);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.step.on{border-color:var(--primary-border);background:var(--primary-subtle);color:var(--primary)} .step.on i{background:var(--primary);color:#fff}
+.step.done i{background:var(--success-subtle);color:var(--success)}
+.kpi{border:1px solid var(--border);border-radius:12px;padding:12px 14px;width:200px;background:#fff}
+.kpi small{display:block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary)}
+.kpi b{display:block;font-size:24px;color:var(--text-primary);margin-top:2px}
+.kpi.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.fchip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;font-size:13px;font-weight:600;color:var(--secondary-fg)}
+.fchip span{font-size:11px;color:var(--text-muted)} .fchip.on{background:var(--primary);color:#fff} .fchip.on span{color:#dbeafe} .fchip.off{color:#cad5e2}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--background);text-align:left;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);padding:9px 12px;border-bottom:1px solid var(--border)}
+th.sorted{color:var(--primary)}
+td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr.zebra td{background:#fbfcfe} tr.hover td{background:#f5f9ff} tr.band td{background:#fff1f2;color:#c70036;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+tr.ticked td{background:var(--primary-subtle)} tr.off td{background:var(--danger-subtle)} tr.off .nm{text-decoration:line-through;color:#c70036}
+.nm{font-weight:600;color:var(--text-primary)} .sm2{font-size:11px;color:var(--text-secondary)} .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.tile{width:34px;height:34px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.menu{width:200px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 10px 30px rgba(15,23,43,.12);padding:6px}
+.menu div{padding:8px 10px;border-radius:6px;font-size:13px;color:var(--text-body)} .menu div.hl{background:var(--background)} .menu div.red{color:var(--danger)}
+.dialog{width:460px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 20px 50px rgba(15,23,43,.2);overflow:hidden}
+.dh{padding:16px 18px;border-bottom:1px solid var(--border)} .dh b{display:block;color:var(--text-primary);font-size:16px} .dh small{color:var(--text-secondary);font-size:12px}
+.db{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.df{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+.note{border:1px solid var(--primary-border);background:var(--primary-subtle);color:var(--primary-hover);border-radius:8px;padding:10px 12px;font-size:12px}
+.note.amber{border-color:var(--warning-border);background:var(--warning-subtle);color:var(--warning-text)}
+.card{width:520px;border:1px solid var(--warning-border);background:var(--warning-subtle);border-radius:14px;padding:12px}
+.ci{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cr{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.cf{background:var(--accent-subtle);padding:10px 12px;font-size:12px;color:var(--accent-text)}
+.sig{width:520px;border:1px solid var(--accent-border);border-radius:14px;overflow:hidden;background:#fff}
+.sigh{background:var(--accent-subtle);padding:12px 14px;display:flex;gap:10px;align-items:center}
+.pad{height:90px;border:1px solid var(--border);border-radius:8px;margin:0 14px 12px;display:flex;align-items:center;padding-left:20px;font:italic 28px Georgia,serif;color:var(--text-primary)}
+.type{display:grid;grid-template-columns:200px 1fr;gap:10px 20px;align-items:baseline}
+.type code{font-size:11px;color:var(--text-secondary)}
+</style>
+</head>
+<body>
+<div class="sheet" id="sheet">
+  <h1>02 – Inventory · Components</h1>
+  <p class="sub">Reusable parts of the Inventory section with their variants and states. Import with the html.to.design plugin; colours and type match <code>tokens.json</code>.</p>
+
+  <section class="frame" data-frame="Buttons">
+    <p class="ft">Buttons</p><p class="fd">Primary · hover · disabled · dark (read the messages first) · violet (sign) · outline · danger · small</p>
+    <div class="row">
+      <span class="btn primary">+ Add Inventory</span><span class="btn primary hover">Save Inventory</span><span class="btn disabled">✓ Save Inventory</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="btn dark">Driver Notification ›</span><span class="btn violet">✓ Sign &amp; confirm</span><span class="btn outline">Categories</span><span class="btn danger">Delete category</span><span class="btn outline sm">Columns ▾</span><span class="kebab">⋮</span><span class="kebab open">⋮</span>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Status and kind pills">
+    <p class="ft">Status, kind and assignment chips</p><p class="fd">Status pill (dot + text) · asset kind · driver · Assigned to · count pill</p>
+    <div class="row"><span class="pill ok">Active</span><span class="pill warn">Expiring Soon</span><span class="pill err">Expired</span></div>
+    <div class="row" style="margin-top:12px"><span class="chip cmv">🚚 CMV</span><span class="chip noncmv">🚚 Non-CMV</span><span class="chip driver">🪪 Driver</span><span class="chip blue">ASSIGNED</span></div>
+    <div class="row" style="margin-top:12px"><span class="chip both">Both</span><span class="chip blue">Driver</span><span class="chip asset">Asset</span><span class="chip none">Unassigned</span><span class="count">41</span></div>
+  </section>
+
+  <section class="frame" data-frame="Inputs">
+    <p class="ft">Inputs</p><p class="fd">Text · mono number · focus · placeholder · select · select with a grouping set · date</p>
+    <div class="row">
+      <div class="field"><span class="flabel">Number <b>*</b></span><span class="input mono">FC-415483</span></div>
+      <div class="field"><span class="flabel">PIN</span><span class="input ph">e.g. 4421</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="field"><span class="flabel">Search</span><span class="input focus">🔍 KEY-</span></div>
+      <div class="field"><span class="flabel">Expiry date</span><span class="input">03/17/2027</span><span class="hint">Leave blank for something that never runs out — a yard key.</span></div>
+    </div>
+    <div class="row" style="margin-top:12px"><span class="input select" style="width:160px">Group by</span><span class="input select on" style="width:160px">Status</span></div>
+  </section>
+
+  <section class="frame" data-frame="Choice controls">
+    <p class="ft">Choice controls</p><p class="fd">"Assigned to" tick cards · switch · radio tiles · reminder checkboxes</p>
+    <div class="row">
+      <div class="tick on"><span class="check on">✓</span><div><b>Driver</b><small>The driver returns it to the carrier when they leave.</small></div></div>
+      <div class="tick"><span class="check"></span><div><b style="color:var(--text-primary)">Asset</b><small>It is removed when the asset leaves the fleet.</small></div></div>
+    </div>
+    <div class="row" style="margin-top:14px"><span class="switch"></span> Off <span class="switch on"></span> Enabled <span class="switch violet on"></span> Take a signature</div>
+    <div class="row" style="margin-top:14px"><span class="radio"><i></i>Issue date</span><span class="radio on"><i></i>Expiry date</span><span class="radio"><i></i>Custom date</span></div>
+    <div class="row" style="margin-top:10px"><span class="check"></span>90 Days Before <span class="check on">✓</span>30 Days Before <span class="check on">✓</span>On the date</div>
+  </section>
+
+  <section class="frame wide" data-frame="Tabs and rails">
+    <p class="ft">Section tabs · category rail · step bar</p><p class="fd">Active = blue underline and blue count badge</p>
+    <div class="tabs"><span class="tab on">☰ List</span><span class="tab">👤 Drivers</span><span class="tab">🚚 Assets</span><span class="tab">🏪 Vendors</span></div>
+    <div class="tabs" style="margin-top:14px"><span class="tab on">All <span class="count">41</span></span><span class="tab">Fuel Card <span class="count">1</span></span><span class="tab">Keys &amp; Access <span class="count">7</span></span><span class="tab">Safety &amp; PPE <span class="count">10</span></span><span class="tab">Devices &amp; Electronics <span class="count">6</span></span></div>
+    <div class="steps" style="margin-top:16px"><span class="step done"><i>✓</i>Inventory <span class="count">2</span></span>—<span class="step on"><i>2</i>Driver Notification <span class="count">2</span></span></div>
+  </section>
+
+  <section class="frame wide" data-frame="List header">
+    <p class="ft">List header</p><p class="fd">Expanded (top) and condensed (scrolled) — the tab row never scrolls away</p>
+    <div style="border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+      <div class="row" style="justify-content:space-between"><div class="row"><span class="tile" style="background:var(--primary-subtle);color:var(--primary)">▦</span><div><div style="font-size:24px;font-weight:700;color:var(--text-primary)">Inventory <span class="count">41</span></div><div class="sm2"><b style="color:var(--text-body)">Acme Logistics</b> — company inventory across every vendor category.</div></div></div><span class="btn outline">🏷 Categories</span></div>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:12px;padding:8px 20px;margin-top:12px;box-shadow:0 4px 10px rgba(15,23,43,.08)">
+      <div class="row" style="justify-content:space-between"><div class="row"><span class="tile" style="width:28px;height:28px;background:var(--primary-subtle);color:var(--primary)">▦</span><b style="color:var(--text-primary)">Inventory</b> <span class="count">41</span> <span class="sm2">Items <b>41</b> · Active <b>35</b> · Expiring <b>3</b> · Expired <b>3</b> · Unassigned <b>14</b></span></div><span class="btn outline sm">Categories</span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="KPI tiles">
+    <p class="ft">KPI tiles</p><p class="fd">Default · active filter (Drivers / Assets / Vendors tabs)</p>
+    <div class="row"><div class="kpi"><small>Total items</small><b>41</b></div><div class="kpi on"><small>Holding nothing</small><b>10</b></div></div>
+  </section>
+
+  <section class="frame" data-frame="Filter row">
+    <p class="ft">Filter chips, Reset and group band</p><p class="fd">Active chip · idle chip · disabled at 0 · band row</p>
+    <div class="row"><span class="fchip on">All items <span>41</span></span><span class="fchip">Assigned <span>27</span></span><span class="fchip">Available <span>14</span></span><span class="fchip off">Canada Only <span>0</span></span><span class="btn outline sm">✕ Reset</span></div>
+    <table style="margin-top:12px"><tr class="band"><td>Expired · 3</td></tr></table>
+  </section>
+
+  <section class="frame wide" data-frame="Item table">
+    <p class="ft">Item table</p><p class="fd">Header (sorted column) · default row · zebra row · hover row · Actions pinned right</p>
+    <table>
+      <tr><th>Item</th><th>Number / PIN</th><th>Issued</th><th class="sorted">Expires ▲</th><th>Asset</th><th>Driver</th><th>Status</th><th>Actions</th></tr>
+      <tr><td><div class="row" style="gap:10px"><span class="tile" style="background:#fffbeb;color:#bb4d00">⛽</span><div><div class="nm">Comdata — Fuel Card</div><div class="sm2">Comdata Inc.</div></div></div></td><td><span class="mono">FC-415483</span><div class="sm2 mono">PIN 7028</div></td><td>Mar 17, 2025</td><td>Mar 17, 2027 <span style="color:var(--success)">🔔</span></td><td><span class="chip cmv">CMV</span> <b>ACM-T0100</b><div class="sm2">2023 Freightliner Cascadia 126</div></td><td><span class="chip driver">Driver</span> <b>Jason Cooper</b></td><td><span class="pill ok">Active</span></td><td>✎ <span class="kebab">⋮</span></td></tr>
+      <tr class="zebra"><td><div class="row" style="gap:10px"><span class="tile" style="background:#eff6ff;color:#1447e6">∿</span><div><div class="nm">Samsara — ELD Provider</div><div class="sm2">Samsara Inc.</div></div></div></td><td><span class="mono">ELD-038341</span></td><td>Nov 25, 2023</td><td>Nov 25, 2025 <span style="color:var(--text-muted)">🔕</span></td><td><span class="chip cmv">CMV</span> <b>ACM-T0102</b></td><td>—</td><td><span class="pill err">Expired</span></td><td>✎ <span class="kebab">⋮</span></td></tr>
+      <tr class="hover"><td><div class="row" style="gap:10px"><span class="tile" style="background:#f0fdfa;color:#00786f">📦</span><div><div class="nm" style="color:var(--primary)">Wheel Chocks — Equipment &amp; Supplies</div><div class="sm2">Company Issued</div></div></div></td><td><span class="mono">EQP-447120</span></td><td>Aug 19, 2024</td><td class="sm2">no expiry</td><td>—</td><td><span class="chip none">Unassigned</span></td><td><span class="pill ok">Active</span></td><td>✎ <span class="kebab open">⋮</span></td></tr>
+    </table>
+  </section>
+
+  <section class="frame" data-frame="Pick list rows">
+    <p class="ft">Manage inventory — pick list rows</p><p class="fd">Held (ticked) · free ticked (going on) · held unticked (coming off) · free</p>
+    <table>
+      <tr><td><span class="check on">✓</span></td><td class="nm">Comdata — Fuel Card</td><td><span class="chip both">Yes</span></td></tr>
+      <tr class="ticked"><td><span class="check on">✓</span></td><td class="nm">Spare Truck Keys (set)</td><td><span class="chip both">Yes</span></td></tr>
+      <tr class="off"><td><span class="check"></span></td><td class="nm">Truck Keys — Keys &amp; Access</td><td><span class="chip both">Yes</span></td></tr>
+      <tr><td><span class="check">+</span></td><td class="nm">Spare Yard Gate Fob</td><td><span class="chip both">Yes</span></td></tr>
+    </table>
+  </section>
+
+  <section class="frame" data-frame="Row menu">
+    <p class="ft">Row menu</p><p class="fd">Item row · vendor row (destructive last, red)</p>
+    <div class="row" style="align-items:flex-start"><div class="menu"><div class="hl">⇄ Change assignment</div><div>↗ Share to chat</div></div><div class="menu"><div>↗ Share to chat</div><div>✎ Edit</div><div class="red">🗑 Delete</div></div></div>
+  </section>
+
+  <section class="frame" data-frame="Assign dialog">
+    <p class="ft">Assign dialog</p><p class="fd">Item ticked for both: Unit and Driver blocks, both-places note, footer actions</p>
+    <div class="dialog">
+      <div class="dh"><b>Assign Comdata — Fuel Card</b><small>FC-415483 · Currently: ACM-T0100 · Jason Cooper</small></div>
+      <div class="db"><span class="flabel">Unit</span><span class="input select">ACM-T0100 · 2023 Freightliner Cascadia 126</span><span class="flabel">Driver</span><span class="input select">Jason Cooper · Long Haul Driver</span><div class="note">This item is ticked for both, so it can be filed in both places at once — on the unit, and on the person who carries it.</div></div>
+      <div class="df"><span class="btn outline sm">⊘ Unassign</span><span><span class="btn outline sm">Cancel</span> <span class="btn primary sm">Save assignment</span></span></div>
+    </div>
+  </section>
+
+  <section class="frame" data-frame="Collection card">
+    <p class="ft">Collection card (Messages, driver seat)</p><p class="fd">Pending collect card with a receipt to sign</p>
+    <div class="card"><div class="ci">
+      <div class="cr" style="justify-content:space-between"><b style="color:var(--text-primary)">📦 Collect from the office</b><span class="btn outline sm">Clear all</span></div>
+      <div class="cr"><span class="check on">✓</span><div style="flex:1"><b>Spare Truck Keys (set) — Keys &amp; Access</b><div class="sm2 mono">KEY-983142</div></div><span class="chip blue">ASSIGNED</span></div>
+      <div class="cr"><span class="check on">✓</span><div style="flex:1"><b>Spare Hi-Vis Vests (box) — Safety &amp; PPE</b><div class="sm2 mono">PPE-633478</div></div><span class="chip blue">ASSIGNED</span></div>
+      <div class="cf">RECEIPT TO SIGN · <b>Uniform &amp; Equipment Issue Receipt</b> — Filled in from what you tick above.</div>
+      <div class="cr" style="justify-content:space-between"><span class="sm2">2 of 2 ticked · the receipt lists these</span><span class="btn violet sm">Sign &amp; confirm</span></div>
+    </div></div>
+  </section>
+
+  <section class="frame" data-frame="Sign form">
+    <p class="ft">Sign-form card</p><p class="fd">Items received with the Got column · signature pad · finish button</p>
+    <div class="sig">
+      <div class="sigh"><span class="tile" style="background:var(--accent);color:#fff">✎</span><div><b style="color:var(--text-primary)">Uniform &amp; Equipment Issue Receipt</b><div class="sm2">Company property issued to the driver.</div></div></div>
+      <table><tr><th>Got</th><th>Item</th><th>Number / serial</th></tr><tr><td><span class="check green">✓</span></td><td class="nm">Spare Truck Keys (set)</td><td class="mono">KEY-983142</td></tr><tr><td><span class="check green">✓</span></td><td class="nm">Spare Hi-Vis Vests (box)</td><td class="mono">PPE-633478</td></tr></table>
+      <p class="flabel" style="margin:12px 14px 6px">Signature</p><div class="pad">Jason Cooper</div>
+      <div class="cr" style="justify-content:space-between;border:0"><span class="sm2">Signing files a copy on Jason Cooper's record.</span><span class="btn violet sm">✓ Sign &amp; confirm</span></div>
+    </div>
+  </section>
+
+  <section class="frame wide" data-frame="Typography">
+    <p class="ft">Typography</p><p class="fd">Inter; mono for numbers, PINs and serials</p>
+    <div class="type">
+      <code>page-title · 24/30 700</code><div style="font-size:24px;font-weight:700;letter-spacing:-.4px;color:var(--text-primary)">Inventory by Driver</div>
+      <code>wizard-title · 24/30 700</code><div style="font-size:24px;font-weight:700;color:var(--text-primary)">Manage inventory — Jason Cooper</div>
+      <code>card-title · 16/24 600</code><div style="font-size:16px;font-weight:600;color:var(--text-primary)">Dates being watched</div>
+      <code>body · 14/20 400</code><div>Everything that happened to what this holds, newest first.</div>
+      <code>cell-primary · 14/20 600</code><div style="font-weight:600;color:var(--text-primary)">Comdata — Fuel Card</div>
+      <code>secondary-line · 12/16 400</code><div class="sm2" style="font-size:12px">2023 Freightliner Cascadia 126</div>
+      <code>field-label · 11/14 700 caps</code><div class="flabel">Record name *</div>
+      <code>micro-label · 10/12 700 caps</code><div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary)">Expiring soon</div>
+      <code>mono-id · 13/18 500</code><div class="mono" style="font-size:13px">FC-415483 · PIN 7028</div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

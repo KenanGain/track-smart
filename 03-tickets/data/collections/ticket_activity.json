@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart/tickets/ticket_activity.json",
+  "title": "ticket_activity",
+  "description": "A real audit log for each ticket (the prototype generates a fixed trail on every view). One row per event: created, updated (with the change list), status, dates, document uploaded, shared, linked, assigned, review steps.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{24}$"
+    },
+    "carrierId": {
+      "type": "string"
+    },
+    "ticketId": {
+      "type": "string",
+      "description": "→ `tickets._id`."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "status",
+        "uploaded",
+        "shared",
+        "linked",
+        "assigned",
+        "verified",
+        "note",
+        "resolved",
+        "reopened",
+        "deleted"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "\"Status — In Court\", \"Ticket file uploaded\"."
+    },
+    "detail": {
+      "type": "string",
+      "default": ""
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "`{ field, from, to }`.",
+      "default": []
+    },
+    "byUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "byName": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "Office",
+        "Reviewer",
+        "Driver",
+        "System",
+        "Citation"
+      ],
+      "default": "Office"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "_id",
+    "carrierId",
+    "ticketId",
+    "kind",
+    "title",
+    "byName",
+    "role",
+    "at"
+  ]
+}

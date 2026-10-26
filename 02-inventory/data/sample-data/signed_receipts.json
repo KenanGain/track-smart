@@ -1,0 +1,115 @@
+[
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f801",
+    "carrierId": "acct-001",
+    "driverId": "DRV-001-0001",
+    "collectionId": "col-mh2l0a-1",
+    "formDefId": "equipment-issue",
+    "complianceRecordId": "onbform:equipment-issue",
+    "title": "Uniform & Equipment Issue Receipt",
+    "lines": [
+      {
+        "itemId": "inv-acc-001-011",
+        "name": "Spare Truck Keys (set) — Keys & Access",
+        "serial": "KEY-983142"
+      },
+      {
+        "itemId": "inv-acc-001-014",
+        "name": "Spare Hi-Vis Vests (box) — Safety & PPE",
+        "serial": "PPE-633478"
+      }
+    ],
+    "values": {
+      "employeeName": "Jason Cooper",
+      "issueDate": "2026-10-23"
+    },
+    "signatures": [
+      {
+        "signerId": "driver",
+        "mode": "draw",
+        "image": "data:image/png;base64,iVBORw0KGgo…(truncated)",
+        "signedAt": "2026-10-23T19:36:40Z",
+        "ip": "203.0.113.24",
+        "userAgent": "Mozilla/5.0 (iPhone)…"
+      }
+    ],
+    "signedByName": "Jason Cooper",
+    "signedAt": "2026-10-23T19:36:40Z",
+    "pdfFileId": "file-6716a1f0c1a2",
+    "tags": [
+      "Filled in system"
+    ],
+    "createdAt": "2026-10-23T19:36:40Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f802",
+    "carrierId": "acct-001",
+    "driverId": "DRV-001-0004",
+    "collectionId": "col-mh1x02-1",
+    "formDefId": "fuel-card-agreement",
+    "complianceRecordId": "onbform:fuel-card-agreement",
+    "title": "Fuel Card Agreement — ACM-T0103",
+    "lines": [
+      {
+        "itemId": "inv-acc-001-030",
+        "name": "Comdata — Fuel Card (spare)",
+        "serial": "FC-662190"
+      }
+    ],
+    "values": {
+      "employeeName": "Elizabeth Cook",
+      "cardNumber": "2190",
+      "issueDate": "2026-09-30"
+    },
+    "signatures": [
+      {
+        "signerId": "driver",
+        "mode": "type",
+        "typedName": "Elizabeth Cook",
+        "signedAt": "2026-09-30T14:10:00Z"
+      }
+    ],
+    "signedByName": "Elizabeth Cook",
+    "signedAt": "2026-09-30T14:10:00Z",
+    "pdfFileId": null,
+    "tags": [
+      "Filled in system"
+    ],
+    "createdAt": "2026-09-30T14:10:00Z"
+  },
+  {
+    "_id": "6716a1f0c1a2b3c4d5e6f803",
+    "carrierId": "acct-012",
+    "driverId": "DRV-012-0003",
+    "collectionId": "col-mgz9c1-4",
+    "formDefId": "equipment-issue",
+    "complianceRecordId": "onbform:equipment-issue",
+    "title": "Uniform & Equipment Issue Receipt",
+    "lines": [
+      {
+        "itemId": "inv-acc-012-005",
+        "name": "Hi-Vis Safety Vest — Safety & PPE",
+        "serial": "PPE-118402"
+      }
+    ],
+    "values": {
+      "employeeName": "Luc Gagnon",
+      "issueDate": "2026-08-14"
+    },
+    "signatures": [
+      {
+        "signerId": "driver",
+        "mode": "draw",
+        "image": "data:image/png;base64,iVBORw0KGgo…(truncated)",
+        "signedAt": "2026-08-14T12:30:00Z"
+      }
+    ],
+    "signedByName": "Luc Gagnon",
+    "signedAt": "2026-08-14T12:30:00Z",
+    "pdfFileId": "file-66bc90aa01",
+    "tags": [
+      "Filled in system"
+    ],
+    "createdAt": "2026-08-14T12:30:00Z"
+  }
+]
